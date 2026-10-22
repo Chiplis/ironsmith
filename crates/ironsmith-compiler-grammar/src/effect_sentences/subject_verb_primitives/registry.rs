@@ -1176,7 +1176,12 @@ pub fn parse_sentence_sacrifice_it_next_end_step(
         return Ok(None);
     }
     let filter = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+        // "Sacrifice them": the pronoun names the whole antecedent set.
+        if crate::lexer::token_word_refs(shape.object_tokens).as_slice() == ["them"] {
+            filter.set_plural_pronoun_reference_surface(true);
+        }
+        filter
     } else {
         parse_object_filter(shape.object_tokens, false)?
     };

@@ -10,6 +10,9 @@ pub enum SpellOriginSurface {
     Graveyard,
     Exile,
     Hand,
+    /// "Whenever you cast an instant or sorcery spell from your library"
+    /// (Melek, Izzet Paragon).
+    Library,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,6 +206,7 @@ fn direct_spell_origin_surface(
                 "graveyard" | "graveyards" => SpellOriginSurface::Graveyard,
                 "exile" => SpellOriginSurface::Exile,
                 "hand" | "hands" => SpellOriginSurface::Hand,
+                "library" | "libraries" => SpellOriginSurface::Library,
                 _ => return None,
             };
             Some((offset, origin))
@@ -320,7 +324,18 @@ pub fn qualified_ordinal_spell_count_surface(words: &[&str]) -> Option<u32> {
         if spell_offset == 0 {
             continue;
         }
-        let spell_idx = idx + 2 + spell_offset;
+        let mut spell_idx = idx + 2 + spell_offset;
+        // "your first instant or sorcery spell from your graveyard each
+        // turn" (Sevinne, the Chronoclasm): a cast-origin phrase between the
+        // spell noun and the turn scope still qualifies the counted spells.
+        if words.get(spell_idx + 1) == Some(&"from")
+            && let Some(scope) = words[spell_idx + 2..]
+                .iter()
+                .take(4)
+                .position(|word| matches!(*word, "each" | "this"))
+        {
+            spell_idx += 1 + scope;
+        }
         if matches!(
             words.get(spell_idx + 1..spell_idx + 3),
             Some(["each" | "this", "turn"])

@@ -38,6 +38,48 @@ pub(crate) fn describe_named_random_reveal_discard(effects: &[Effect]) -> Option
     Some(format!("Choose a card name. {reveal_text}. Then that player discards all cards with that name revealed this way"))
 }
 
+/// "Target player reveals two cards at random from their hand, then discards
+/// each nonland card revealed this way." (Fall): a random publicly revealed
+/// hand subset, and the same player discarding every card of that exact
+/// subset that matches a further card qualifier.
+pub(crate) fn describe_random_reveal_discard_revealed_subset(effects: &[Effect]) -> Option<String> {
+    let unwrapped: Vec<_> = effects.iter().map(structural_unwrap_render_wrappers).collect();
+    let actions: Vec<_> = unwrapped.iter().copied().filter(|effect|
+        effect.downcast_ref::<crate::effects::TargetOnlyEffect>().is_none()).collect();
+    let [choose_effect, reveal_effect, discard_effect] = actions.as_slice() else { return None; };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if !choose.count.is_random() || choose.is_search || choose.reveal
+        || choose_primary_zone(choose) != Some(Zone::Hand) || reveal.tag != choose.tag
+        || discard.random || discard.any_number
+        || !player_filters_refer_to_same_player(&choose.chooser, &discard.player)
+    { return None; }
+    for effect in &unwrapped {
+        if let Some(target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
+            let target_player = choose_spec_player_filter(&target.target)?;
+            if target.explicit_declaration || !target.target.count().is_single()
+                || !player_filters_refer_to_same_player(&target_player, &choose.chooser)
+            { return None; }
+        }
+    }
+    let filter = discard.card_filter.as_ref()?;
+    let Value::Count(counted) = discard.count.unhinted() else { return None; };
+    if counted != filter || filter.zone != Some(Zone::Hand)
+        || !matches!(filter.tagged_constraints.as_slice(), [constraint]
+            if constraint.tag == choose.tag
+                && matches!(constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        | crate::filter::TaggedOpbjectRelation::SameObjectId))
+    { return None; }
+    let mut qualifier = filter.clone();
+    qualifier.set_prior_effect_action_surface(None);
+    let phrase = describe_discard_card_phrase(&qualifier);
+    let reveal_text = describe_random_hand_reveal_bundle(&[choose_effect, reveal_effect])?;
+    let verb = if choose.chooser == PlayerFilter::You { "discard" } else { "discards" };
+    Some(format!("{reveal_text}, then {verb} each {phrase} revealed this way"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

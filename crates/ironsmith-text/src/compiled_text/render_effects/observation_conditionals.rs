@@ -348,8 +348,14 @@ fn describe_branch_member(effect: &Effect) -> Option<String> {
             .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
         let moved = structural_unwrap_render_wrappers(move_effect)
             .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-        if sequence.surface != ironsmith_core::SequenceSurface::Sequential
-            || !matches!(moved.target.base(), ChooseSpec::Tagged(tag) if tag == &reveal.tag)
+        // "you may reveal it and put it into your hand" is the same
+        // two-step observed action whether authored as a plain or a
+        // coordinated ("and") sequence.
+        if !matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::Sequential
+                | ironsmith_core::SequenceSurface::Coordinated
+        ) || !matches!(moved.target.base(), ChooseSpec::Tagged(tag) if tag == &reveal.tag)
         {
             return None;
         }
@@ -1036,9 +1042,20 @@ pub(in crate::compiled_text) fn describe_immediate_observation_conditionals(
         return Some(rendered);
     }
     let observation = ImmediateObservation::from_effect(*effects.first()?)?;
-    let first_conditional = effects
+    // "If it's a Mount card, you may reveal it and put it into your hand. If
+    // you don't put it into your hand, ..." (Bucolic Ranch): the conditional
+    // carries the id a following "if you don't" result reads.
+    let first_with_id = effects
         .get(1)?
-        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+        .downcast_ref::<crate::effects::WithIdEffect>();
+    let first_conditional = match first_with_id {
+        Some(with_id) => with_id
+            .effect
+            .downcast_ref::<crate::effects::ConditionalEffect>()?,
+        None => effects
+            .get(1)?
+            .downcast_ref::<crate::effects::ConditionalEffect>()?,
+    };
     let mut sentences = vec![
         observation.text()?,
         describe_observed_conditional(
@@ -1069,6 +1086,23 @@ pub(in crate::compiled_text) fn describe_immediate_observation_conditionals(
         sentences.push(rendered);
         previous = conditional;
         consumed += 1;
+    }
+    if let Some(with_id) = first_with_id
+        && let Some(if_effect) = effects
+            .get(consumed)
+            .and_then(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
+        && if_effect.condition == with_id.id
+        && if_effect.predicate == EffectPredicate::DidNotHappen
+        && if_effect.else_.is_empty()
+        && branch_moves_observed_to_zone(&first_conditional.if_true, observation.tag, Zone::Hand)
+        && let Some(branch) = describe_branch(&if_effect.then)
+    {
+        sentences.push(format!("If you don't put the card into your hand, {branch}"));
+        consumed += 1;
+    } else if first_with_id.is_some() {
+        // Any other reader of the conditional's result id needs the generic
+        // result-linked rendering.
+        return None;
     }
     while let Some(effect) = effects.get(consumed) {
         let Some(rendered) = describe_observation_continuation(effect, &observation) else {

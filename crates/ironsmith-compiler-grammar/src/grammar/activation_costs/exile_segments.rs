@@ -106,6 +106,20 @@ pub fn parse_exile_segment_tokens(
             if top_only && zone != Zone::Graveyard {
                 return Err(unsupported(tokens, "ordered-exile-source-zone"));
             }
+            // "Exile all cards from your graveyard": every matching card, not
+            // a choice of one.
+            if !top_only
+                && subject_tokens.len() > 1
+                && subject_tokens[0].is_word("all")
+                && matches!(zone, Zone::Hand | Zone::Graveyard)
+            {
+                let mut filter = parse_activation_exile_filter_tokens(&subject_tokens[1..])?;
+                filter.zone = Some(zone);
+                if filter.owner.is_none() {
+                    filter.owner = Some(PlayerFilter::You);
+                }
+                return Ok(exile_all_cost(filter));
+            }
             let choice = parse_activation_choice_prefix_tokens(subject_tokens)
                 .ok_or_else(|| unsupported(subject_tokens, "exile-zone-selector"))?;
             let mut filter = parse_activation_exile_filter_tokens(choice.rest)?;
@@ -140,7 +154,35 @@ pub fn parse_exile_segment_tokens(
             }
             Ok(ActivationCostSegmentCst::ExileSelfAndNamedArtifacts { names })
         }
-        ExileCostShape::Generic { subject_first } => parse_generic_exile(&tokens[subject_first..]),
+        ExileCostShape::Generic { subject_first } => {
+            // "Exile your graveyard" / "Exile your hand": all cards there.
+            let subject_view = primitives::TokenWordView::new(&tokens[subject_first..]);
+            let zone = match subject_view.word_refs().as_slice() {
+                ["your", "graveyard"] => Some(Zone::Graveyard),
+                ["your", "hand"] => Some(Zone::Hand),
+                _ => None,
+            };
+            if let Some(zone) = zone {
+                let mut filter = crate::target::ObjectFilter::default();
+                filter.zone = Some(zone);
+                filter.owner = Some(PlayerFilter::You);
+                return Ok(exile_all_cost(filter));
+            }
+            parse_generic_exile(&tokens[subject_first..])
+        }
+    }
+}
+
+/// An exile cost naming every matching card ("exile all cards from your
+/// graveyard"): the chosen count is the number of matching cards, so the
+/// payer exiles all of them (zero when there are none).
+fn exile_all_cost(filter: crate::target::ObjectFilter) -> ActivationCostSegmentCst {
+    ActivationCostSegmentCst::ExileChosen {
+        count_value: Some(crate::effect::Value::Count(filter.clone())),
+        choice_count: crate::effect::ChoiceCount::any_number(),
+        filter,
+        top_only: false,
+        turn_face_up: false,
     }
 }
 

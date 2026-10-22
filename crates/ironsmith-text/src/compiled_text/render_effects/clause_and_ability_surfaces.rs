@@ -2045,6 +2045,43 @@ fn describe_coordinated_permanent_same_object_modifiers(effects: &[Effect]) -> O
         }
         return Some(capitalize_first(&join_coordinated_parts(&parts)?));
     }
+    // "it becomes a legendary creature named Mileva, the Stalwart, it has
+    // base power and toughness 5/5, and it gains ..." (Tenth District Hero):
+    // a named animation is one typed predicate; each later modifier of the
+    // same object restates the pronoun subject, as printed.
+    let names_animation = matches!(
+        applies[0].modification,
+        Some(
+            crate::continuous::Modification::SetCardTypes(_)
+                | crate::continuous::Modification::AddCardTypes(_)
+        )
+    ) && applies[0]
+        .additional_modifications
+        .iter()
+        .any(|modification| matches!(modification, crate::continuous::Modification::SetName(_)));
+    if names_animation {
+        let head = describe_effect(&effects[0])
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        if !head.is_empty() && !head.contains(". ") && head.contains(" named ") {
+            let pronoun = if plural_subject { "they" } else { "it" };
+            let mut parts = vec![head];
+            let mut complete = true;
+            for apply in applies.iter().skip(1) {
+                let apply_clauses = describe_apply_continuous_clauses(apply, plural_subject);
+                if apply_clauses.is_empty() {
+                    complete = false;
+                    break;
+                }
+                parts.extend(apply_clauses.into_iter().map(|clause| format!("{pronoun} {clause}")));
+            }
+            if complete && parts.len() > 1 {
+                let last = parts.pop()?;
+                return Some(capitalize_first(&format!("{}, and {last}", parts.join(", "))));
+            }
+        }
+    }
     let mut clauses = Vec::new();
     for apply in applies {
         let apply_clauses = describe_apply_continuous_clauses(apply, plural_subject);
@@ -2911,7 +2948,8 @@ fn describe_leading_result_conjunction_then_followups(effects: &[Effect]) -> Opt
 }
 
 pub(super) fn describe_result_branch_effect_list(effects: &[Effect]) -> String {
-    describe_coordinated_hand_reveal_choice_exile(effects)
+    super::effect_lists::describe_source_and_declared_companion_cant_be_blocked(effects)
+        .or_else(|| describe_coordinated_hand_reveal_choice_exile(effects))
         .or_else(|| effect_lists::describe_sequence_wrapped_hand_pipeline(effects))
         .or_else(|| describe_typed_coordinated_result_branch(effects))
         .or_else(|| describe_leading_result_conjunction_then_followups(effects))
@@ -3004,6 +3042,18 @@ fn describe_coordinated_control_and_lock(
 /// bundle parser, while the collection tag and selected-group loop prove the
 /// follow-up is bound to that exact mill result.
 fn describe_coordinated_mill_then_collection_selection(effects: &[Effect]) -> Option<String> {
+    // The follow-up may arrive as its own nested sequence after the tagged
+    // mill ("Mill six cards, then put all instant and sorcery cards from
+    // among them ..."): the same producer/selection/movement program.
+    if let [milled_effect, nested] = effects
+        && mill_with_collection_tag(milled_effect).is_some()
+        && let Some(nested) = nested.downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        let mut flat = Vec::with_capacity(nested.effects.len() + 1);
+        flat.push(milled_effect.clone());
+        flat.extend(nested.effects.iter().cloned());
+        return describe_coordinated_mill_then_collection_selection(&flat);
+    }
     let compact = match effects {
         [milled_effect, matching_effect, move_effect]
             if matching_effect
@@ -4954,7 +5004,15 @@ fn describe_coordinated_reveal_hand_then_same_player_discard(
     }
     let discard = describe_effect(discard_effect);
     let discard = discard.trim().trim_end_matches('.');
-    let prefix = format!("{subject} discards ");
+    // The discarding player may read back the revealing target through its
+    // anaphoric alias ("that player discards ...").
+    let prefix = if subject.to_ascii_lowercase().starts_with("target ")
+        && discard.to_ascii_lowercase().starts_with("that player discards ")
+    {
+        "that player discards ".to_string()
+    } else {
+        format!("{subject} discards ")
+    };
     if discard.len() <= prefix.len()
         || !discard.is_char_boundary(prefix.len())
         || !discard[..prefix.len()].eq_ignore_ascii_case(&prefix)
@@ -5018,9 +5076,88 @@ fn describe_coordinated_untap_set_then_they_gain_keyword(
     Some(format!("{untap_text} and they gain {ability_text}{duration}"))
 }
 
+/// "Target player loses X life and mills X cards" (Lich Lord of Unx): the
+/// coordinated clauses already name the announced player, so restated
+/// player declarations of that same target read as nothing at all.
+fn describe_coordinated_without_restated_player_declarations(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    describe_coordinated_without_player_declarations(sequence, None)
+}
+
+/// `restated`: the declaration an enclosing coordinated sequence already
+/// restated, so a single nested copy of it is redundant too. Without it, only
+/// a declaration restated within this sequence is dropped; a lone
+/// declaration keeps the ordinary coordinated rendering path.
+fn describe_coordinated_without_player_declarations(
+    sequence: &crate::effects::SequenceEffect,
+    restated: Option<&ChooseSpec>,
+) -> Option<String> {
+    let declared = |effect: &Effect| {
+        structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .filter(|target| {
+                target.chooser.is_none()
+                    && target.target.is_target()
+                    && matches!(target.target.base(), ChooseSpec::Player(_))
+            })
+            .map(|target| target.target.clone())
+    };
+    let declarations = sequence.effects.iter().filter_map(declared).collect::<Vec<_>>();
+    let first = declarations.first()?;
+    if declarations.iter().any(|spec| spec != first)
+        || restated.is_some_and(|restated| restated != first)
+        || (restated.is_none() && declarations.len() < 2)
+    {
+        return None;
+    }
+    let rest = sequence
+        .effects
+        .iter()
+        .filter(|effect| declared(effect).is_none())
+        .cloned()
+        .collect::<Vec<_>>();
+    if rest.is_empty() || rest.len() == sequence.effects.len() {
+        return None;
+    }
+    let rendered = if let [only] = rest.as_slice() {
+        structural_unwrap_render_wrappers(only)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .filter(|nested| {
+                nested.surface == ironsmith_core::SequenceSurface::Coordinated
+                    && nested.result_label.is_none()
+            })
+            .and_then(|nested| describe_coordinated_without_player_declarations(nested, Some(first)))
+            .unwrap_or_else(|| describe_effect(only))
+    } else {
+        let mut stripped = sequence.clone();
+        stripped.effects = rest;
+        describe_effect(&Effect::new(stripped))
+    };
+    let target_text = describe_choose_spec(first).to_ascii_lowercase();
+    rendered
+        .to_ascii_lowercase()
+        .contains(&target_text)
+        .then_some(rendered)
+}
+
 pub(super) fn describe_coordinated_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
+    if sequence.result_label.is_none()
+        && let Some(rendered) =
+            super::effect_lists::describe_source_and_declared_companion_cant_be_blocked(
+                &sequence.effects,
+            )
+    {
+        return Some(rendered);
+    }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && sequence.result_label.is_none()
+        && let Some(rendered) = describe_coordinated_without_restated_player_declarations(sequence)
+    {
+        return Some(rendered);
+    }
     if let Some(rendered) = describe_coordinated_untap_set_then_they_gain_keyword(sequence) {
         return Some(rendered);
     }
@@ -6105,14 +6242,6 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
     {
         return None;
     }
-    let first_tagged = sequence.effects[0].downcast_ref::<crate::effects::TaggedEffect>()?;
-    let first = first_tagged
-        .effect
-        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-    let target = first.target_spec.as_ref()?;
-    if !target.is_target() || first.until != Until::EndOfTurn || first.condition.is_some() {
-        return None;
-    }
     fn collect_modifiers<'a>(effects: &'a [Effect], leaves: &mut Vec<&'a Effect>) -> Option<()> {
         for effect in effects {
             if let Some(inner) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
@@ -6128,20 +6257,67 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
         }
         Some(())
     }
-    let mut following = Vec::new();
-    collect_modifiers(&sequence.effects[1..], &mut following)?;
+    // "Until end of turn, up to two target creatures each have base power
+    // and toughness 3/3, gain flying, and become blue Illusions ..."
+    // (Phantasmal Form): lowering may open with a synthetic declaration of
+    // the shared target and repeat the identical target spec on later
+    // modifiers. Identical specs bind the one declared target slot at
+    // runtime, so they read as the same objects.
+    let mut leaves = Vec::new();
+    collect_modifiers(&sequence.effects, &mut leaves)?;
+    if leaves.len() >= 3
+        && let Some(declaration) = leaves[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && !declaration.explicit_declaration
+        && declaration.chooser.is_none()
+        && leaves[1]
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+            .and_then(|apply| apply.target_spec.as_ref())
+            .is_some_and(|spec| spec.unhinted() == declaration.target.unhinted())
+    {
+        leaves.remove(0);
+    }
+    let [first_effect, following @ ..] = leaves.as_slice() else {
+        return None;
+    };
+    let first_tagged = first_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let first = first_tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let target = first.target_spec.as_ref()?;
+    if !target.is_target() || first.until != Until::EndOfTurn || first.condition.is_some() {
+        return None;
+    }
+    let shared = ChooseSpec::Tagged(first_tagged.tag.clone());
+    let mut following_effects = Vec::with_capacity(following.len());
     for effect in following {
         let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
         let apply = tagged
             .effect
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-        if apply.target_spec.as_ref().map(ChooseSpec::unhinted)
-            != Some(ChooseSpec::Tagged(first_tagged.tag.clone()).unhinted())
-            || apply.until != Until::EndOfTurn
-            || apply.condition.is_some()
-        {
+        let spec = apply.target_spec.as_ref().map(ChooseSpec::unhinted);
+        if apply.until != Until::EndOfTurn || apply.condition.is_some() {
             return None;
         }
+        if spec == Some(shared.unhinted()) {
+            following_effects.push((*effect).clone());
+        } else if spec == Some(target.unhinted()) {
+            // Rendered with its own (identical) target phrase; the clause
+            // loop below drops that repeated subject.
+            following_effects.push((*effect).clone());
+        } else {
+            return None;
+        }
+    }
+    // The plain shape (first modifier then same-target grants) keeps each
+    // authored follower group as one clause.
+    if sequence.effects[0].downcast_ref::<crate::effects::TaggedEffect>().is_some()
+        && following_effects
+            .iter()
+            .zip(following.iter())
+            .all(|(rendered, original)| rendered == *original)
+    {
+        following_effects = sequence.effects[1..].to_vec();
     }
 
     let strip_duration = |text: String| {
@@ -6163,8 +6339,8 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
         // shared duration, so that inline copy would repeat it.
         stripped.replace("can attack this turn as though", "can attack as though")
     };
-    let mut clauses = Vec::with_capacity(sequence.effects.len());
-    let mut first_clause = strip_duration(describe_effect(&sequence.effects[0]));
+    let mut clauses = Vec::with_capacity(following_effects.len() + 1);
+    let mut first_clause = strip_duration(describe_effect(first_effect));
     if target.count().is_any_number() && !first_clause.contains(" each ") {
         for predicate in [" get ", " gain ", " become ", " lose ", " have "] {
             if let Some((head, tail)) = first_clause.split_once(predicate) {
@@ -6176,8 +6352,15 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
     let mut first_chars = first_clause.chars();
     let first_char = first_chars.next()?.to_lowercase().collect::<String>();
     clauses.push(format!("{first_char}{}", first_chars.as_str()));
-    for effect in &sequence.effects[1..] {
+    let repeated_subject = describe_choose_spec(target);
+    let repeated_subject_capitalized = capitalize_first(&repeated_subject);
+    for effect in &following_effects {
         let clause = strip_duration(describe_effect(effect));
+        let clause = clause
+            .strip_prefix(&format!("{repeated_subject_capitalized} "))
+            .or_else(|| clause.strip_prefix(&format!("{repeated_subject} ")))
+            .map(|rest| rest.strip_prefix("each ").unwrap_or(rest).to_string())
+            .unwrap_or(clause);
         let clause = clause
             .strip_prefix("It ")
             .or_else(|| clause.strip_prefix("it "))
@@ -8847,7 +9030,7 @@ pub(crate) fn describe_exile_then_return(
     }
     let target_is_source = matches!(exile_move.target.unhinted(), ChooseSpec::Source);
     let target = if target_is_source {
-        describe_source_motion_reference(&exile_move.target, "this")
+        describe_source_motion_reference(&exile_move.target, "this permanent")
     } else {
         describe_choose_spec(&exile_move.target)
     };
@@ -8866,10 +9049,12 @@ pub(crate) fn describe_exile_then_return(
     } else {
         " under its owner's control"
     };
-    let tapped_suffix = if move_back.enters_tapped {
-        " tapped"
-    } else {
-        ""
+    // "tapped and attacking" (The Neutrinos): the attacking entry state.
+    let tapped_suffix = match (move_back.enters_tapped, move_back.enters_attacking) {
+        (true, true) => " tapped and attacking",
+        (false, true) => " attacking",
+        (true, false) => " tapped",
+        (false, false) => "",
     };
     let face_down_suffix = if move_back.enters_face_down {
         " face down"
@@ -8910,7 +9095,7 @@ pub(super) fn describe_source_exile_then_return(first: &Effect, second: &Effect)
         return None;
     }
 
-    let target = describe_source_motion_reference(&exile_move.target, "this");
+    let target = describe_source_motion_reference(&exile_move.target, "this permanent");
     let return_object = if choose_spec_allows_multiple(&exile_move.target) {
         "them"
     } else {
@@ -8921,10 +9106,12 @@ pub(super) fn describe_source_exile_then_return(first: &Effect, second: &Effect)
     } else {
         " under its owner's control"
     };
-    let tapped_suffix = if move_back.enters_tapped {
-        " tapped"
-    } else {
-        ""
+    // "tapped and attacking" (The Neutrinos): the attacking entry state.
+    let tapped_suffix = match (move_back.enters_tapped, move_back.enters_attacking) {
+        (true, true) => " tapped and attacking",
+        (false, true) => " attacking",
+        (true, false) => " tapped",
+        (false, false) => "",
     };
     let face_down_suffix = if move_back.enters_face_down {
         " face down"
@@ -9543,6 +9730,14 @@ pub(super) fn describe_damage_amount_clause(amount: &Value) -> (String, Option<S
     if is_effect_count_reference(amount, None) {
         return ("that much damage".to_string(), None);
     }
+    // "deals twice that much damage" (Borborygmos and Fblthp).
+    if let Value::Scaled(inner, 2) = amount.unhinted()
+        && !inner.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        && matches!(inner.unhinted(), Value::EffectValue(_))
+        && is_effect_count_reference(inner, None)
+    {
+        return ("twice that much damage".to_string(), None);
+    }
     let desc = describe_value(amount);
     // A counting phrase reads as oracle's "damage equal to ..." tail, not as
     // an inline determiner.
@@ -9605,6 +9800,16 @@ pub(super) fn choose_spec_filter_where_x_clause(spec: &ChooseSpec) -> Option<Str
             .into_iter()
             .filter_map(comparison_value)
             .find_map(describe_where_x_basis)
+            .or_else(|| {
+                // "with total mana value X or less, where X is the result"
+                // (Ancient Brass Dragon): the target set's aggregate bound.
+                let constraint = filter.target_set_aggregate_constraint.as_deref()?;
+                let bound = constraint.minimum.as_ref().unwrap_or(&constraint.maximum);
+                bound
+                    .has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+                    .then(|| describe_where_x_basis(bound))
+                    .flatten()
+            })
             .or_else(|| filter.any_of.iter().find_map(filter_basis))
     }
 
@@ -11061,6 +11266,154 @@ pub(crate) fn describe_static_ability_with_subject(
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 let inner = crate::static_abilities::StaticAbility::from_model((**ability).clone());
+                // "As long as this Equipment is attached to a creature, the
+                // first time you would create one or more tokens each turn,
+                // ..." (Mirrormind Crown): the first-time gate is the inner
+                // replacement's own wording; the other conjunct is an
+                // authored leading condition.
+                if inner.id() == crate::static_abilities::StaticAbilityId::TokenCreationTemplates
+                    && let Condition::And(left, right) = condition
+                {
+                    let is_first_time = |condition: &Condition| {
+                        matches!(
+                            condition,
+                            Condition::ValueComparison {
+                                left: Value::TurnHistoryCount(
+                                    ironsmith_core::TurnHistoryCount::TokensCreated(_)
+                                ),
+                                operator: crate::effect::ValueComparisonOperator::Equal,
+                                right: Value::Fixed(0),
+                            }
+                        )
+                    };
+                    let authored = if is_first_time(left) {
+                        Some(right.as_ref())
+                    } else if is_first_time(right) {
+                        Some(left.as_ref())
+                    } else {
+                        None
+                    };
+                    if let Some(authored) = authored {
+                        let display = inner.display();
+                        let display = display.trim().trim_end_matches('.');
+                        let attachment = if display.contains("equipped ") {
+                            Some("this Equipment")
+                        } else if display.contains("enchanted ") {
+                            Some("this Aura")
+                        } else {
+                            None
+                        };
+                        let condition_text = match (authored, attachment) {
+                            (Condition::AttachedToSourceMatches(filter), Some(attachment))
+                                if filter.card_types == [CardType::Creature] =>
+                            {
+                                format!("{attachment} is attached to a creature")
+                            }
+                            _ => describe_condition(authored),
+                        };
+                        return format!(
+                            "As long as {}, {}",
+                            lowercase_first(&condition_text),
+                            lowercase_first(display)
+                        );
+                    }
+                }
+                // "As long as equipped creature's toughness is greater than
+                // its power, it assigns combat damage equal to its toughness
+                // rather than its power." (Bark of Doran): an object rule on
+                // the attached object, gated on that object's own
+                // characteristics.
+                if let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                    restriction: crate::effect::Restriction::ObjectRule { objects, rule },
+                    additional_restrictions,
+                    ..
+                } = &ability.payload
+                    && additional_restrictions.is_empty()
+                    && let Condition::AttachedToSourceMatches(attached) = condition
+                    && let [constraint] = objects.tagged_constraints.as_slice()
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && let Some(noun) = match constraint.tag.as_str() {
+                        "equipped" => Some("equipped creature"),
+                        "enchanted" => Some("enchanted creature"),
+                        _ => None,
+                    }
+                    && (ObjectFilter {
+                        tagged_constraints: Vec::new(),
+                        union_surface: Default::default(),
+                        ..objects.clone()
+                    }) == ObjectFilter::default()
+                    && attached.card_types.as_slice() == [CardType::Creature]
+                    && let Some(relation) = attached.power_toughness_relation
+                    && (ObjectFilter {
+                        card_types: Vec::new(),
+                        zone: None,
+                        power_toughness_relation: None,
+                        union_surface: Default::default(),
+                        ..attached.clone()
+                    }) == ObjectFilter::default()
+                {
+                    let condition_text = match relation {
+                        ironsmith_core::PowerToughnessRelation::PowerGreaterThanToughness => {
+                            format!("{noun}'s power is greater than its toughness")
+                        }
+                        ironsmith_core::PowerToughnessRelation::ToughnessGreaterThanPower => {
+                            format!("{noun}'s toughness is greater than its power")
+                        }
+                        ironsmith_core::PowerToughnessRelation::NotEqual => {
+                            format!("{noun}'s power and toughness aren't equal")
+                        }
+                    };
+                    let body = rule.describe(objects);
+                    let body = body.trim().trim_end_matches('.');
+                    let lower = body.to_ascii_lowercase();
+                    let body = ["equipped permanent ", "enchanted permanent ", "equipped creature ", "enchanted creature "]
+                        .iter()
+                        .find_map(|prefix| lower.starts_with(prefix).then(|| format!("it {}", &body[prefix.len()..])))
+                        .unwrap_or_else(|| lowercase_first(body));
+                    return format!("As long as {condition_text}, {body}");
+                }
+                // "As long as enchanted creature has vigilance, it assigns
+                // combat damage equal to its toughness rather than its power"
+                // (Solid Footing): an object rule on the attached object,
+                // gated on that object having a keyword.
+                if let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                    restriction: crate::effect::Restriction::ObjectRule { objects, rule },
+                    additional_restrictions,
+                    ..
+                } = &ability.payload
+                    && additional_restrictions.is_empty()
+                    && let Condition::CountComparison {
+                        count: crate::static_abilities::AnthemCountExpression::MatchingFilter(gate),
+                        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                        ..
+                    } = condition
+                    && let [constraint] = objects.tagged_constraints.as_slice()
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && gate.tagged_constraints.as_slice() == objects.tagged_constraints.as_slice()
+                    && let Some(noun) = match constraint.tag.as_str() {
+                        "equipped" => Some("equipped creature"),
+                        "enchanted" => Some("enchanted creature"),
+                        _ => None,
+                    }
+                    && let [keyword] = gate.static_abilities.as_slice()
+                    && (ObjectFilter {
+                        static_abilities: Vec::new(),
+                        ..gate.clone()
+                    }) == (ObjectFilter {
+                        zone: gate.zone,
+                        ..objects.clone()
+                    })
+                    && let Some(keyword) = ironsmith_core::filter_model::describe_filter_static_ability(*keyword)
+                {
+                    let body = rule.describe(objects);
+                    let body = body.trim().trim_end_matches('.');
+                    let body = body
+                        .strip_prefix(&format!("{noun} "))
+                        .or_else(|| body.strip_prefix(&format!("{} ", capitalize_first(noun))))
+                        .map(|tail| format!("it {tail}"))
+                        .unwrap_or_else(|| lowercase_first(body));
+                    return format!("As long as {noun} has {keyword}, {body}");
+                }
                 // A gated activation-cost modifier reads as a trailing "if"
                 // ("This ability costs {3} less to activate if you attacked
                 // with a Spacecraft this turn").
@@ -11165,8 +11518,16 @@ pub(crate) fn describe_static_ability_with_subject(
                         .map(|ty| ty.to_string().to_ascii_lowercase())
                         .collect::<Vec<_>>()
                         .join(" ");
+                    // Only an artifact-creature addition reads without the
+                    // explicit retention clause (CR 205.1b); any other added
+                    // card type keeps "in addition to its other types".
+                    let retention = if card_types.contains(&CardType::Creature) {
+                        ""
+                    } else {
+                        " in addition to its other types"
+                    };
                     return format!(
-                        "As long as {}, {} is {}",
+                        "As long as {}, {} is {}{retention}",
                         lowercase_first(&describe_condition(condition)),
                         subject,
                         with_indefinite_article(&types)
@@ -11175,6 +11536,24 @@ pub(crate) fn describe_static_ability_with_subject(
                 // "You may cast this card from your graveyard if <condition>.
                 // If you do, it enters with ..." (Undead Sprinter): the gate
                 // belongs to the permission, not to its cast-this-way rider.
+                // "As long as this Equipment is attached to a creature, you
+                // may cast creature spells from the top of your library"
+                // (Summoning Materia): the gate is the Equipment's own
+                // attachment, not an "enchanted creature" property.
+                if matches!(&ability.payload, ironsmith_core::StaticAbilityPayload::Grants(_))
+                    && subject == "this Equipment"
+                    && let Condition::AttachedToSourceMatches(filter) = condition
+                {
+                    let display = describe_static_ability_with_subject(&inner, subject);
+                    let display = display.trim().trim_end_matches('.');
+                    let mut attached = filter.clone();
+                    attached.zone = None;
+                    return format!(
+                        "As long as this Equipment is attached to {}, {}",
+                        with_indefinite_article(strip_indefinite_article(&attached.description())),
+                        lowercase_first(display)
+                    );
+                }
                 if matches!(&ability.payload, ironsmith_core::StaticAbilityPayload::Grants(_)) {
                     let display = describe_static_ability_with_subject(&inner, subject);
                     let display = display.trim().trim_end_matches('.');
@@ -11244,6 +11623,50 @@ pub(crate) fn describe_static_ability_with_subject(
                     if matches!(condition, Condition::Not(_)) && restriction_text.contains(" unless ") {
                         return restriction_text;
                     }
+                    // "Enchanted creature doesn't untap during its
+                    // controller's untap step if this Aura has a net counter
+                    // on it" (Merseine): the rule already states its gate.
+                    if matches!(
+                        &ability.payload,
+                        ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                            restriction: crate::effect::Restriction::Untap(_),
+                            ..
+                        }
+                    ) && restriction_text.contains(" untap step if ")
+                    {
+                        return restriction_text;
+                    }
+                    // "You can't play lands if this creature was cast this
+                    // turn" (Rock Jockey): the source was cast and entered
+                    // this turn, and the authored rule already states it.
+                    if let Condition::And(left, right) = condition
+                        && let (
+                            Condition::TurnHistory(
+                                ironsmith_core::TurnHistoryCondition::SourceWasCast { surface },
+                            ),
+                            Condition::TurnHistory(
+                                ironsmith_core::TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { .. },
+                            ),
+                        ) = (left.as_ref(), right.as_ref())
+                        && restriction_text
+                            .trim()
+                            .trim_end_matches('.')
+                            .to_ascii_lowercase()
+                            .ends_with(&format!(
+                                " if {} was cast this turn",
+                                match surface {
+                                    crate::target::SourceReferenceSurface::ThisPermanentType(noun)
+                                        if !noun.starts_with("this ") =>
+                                    {
+                                        format!("this {noun}")
+                                    }
+                                    other => other.display_text(),
+                                }
+                                .to_ascii_lowercase()
+                            ))
+                    {
+                        return restriction_text;
+                    }
                     if let Condition::Not(positive) = condition
                         && matches!(positive.as_ref(), Condition::SourceAttackedOrBlockedThisTurn)
                     {
@@ -11268,9 +11691,15 @@ pub(crate) fn describe_static_ability_with_subject(
                             "{rule_text} as long as {counted} are on the battlefield"
                         );
                     }
+                    // The condition's generic self-reference ("this source
+                    // is attacking", Siege Behemoth) names this object.
+                    let condition_text = normalize_ability_self_reference_surface(
+                        &lowercase_first(&describe_condition(condition)),
+                        subject,
+                    );
                     return format!(
                         "As long as {}, {}",
-                        lowercase_first(&describe_condition(condition)),
+                        condition_text,
                         lowercase_first(&describe_static_ability_with_subject(&inner, subject))
                     );
                 }
@@ -12082,7 +12511,9 @@ pub(crate) fn describe_static_ability_with_subject(
     } else if let Some(rest) = trimmed.strip_prefix("this ") {
         // A generic self-reference noun ("this source is ...") names the
         // same object as the card's own subject; don't stack both nouns.
-        if let Some(tail) = ["creature", "permanent", "source"]
+        // "This token can't be enchanted." (Tetravus's token) is the same
+        // self-reference as the token's own subject.
+        if let Some(tail) = ["creature", "permanent", "source", "token"]
             .into_iter()
             .find_map(|generic| {
                 rest.strip_prefix(generic)
@@ -12550,6 +12981,16 @@ pub(crate) fn restore_modeled_value_surface(
             restore_for_each_cost_modifier(&mut rendered, &reduction.amount, "{X}", "less");
         }
         ironsmith_core::StaticAbilityPayload::ThisSpellCostReductionManaCost(reduction) => {
+            if let Some(repetitions) = &reduction.repetitions {
+                restore_for_each_cost_modifier(
+                    &mut rendered,
+                    repetitions,
+                    &reduction.cost.to_oracle(),
+                    "less",
+                );
+            }
+        }
+        ironsmith_core::StaticAbilityPayload::CostReductionManaCost(reduction) => {
             if let Some(repetitions) = &reduction.repetitions {
                 restore_for_each_cost_modifier(
                     &mut rendered,
@@ -13041,9 +13482,11 @@ pub(super) fn describe_trigger_surface_with_frequency(
         })
         && let Some(rest) = trigger_surface.strip_prefix("Whenever ")
         && let Some((subject, tail)) = rest.split_once(" attacks")
+        // A possessive or demonstrative subject ("your commander", We Ride
+        // at Dawn) already determines the noun phrase.
         && !matches!(
             subject.split_whitespace().next(),
-            Some("a" | "an" | "the" | "this")
+            Some("a" | "an" | "the" | "this" | "your" | "that")
         )
     {
         trigger_surface = format!(
@@ -15214,7 +15657,7 @@ fn describe_intervening_legal_target_copy_assignment(
     {
         return None;
     }
-    let crate::effects::RetargetMode::OneToFixed(fixed) = &retarget.mode else {
+    let Some(fixed) = retarget.mode.fixed_target() else {
         return None;
     };
     if !retarget_fixed_spec_uses_chosen_tag(fixed, &choice.tag) {
@@ -15294,6 +15737,32 @@ fn describe_triggered_power_difference_counters(
 }
 
 pub(super) fn describe_triggered_resolution_text(
+    triggered: &crate::ability::TriggeredAbility,
+    subject: &str,
+    rewrite_it_deals: bool,
+) -> Option<String> {
+    use super::single_effects_early::{DAMAGE_BATCH_PLAYER_NOUN, RENDERING_TRIGGERED_RESOLUTION};
+    let previous = RENDERING_TRIGGERED_RESOLUTION.with(|flag| flag.replace(true));
+    // "Whenever one or more Pirates you control deal damage to your
+    // opponents, ... each of those opponents' libraries" (Breeches): the
+    // batch's players are named by the trigger's damaged-player filter.
+    let batch_noun = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::combat::DealsDamageTrigger>()
+        .filter(|trigger| trigger.damaged_player_one_or_more)
+        .and_then(|trigger| match trigger.damaged_player.as_ref() {
+            Some(PlayerFilter::Opponent) => Some("opponent"),
+            _ => None,
+        })
+        .unwrap_or("player");
+    let previous_noun = DAMAGE_BATCH_PLAYER_NOUN.with(|noun| noun.replace(batch_noun));
+    let text = describe_triggered_resolution_text_inner(triggered, subject, rewrite_it_deals);
+    DAMAGE_BATCH_PLAYER_NOUN.with(|noun| noun.set(previous_noun));
+    RENDERING_TRIGGERED_RESOLUTION.with(|flag| flag.set(previous));
+    text
+}
+
+fn describe_triggered_resolution_text_inner(
     triggered: &crate::ability::TriggeredAbility,
     subject: &str,
     rewrite_it_deals: bool,
@@ -16128,6 +16597,9 @@ pub(super) fn rewrite_each_upkeep_active_player_reference(
         ("exiles", "exile"),
         ("returns", "return"),
         ("discards", "discard"),
+        ("gains", "gain"),
+        ("loses", "lose"),
+        ("pays", "pay"),
     ] {
         for lead in ["If they do, they ", "if they do, they ", "If they don't, they ", "if they don't, they "] {
             text = text.replace(&format!("{lead}{singular} "), &format!("{lead}{plural} "));
@@ -17988,6 +18460,11 @@ fn describe_additional_mana_amount(effect: &Effect, player: &PlayerFilter) -> Op
         return Some(amount.to_string());
     }
 
+    if *player == PlayerFilter::You
+        && let Some(amount) = rendered.strip_prefix("You add ")
+    {
+        return Some(amount.to_string());
+    }
     let subject_prefix = format!("{} adds ", describe_player_filter(player));
     rendered
         .strip_prefix(&subject_prefix)
@@ -18068,7 +18545,25 @@ pub(super) fn describe_tap_for_mana_additional_mana_trigger(
         return None;
     };
     let tag = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
-    let player = additional_mana_effect_player(add_effect)?;
+    // "Whenever a land you control is tapped for mana, add an additional
+    // ..." (Sasaya's Essence): the tapped land's controller is you, so the
+    // mana goes to you without naming its controller.
+    let you_control_tapped = trigger.filter.controller == Some(PlayerFilter::You);
+    let player = additional_mana_effect_player(add_effect).or_else(|| {
+        add_effect
+            .downcast_ref::<crate::effects::AddManaOfLandProducedTypesEffect>()
+            .map(|add| &add.player)
+    })?;
+    if you_control_tapped && player == &PlayerFilter::You {
+        let amount = describe_additional_mana_amount(add_effect, player)?;
+        let active_surface = crate::triggers::TriggerMatcher::display(trigger);
+        let object = active_surface
+            .strip_prefix("Whenever a player taps ")?
+            .strip_suffix(" for mana")?;
+        return Some(format!(
+            "Whenever {object} is tapped for mana, add an additional {amount}"
+        ));
+    }
     if player != &PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag.tag.clone())) {
         return None;
     }
@@ -20049,7 +20544,7 @@ pub(super) fn describe_next_spell_each_other_opponent_copy_loop(
     {
         return None;
     }
-    let crate::effects::RetargetMode::OneToFixed(fixed) = &retarget.mode else {
+    let Some(fixed) = retarget.mode.fixed_target() else {
         return None;
     };
     let ChooseSpec::ObjectOrPlayer(chosen_object, PlayerFilter::IteratedPlayer) = fixed.base()

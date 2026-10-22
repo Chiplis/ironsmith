@@ -688,6 +688,23 @@ impl BoundaryCandidate {
     }
 }
 
+/// A name with an epithet ("named Mileva, the Stalwart,") keeps its comma.
+fn comma_continues_name_epithet(before: &[OwnedLexToken], after: &[OwnedLexToken]) -> bool {
+    let before_words = crate::lexer::token_word_refs(before);
+    let Some(named) = before_words.iter().rposition(|word| *word == "named") else {
+        return false;
+    };
+    let name_words = before_words.len() - named - 1;
+    if !(1..=3).contains(&name_words) {
+        return false;
+    }
+    after.first().is_some_and(|token| token.is_word("the"))
+        && after
+            .iter()
+            .position(|token| token.kind == TokenKind::Comma)
+            .is_some_and(|comma| (2..=3).contains(&comma))
+}
+
 fn top_level_boundaries(tokens: &[OwnedLexToken]) -> Vec<BoundaryCandidate> {
     let mut boundaries = Vec::new();
     let mut quote_open = false;
@@ -734,6 +751,13 @@ fn top_level_boundaries(tokens: &[OwnedLexToken]) -> Vec<BoundaryCandidate> {
             (index + 1, CoordinationOperatorAst::Or)
         } else if token.is_word("then") {
             (index + 1, CoordinationOperatorAst::Then)
+        } else if token.kind == TokenKind::Comma
+            && comma_continues_name_epithet(&tokens[..index], &tokens[index + 1..])
+        {
+            // "named Mileva, the Stalwart, it has ..." (Tenth District
+            // Hero): the comma is inside the printed name.
+            index += 1;
+            continue;
         } else if token.kind == TokenKind::Comma {
             (index + 1, CoordinationOperatorAst::Comma)
         } else {
@@ -1054,6 +1078,32 @@ fn classify_boundary<'a>(
         // (Jabari's Influence): a comma between the characteristic
         // adjectives right after "target" separates qualifiers of one
         // target's selector, never two coordinated actions.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::And
+        && before.first().is_some_and(|token| token.is_any_word(&["put", "puts"]))
+        && before
+            .iter()
+            .position(|token| token.is_any_word(&["counter", "counters"]))
+            .is_some_and(|counter| before[counter + 1..].iter().any(|token| token.is_word("on")))
+        && after.first().is_some_and(|token| token.is_word("each"))
+        && !after.get(1).is_some_and(|token| token.is_word("of"))
+        && super::chain_splitting::find_chain_verb_tokens(after).is_none()
+    {
+        // "put a +1/+1 counter on that creature and each other creature you
+        // control that shares a creature type with it" (Holy Frazzle-Cannon):
+        // a verbless "each ..." arm is a second recipient of the same
+        // placement, not an omitted action.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
+        && before.first().is_some_and(|token| token.is_any_word(&["add", "adds"]))
+        && before.last().is_some_and(|token| token.kind == TokenKind::ManaGroup)
+        && after.first().is_some_and(|token| token.is_word("x"))
+        && after.get(1).is_some_and(|token| token.kind == TokenKind::ManaGroup)
+    {
+        // "Add X {G} or X {W}, where X is ..." (Brigid, Doun's Mind): the
+        // alternatives are mana outputs of one add instruction.
         return None;
     }
     if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {

@@ -593,6 +593,13 @@ fn read_cast_or_play_tagged_permission(
                 },
             )]));
         }
+        // "you may cast it by paying {1} rather than paying its mana cost"
+        // (Jadzi): an immediate cast the permission spec does not classify
+        // still keeps its authored optionality; a bare CastTagged is
+        // mandatory at resolution.
+        if let Some(kept) = crate::permission_helpers::parse_cast_or_play_tagged_clause_keeping_may(tokens)? {
+            return Ok(Some(vec![kept]));
+        }
         return Ok(Some(vec![effect]));
     }
     Ok(None)
@@ -1065,6 +1072,17 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
             bind_implicit_player_context(&mut permission, player);
             return Ok(Some(vec![permission]));
         }
+        // "you may look at face-down creatures you don't control any time"
+        // (Lumbering Laundry): the `may` belongs to the look permission
+        // itself (CR 708.6), not an optional choice made on resolution.
+        if matches!(player, PlayerAst::You | PlayerAst::Implicit) && {
+            let mut line = crate::lexer::synthetic_word_tokens(&["you", "may"]);
+            line.extend_from_slice(&stripped);
+            crate::grammar::abilities::face_down_look_permission_objects_lexed(&line).is_some()
+        } {
+            return super::super::clause_dispatch::parse_effect_clause(&stripped)
+                .map(|effect| Some(vec![effect]));
+        }
         // "you may pay {G} up to three times" (Tranquil Frillback): a bounded
         // repeated optional payment whose result counts the payments made.
         if let Some((max, body)) = split_up_to_times_suffix(&stripped)
@@ -1306,6 +1324,13 @@ fn read_cast_or_play_tagged_permission_late(
                     effects: vec![effect],
                 },
             )]));
+        }
+        // "you may cast it by paying {1} rather than paying its mana cost"
+        // (Jadzi): an immediate cast the permission spec does not classify
+        // still keeps its authored optionality; a bare CastTagged is
+        // mandatory at resolution.
+        if let Some(kept) = crate::permission_helpers::parse_cast_or_play_tagged_clause_keeping_may(tokens)? {
+            return Ok(Some(vec![kept]));
         }
         return Ok(Some(vec![effect]));
     }

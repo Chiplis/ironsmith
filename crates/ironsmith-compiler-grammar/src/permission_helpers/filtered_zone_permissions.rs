@@ -112,15 +112,20 @@ pub(super) fn parse_shared_hand_top_free_cast(tokens: &[OwnedLexToken]) -> Resul
 /// optionally limited to the cards you exiled with it this turn. The use
 /// budget belongs to this permission (CR 118.9).
 pub(super) fn parse_once_per_turn_source_exiled_free_cast(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
-    let Some(((usage, _, _, subject, _), rest)) = primitives::parse_prefix(tokens, (
+    let Some(((usage, _, _, land_play, _, subject, _, _), rest)) = primitives::parse_prefix(tokens, (
         alt((
             primitives::phrase(&["once", "each", "turn"]).value(crate::grant::GrantUsageLimit::OnceEachTurn),
             primitives::phrase(&["once", "during", "each", "of", "your", "turns"]).value(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns),
         )),
         primitives::comma(),
-        primitives::phrase(&["you", "may", "cast"]),
+        primitives::phrase(&["you", "may"]),
+        // "you may play a land or cast a spell from among the cards exiled
+        // with this permanent" (Hauken's Insight): one budget for both.
+        opt(primitives::phrase(&["play", "a", "land", "or"])).map(|land| land.is_some()),
+        primitives::kw("cast"),
         subject_before_from,
         primitives::phrase(&["from", "among"]),
+        opt(primitives::kw("the")),
     )) else { return Ok(None); };
     let Some((_, tail)) =
         crate::grammar::permission_facts::source_exiled::parse_cards_from_source_exiled_tokens(rest)
@@ -172,6 +177,7 @@ pub(super) fn parse_once_per_turn_source_exiled_free_cast(tokens: &[OwnedLexToke
         "Cast without paying mana cost", Zone::Exile, ironsmith_core::TotalCost::<crate::model::CompilerCost>::free(), None, false);
     let mut spec = crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::AlternativeCast(method), filter, Zone::Exile);
     spec.usage_limit = Some(usage);
+    spec.land_play_companion = land_play;
     let surface = crate::lexer::render_token_slice(tokens);
     let surface = surface.trim().trim_end_matches('.');
     let mut chars = surface.chars();
@@ -211,6 +217,63 @@ pub(super) fn parse_once_per_turn_hand_free_cast(tokens: &[OwnedLexToken]) -> Re
     let mut chars = surface.chars();
     spec.filtered_zone_surface = chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
     Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}))
+}
+
+/// "You may cast Aura and Equipment spells from the top of your library. When
+/// you cast an Equipment spell this way, it gains "When this Equipment enters,
+/// attach it to target creature you control."" (Galea, Kindler of Hope): the
+/// quoted ability is a recipient rider of this exact permission, retained on
+/// the cast card as it becomes a permanent, and only for cards matching the
+/// rider's own spell filter.
+pub(super) fn parse_permission_with_cast_this_way_recipient_rider(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let Some((separator, _, tail)) = primitives::find_prefix(tokens, || (
+        primitives::period(), primitives::phrase(&["when", "you", "cast"]),
+    )) else { return Ok(None); };
+    let Some((way, _, after_way)) = primitives::find_prefix(tail, || (
+        alt((primitives::kw("spell"), primitives::kw("spells"))),
+        primitives::phrase(&["this", "way"]), primitives::comma(),
+        primitives::phrase(&["it", "gains"]),
+    )) else { return Ok(None); };
+    let subject = match tail.first() {
+        Some(token) if token.is_any_word(&["a", "an"]) => &tail[1..way],
+        _ => &tail[..way],
+    };
+    if subject.is_empty() { return Ok(None); }
+    let Some(first_quote) = after_way.iter().position(|token| token.kind == TokenKind::Quote) else { return Ok(None); };
+    let Some(last_quote) = after_way.iter().rposition(|token| token.kind == TokenKind::Quote) else { return Ok(None); };
+    if first_quote != 0 || last_quote <= first_quote + 1
+        || !after_way[last_quote + 1..].iter().all(|token| token.is_period())
+    { return Ok(None); }
+    let body = &after_way[first_quote + 1..last_quote];
+    let Some(PermissionClauseSpec::GrantBySpec {player, mut spec, lifetime: PermissionLifetime::Static}) = parse_filtered_zone_permission(&tokens[..separator])?
+        else { return Ok(None); };
+    let Some(recipient) = card_filter(subject)? else { return Ok(None); };
+    let words = crate::lexer::parser_token_word_refs(body);
+    let Some(parsed) = crate::effect_sentences::parse_granted_activated_or_triggered_ability_for_gain(body, &words)? else { return Ok(None); };
+    let ability = crate::static_ability_helpers::compiler_granted_ability_ast_to_object_ability(&parsed)?;
+    let mut holder = ObjectFilter::source();
+    holder.card_types = recipient.card_types.clone();
+    holder.subtypes = recipient.subtypes.clone();
+    holder.supertypes = recipient.supertypes.clone();
+    fn sentence_case(text: &str) -> String {
+        let text = text.trim();
+        let mut chars = text.chars();
+        chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str())).unwrap_or_default()
+    }
+    let ability_text = sentence_case(&crate::lexer::render_token_slice(body));
+    let recipient_noun = holder.subtypes.iter().map(ToString::to_string)
+        .chain(holder.card_types.iter().map(|card_type| card_type.to_string().to_ascii_lowercase()))
+        .collect::<Vec<_>>().join(" ");
+    let article = if recipient_noun.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) { "an" } else { "a" };
+    spec.permanent_this_way_grants.push(crate::model::CompilerStaticAbilityCore::grant_object_ability_for_filter(
+        holder, ability, ability_text.clone(),
+    ));
+    let permission = sentence_case(&crate::lexer::render_token_slice(&tokens[..separator]));
+    let permission = permission.trim_end_matches('.');
+    spec.filtered_zone_surface = Some(format!(
+        "{permission}. When you cast {article} {recipient_noun} spell this way, it gains \"{ability_text}\""
+    ));
+    Ok(Some(PermissionClauseSpec::GrantBySpec {player, spec, lifetime: PermissionLifetime::Static}))
 }
 
 /// Bounded, target-free reflexive follow-up to using one static permission.

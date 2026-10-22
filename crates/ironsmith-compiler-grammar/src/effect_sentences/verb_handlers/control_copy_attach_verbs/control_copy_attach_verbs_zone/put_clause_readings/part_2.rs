@@ -75,7 +75,10 @@ pub(super) fn read_tagged_into_hand(
             }));
         }
 
-        let destination_player = cca_shapes::parse_destination_player(tokens).unwrap_or(player);
+        // "put it into its owner's hand" (The Creation of Avacyn): the
+        // authored destination is the object's owner, not the actor.
+        let destination_player = (!cca_shapes::explicitly_names_object_owner(tokens))
+            .then(|| cca_shapes::parse_destination_player(tokens).unwrap_or(player));
         let tagged = TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(tokens),
@@ -92,7 +95,7 @@ pub(super) fn read_tagged_into_hand(
             false,
             None,
         )
-        .with_destination_player_surface(Some(destination_player))
+        .with_destination_player_surface(destination_player)
         .with_move_to_zone_actor_surface(player)
         .with_move_to_zone_plural_surface_if(put_shape.plural_reference);
         return Ok(Some(wrap_return_with_delayed_timing(
@@ -122,7 +125,12 @@ pub(super) fn read_destination_first_battlefield(
                 let attachment_target = parse_target_phrase(attachment_target_tokens)?;
                 let mut object_target = parse_target_phrase(object_tokens)?;
                 object_target = expand_source_zone_disjunction(object_target, object_tokens);
-                object_target = force_object_targeting(object_target, tokens[0].span());
+                // Only an authored "target" announces a target; "any number
+                // of Aura cards ... from your graveyard and/or hand" (Bruna,
+                // Light of Alabaster) is chosen on resolution.
+                if object_tokens.iter().any(|token| token.is_word("target")) {
+                    object_target = force_object_targeting(object_target, tokens[0].span());
+                }
                 return Ok(Some(EffectAst::subject_verb_move_to_zone(
                     object_target,
                     Zone::Battlefield,
@@ -479,6 +487,55 @@ pub(super) fn read_into_destination(
                         (looked_tag).into(),
                         (chosen_tag).into(),
                     ),
+                }));
+            }
+
+            if zone == Zone::Hand
+                && cca_shapes::parse_rest_destination(shape.destination_tokens)
+                    == Some(cca_shapes::RestDestinationShape::Graveyard)
+                && let Some(filter_tokens) =
+                    all_revealed_this_way_filter_tokens(shape.target_tokens)
+                && let Some(mut filter) =
+                    crate::effect_sentences::parse_looked_card_choice_filter(filter_tokens)
+            {
+                // "Put all cards of the chosen type revealed this way into
+                // your hand and the rest into your graveyard" (Vigean
+                // Intuition): every matching revealed card moves, then the
+                // remainder of the revealed set goes to the graveyard.
+                let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked");
+                let chosen_tag = crate::util::helper_tag_for_tokens(tokens, "chosen");
+                filter.zone = Some(Zone::Library);
+                filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                    tag: looked_tag.clone().into(),
+                    relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                });
+                return Ok(Some(EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::SnapshotLastObjectTag {
+                            into: looked_tag.clone(),
+                        },
+                        EffectAst::subject_verb_tag_matching_objects(
+                            filter,
+                            vec![Zone::Library],
+                            chosen_tag.clone(),
+                        ),
+                        EffectAst::MoveTaggedGroupToZone {
+                            tag: chosen_tag.clone(),
+                            zone: Zone::Hand,
+                        },
+                        EffectAst::subject_verb(
+                            crate::cards::builders::SubjectVerbRoleAst::Actor,
+                            PlayerAst::Implicit,
+                            crate::cards::builders::SubjectVerbActionAst::Library(
+                                crate::cards::builders::LibraryActionAst::PutTaggedRemainderInZone {
+                                    tag: looked_tag,
+                                    keep_tagged: chosen_tag,
+                                    zone: Zone::Graveyard,
+                                    surface: ironsmith_core::LibraryRemainderSurface::Rest,
+                                },
+                            ),
+                        ),
+                    ],
                 }));
             }
 
@@ -839,6 +896,7 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                 PossessiveObjectChoiceActor::You => Some(PlayerAst::You),
                 PossessiveObjectChoiceActor::SubjectPlayer => extract_subject_player(subject),
                 PossessiveObjectChoiceActor::Opponent => Some(PlayerAst::Opponent),
+                PossessiveObjectChoiceActor::ThatPlayer => Some(PlayerAst::That),
                 PossessiveObjectChoiceActor::ObjectController
                 | PossessiveObjectChoiceActor::DefendingPlayer => None,
             };
@@ -970,6 +1028,24 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                     ];
                 }
             }
+            // "Put all permanent cards exiled with this enchantment onto the
+            // battlefield" (Journey to the Lost City): an explicit source
+            // link names the persistent linked set, even right after this
+            // resolution exiled other cards. The source surface marks the
+            // explicit link for reference resolution only.
+            if let Some(ironsmith_core::ExiledWithSourceMoveSurface {
+                source: ironsmith_core::ExiledWithSourceReferenceSurface::Source(source),
+                ..
+            }) = exiled_with_source_surface.as_ref()
+                && !filter.source
+                && filter.source_surface.is_none()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str()
+                        == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                })
+            {
+                filter.source_surface = Some(source.clone());
+            }
             let effect = EffectAst::subject_verb_put_all_onto_battlefield(
                 filter,
                 destination_shape.tapped,
@@ -987,6 +1063,20 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             }));
         }
 
+        // "put the top creature card of defending player's graveyard" (Bone
+        // Dancer), "put the top two cards of that player's library"
+        // (Cybership): only the topmost matching cards of that ordered zone.
+        let (target_tokens, source_top_only) = if target_tokens.len() > 2
+            && target_tokens[0].is_word("the")
+            && target_tokens[1].is_word("top")
+            && crate::lexer::token_word_refs(target_tokens)
+                .iter()
+                .any(|word| matches!(*word, "graveyard" | "library"))
+        {
+            (&target_tokens[2..], true)
+        } else {
+            (target_tokens, false)
+        };
         let mut target = if cca_shapes::is_tagged_object_reference(target_tokens) {
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
@@ -1004,6 +1094,23 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             )
         {
             validate_fixed_entry_reference_tokens(target_tokens, &target)?;
+        }
+        // "If you do, put a permanent card from among them onto the
+        // battlefield" (Winter, Cynical Opportunist): the choice is among the
+        // cards the previous instruction acted on, wherever they now are,
+        // never a permanent already on the battlefield.
+        if crate::lexer::token_word_refs(target_tokens).ends_with(&["from", "among", "them"])
+            && let Some(filter) =
+                crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(
+                    &mut target,
+                )
+            && filter.tagged_constraints.is_empty()
+        {
+            filter.zone = None;
+            filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::It.key(),
+                relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            });
         }
         target = expand_source_zone_disjunction(target, target_tokens);
         apply_explicit_source_location(&mut target, target_tokens);
@@ -1042,7 +1149,8 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
         .with_move_to_zone_plural_surface_if(
             cca_shapes::is_plural_tagged_object_reference(target_tokens),
         )
-        .with_battlefield_transformed(destination_shape.transformed);
+        .with_battlefield_transformed(destination_shape.transformed)
+        .with_source_top_only(source_top_only);
         return Ok(Some(if let Some(predicate) = trailing_predicate {
             EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate,
@@ -1053,6 +1161,21 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
         }));
     }
     Ok(None)
+}
+
+/// "all cards of the chosen type revealed this way" -> "cards of the chosen
+/// type".
+fn all_revealed_this_way_filter_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    if tokens.len() < 5 || !tokens[0].is_word("all") {
+        return None;
+    }
+    let end = tokens.len() - 3;
+    let suffix_matches = tokens[end..]
+        .iter()
+        .zip(["revealed", "this", "way"])
+        .all(|(token, word)| token.is_word(word));
+    (suffix_matches && end > 1).then_some(&tokens[1..end])
 }
 
 /// "an artifact card revealed this way" -> "artifact card": the singular

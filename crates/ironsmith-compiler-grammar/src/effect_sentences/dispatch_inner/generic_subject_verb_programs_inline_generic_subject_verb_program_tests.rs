@@ -952,7 +952,9 @@ fn where_x_binding_reaches_granted_entry_counter_static_ability() {
         let debug = format!("{effects:#?}");
 
         assert!(
-            debug.contains("EntersWithCountersAndSubtypesForFilter"),
+            debug.contains("PutCounters")
+                && debug.contains("InlineBattlefieldEntryCounter")
+                && debug.contains("AdditionalEntryCounter"),
             "{text}: {debug}"
         );
         for fragment in expected {

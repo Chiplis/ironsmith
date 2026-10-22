@@ -559,6 +559,7 @@ fn parses_passive_damage_by_qualified_source_union() {
         source,
         player,
         source_surface,
+        ..
     } = &parsed
     else {
         panic!("expected qualified damage-to-player trigger, got {parsed:#?}");
@@ -1335,6 +1336,7 @@ fn parses_and_or_player_object_damage_recipients_as_both_trigger_branches() {
         source: player_source,
         player,
         source_surface: player_source_surface,
+        ..
     } = *player
     else {
         panic!("expected player damage branch");
@@ -1437,6 +1439,7 @@ fn generic_source_to_player_keeps_authored_surface_in_ast_and_model() {
         source,
         player,
         source_surface,
+        ..
     } = parsed.clone()
     else {
         panic!("expected source-damage-to-player trigger");
@@ -1451,6 +1454,7 @@ fn generic_source_to_player_keeps_authored_surface_in_ast_and_model() {
         source,
         player,
         source_surface,
+        ..
     } = compiled.kind
     else {
         panic!("expected compiled source-damage-to-player trigger");
@@ -1474,6 +1478,7 @@ fn passive_grouped_combat_damage_preserves_recipient_and_turn_qualifiers() {
         per_source_controller,
         recipient_passive,
         during_your_turn,
+        ..
     } = parsed.clone() else { panic!("wrong trigger: {parsed:#?}"); };
     assert_eq!(source, ObjectFilter::default());
     assert_eq!(player, PlayerFilter::Opponent);
@@ -1773,6 +1778,7 @@ fn serial_shared_opponent_attack_draw_cast_union_keeps_all_three_events() {
     let crate::model::ast::TriggerSpec::AttacksOneOrMoreWithMinTotal {
         filter,
         min_total_attackers,
+        ..
     } = attack
     else {
         panic!("expected a minimum-cardinality attack branch: {attack:#?}");

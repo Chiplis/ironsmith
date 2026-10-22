@@ -253,7 +253,6 @@ fn classify_subtype_word(raw: &str) -> Option<Subtype> {
                 | "lord"
                 | "mine"
                 | "omen"
-                | "plan"
                 | "sand"
                 | "seal"
                 | "sphere"

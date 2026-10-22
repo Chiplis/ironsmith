@@ -75,6 +75,8 @@ pub enum ZoneMoveActionAst {
         explicit_return_surface: bool,
     },
     MoveToZone {
+        entry_type_changes: Option<ironsmith_core::effect::BattlefieldEntryTypeChanges>,
+        entry_counters: Vec<ironsmith_core::BattlefieldEntryCounterSpec>,
         retained_reference_tags: Vec<TagRef>,
         target: TargetAst,
         /// The target is selected from the first matching object in its ordered source zone.
@@ -149,6 +151,9 @@ pub enum ZoneMoveActionAst {
         target: TargetAst,
         no_regeneration: bool,
         creature_destroyed_this_way_surface: bool,
+        /// "The creature can't be regenerated." (Mephitic Ooze): the
+        /// no-regeneration rider names the object by a definite noun.
+        definite_noun_rider_surface: bool,
     },
     DestroyAll {
         filter: ObjectFilter,
@@ -176,6 +181,10 @@ pub enum ZoneMoveActionAst {
         source_controller_may_look: bool,
         /// The target is selected from the first matching object in its ordered source zone.
         source_top_only: bool,
+        /// The target is selected from the last (bottom) matching object in
+        /// its ordered source zone ("the bottom card of target player's
+        /// graveyard", Phyrexian Furnace).
+        source_bottom_only: bool,
         /// Preserve an authored plural reference even when the linked target
         /// specification itself is represented by a singular tagged handle.
         target_plural_surface: bool,

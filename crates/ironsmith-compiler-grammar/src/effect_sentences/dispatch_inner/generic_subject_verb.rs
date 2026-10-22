@@ -806,6 +806,24 @@ const EXILE_THAT_CARD_INSTEAD_PATTERN: effect_grammar::EffectSequence<'static> =
     effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::phrase(
         EXILE_THAT_CARD_INSTEAD_PHRASE,
     )]);
+/// "If a card would be put into your graveyard from anywhere this turn,
+/// exile it instead." (Forgotten Cellar): the pronoun names the card.
+const EXILE_IT_INSTEAD_PHRASE: &[&str] = &["exile", "it", "instead"];
+const ZONE_REPLACEMENT_GRAVEYARD_EXILE_IT_PATTERN: effect_grammar::EffectSequence<'static> =
+    effect_grammar::EffectSequence::new(&[
+        effect_grammar::EffectSequence::condition(
+            "condition",
+            effect_grammar::EffectCaptureKind::UntilPhrase(EXILE_IT_INSTEAD_PHRASE),
+        ),
+        effect_grammar::EffectSequence::tail(
+            "replacement",
+            effect_grammar::EffectCaptureKind::Rest,
+        ),
+    ]);
+const EXILE_IT_INSTEAD_PATTERN: effect_grammar::EffectSequence<'static> =
+    effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::phrase(
+        EXILE_IT_INSTEAD_PHRASE,
+    )]);
 const EACH_PLAYER_PHRASES: &[&[&str]] = &[&["each", "player"], &["each", "opponent"]];
 const CHOICE_COMPLEMENT_PATTERN: effect_grammar::EffectSequence<'static> =
     effect_grammar::EffectSequence::new(&[
@@ -2462,15 +2480,23 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
     let battlefield_tapped = followup_tokens
         .iter()
         .any(|token| token.as_word().is_some_and(|word| word == "tapped"));
+    // "Put that card onto the battlefield tapped and attacking and the rest
+    // ..." (Fireflux Squad): the entering creature is also attacking.
+    let battlefield_attacking = battlefield_tapped
+        && followup_tokens.windows(3).any(|window| {
+            window[0].is_word("tapped") && window[1].is_word("and") && window[2].is_word("attacking")
+        });
 
     let mut effects = parts.effects;
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut effects);
-    effects.push(EffectAst::subject_verb_move_to_zone(
+    effects.push(EffectAst::subject_verb_move_to_zone_with_attacking(
         TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
         Zone::Battlefield,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
         battlefield_tapped,
+        battlefield_attacking,
+        false,
         None,
     ));
     // Honor the authored remainder wording: bare "the rest" (Kethek) vs
@@ -2841,8 +2867,12 @@ pub fn parse_zone_replacement_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
-    let Some(matched) = ZONE_REPLACEMENT_GRAVEYARD_EXILE_PATTERN.parse_full(clause) else {
-        return Ok(None);
+    let (matched, pronoun) = match ZONE_REPLACEMENT_GRAVEYARD_EXILE_PATTERN.parse_full(clause) {
+        Some(matched) => (matched, false),
+        None => match ZONE_REPLACEMENT_GRAVEYARD_EXILE_IT_PATTERN.parse_full(clause) {
+            Some(matched) => (matched, true),
+            None => return Ok(None),
+        },
     };
     let Some(condition_clause) =
         matched.capture_clause_by_role(effect_grammar::EffectCaptureRole::Condition, clause)
@@ -2868,7 +2898,21 @@ pub fn parse_zone_replacement_subject_verb(
         return Ok(None);
     }
 
-    if !EXILE_THAT_CARD_INSTEAD_PATTERN.accepts_full(replacement_clause.trimmed()) {
+    let replacement_pattern = if pronoun {
+        EXILE_IT_INSTEAD_PATTERN
+    } else {
+        EXILE_THAT_CARD_INSTEAD_PATTERN
+    };
+    if !replacement_pattern.accepts_full(replacement_clause.trimmed()) {
+        return Ok(None);
+    }
+    // The pronoun reading names the replaced card only when the condition's
+    // subject is a card ("if a card would be put ...").
+    if pronoun
+        && !condition_match
+            .capture_clause("object", condition_clause)
+            .is_some_and(|object| object.trimmed().word_refs() == ["a", "card"])
+    {
         return Ok(None);
     }
 

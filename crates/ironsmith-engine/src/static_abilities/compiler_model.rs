@@ -381,6 +381,9 @@ impl StaticAbility {
             Some(StaticAbilityId::ChooseCreatureCardNameAndTypeAsBecomesAttached) => {
                 Self::choose_creature_card_name_and_type_as_becomes_attached(label)
             }
+            Some(StaticAbilityId::ChooseCraftMaterialAsBecomesAttached) => {
+                Self::choose_craft_material_as_becomes_attached(label)
+            }
             Some(StaticAbilityId::AttachedHasSourceChosenNameAndCreatureType) => {
                 Self::attached_has_source_chosen_name_and_creature_type()
             }

@@ -84,10 +84,38 @@ impl EffectExecutor for ReturnToHandEffect {
     fn cost_description(&self) -> Option<String> {
         match self.spec.base() {
             ChooseSpec::Source => Some("Return this source to its owner's hand".to_string()),
-            ChooseSpec::Object(filter) => Some(format!(
-                "Return a {} you control to its owner's hand",
-                filter.description()
-            )),
+            ChooseSpec::Object(filter) => {
+                let description = filter.description();
+                let (noun, controlled) = match description.strip_suffix(" you control") {
+                    Some(noun) => (noun.to_string(), " you control"),
+                    None => (description.clone(), " you control"),
+                };
+                let noun = noun
+                    .strip_prefix("a ")
+                    .or_else(|| noun.strip_prefix("an "))
+                    .unwrap_or(&noun)
+                    .to_string();
+                let count = self.spec.count();
+                // "return X Swamps you control to their owner's hand"
+                // (Infernal Harvest): the counted cost names its count.
+                let counted = if count.dynamic_x {
+                    Some("X".to_string())
+                } else if count.min > 1 && count.max == Some(count.min) {
+                    Some(
+                        ironsmith_core::cardinal_word(count.min as u32)
+                            .unwrap_or_else(|| count.min.to_string()),
+                    )
+                } else {
+                    None
+                };
+                Some(match counted {
+                    Some(amount) => format!(
+                        "Return {amount} {}{controlled} to their owner's hand",
+                        crate::runtime_display::pluralize_noun_phrase_for_trigger(&noun)
+                    ),
+                    None => format!("Return a {noun}{controlled} to its owner's hand"),
+                })
+            }
             _ => None,
         }
     }

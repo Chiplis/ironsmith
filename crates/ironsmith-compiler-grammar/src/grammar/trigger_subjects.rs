@@ -84,6 +84,8 @@ pub enum PossessivePlayerReference {
     You,
     Opponent,
     Any,
+    /// "each other player's": every player except the controller.
+    NotYou,
     /// "at the beginning of that player's upkeep" inside a granted ability
     /// (Takklemaggot): a player named outside the trigger, bound by the
     /// granting resolution.
@@ -320,6 +322,11 @@ pub fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerRefe
     }
     if normalized_phrase_occurs(words, &["each", "player"]) {
         return PossessivePlayerReference::Any;
+    }
+    if normalized_phrase_occurs(words, &["each", "other", "player"])
+        || normalized_phrase_occurs(words, &["each", "other", "players"])
+    {
+        return PossessivePlayerReference::NotYou;
     }
     if exact_phrase_occurs(words, &["your", "team"]) || exact_word_occurs(words, &["your"]) {
         return PossessivePlayerReference::You;
@@ -560,6 +567,18 @@ pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvel
             }
         }
 
+        // "a permanent spell using mana produced by Tecutlan": the mana
+        // provenance is the trigger's typed `mana_source_filter`, attached by
+        // the triggered-line owner. It never names the spell's types.
+        if saw_spell_noun
+            && word == "using"
+            && input
+                .as_ref()
+                .first()
+                .is_some_and(|next| next.is_word("mana"))
+        {
+            return SpellFilterEnvelope { end };
+        }
         if word == "during"
             || (word == "other"
                 && !input

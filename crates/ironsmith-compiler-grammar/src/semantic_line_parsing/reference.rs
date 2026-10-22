@@ -491,6 +491,26 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
     } else {
         parse_effect_sentences_lexed(tokens)?
     };
+    // "Starting with you, each player separates ... . Then each player ..."
+    // (Whims of the Fates): a multi-sentence program parsed jointly still
+    // owes the stripped participant order to its leading each-player loop.
+    if stripped_participant_ordering
+        && sentences.len() >= 2
+        && matches!(
+            parsed_together.first(),
+            Some(EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayer { .. }))
+        )
+    {
+        let first = parsed_together.remove(0);
+        parsed_together.insert(
+            0,
+            EffectAst::SourceSentence {
+                effects: vec![first],
+                leading_then: false,
+                starting_with_controller: true,
+            },
+        );
+    }
     // A sentence-local comma-then sequence followed by `If you can't` is
     // sometimes normalized into one outer `CommaThen` whose final member is
     // an `IfResult`. Restore the two authored source groups after proving the

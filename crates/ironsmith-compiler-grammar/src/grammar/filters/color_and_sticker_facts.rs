@@ -43,7 +43,8 @@ fn parse_sticker_filter_prefix<'a>(
         primitives::word_slice_exact("the"),
     )))
     .parse_next(input)?;
-    let action = alt((
+    // "with a sticker on it" (Scampire): any kind of sticker.
+    let action = winnow::combinator::opt(alt((
         primitives::word_slice_exact("art").value(KeywordActionKind::ArtSticker),
         primitives::word_slice_exact("ability").value(KeywordActionKind::AbilitySticker),
         primitives::word_slice_exact("name").value(KeywordActionKind::NameSticker),
@@ -53,8 +54,9 @@ fn parse_sticker_filter_prefix<'a>(
             primitives::word_slice_exact("toughness"),
         )
             .value(KeywordActionKind::PowerToughnessSticker),
-    ))
-    .parse_next(input)?;
+    )))
+    .parse_next(input)?
+    .unwrap_or(KeywordActionKind::Sticker);
     primitives::word_slice_exact("sticker").parse_next(input)?;
     // "with an art sticker on it" / "with an art sticker" (Roxi): the
     // trailing "on it" is optional.

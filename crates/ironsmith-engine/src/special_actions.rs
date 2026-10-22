@@ -38,7 +38,6 @@ struct TurnFaceUpSpec {
     cost: crate::cost::TotalCost,
     description: &'static str,
     megamorph: bool,
-    disguise: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -95,7 +94,6 @@ fn turn_face_up_specs(
             cost: crate::cost::TotalCost::mana(cost),
             description: TurnFaceUpMethod::PrintedManaCost.description(),
             megamorph: false,
-            disguise: false,
         });
     }
 
@@ -133,7 +131,6 @@ fn append_turn_face_up_specs_from_abilities(
                 TurnFaceUpMethod::TurnFaceUpAbility.description()
             },
             megamorph: static_ability.is_megamorph(),
-            disguise: static_ability.is_disguise(),
         };
         specs.push(candidate);
     }
@@ -263,100 +260,6 @@ fn turn_face_up_spec(
     Ok(turn_face_up_specs(game, object)?
         .into_iter()
         .find(|spec| spec.method == method))
-}
-
-fn reduce_total_cost_mana_components(
-    total_cost: &crate::cost::TotalCost,
-    generic_reduction: u32,
-    mana_cost_reduction: Option<&crate::mana::ManaCost>,
-) -> crate::cost::TotalCost {
-    match total_cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => {
-            let mut remaining_generic = generic_reduction;
-            let mut remaining_mana_cost_reduction = mana_cost_reduction.cloned();
-            crate::cost::TotalCost::from_costs(
-                costs
-                    .iter()
-                    .map(|cost| {
-                        if let Some(mana_cost) = cost.mana_cost_ref() {
-                            let before = mana_cost.generic_mana_total();
-                            let mut adjusted = mana_cost.reduce_generic(remaining_generic);
-                            let reduced = before.saturating_sub(adjusted.generic_mana_total());
-                            remaining_generic = remaining_generic.saturating_sub(reduced);
-                            if let Some(reduction) = remaining_mana_cost_reduction.take() {
-                                adjusted = crate::decision::reduce_mana_cost(&adjusted, &reduction);
-                            }
-                            crate::costs::Cost::mana(adjusted)
-                        } else {
-                            cost.clone()
-                        }
-                    })
-                    .collect(),
-            )
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
-            branches
-                .iter()
-                .map(|branch| {
-                    reduce_total_cost_mana_components(
-                        branch,
-                        generic_reduction,
-                        mana_cost_reduction,
-                    )
-                })
-                .collect(),
-        ),
-    }
-}
-
-fn disguise_turn_face_up_cost_reductions(
-    game: &GameState,
-    player: PlayerId,
-    permanent_id: ObjectId,
-) -> (u32, Option<crate::mana::ManaCost>) {
-    let Some(object) = game.object(permanent_id) else {
-        return (0, None);
-    };
-    let Some(restore) = object.face_down_cast_state.as_ref() else {
-        return (0, None);
-    };
-
-    let mut generic_reduction = 0u32;
-    let mut mana_cost_reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
-    for ability in restore.abilities.iter() {
-        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-            continue;
-        };
-        if let Some(reduction) = static_ability.this_spell_cost_reduction()
-            && crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
-                game,
-                permanent_id,
-                &reduction.condition,
-                &[],
-            )
-        {
-            let amount = crate::decision::resolve_this_spell_cost_reduction_value(
-                game, player, object, reduction,
-            );
-            if amount > 0 {
-                generic_reduction = generic_reduction.saturating_add(amount as u32);
-            }
-        }
-        if let Some(reduction) = static_ability.this_spell_cost_reduction_mana_cost()
-            && crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
-                game,
-                permanent_id,
-                &reduction.condition,
-                &[],
-            )
-        {
-            mana_cost_reduction_pips.extend(reduction.reduction.pips().iter().cloned());
-        }
-    }
-
-    let mana_cost_reduction = (!mana_cost_reduction_pips.is_empty())
-        .then(|| crate::mana::ManaCost::from_pips(mana_cost_reduction_pips));
-    (generic_reduction, mana_cost_reduction)
 }
 
 /// Total generic increase from "All morph costs cost {N} more." statics
@@ -494,27 +397,16 @@ fn adjusted_turn_face_up_cost(
     } else {
         &spec.cost
     };
-    let adjusted = adjust_total_cost_mana_components_for_reason(
+    // Turning a permanent face up is a special action (CR 116.2b, 702.168d):
+    // the permanent's own "this spell costs less" statics don't apply to its
+    // disguise/morph cost — only effects that modify that action's cost do.
+    adjust_total_cost_mana_components_for_reason(
         game,
         player,
         permanent_id,
         base_cost,
         spec.method.payment_reason(),
-    );
-    if !spec.disguise {
-        return adjusted;
-    }
-    let (generic_reduction, mana_cost_reduction) =
-        disguise_turn_face_up_cost_reductions(game, player, permanent_id);
-    if generic_reduction == 0 && mana_cost_reduction.is_none() {
-        adjusted
-    } else {
-        reduce_total_cost_mana_components(
-            &adjusted,
-            generic_reduction,
-            mana_cost_reduction.as_ref(),
-        )
-    }
+    )
 }
 
 fn foretell_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
@@ -1916,6 +1808,11 @@ pub(crate) struct LandPlayPermissionReceipt {
     pub enters_tapped: bool,
 }
 impl LandPlayPermissionReceipt {
+    /// The exact grant selected for this land play, if any.
+    pub(crate) fn identity(&self) -> Option<&crate::grant_registry::GrantPermissionIdentity> {
+        self.identity.as_ref()
+    }
+
     pub(crate) fn reserve(
         &self,
         game: &mut GameState,
@@ -6679,7 +6576,7 @@ mod tests {
     }
 
     #[test]
-    fn disguise_overlay_grants_ward_and_uses_own_cost_reduction() {
+    fn disguise_overlay_grants_ward_and_ignores_own_spell_cost_reduction() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
@@ -6772,7 +6669,24 @@ mod tests {
             turn_face_up_cost_display(&game, permanent_id, TurnFaceUpMethod::DisguiseAbility)
                 .expect("fixture has complete replacement state")
                 .as_deref(),
-            Some("{2}{R}")
+            Some("{5}{R}"),
+            "a \"this spell costs less\" static must not reduce the disguise cost (CR 702.168d)"
+        );
+
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 3);
+
+        assert!(
+            can_turn_face_up_with_method(
+                &game,
+                alice,
+                permanent_id,
+                TurnFaceUpMethod::DisguiseAbility,
+            )
+            .is_err(),
+            "{{2}}{{R}} worth of mana must not pay the unreduced {{5}}{{R}} disguise cost"
         );
 
         game.player_mut(alice)
@@ -6788,7 +6702,7 @@ mod tests {
                 TurnFaceUpMethod::DisguiseAbility,
             )
             .is_ok(),
-            "disguise cost reduction should make {{5}}{{R}} payable as {{2}}{{R}}"
+            "six mana pays the full {{5}}{{R}} disguise cost"
         );
 
         let mut dm = SelectFirstDecisionMaker;

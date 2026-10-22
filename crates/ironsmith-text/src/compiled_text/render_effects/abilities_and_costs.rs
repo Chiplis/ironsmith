@@ -441,7 +441,52 @@ pub(super) fn describe_recover_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
     let cost = triggered.presentation_label.as_ref()?.recover_cost()?;
-    Some(format!("Recover {cost}"))
+    Some(recover_keyword_text(triggered, cost))
+}
+
+/// "Recover {cost}", or "Recover—<payment>" for a non-mana cost (CR
+/// 702.59a), rendered from the trigger's optional payment instruction.
+pub(super) fn recover_keyword_text(
+    triggered: &crate::ability::TriggeredAbility,
+    cost: &str,
+) -> String {
+    if cost.starts_with('{') {
+        return format!("Recover {cost}");
+    }
+    let payment = (|| {
+        let [segment] = triggered.effects.segments.as_slice() else {
+            return None;
+        };
+        let [gate] = segment.default_effects.as_slice() else {
+            return None;
+        };
+        let gate = gate.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let first = gate.if_true.first()?;
+        let with_id = first.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+        if may.effects.is_empty() {
+            return None;
+        }
+        let parts = may
+            .effects
+            .iter()
+            .map(|effect| {
+                let text = describe_effect(effect);
+                // The payment's actor is the recover card's controller,
+                // implied by the keyword ("Recover—Pay ...").
+                text.strip_prefix("You ")
+                    .or_else(|| text.strip_prefix("you "))
+                    .map(capitalize_first)
+                    .unwrap_or(text)
+            })
+            .collect::<Vec<_>>();
+        Some(capitalize_first(&parts.join(" and ")))
+    })();
+    match payment {
+        Some(payment) => format!("Recover—{payment}"),
+        None if cost.is_empty() => "Recover".to_string(),
+        None => format!("Recover—{cost}"),
+    }
 }
 
 pub(super) fn describe_backup_keyword(
@@ -734,8 +779,10 @@ fn describe_each_combat_unless_pay_delayed_block_grant(
         return None;
     };
     let unless = effect.downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    // The rendered sentence prints the unless clause before the delayed
+    // trigger ("unless you pay {R}, whenever ..."), so a leading-surface
+    // unless is the authored shape here.
     if unless.player != PlayerFilter::You
-        || unless.leading_surface
         || unless.before_delayed_step
         || describe_total_cost(&unless.cost) != "{R}"
     {
@@ -1067,6 +1114,27 @@ fn describe_exiled_last_time_counter_creatures_unblockable(ability: &Ability) ->
 }
 
 pub(crate) fn describe_ability(
+    index: usize,
+    ability: &Ability,
+    subject: &str,
+    rewrite_it_deals: bool,
+) -> Vec<String> {
+    use super::single_effects_early::RENDERING_EXILE_FUNCTIONAL_ABILITY;
+    // A battlefield ability whose cost exiles its own source resolves with
+    // that source in exile (Shifty Doppelganger), as an exile-functional
+    // ability does.
+    let source_in_exile = ability.functional_zones.as_slice() == [Zone::Exile]
+        || (ability.functional_zones.as_slice() == [Zone::Battlefield]
+            && matches!(&ability.kind, AbilityKind::Activated(activated)
+                if activated_cost_exiles_source(&activated.mana_cost)));
+    let previous =
+        RENDERING_EXILE_FUNCTIONAL_ABILITY.with(|flag| flag.replace(source_in_exile));
+    let rendered = describe_ability_in_zone(index, ability, subject, rewrite_it_deals);
+    RENDERING_EXILE_FUNCTIONAL_ABILITY.with(|flag| flag.set(previous));
+    rendered
+}
+
+fn describe_ability_in_zone(
     index: usize,
     ability: &Ability,
     subject: &str,
@@ -2055,6 +2123,12 @@ pub(crate) fn describe_ability(
             if is_grandeur_activation_cost(activated) {
                 line = format!("Grandeur — {line}");
             }
+            // A station striation gates the ability on the charge-counter
+            // threshold (CR 702.184); the typed activation condition carries
+            // the gate and the "N+ |" row marker states it.
+            if let Some(prefix) = station_threshold_prefix(activated) {
+                line = prefix_rendered_ability_body(line, &format!("{prefix} | "));
+            }
             if let Some(prefix) = level_range_activation_prefix(activated) {
                 line = format!("{prefix}. {line}");
             }
@@ -2293,6 +2367,30 @@ pub(super) fn normalize_granted_triggered_ability_surface(surface: String) -> St
     format!("{head}, {normalized_tail}")
 }
 
+/// Whether an activation cost exiles the ability's own source ("{3}{U},
+/// Exile this creature: ..."). Every branch of a one-of cost may differ, so
+/// any branch that exiles the source counts.
+pub(super) fn activated_cost_exiles_source(cost: &crate::cost::TotalCost) -> bool {
+    fn exiles_source(effect: &Effect) -> bool {
+        let effect = structural_unwrap_render_wrappers(effect);
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+            return matches!(exile.spec.base(), ChooseSpec::Source);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            return sequence.effects.iter().any(exiles_source);
+        }
+        false
+    }
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => costs
+            .iter()
+            .any(|cost| cost.effect_ref().is_some_and(exiles_source)),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            branches.iter().any(activated_cost_exiles_source)
+        }
+    }
+}
+
 pub(super) fn normalize_zone_bound_self_exile_cost(
     cost_text: Option<String>,
     ability: &Ability,
@@ -2309,25 +2407,7 @@ pub(super) fn normalize_zone_bound_self_exile_cost(
     let AbilityKind::Activated(activated) = &ability.kind else {
         return Some(cost);
     };
-    fn exiles_source(effect: &Effect) -> bool {
-        let effect = structural_unwrap_render_wrappers(effect);
-        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
-            return matches!(exile.spec.base(), ChooseSpec::Source);
-        }
-        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
-            return sequence.effects.iter().any(exiles_source);
-        }
-        false
-    }
-    fn has_source_exile(cost: &crate::cost::TotalCost) -> bool {
-        match cost.kind() {
-            ironsmith_core::TotalCostKind::All(costs) => costs
-                .iter()
-                .any(|cost| cost.effect_ref().is_some_and(exiles_source)),
-            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(has_source_exile),
-        }
-    }
-    if !has_source_exile(&activated.mana_cost) {
+    if !activated_cost_exiles_source(&activated.mana_cost) {
         return Some(cost);
     }
     // Render only the unqualified source reference produced by the cost

@@ -70,6 +70,11 @@ pub fn parse_effect_sentence_lexed(
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) =
+        crate::effect_sentences::clause_dispatch::parse_referenced_tokens_goaded_sentence(tokens)
+    {
+        return Ok(vec![effect]);
+    }
     if let Some(effects) = crate::effect_sentences::chain_carry::parse_coordinated_delayed_followup(tokens)? { return Ok(effects); }
     if let Some(effects) = crate::effect_sentences::chain_carry::parse_coordinated_loyalty_action(tokens)? { return Ok(effects); }
     // "That combat" starts in the phase just added by the resolving spell.
@@ -1424,7 +1429,16 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
                         | "source"
                 )
             });
-        let entry_abilities = if explicit_source_subject {
+        // "that creature enters with X additional counters, where X is ..."
+        // (Runadi, Torgal): an external entry replacement registered on the
+        // referenced object, not an ability granted to it (removing its
+        // abilities before it enters can't suppress the counters). The
+        // tagged-entry recognizer owns it; X is bound below.
+        let demonstrative_entrant = matches!(words.first(), Some(&"that") | Some(&"it"))
+            && crate::grammar::effects::counter_marker_shapes::parse_tagged_enters_additional_tokens_with_x(&stripped).is_some();
+        let entry_abilities = if demonstrative_entrant {
+            None
+        } else if explicit_source_subject {
             crate::keyword_static::parse_enters_with_counters_line(&stripped)?
         } else {
             parse_enters_with_additional_counter_for_filter_line(&stripped)?

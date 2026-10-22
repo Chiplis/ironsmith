@@ -243,7 +243,9 @@ fn rewrite_result_predicate(predicate: &EffectPredicate, change: TextChange) -> 
         EffectPredicate::PriorEffectResult(surface) => surface.filter = rewrite_filter_words(&surface.filter, change)?,
         EffectPredicate::Succeeded | EffectPredicate::Failed | EffectPredicate::Happened
         | EffectPredicate::DidNotHappen | EffectPredicate::SearchedLibrary | EffectPredicate::HappenedNotReplaced
-        | EffectPredicate::ExcessDamageDealt | EffectPredicate::DealtDamageToPlayer
+        | EffectPredicate::ExcessDamageDealt | EffectPredicate::ExcessDamageDealtToCreature
+        | EffectPredicate::DealtDamageToPlayer
+        | EffectPredicate::ExcessDamageRedirected
         | EffectPredicate::AffectedObjectMatchesCardType { .. } | EffectPredicate::Value(_)
         | EffectPredicate::Chosen | EffectPredicate::WasDeclined
         // Characteristic families and the minimum cohort size contain no
@@ -418,6 +420,11 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         }
         if let Some(ironsmith_core::MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player)) = &mut model.attack_target_mode {
             *player = rewrite_player_filter_words(player, change)?;
+        }
+        if let Some(types) = &mut model.entry_type_changes {
+            let mut filter = crate::target::ObjectFilter::default();
+            filter.subtypes = types.added_subtypes.clone();
+            types.added_subtypes = rewrite_filter_words(&filter, change)?.subtypes;
         }
         for counters in &mut model.enters_with_counters {
             counters.amount = rewrite_value_words(&counters.amount, change)?;

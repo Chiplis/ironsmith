@@ -864,6 +864,29 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         ));
     }
     if let Some(used) = prefix_len(words, EXILED_MANA_VALUE_PREFIXES) {
+        // "the mana value of the exiled card used to craft it" (Jadeheart
+        // Attendant): the same source-linked exile set (CR 702.167c).
+        if let Some(["used", "to", "craft", reference, ..]) = words.get(used..)
+            && matches!(*reference, "it" | "this" | "them")
+        {
+            let mut craft_used = used + 4;
+            if *reference == "this" && words.get(craft_used).is_some() {
+                craft_used += 1;
+            }
+            return Some((
+                Value::ManaValueOf(Box::new(
+                    ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
+                    )
+                    .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType(
+                            "the exiled card used to craft it".to_string(),
+                        ),
+                    )),
+                )),
+                craft_used,
+            ));
+        }
         return Some((
             with_sacrificed_object_surface(
                 Value::ManaValueOf(Box::new(ChooseSpec::Tagged(

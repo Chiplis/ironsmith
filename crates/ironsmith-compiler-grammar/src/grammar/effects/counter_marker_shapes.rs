@@ -778,6 +778,30 @@ fn parse_tagged_enters_additional_lexed<'a>(
     Ok(AdditionalCounterShape { descriptor })
 }
 
+/// The tagged-entry shape whose count may be an unbound `X` ("that creature
+/// enters with X additional +1/+1 counters on it", defined by a where-X
+/// clause). Returns the shape and whether its count is `X`.
+pub fn parse_tagged_enters_additional_tokens_with_x(
+    tokens: &[OwnedLexToken],
+) -> Option<(AdditionalCounterShape, bool)> {
+    let x_index = tokens
+        .windows(3)
+        .position(|window| {
+            window[0].is_word("with") && window[1].is_word("x") && window[2].is_word("additional")
+        })
+        .map(|index| index + 1);
+    match x_index {
+        Some(index) => {
+            let mut numbered = tokens.to_vec();
+            numbered[index] = crate::lexer::synthetic_word_tokens(&["two"])
+                .into_iter()
+                .next()?;
+            parse_tagged_enters_additional_tokens(&numbered).map(|shape| (shape, true))
+        }
+        None => parse_tagged_enters_additional_tokens(tokens).map(|shape| (shape, false)),
+    }
+}
+
 pub fn parse_tagged_enters_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalCounterShape> {

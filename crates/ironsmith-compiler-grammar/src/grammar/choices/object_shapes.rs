@@ -32,6 +32,9 @@ pub enum PossessiveObjectChoiceActor {
     Opponent,
     /// "target creature of defending player's choice" (Erithizon).
     DefendingPlayer,
+    /// "target nonland permanent of that player's choice" (Bladegriff
+    /// Prototype): the player the surrounding clause refers back to.
+    ThatPlayer,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -144,6 +147,14 @@ pub fn parse_possessive_object_choice_tokens(
         (
             &["of", "opponents", "choice"][..],
             PossessiveObjectChoiceActor::Opponent,
+        ),
+        (
+            &["of", "that", "player's", "choice"][..],
+            PossessiveObjectChoiceActor::ThatPlayer,
+        ),
+        (
+            &["of", "that", "players", "choice"][..],
+            PossessiveObjectChoiceActor::ThatPlayer,
         ),
         (
             &["of", "defending", "player's", "choice"][..],

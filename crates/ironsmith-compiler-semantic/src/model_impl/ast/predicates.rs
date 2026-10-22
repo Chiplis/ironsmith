@@ -208,6 +208,8 @@ pub enum PredicateAst {
     Not(Box<PredicateAst>),
     And(Box<PredicateAst>, Box<PredicateAst>),
     Or(Box<PredicateAst>, Box<PredicateAst>),
+    /// The source spell was the Nth spell cast by this controller this game.
+    ThisSpellCastOrderThisGame(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
@@ -262,6 +264,7 @@ pub enum TurnHistoryPredicateAst {
     OpponentAttackedControllerDuringTheirLastTurn,
     PlayerLostLifeLastTurn(PlayerAst),
     PlayerWasDealtNoncombatDamageLastTurn(PlayerAst),
+    PlayerWasDealtCombatDamageSinceTheirLastTurn(PlayerAst),
     TriggeringPlayersTurn {
         definite_player: bool,
     },

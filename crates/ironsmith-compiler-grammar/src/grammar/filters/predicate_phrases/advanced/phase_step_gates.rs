@@ -133,7 +133,7 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         )
     {
         return Some(value_at_least(Value::TurnHistoryCount(TurnHistoryCount::CreaturesAttackedWith {
-            player: PlayerFilter::You, filter,
+            player: PlayerFilter::You, filter, this_combat: false, attacked: None,
         }), 1));
     }
     // CR 700.4: "dies" means "is put into a graveyard from the battlefield".
@@ -316,14 +316,16 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
             Value::TurnHistoryCount(TurnHistoryCount::CreaturesAttackedWith {
                 player: PlayerFilter::Any,
                 filter: ObjectFilter::creature(),
+                this_combat: false,
+                attacked: None,
             }),
             0,
         ));
     }
 
-    if surface::exact(
+    if surface::exact_any(
         clause,
-        &[
+        &[&[
             "a",
             "permanent",
             "was",
@@ -336,7 +338,10 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
             "battlefield",
             "this",
             "turn",
-        ],
+        ], &[
+            "a", "permanent", "was", "returned", "to", "your", "hand", "from", "the",
+            "battlefield", "this", "turn",
+        ]],
     ) {
         let mut filter = ObjectFilter::permanent();
         filter.owner = Some(PlayerFilter::You);
@@ -480,6 +485,8 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
                 Value::TurnHistoryCount(TurnHistoryCount::CreaturesAttackedWith {
                     player: PlayerFilter::You,
                     filter: hero,
+                    this_combat: false,
+                    attacked: None,
                 }),
                 1,
             )),
@@ -1448,6 +1455,7 @@ fn parse_player_counter_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
             player,
             count,
+            as_you_cast: false,
         },
     ))
 }
@@ -1471,7 +1479,7 @@ mod tests {
     fn controller_poison_is_an_antecedent_until_the_program_proves_a_target() {
         let predicate = parse("its controller has three or more poison counters");
         assert!(matches!(predicate, PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
-            player: PlayerAst::ItsController, count: 3,
+            player: PlayerAst::ItsController, count: 3, ..
         })));
     }
 

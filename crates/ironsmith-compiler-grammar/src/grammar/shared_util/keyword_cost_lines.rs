@@ -98,6 +98,85 @@ fn parse_compiler_total_cost(
     Ok(crate::semantic_assembly::assemble_activation_cost(&cst)?.to_core_total_cost())
 }
 
+/// "This cost is reduced by {2} for each basic land type among lands you
+/// control." following a printed cost (Draco's upkeep payment, Fugitive
+/// Codebreaker's disguise cost): the per-unit generic reduction and the count.
+pub fn parse_cost_reduced_by_for_each_followup(
+    tokens: &[OwnedLexToken],
+) -> Option<(u32, Value)> {
+    let words = TokenWordView::new(tokens).word_refs();
+    let words: Vec<&str> = words.into_iter().filter(|word| *word != ".").collect();
+    let rest = words.strip_prefix(&["this", "cost", "is", "reduced", "by"][..])?;
+    let amount_token = tokens.iter().find(|token| {
+        matches!(
+            leaf::parse_leaf_surface_mana_pip_token(token),
+            Some(leaf::LeafManaPipToken::ManaGroup(_))
+        )
+    })?;
+    let Some(leaf::LeafManaPipToken::ManaGroup(group)) =
+        leaf::parse_leaf_surface_mana_pip_token(amount_token)
+    else {
+        return None;
+    };
+    let [crate::mana::ManaSymbol::Generic(per)] = group.as_slice() else {
+        return None;
+    };
+    let for_each_at = rest.iter().position(|word| *word == "for")?;
+    let count_words = &rest[for_each_at..];
+    let (count, used) = crate::util::parse_for_each_count_value_words(count_words)?;
+    (used == count_words.len() && *per > 0).then_some((u32::from(*per), count))
+}
+
+/// Split a final "This cost is reduced by {N} for each ..." sentence off an
+/// effect: the token index where it starts, the per-unit reduction, and the
+/// count.
+pub fn split_trailing_cost_reduction_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<(usize, u32, Value)> {
+    let period = tokens
+        .iter()
+        .enumerate()
+        .rev()
+        .skip_while(|(_, token)| token.kind == TokenKind::Period)
+        .find(|(_, token)| token.kind == TokenKind::Period)
+        .map(|(idx, _)| idx)?;
+    let (per, count) = parse_cost_reduced_by_for_each_followup(&tokens[period + 1..])?;
+    Some((period + 1, per, count))
+}
+
+/// Rewrite the fixed mana payment of the last "unless pays" effect as that
+/// cost reduced by `per` generic mana for each `count` (Draco).
+pub fn apply_unless_payment_reduction(
+    effects: &mut [crate::cards::builders::EffectAst],
+    per: u32,
+    count: &Value,
+) -> bool {
+    use crate::cards::builders::{ConditionalEffectAst, EffectAst};
+    for effect in effects.iter_mut().rev() {
+        match effect {
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { cost, .. }) => {
+                let Some(printed) = cost.mana_cost().cloned() else {
+                    return false;
+                };
+                if cost.as_all().is_none_or(|components| components.len() != 1) {
+                    return false;
+                }
+                *cost = ironsmith_core::TotalCost::from_costs(vec![CompilerCost::DynamicMana(
+                    ironsmith_core::DynamicManaCost::reduced_for_each(&printed, per, count.clone()),
+                )]);
+                return true;
+            }
+            EffectAst::Sequence { effects } => {
+                if apply_unless_payment_reduction(effects, per, count) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 pub fn parse_morph(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, CardTextError> {
     let words = TokenWordView::new(tokens).word_refs();
     let Some(kind) = words.first().and_then(|word| match *word {
@@ -135,6 +214,23 @@ pub fn parse_morph(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, Ca
             "{} keyword missing cost",
             kind.parser_name()
         )));
+    }
+    // "Disguise {5}{R}. This cost is reduced by {1} for each instant and
+    // sorcery card in your graveyard." (Fugitive Codebreaker): the reduction
+    // applies to the turn-face-up cost only (CR 702.168), never the spell.
+    let mut cost = cost;
+    if let Some(period) = tokens.iter().position(|token| token.kind == TokenKind::Period)
+        && let followup = &tokens[period + 1..]
+        && !TokenWordView::new(followup).word_refs().is_empty()
+    {
+        let (per, count) =
+            parse_cost_reduced_by_for_each_followup(followup).ok_or_else(unsupported)?;
+        let (Some(printed), Some([_])) = (cost.mana_cost().cloned(), cost.as_all()) else {
+            return Err(unsupported());
+        };
+        cost = ironsmith_core::TotalCost::from_costs(vec![CompilerCost::DynamicMana(
+            ironsmith_core::DynamicManaCost::reduced_for_each(&printed, per, count),
+        )]);
     }
     Ok(Some(ParsedAbility {
         ability: Ability::static_ability(kind.static_ability(cost)).into(),

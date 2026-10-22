@@ -169,7 +169,13 @@ fn bind_restriction_target_players(
                 crate::target::PlayerFilter::Target(_)
                     | crate::target::PlayerFilter::AliasedTarget(_)
             ) || (matches!(reference, crate::target::PlayerFilter::IteratedPlayer)
-                && ctx.iteration.iterated_player.is_some()))
+                && ctx.iteration.iterated_player.is_some())
+                // "they can't attack you this turn" (Sandswirl Wanderglyph):
+                // the player a tagged object names is fixed as it resolves.
+                || matches!(
+                    reference,
+                    crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_))
+                ))
                 && let Ok(id) =
                     crate::effects::helpers::resolve_player_filter(game, reference, ctx)
             {
@@ -507,6 +513,12 @@ fn normalize_restriction_for_resolution(
                 bind_named_restriction_player(player, ctx, game),
             )
         }
+        Restriction::AttackPlayerOrPermanentsControlledBy { attackers, player } => {
+            Restriction::attack_player_or_permanents_controlled_by(
+                collapse_filter_to_current_matching_objects(attackers, ctx, game),
+                bind_named_restriction_player(player, ctx, game),
+            )
+        }
         // "You can't attack that player this turn" (Call for Aid): the
         // protected player is the one this resolution named; the attackers
         // stay a live "creatures you control" set.
@@ -710,6 +722,9 @@ fn restriction_object_subject(restriction: &Restriction) -> Option<&crate::targe
         | Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers: filter, ..
         }
+        | Restriction::AttackPlayerOrPermanentsControlledBy {
+            attackers: filter, ..
+        }
         | Restriction::AttackPlayer {
             attackers: filter, ..
         } => Some(filter),
@@ -728,6 +743,9 @@ fn restriction_with_object_subject(
         Restriction::AttackOrBlock(_) => Restriction::attack_or_block(subject),
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { player, .. } => {
             Restriction::attack_player_or_planeswalkers_controlled_by(subject, player.clone())
+        }
+        Restriction::AttackPlayerOrPermanentsControlledBy { player, .. } => {
+            Restriction::attack_player_or_permanents_controlled_by(subject, player.clone())
         }
         Restriction::AttackPlayer { player, .. } => {
             Restriction::attack_player(subject, player.clone())
@@ -828,8 +846,16 @@ impl EffectExecutor for CantEffect {
         } else if let Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             mut attackers,
             player,
-        } = restriction
+        }
+        | Restriction::AttackPlayerOrPermanentsControlledBy {
+            mut attackers,
+            player,
+        } = restriction.clone()
         {
+            let permanents = matches!(
+                restriction,
+                Restriction::AttackPlayerOrPermanentsControlledBy { .. }
+            );
             // "That player can't attack you ... during their next turn": the
             // restricted attackers' controller is a resolution-time referent
             // (an iterated, targeted, or event player) that must stay fixed
@@ -847,7 +873,11 @@ impl EffectExecutor for CantEffect {
                     crate::effects::helpers::resolve_player_filter(game, &controller, ctx)?,
                 ));
             }
-            Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
+            if permanents {
+                Restriction::AttackPlayerOrPermanentsControlledBy { attackers, player }
+            } else {
+                Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
+            }
         } else {
             restriction
         };

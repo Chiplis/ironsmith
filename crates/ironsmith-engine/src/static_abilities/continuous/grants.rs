@@ -1077,7 +1077,20 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         let filter_desc = self.filter.description();
         let keyword_label = object_ability_keyword_label(&self.ability)
             .or_else(|| explicit_granted_keyword_label(&ability_text));
-        if object_ability_is_static_keyword(&self.ability) {
+        // "Legendary creature spells you cast have convoke." (We Ride at
+        // Dawn): a granted cost-payment keyword is a common noun in running
+        // text, like an evasion keyword.
+        let granted_cost_keyword = matches!(
+            &self.ability.kind,
+            AbilityKind::Static(ability) if matches!(
+                ability.id(),
+                StaticAbilityId::Convoke
+                    | StaticAbilityId::Improvise
+                    | StaticAbilityId::Delve
+                    | StaticAbilityId::Assist
+            )
+        );
+        if object_ability_is_static_keyword(&self.ability) || granted_cost_keyword {
             ability_text = lowercase_first_ascii(&ability_text);
         } else if let Some(label) = keyword_label.as_deref() {
             ability_text = lowercase_first_ascii(label.trim());

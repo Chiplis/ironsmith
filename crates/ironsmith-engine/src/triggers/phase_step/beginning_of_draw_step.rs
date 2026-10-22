@@ -43,6 +43,9 @@ impl TriggerMatcher for BeginningOfDrawStepTrigger {
         match &self.player {
             PlayerFilter::You => "At the beginning of your draw step".to_string(),
             PlayerFilter::Any => "At the beginning of each player's draw step".to_string(),
+            PlayerFilter::NotYou => {
+                "At the beginning of each other player's draw step".to_string()
+            }
             PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
                 if tag.as_str() == "enchanted" =>
             {

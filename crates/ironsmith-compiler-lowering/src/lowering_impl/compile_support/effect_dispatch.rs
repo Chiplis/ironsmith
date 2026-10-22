@@ -774,6 +774,18 @@ fn lower_source_top_only_choice(
     ctx: &mut EffectLoweringContext,
     tag_prefix: &str,
 ) -> Result<(Effect, ChooseSpec), CardTextError> {
+    lower_source_edge_choice(spec, player, ctx, tag_prefix, false)
+}
+
+/// Select the top (or, with `bottom`, the bottom) matching object of an
+/// ordered graveyard or library source.
+fn lower_source_edge_choice(
+    spec: &ChooseSpec,
+    player: PlayerAst,
+    ctx: &mut EffectLoweringContext,
+    tag_prefix: &str,
+    bottom: bool,
+) -> Result<(Effect, ChooseSpec), CardTextError> {
     let ChooseSpec::Object(source_filter) = spec.base() else {
         return Err(CardTextError::ParseError(
             "top-of-zone selection requires an object filter".to_string(),
@@ -809,11 +821,9 @@ fn lower_source_top_only_choice(
     }
     let tag = ctx.next_tag(tag_prefix);
     ctx.last_object_tag = Some(tag.clone());
-    let choose = Effect::new(
-        crate::effects::ChooseObjectsEffect::new(filter, spec.count(), chooser, tag.clone())
-            .with_count_value_opt(spec.count_value().cloned())
-            .top_only(),
-    );
+    let choose = crate::effects::ChooseObjectsEffect::new(filter, spec.count(), chooser, tag.clone())
+        .with_count_value_opt(spec.count_value().cloned());
+    let choose = Effect::new(if bottom { choose.bottom_only() } else { choose.top_only() });
     Ok((choose, ChooseSpec::tagged(tag)))
 }
 
@@ -3041,12 +3051,14 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
         battlefield_face_down: false,
         battlefield_transformed: false,
         attached_to: None,
+        entry_type_changes: None,
+        entry_counters,
         all,
     }) = &subject_verb.action
     else {
         return Ok(None);
     };
-    if *zone == Zone::Battlefield || !tagged_destinations.is_empty()
+    if *zone == Zone::Battlefield || !entry_counters.is_empty() || !tagged_destinations.is_empty()
         || !retained_reference_tags.is_empty()
     {
         return Ok(None);
@@ -3671,12 +3683,14 @@ pub(super) fn collect_value_player_target_choices(value: &Value, choices: &mut V
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => {
             collect_object_filter_player_target_choices(filter, choices);
@@ -3729,6 +3743,7 @@ pub(super) fn collect_value_player_target_choices(value: &Value, choices: &mut V
         | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player)
         | Value::CommanderCastCount(player)
+        | Value::CommandersCastFromCommandZoneBy(player)
         | Value::CardTypesInGraveyard(player)
         | Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player)
@@ -3755,6 +3770,7 @@ pub(super) fn collect_value_player_target_choices(value: &Value, choices: &mut V
         | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
@@ -3848,6 +3864,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
         | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)

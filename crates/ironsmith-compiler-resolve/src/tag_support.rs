@@ -558,7 +558,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 ..
             }) => {
                 visit(target);
-                if let RetargetModeAst::OneToFixed { target: fixed } = mode {
+                if let RetargetModeAst::OneToFixed { target: fixed }
+                | RetargetModeAst::AllToFixed { target: fixed } = mode
+                {
                     visit(fixed);
                 }
             }
@@ -593,11 +595,17 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target,
                 attached_to,
+                battlefield_blocking,
                 ..
             }) => {
                 visit(target);
                 if let Some(attach_target) = attached_to {
                     visit(attach_target);
+                }
+                // CR 509.4: "onto the battlefield blocking that creature"
+                // names an object reference too.
+                if let Some(blocked) = battlefield_blocking {
+                    visit(blocked);
                 }
             }
             SubjectVerbActionAst::TargetOnly { target, .. } => visit(target),
@@ -705,6 +713,11 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 visit(target);
                 visit(source);
             }
+            // "they enter as copies of the chosen creature" (Mystic
+            // Reflection): the copy source names the earlier declaration.
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterNextBatchEnterAsCopy { source, .. },
+            ) => visit(source),
             _ => {}
         }
     }
@@ -1249,12 +1262,15 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PlaneswalkerTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => filter_references_tag(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => filter_references_tag(filter, tag),
@@ -1268,6 +1284,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::KicksPaidOf(spec)
         | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
@@ -3021,6 +3038,7 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
     }
 
     if let Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
+    | Restriction::AttackPlayerOrPermanentsControlledBy { attackers, .. }
     | Restriction::AttackPlayer { attackers, .. }
     | Restriction::MustAttackPlayer { attackers, .. } = restriction
     {

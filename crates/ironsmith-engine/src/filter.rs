@@ -2406,6 +2406,32 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(count)
         }
+        Value::DistinctNames(filter) => {
+            let mut names = std::collections::HashSet::new();
+            let mut insert = |name: &str| {
+                for part in name.split(" // ") {
+                    if !name_is_nameless(part) {
+                        names.insert(part.trim().to_string());
+                    }
+                }
+            };
+            if let Some(snapshots) = aggregate_tagged_snapshots(filter, ctx) {
+                for snapshot in snapshots {
+                    if filter.matches_snapshot(snapshot, ctx, game) {
+                        insert(&snapshot.name);
+                    }
+                }
+            } else {
+                let ids = game.objects_in_deterministic_order().into_iter()
+                    .filter(|object| !game.is_phased_out(object.id) && filter.matches(object, ctx, game))
+                    .map(|object| object.id).collect::<Vec<_>>();
+                let frame = game.try_current_characteristics_batch(&ids).ok()?;
+                for id in ids {
+                    insert(&frame.get(&id)?.name);
+                }
+            }
+            i64::try_from(names.len()).ok()
+        }
         Value::CountScaled(filter, factor) => {
             let mut count = 0i64;
             for object in game.objects_in_deterministic_order() {
@@ -2481,7 +2507,24 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i64)
         }
-        Value::CardTypesAmong(filter) => {
+        Value::PlaneswalkerTypesAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    let subtypes = game
+                        .current_subtypes(object.id)
+                        .unwrap_or_else(|| object.subtypes.to_vec());
+                    for subtype in subtypes {
+                        if subtype.is_planeswalker_subtype() {
+                            seen.insert(subtype);
+                        }
+                    }
+                }
+            }
+            Some(seen.len() as i64)
+        }
+        Value::CardTypesAmong(filter) | Value::PermanentTypesAmong(filter) => {
+            let permanent_only = matches!(rhs, Value::PermanentTypesAmong(_));
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {
                 if filter.matches(object, ctx, game) {
@@ -2489,7 +2532,9 @@ fn resolve_filter_comparison_rhs_value(
                         .current_card_types(object.id)
                         .unwrap_or_else(|| object.card_types.to_vec());
                     for card_type in card_types {
-                        seen.insert(card_type);
+                        if !permanent_only || card_type.is_permanent_type() {
+                            seen.insert(card_type);
+                        }
                     }
                 }
             }
@@ -3240,7 +3285,43 @@ pub(crate) fn player_turn_history_matches(
             .turn_store
             .turn_history
             .player_was_dealt_damage_this_turn(player),
+        // Needs the filter context's controller; see
+        // `player_attacked_you_or_your_planeswalker_this_turn`.
+        ironsmith_core::PlayerTurnHistoryFilter::AttackedYouOrYourPlaneswalker => false,
     }
+}
+
+/// CR 508.1: `player` declared one or more creatures attacking `you` or a
+/// planeswalker `you` controlled this turn.
+pub(crate) fn player_attacked_you_or_your_planeswalker_this_turn(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    you: PlayerId,
+) -> bool {
+    let Some(attackers) = game
+        .turn_store
+        .turn_history
+        .creatures_attacked_by_player_this_turn
+        .get(&player)
+    else {
+        return false;
+    };
+    game.turn_store
+        .turn_history
+        .projected_records()
+        .any(|record| {
+            let Some(event) = record.event.downcast::<CreatureAttackedEvent>() else {
+                return false;
+            };
+            attackers.contains(&event.attacker)
+                && match event.target {
+                    crate::triggers::event::AttackEventTarget::Player(defender) => defender == you,
+                    crate::triggers::event::AttackEventTarget::Planeswalker(planeswalker) => game
+                        .controller_of_id(planeswalker)
+                        .is_some_and(|controller| controller == you),
+                    _ => false,
+                }
+        })
 }
 
 pub(crate) fn player_filter_matches_game(
@@ -3250,6 +3331,11 @@ pub(crate) fn player_filter_matches_game(
     ctx: &FilterContext,
 ) -> bool {
     match filter {
+        PlayerFilter::TurnHistory(
+            ironsmith_core::PlayerTurnHistoryFilter::AttackedYouOrYourPlaneswalker,
+        ) => ctx.you.is_some_and(|you| {
+            player_attacked_you_or_your_planeswalker_this_turn(game, player, you)
+        }),
         PlayerFilter::TurnHistory(history) => player_turn_history_matches(game, player, *history),
         PlayerFilter::Defending if ctx.defending_player_reference.is_some() => {
             match game.defending_player_candidates(ctx.defending_player_reference.unwrap()) {
@@ -4551,6 +4637,31 @@ impl ObjectFilterExt for ObjectFilter {
         allow_calculated_pt: bool,
         view: Option<&crate::derived_view::DerivedGameView<'_>>,
     ) -> bool {
+        if self.castable_face_match {
+            let mut filter = self.clone();
+            filter.castable_face_match = false;
+            if filter.matches_internal(object, ctx, game, allow_calculated_pt, view) {
+                return true;
+            }
+            // Outside the stack a split card has both halves' characteristics
+            // (CR 709.4); each castable face is evaluated alone (709.3a,
+            // 715.3, 712.12).
+            let mut faces = Vec::new();
+            if object.linked_face_layout == crate::card::LinkedFaceLayout::Split {
+                let mut left = object.clone();
+                left.split_combined = None;
+                faces.push(left);
+            }
+            if let Some(other) =
+                crate::decision::spell_view_for_split_other_half_cast(game, object)
+            {
+                faces.push(other);
+            }
+            return faces.iter().any(|face| {
+                let snapshot = crate::snapshot::ObjectSnapshot::from_object(face, game);
+                filter.matches_snapshot(&snapshot, ctx, game)
+            });
+        }
         if self.use_face_up_characteristics && object.face_down_cast_state.is_some() {
             let mut face_up = object.clone();
             face_up.end_face_down_cast_overlay();
@@ -5085,6 +5196,14 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "that player or that object's controller owns".to_string()
                 }
+                // "permanents they control but don't own": every owner except
+                // the player the surrounding clause is about.
+                PlayerFilter::Excluding { base, excluded }
+                    if matches!(base.as_ref(), PlayerFilter::Any)
+                        && matches!(excluded.as_ref(), PlayerFilter::IteratedPlayer) =>
+                {
+                    "they don't own".to_string()
+                }
                 PlayerFilter::Excluding { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -5314,6 +5433,12 @@ impl ObjectFilterExt for ObjectFilter {
                         }
                         "saddled_it_this_turn" => {
                             post_noun_qualifiers.push("that saddled it this turn".to_string());
+                        }
+                        crate::tag::SOURCE_EXILED_TAG if self.has_craft_material_reference() => {
+                            // CR 702.167c: the craft materials stay linked
+                            // to the permanent the craft returned.
+                            parts.push("exiled".to_string());
+                            post_noun_qualifiers.push("used to craft it".to_string());
                         }
                         crate::tag::SOURCE_EXILED_TAG => {
                             post_noun_qualifiers.push("exiled with this permanent".to_string());
@@ -5599,6 +5724,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());
         }
+        if self.tapped_to_pay_for_source_abilities_this_turn {
+            post_noun_qualifiers.push("tapped this turn to pay for its abilities".to_string());
+        }
         if self.not_phased_out_with_source {
             post_noun_qualifiers.push("that hasn't been phased out with this permanent".to_string());
         }
@@ -5651,6 +5779,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.attacking_alone {
             post_noun_qualifiers.push("that's attacking alone".to_string());
+        }
+        if self.blocking_alone {
+            post_noun_qualifiers.push("that's blocking alone".to_string());
         }
         if let Some(player_filter) = &self.attacked_player_this_turn {
             post_noun_qualifiers.push(format!(
@@ -6126,6 +6257,11 @@ impl ObjectFilterExt for ObjectFilter {
             {
                 parts.push("that player both owns and controls".to_string());
             }
+            (Some(controller), Some(owner))
+                if controller == "that player controls" && owner == "they don't own" =>
+            {
+                parts.push("they control but don't own".to_string());
+            }
             (Some(controller), Some(owner)) => {
                 parts.push(format!("{owner} but {controller}"));
             }
@@ -6160,6 +6296,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.shares_card_type {
             parts.push("that share a card type".to_string());
+        }
+        if self.target_set_shared_creature_type {
+            parts.push("that share a creature type".to_string());
         }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
@@ -6608,7 +6747,11 @@ impl ObjectFilterExt for ObjectFilter {
                 } else {
                     ""
                 },
-                describe_player_filter(player)
+                if *player == PlayerFilter::Any {
+                    "a player".to_string()
+                } else {
+                    describe_player_filter(player)
+                }
             ));
         }
         if self.drawn_this_turn {

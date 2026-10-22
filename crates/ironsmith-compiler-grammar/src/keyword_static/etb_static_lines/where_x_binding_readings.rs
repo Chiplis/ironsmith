@@ -245,11 +245,18 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_attractions_visited_this_turn(input)),
     },
     Reading {
+        id: RuleId::new("where-x-turn-history-exiled-count"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_where_x_turn_history_exiled_count(input)),
+    },
+    Reading {
         id: RuleId::new("where-x-is-number-of-filter-value"),
         head: HeadDiscriminator::Any,
         admits: |input| {
             // Readings ranked above this one that read the input read it.
-            !input.read_by("counters-on-reference")
+            !input.read_by("where-x-turn-history-exiled-count")
+                && !input.read_by("counters-on-reference")
                 && !input.read_by("where-x-is-number-of-differently-named-filter-value")
                 && !input.read_by("same-name-as-triggering-spell-graveyard-count")
                 && !input.read_by("your-hand-count")
@@ -629,6 +636,22 @@ fn read_attractions_visited_this_turn(input: &BindingClause<'_>) -> Option<Value
         return Some(value);
     }
     None
+}
+/// "where X is the number of creatures that were exiled under your
+/// opponents' control this turn" (Vren, the Relentless): a count of this
+/// turn's battlefield-to-exile moves read from last-known information, not
+/// of the cards currently in exile.
+fn read_where_x_turn_history_exiled_count(input: &BindingClause<'_>) -> Option<Value> {
+    crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(input.tokens)
+        .filter(|value| {
+            matches!(
+                value.unhinted(),
+                Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::MovedZones {
+                    to: Some(crate::zone::Zone::Exile),
+                    ..
+                })
+            )
+        })
 }
 fn read_where_x_is_number_of_filter_value(input: &BindingClause<'_>) -> Option<Value> {
     let tokens = input.tokens;

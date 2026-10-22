@@ -1245,12 +1245,47 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             Self::ExcessDamageDealt => {
                 outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::ExcessDamageDealt))
             }
+            // Excess damage to a recipient that was a creature as the damage
+            // was dealt (the pre-damage recipient receipt), CR 120.4a.
+            Self::ExcessDamageDealtToCreature => outcome
+                .events_of_type::<crate::events::DamageEvent>()
+                .any(|event| {
+                    event.excess_damage > 0
+                        && matches!(event.target, crate::events::DamageTarget::Object(id)
+                            if outcome.has_execution_fact(|fact| matches!(
+                                fact,
+                                ExecutionFact::DamageRecipientBefore(DamageRecipientBefore::Object {
+                                    object,
+                                    was_creature: true,
+                                    ..
+                                }) if *object == id
+                            )))
+                }),
             Self::DealtDamageToPlayer => outcome
                 .events_of_type::<crate::events::DamageEvent>()
                 .any(|event| {
                     event.amount > 0
                         && matches!(event.target, crate::events::DamageTarget::Player(_))
                 }),
+            // Only the excess redirect makes a creature-targeted instruction
+            // assign damage to a player. The recipient receipt is captured
+            // before prevention, so a prevented redirect still counts.
+            Self::ExcessDamageRedirected => {
+                outcome.has_execution_fact(|fact| {
+                    matches!(
+                        fact,
+                        ExecutionFact::DamageRecipientBefore(DamageRecipientBefore::Player { .. })
+                    )
+                }) && outcome.has_execution_fact(|fact| {
+                    matches!(
+                        fact,
+                        ExecutionFact::DamageRecipientBefore(DamageRecipientBefore::Object {
+                            was_creature: true,
+                            ..
+                        })
+                    )
+                })
+            }
             Self::AffectedObjectMatchesCardType { card_type, negated } => {
                 outcome.affected_object_memory().is_some_and(|memories| {
                     memories
@@ -1989,6 +2024,85 @@ impl RestrictionExt for Restriction {
                         && attackers.matches(obj, &ctx, game)
                     {
                         tracker.add_cant_attack_defenders(obj_id, defenders.iter().copied());
+                    }
+                }
+            }
+            Restriction::AttackPlayerOrPermanentsControlledBy { attackers, player } => {
+                let banned_players = game
+                    .players
+                    .iter()
+                    .filter(|player_state| {
+                        player_state.is_in_game()
+                            && player_matches_restriction_filter(player_state.id, player)
+                    })
+                    .map(|player_state| player_state.id)
+                    .collect::<Vec<_>>();
+                if banned_players.is_empty() {
+                    return;
+                }
+                // CR 508.1b: "permanents you control" covers every
+                // planeswalker and battle those players control (a battle
+                // they merely protect is controlled by someone else).
+                let banned_permanents = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        game.object(*id).is_some_and(|object| {
+                            banned_players.contains(&game.controller_of(object))
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && attackers.matches(obj, &ctx, game)
+                    {
+                        tracker.add_cant_attack_players(obj_id, banned_players.iter().copied());
+                        if !banned_permanents.is_empty() {
+                            tracker
+                                .cant_attack_permanents
+                                .entry(obj_id)
+                                .or_default()
+                                .extend(banned_permanents.iter().copied());
+                        }
+                    }
+                }
+            }
+            Restriction::ObjectRule { objects, rule } => {
+                let viewers = match rule {
+                    ironsmith_core::ObjectRule::FaceDownVisibleTo(players) => Some(
+                        game.players
+                            .iter()
+                            .filter(|player_state| {
+                                player_state.is_in_game()
+                                    && player_matches_restriction_filter(player_state.id, players)
+                            })
+                            .map(|player_state| player_state.id)
+                            .collect::<Vec<_>>(),
+                    ),
+                    _ => None,
+                };
+                if viewers.as_ref().is_some_and(Vec::is_empty) {
+                    return;
+                }
+                for &obj_id in &game.battlefield {
+                    let Some(obj) = game.object(obj_id) else {
+                        continue;
+                    };
+                    if !objects.matches(obj, &ctx, game) {
+                        continue;
+                    }
+                    if let Some(viewers) = &viewers {
+                        tracker
+                            .face_down_viewers
+                            .entry(obj_id)
+                            .or_default()
+                            .extend(viewers.iter().copied());
+                    } else {
+                        let rules = tracker.object_rules.entry(obj_id).or_default();
+                        if !rules.contains(rule) {
+                            rules.push(rule.clone());
+                        }
                     }
                 }
             }

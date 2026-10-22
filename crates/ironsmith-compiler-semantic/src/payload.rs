@@ -69,6 +69,8 @@ pub enum KeywordAction {
     Soulshift(u32),
     SoulshiftValue(Value),
     Recover(ManaCost),
+    /// "Recover—<non-mana cost>" (Garza's Assassin, CR 702.59a).
+    RecoverTotalCost(ironsmith_core::TotalCost<crate::model::CompilerCost>),
     Outlast(ManaCost),
     Scavenge(ManaCost),
     Unearth(ManaCost),
@@ -475,6 +477,7 @@ impl KeywordAction {
                 describe_soulshift_value(value)
             ),
             Self::Recover(cost) => format!("Recover {}", cost.to_oracle()),
+            Self::RecoverTotalCost(cost) => format!("Recover—{}", cost.display()),
             Self::Outlast(cost) => format!("Outlast {}", cost.to_oracle()),
             Self::Scavenge(cost) => format!("Scavenge {}", cost.to_oracle()),
             Self::Unearth(cost) => format!("Unearth {}", cost.to_oracle()),
@@ -744,7 +747,10 @@ pub enum IfResultPredicate {
     SearchedLibrary,
     DiesThisWay,
     ExcessDamageDealt,
+    /// "If excess damage was dealt to a creature this way".
+    ExcessDamageDealtToCreature,
     DealtDamageToPlayer,
+    ExcessDamageRedirected,
     AffectedObjectMatchesCardType {
         card_type: crate::types::CardType,
         negated: bool,
@@ -763,4 +769,8 @@ pub enum IfResultPredicate {
         required_count: u32,
         characteristic: ironsmith_core::ObjectCharacteristic,
     },
+    /// "When its power becomes 20 this way" (Inferno of the Star Mounts):
+    /// the preceding pump left the source's power exactly at this value.
+    /// Appended.
+    SourcePowerBecomes(u32),
 }

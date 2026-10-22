@@ -238,10 +238,20 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::AttacksOneOrMoreWithMinTotal {
             filter,
             min_total_attackers,
-        } => crate::triggers::Trigger::attacks_one_or_more_with_min_total(
-            filter,
-            min_total_attackers,
-        ),
+            per_attacking_player,
+        } => {
+            if per_attacking_player {
+                crate::triggers::Trigger::player_attacks_with_min_total(
+                    filter,
+                    min_total_attackers,
+                )
+            } else {
+                crate::triggers::Trigger::attacks_one_or_more_with_min_total(
+                    filter,
+                    min_total_attackers,
+                )
+            }
+        }
         TriggerKind::AttacksOneOrMoreWithExactTotal {
             filter,
             total_attackers,
@@ -430,11 +440,21 @@ pub(crate) fn interpret_trigger_model(
             source,
             player,
             source_surface,
-        } => crate::triggers::Trigger::deals_damage_to_player_with_source_surface(
-            source,
-            player,
-            source_surface,
-        ),
+            damaged_player_one_or_more,
+        } => {
+            if damaged_player_one_or_more {
+                crate::triggers::Trigger::new(
+                    crate::triggers::DealsDamageTrigger::to_player(source, player, source_surface)
+                        .damaged_player_one_or_more(),
+                )
+            } else {
+                crate::triggers::Trigger::deals_damage_to_player_with_source_surface(
+                    source,
+                    player,
+                    source_surface,
+                )
+            }
+        }
         TriggerKind::DealsExactDamageToObjectOrPlayer {
             source,
             object,
@@ -484,7 +504,15 @@ pub(crate) fn interpret_trigger_model(
             per_source_controller,
             recipient_passive,
             during_your_turn,
+            object_recipient,
         } => {
+            if object_recipient.is_some() && (!one_or_more || !each_damaged_player
+                || per_source_controller || recipient_passive)
+            {
+                return Err(TriggerModelConversionError {
+                    detail: "a player-or-permanent combat-damage recipient groups each damaged recipient".into(),
+                });
+            }
             if recipient_passive && (!one_or_more || each_damaged_player || per_source_controller) {
                 return Err(TriggerModelConversionError {
                     detail: "passive combat-damage recipient requires an unrestricted source and one grouped event".into(),
@@ -515,6 +543,7 @@ pub(crate) fn interpret_trigger_model(
                 crate::triggers::DealsCombatDamageToPlayerTrigger::new(source, player)
             };
             matcher.during_your_turn = during_your_turn;
+            matcher.object_recipient = object_recipient;
             crate::triggers::Trigger::new(matcher)
         }
         TriggerKind::PlayerPlaysLand { player, filter } => {
@@ -1228,7 +1257,16 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter) => Self::attacks_alone(filter),
             ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission => {
-                Self::new(crate::triggers::SpellCastThroughPermissionTrigger { permissions: Vec::new() })
+                Self::new(crate::triggers::SpellCastThroughPermissionTrigger {
+                    permissions: Vec::new(),
+                    include_land_plays: false,
+                })
+            }
+            ironsmith_core::DelayedTriggerSpec::PlayedOrCastThroughPreviousPermission => {
+                Self::new(crate::triggers::SpellCastThroughPermissionTrigger {
+                    permissions: Vec::new(),
+                    include_land_plays: true,
+                })
             }
             ironsmith_core::DelayedTriggerSpec::DamagePreventedThisWay { source_filter } => {
                 Self::new(crate::triggers::DamagePreventedThisWayTrigger { source_filter })

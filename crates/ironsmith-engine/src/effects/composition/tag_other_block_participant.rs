@@ -48,8 +48,36 @@ impl crate::effects::ResolutionPreludeBinding for TagOtherBlockParticipantEffect
                 .filter(|snapshot| subject_filter.matches_snapshot(snapshot, &filter_ctx, game))
                 .cloned()
                 .collect::<Vec<_>>();
+            let aggregate = self
+                .filter
+                .as_ref()
+                .is_some_and(|filter| filter.union_is_one_or_more());
             if attacker_matches_subject {
                 block_context.blocker_snapshots
+            } else if !matching_blockers.is_empty() && aggregate && !block_context.became_blocked {
+                // "blocks ... one or more creatures": every attacker the
+                // subject blocks is one of "those creatures".
+                let mut attackers = block_context
+                    .attacker_snapshot
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                if let Some(combat) = game.combat.as_ref() {
+                    for (attacker, blockers) in &combat.blockers {
+                        if attackers.iter().any(|snapshot| snapshot.object_id == *attacker)
+                            || !matching_blockers
+                                .iter()
+                                .any(|blocker| blockers.contains(&blocker.object_id))
+                        {
+                            continue;
+                        }
+                        if let Some(snapshot) = game.object(*attacker).and_then(|object| {
+                            crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)
+                        }) {
+                            attackers.push(snapshot);
+                        }
+                    }
+                }
+                attackers
             } else if !matching_blockers.is_empty() {
                 block_context.attacker_snapshot.into_iter().collect()
             } else {

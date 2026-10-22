@@ -252,6 +252,7 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
                 ));
             }
             permission.reserve(game, player)?;
+            let play_permission = permission.identity().cloned();
             game.reserve_next_land_play_timing(player, card);
             let receipt = if root {
                 let receipt = game
@@ -325,7 +326,7 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
                         destination,
                         game,
                     )
-                    .map(|event| (subject, event))
+                    .map(|event| (subject, event.with_play_permission(play_permission.clone())))
                 })
                 .transpose()?;
             if matches!(timing, LandPlayObservationTiming::AfterHistory) {

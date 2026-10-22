@@ -112,50 +112,6 @@ fn apply_frequency_turn_scope(
     }
 }
 
-fn merge_spell_cast_trigger_filter(base: &mut ObjectFilter, overlay: ObjectFilter) {
-    if let Some(zone) = overlay.zone {
-        base.zone.get_or_insert(zone);
-    }
-    if base.stack_kind.is_none() {
-        base.stack_kind = overlay.stack_kind;
-    }
-    base.has_mana_cost |= overlay.has_mana_cost;
-    base.has_phyrexian_mana_symbol |= overlay.has_phyrexian_mana_symbol;
-    if base.mana_symbol_count.is_none() { base.mana_symbol_count = overlay.mana_symbol_count; }
-    for card_type in overlay.card_types {
-        if !base.card_types.contains(&card_type) {
-            base.card_types.push(card_type);
-        }
-    }
-    for card_type in overlay.all_card_types {
-        if !base.all_card_types.contains(&card_type) {
-            base.all_card_types.push(card_type);
-        }
-    }
-    for card_type in overlay.excluded_card_types {
-        if !base.excluded_card_types.contains(&card_type) {
-            base.excluded_card_types.push(card_type);
-        }
-    }
-    if base.targets_player.is_none() {
-        base.targets_player = overlay.targets_player;
-    }
-    if base.targets_object.is_none() {
-        base.targets_object = overlay.targets_object;
-    }
-    base.targets_any_of |= overlay.targets_any_of;
-    if base.targets_only_player.is_none() {
-        base.targets_only_player = overlay.targets_only_player;
-    }
-    if base.targets_only_object.is_none() {
-        base.targets_only_object = overlay.targets_only_object;
-    }
-    base.targets_only_any_of |= overlay.targets_only_any_of;
-    if base.target_count.is_none() {
-        base.target_count = overlay.target_count;
-    }
-}
-
 fn absorb_predicate_into_trigger(
     trigger: TriggerSpec,
     predicate: PredicateAst,
@@ -203,48 +159,12 @@ fn absorb_predicate_into_trigger(
             }
         }
         // "Whenever an opponent casts a spell, if it has a single target,
-        // ..." (Captured by the Consulate): a bare target-count check stays
-        // an intervening-if (CR 603.4), checked again on resolution.
-        PredicateAst::ItMatches(filter)
-            if is_stack_object_targeting_filter(&filter)
-                && filter.target_count.is_some()
-                && filter.targets_player.is_none()
-                && filter.targets_object.is_none()
-                && filter.targets_only_player.is_none()
-                && filter.targets_only_object.is_none() =>
-        {
-            (trigger, Some(PredicateAst::ItMatches(filter)))
-        }
+        // ..." (Captured by the Consulate), "if that spell targets only this
+        // creature" (Ink-Treader Nephilim): a target check written as an
+        // intervening-if stays one (CR 603.4), checked again on resolution
+        // instead of folding into the cast-event filter.
         PredicateAst::ItMatches(filter) if is_stack_object_targeting_filter(&filter) => {
-            match trigger {
-                TriggerSpec::SpellCast {
-                    filter: trigger_filter,
-                    mana_source_filter,
-                    caster,
-                    timing,
-                    during_turn,
-                    min_spells_this_turn,
-                    exact_spells_this_turn,
-                    from_not_hand,
-                } => {
-                    let mut merged_filter = trigger_filter.unwrap_or_else(ObjectFilter::spell);
-                    merge_spell_cast_trigger_filter(&mut merged_filter, filter);
-                    (
-                        TriggerSpec::SpellCast {
-                            filter: Some(merged_filter),
-                            mana_source_filter,
-                            caster,
-                            timing,
-                            during_turn,
-                            min_spells_this_turn,
-                            exact_spells_this_turn,
-                            from_not_hand,
-                        },
-                        None,
-                    )
-                }
-                other => (other, Some(PredicateAst::ItMatches(filter))),
-            }
+            (trigger, Some(PredicateAst::ItMatches(filter)))
         }
         // "Whenever your opponents are dealt combat damage, if any of that
         // damage was dealt by a Warrior" (Mindblade Render): the qualifier
@@ -305,6 +225,7 @@ fn with_combat_damage_source_filter(trigger: TriggerSpec, filter: ObjectFilter) 
                 per_source_controller: false,
                 recipient_passive: true,
                 during_your_turn: false,
+                object_recipient: None,
             }
         }
         other => other,

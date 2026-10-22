@@ -69,6 +69,11 @@ pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Ob
             // (for example flying) is not a restriction on later references.
             let mut host = ObjectFilter::default();
             host.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            // "if enchanted creature is red, tap it" (Ray of Frost): the
+            // consequence names the host by the pronoun it was written with.
+            host.source_surface = Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                "it".to_string(),
+            ));
             Some(host)
         }
         PredicateAst::TurnHistory(crate::cards::builders::TurnHistoryPredicateAst::AnotherOpponentControlsPotentialTarget { filter }) => {
@@ -208,7 +213,9 @@ fn bind_condition_antecedent_in_target(
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && !matches!(mode, ConditionAntecedentBinding::RandomWithCountObjectsOnly) =>
         {
-            *target = TargetAst::Object(antecedent.clone(), *span, None);
+            // The pronoun is an anaphoric reference, never a new target
+            // announcement: its span is the reference span.
+            *target = TargetAst::Object(antecedent.clone(), None, *span);
         }
         TargetAst::WithCount(inner, count) => {
             if matches!(
@@ -514,6 +521,25 @@ pub fn bind_condition_collection_antecedent_in_effects(
                 Value::Count(filter) if is_source_exiled_collection(filter) => Some(filter.clone()),
                 _ => None,
             },
+            // "if it targets one or more other permanents you control, create
+            // a token that's a copy of one of those permanents" (Orvar, the
+            // All-Form): the collection is the matching objects the
+            // triggering spell targets.
+            PredicateAst::ItMatches(filter)
+                if filter.zone == Some(crate::zone::Zone::Stack)
+                    && filter.targets_player.is_none()
+                    && filter.targets_only_object.is_none() =>
+            {
+                spell_target_collection(filter)
+            }
+            PredicateAst::TaggedMatches(tag, filter)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()
+                    && filter.zone == Some(crate::zone::Zone::Stack)
+                    && filter.targets_player.is_none()
+                    && filter.targets_only_object.is_none() =>
+            {
+                spell_target_collection(filter)
+            }
             PredicateAst::And(left, right) => {
                 match (collection_filter(left), collection_filter(right)) {
                     (Some(left), Some(right)) if left == right => Some(left),
@@ -523,6 +549,20 @@ pub fn bind_condition_collection_antecedent_in_effects(
             }
             _ => None,
         }
+    }
+
+    fn spell_target_collection(filter: &ObjectFilter) -> Option<ObjectFilter> {
+        let mut targeted = filter.targets_object.as_deref()?.clone().match_tagged(
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
+            TaggedOpbjectRelation::TargetedByTaggedObject,
+        );
+        // A single member is named from the collection ("one of those
+        // permanents").
+        targeted.source_surface = Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+            "one of those permanents".to_owned(),
+        ));
+        targeted.set_one_of_tagged_set_surface(true);
+        Some(targeted)
     }
 
     fn bind_inline_collection_choice(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
@@ -630,8 +670,82 @@ pub fn bind_condition_collection_antecedent_in_effects(
         true
     }
 
+    /// "create a token that's a copy of one of those permanents": choose
+    /// the copied member of the collection, then copy the chosen object.
+    fn bind_token_copy_collection_choice(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
+        if !antecedent.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::TargetedByTaggedObject
+        }) {
+            return false;
+        }
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            return false;
+        };
+        if let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+            source, ..
+        }) = &mut subject_verb.action
+        {
+            let it = crate::tag::CompilerReferenceTag::It.as_str();
+            let triggering = crate::tag::CompilerReferenceTag::Triggering.as_str();
+            if !target_references_tag(source, |tag| tag == it || tag == triggering) {
+                return false;
+            }
+            // The copied object is a permanent; a reference resolved to the
+            // triggering spell names the collection the condition set up.
+            fn retag(target: &mut TargetAst, from: &str, to: &crate::tag::TagKey) {
+                match target {
+                    TargetAst::Object(filter, _, _) => {
+                        for constraint in &mut filter.tagged_constraints {
+                            if constraint.tag.as_str() == from
+                                && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                            {
+                                constraint.tag = to.clone();
+                            }
+                        }
+                    }
+                    TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                        retag(inner, from, to)
+                    }
+                    _ => {}
+                }
+            }
+            retag(source, triggering, &crate::tag::CompilerReferenceTag::It.key());
+            bind_condition_antecedent_in_target(
+                source,
+                antecedent,
+                ConditionAntecedentBinding::TaggedItOnly,
+            );
+            return true;
+        }
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+            object: crate::cards::builders::ObjectRefAst::Tagged(object_tag),
+            ..
+        }) = &mut subject_verb.action
+        else {
+            return false;
+        };
+        if object_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
+            return false;
+        }
+        let tag = crate::tag::CompilerReferenceTag::ConditionCollectionChoice.bind();
+        *object_tag = tag.clone();
+        let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: antecedent.clone(),
+            count: ironsmith_core::ChoiceCount::exactly(1),
+            count_value: None,
+            player: crate::cards::builders::PlayerAst::You,
+            tag,
+        });
+        let copy = std::mem::replace(effect, EffectAst::Sequence { effects: Vec::new() });
+        *effect = EffectAst::Sequence { effects: vec![choice, copy] };
+        true
+    }
+
     fn bind(effect: &mut EffectAst, antecedent: &ObjectFilter) {
         if bind_inline_collection_choice(effect, antecedent) {
+            return;
+        }
+        if bind_token_copy_collection_choice(effect, antecedent) {
             return;
         }
         if bind_plural_collection_move(effect, antecedent) {

@@ -74,6 +74,7 @@ impl CostChoiceBindings {
 /// during the casting process (before targets are chosen).
 #[derive(Debug, Clone)]
 pub struct ModalSpec {
+    pub faces_dilemma: bool,
     /// Descriptions of each available mode.
     pub mode_descriptions: Vec<String>,
     /// Maximum number of modes that can be chosen.

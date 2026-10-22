@@ -190,7 +190,24 @@ pub(super) fn read_leading_result_prefix(
         {
             get_then_gain_body = rest;
         }
-        let get_then_gain = if !get_then_gain_body.iter().any(|token| token.is_comma())
+        // "If you do, another target creature you control gets +1/+0 and
+        // gains haste until end of turn" (Conduit Goblin): the generic chain
+        // splitter drops the grant after an "another" subject.
+        let another_get_then_gain = if get_then_gain_body
+            .first()
+            .is_some_and(|token| token.is_word("another"))
+            && !get_then_gain_body.iter().any(|token| token.is_comma())
+            && get_then_gain_body.iter().any(|token| token.is_any_word(&["gets", "get"]))
+            && get_then_gain_body.iter().any(|token| token.is_any_word(&["gains", "gain"]))
+        {
+            crate::effect_sentences::gain_ability::parse_gain_ability_sentence(get_then_gain_body)?
+                .filter(|effects| !effects.is_empty())
+        } else {
+            None
+        };
+        let get_then_gain = if another_get_then_gain.is_some() {
+            another_get_then_gain
+        } else if !get_then_gain_body.iter().any(|token| token.is_comma())
             && !get_then_gain_body
                 .first()
                 .is_some_and(|token| token.is_word("the"))
@@ -213,7 +230,7 @@ pub(super) fn read_leading_result_prefix(
             effects
         } else if let Some(effects) = get_then_gain {
             effects
-        } else if let Some(permission) = crate::permission_helpers::parse_cast_or_play_tagged_clause(prefix.trailing_tokens)? {
+        } else if let Some(permission) = crate::permission_helpers::parse_cast_or_play_tagged_clause_keeping_may(prefix.trailing_tokens)? {
             // A result row owns the complete casting permission, including
             // its mana-spending rider, before effect-chain splitting.
             vec![permission]
@@ -278,7 +295,9 @@ pub(super) fn read_leading_player_may(
         if let Some(spec) = parse_may_cast_it_sentence(tokens) {
             return Ok(Some(vec![build_may_cast_tagged_effect(&spec)]));
         }
-        if let Some(effect) = crate::permission_helpers::parse_cast_or_play_tagged_clause(tokens)? {
+        if let Some(effect) =
+            crate::permission_helpers::parse_cast_or_play_tagged_clause_keeping_may(tokens)?
+        {
             return Ok(Some(vec![effect]));
         }
         return super::super::super::super::parse_effect_chain_lexed(tokens).map(Some);

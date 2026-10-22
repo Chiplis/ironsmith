@@ -22,6 +22,9 @@ use super::types::{TargetingInvalidReason, TargetingResult};
 enum TargetSetControllerConstraint {
     Same,
     Different,
+    /// "two target cards from a single graveyard" (Push // Pull): every
+    /// target shares one owner's graveyard.
+    SameOwner,
 }
 
 fn spec_target_set_controller_constraint(
@@ -33,7 +36,9 @@ fn spec_target_set_controller_constraint(
         | ChooseSpec::WithCount(spec, _)
         | ChooseSpec::WithCountValue(spec, _, _) => spec_target_set_controller_constraint(spec),
         ChooseSpec::Object(filter) => {
-            if filter.target_set_same_controller {
+            if filter.single_graveyard && filter.zone == Some(Zone::Graveyard) {
+                Some(TargetSetControllerConstraint::SameOwner)
+            } else if filter.target_set_same_controller {
                 Some(TargetSetControllerConstraint::Same)
             } else if filter.target_set_different_controllers {
                 Some(TargetSetControllerConstraint::Different)
@@ -65,6 +70,39 @@ fn spec_requires_shared_creature_type(spec: &ChooseSpec) -> bool {
         ChooseSpec::Object(filter) => filter.target_set_shared_creature_type,
         _ => false,
     }
+}
+
+fn spec_target_set_equal_metric(spec: &ChooseSpec) -> Option<ironsmith_core::ChoiceAggregateMetric> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => spec_target_set_equal_metric(spec),
+        ChooseSpec::Object(filter) => filter.target_set_equal_metric,
+        _ => None,
+    }
+}
+
+/// "... with equal toughness" (V.A.T.S.): one group per metric value among
+/// the legal targets (first-seen order over the ordered legal targets, so
+/// identical on every peer); a legal set is any selection from one group.
+fn equal_metric_target_sets(
+    game: &GameState,
+    legal_targets: &[Target],
+    metric: ironsmith_core::ChoiceAggregateMetric,
+) -> Vec<Vec<Target>> {
+    let mut by_value: Vec<(i32, Vec<Target>)> = Vec::new();
+    for target in legal_targets {
+        let Target::Object(object_id) = target else {
+            continue;
+        };
+        let value = crate::targeting::aggregate_object_value(game, *object_id, metric);
+        match by_value.iter_mut().find(|(existing, _)| *existing == value) {
+            Some((_, group)) => group.push(*target),
+            None => by_value.push((value, vec![*target])),
+        }
+    }
+    by_value.into_iter().map(|(_, group)| group).collect()
 }
 
 /// "... that share a creature type": one group per creature type among the
@@ -189,7 +227,7 @@ fn distinct_creature_type_target_sets(
                 Some(TargetSetControllerConstraint::Different) => {
                     !used_controllers.contains(&controller)
                 }
-                None => true,
+                Some(TargetSetControllerConstraint::SameOwner) | None => true,
             };
             if !controller_allowed {
                 continue;
@@ -255,6 +293,9 @@ pub fn legal_target_sets_for_spec(
     if spec_requires_shared_creature_type(spec) {
         return shared_creature_type_target_sets(game, legal_targets);
     }
+    if let Some(metric) = spec_target_set_equal_metric(spec) {
+        return equal_metric_target_sets(game, legal_targets, metric);
+    }
     if spec_requires_distinct_creature_types(spec) {
         let Some(count) = target_count_for_spec(spec) else {
             return Vec::new();
@@ -282,15 +323,17 @@ pub fn legal_target_sets_for_spec(
         let Some(object) = game.object(*object_id) else {
             continue;
         };
-        by_controller
-            .entry(game.controller_of(object))
-            .or_default()
-            .push(*target);
+        let key = if constraint == TargetSetControllerConstraint::SameOwner {
+            object.owner
+        } else {
+            game.controller_of(object)
+        };
+        by_controller.entry(key).or_default().push(*target);
     }
 
     let grouped = by_controller.into_values().collect::<Vec<_>>();
     match constraint {
-        TargetSetControllerConstraint::Same => grouped,
+        TargetSetControllerConstraint::Same | TargetSetControllerConstraint::SameOwner => grouped,
         TargetSetControllerConstraint::Different => {
             let Some(count) = target_count_for_spec(spec) else {
                 return Vec::new();
@@ -400,6 +443,7 @@ pub fn has_enough_legal_targets_for_spec(
         if spec_target_set_controller_constraint(spec).is_some()
             || spec_requires_distinct_creature_types(spec)
             || spec_requires_shared_creature_type(spec)
+            || spec_target_set_equal_metric(spec).is_some()
         {
             false
         } else {

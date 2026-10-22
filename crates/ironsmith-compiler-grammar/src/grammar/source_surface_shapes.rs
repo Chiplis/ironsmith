@@ -47,6 +47,28 @@ fn operand_after(tokens: &[OwnedLexToken], action_index: usize) -> Option<&[Owne
     (end > start).then(|| &tokens[start..end])
 }
 
+fn operand_after_with_context<'a>(
+    context: Option<ParseContextView<'_>>,
+    tokens: &'a [OwnedLexToken],
+    action_index: usize,
+) -> Option<&'a [OwnedLexToken]> {
+    if let Some(context) = context {
+        let tail = tokens.get(action_index + 1..)?;
+        let view = crate::lexer::TokenWordView::new(tail);
+        let words = view.word_refs();
+        // A known source alias can contain punctuation ("Dr. Example").
+        // Match that complete alias before treating a period as a sentence end.
+        for alias in crate::grammar::leaf::parse_leaf_source_reference_aliases_for_name(&context.source().card_name) {
+            if words.len() >= alias.words.len()
+                && words.iter().zip(&alias.words).all(|(word, expected)| word.eq_ignore_ascii_case(expected))
+                && let Some(end) = view.token_index_after_words(alias.words.len()) {
+                return Some(&tail[..end]);
+            }
+        }
+    }
+    operand_after(tokens, action_index)
+}
+
 pub fn parse_named_surface(tokens: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
     let name_parts = tokens
         .split(|token| token.kind == TokenKind::Comma)
@@ -99,7 +121,7 @@ pub fn parse_unique_named_operand_after(
         if !token.is_word(action_word) {
             continue;
         }
-        let candidate = operand_after(tokens, action_index)?;
+        let candidate = operand_after_with_context(context, tokens, action_index)?;
         let surface = context
             .and_then(|context| {
                 crate::util::authored_named_source_reference_surface(context, candidate)
@@ -122,7 +144,7 @@ pub fn parse_unique_source_operand_after(
         if !token.is_word(action_word) {
             continue;
         }
-        let candidate = operand_after(tokens, action_index)?;
+        let candidate = operand_after_with_context(Some(context), tokens, action_index)?;
         let words = parser_token_word_refs(candidate);
         let surface =
             if candidate.len() == 1 && matches!(candidate[0].parser_text(), "it" | "him" | "her") {

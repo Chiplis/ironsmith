@@ -328,10 +328,35 @@ pub(crate) fn resolve_wide(
             });
             Ok(i64::from(seen.len() as i64))
         }
+        Value::PlaneswalkerTypesAmong(filter) => {
+            let mut seen = HashSet::new();
+            context.visit_property_objects(filter, |object| {
+                for subtype in object.subtypes(game, true) {
+                    if subtype.is_planeswalker_subtype() {
+                        seen.insert(subtype);
+                    }
+                }
+            });
+            Ok(i64::from(seen.len() as i64))
+        }
         Value::CardTypesAmong(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
                 seen.extend(object.card_types(game));
+            });
+            Ok(i64::from(seen.len() as i64))
+        }
+        Value::PermanentTypesAmong(filter) => {
+            // CR 110.4: only artifact, battle, creature, enchantment, land,
+            // and planeswalker are permanent types (Kindred is not).
+            let mut seen = HashSet::new();
+            context.visit_property_objects(filter, |object| {
+                seen.extend(
+                    object
+                        .card_types(game)
+                        .into_iter()
+                        .filter(|card_type| card_type.is_permanent_type()),
+                );
             });
             Ok(i64::from(seen.len() as i64))
         }
@@ -385,6 +410,35 @@ pub(crate) fn resolve_wide(
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
                 seen.insert(object.filter_mana_value());
+            });
+            Ok(i64::from(seen.len() as i64))
+        }
+        // CR 202.1: mana costs compare as the multiset of their symbols; an
+        // object without a mana cost has none to contribute.
+        Value::DistinctManaCosts(filter) => {
+            let mut seen = HashSet::new();
+            context.visit_property_objects(filter, |object| {
+                let cost = match object {
+                    context::PropertyObject::Live(object)
+                    | context::PropertyObject::LayerBaseline(object) => {
+                        object.mana_cost_owned()
+                    }
+                    context::PropertyObject::Snapshot(snapshot) => snapshot.mana_cost.clone(),
+                };
+                let Some(cost) = cost else {
+                    return;
+                };
+                let mut key = cost
+                    .pips()
+                    .iter()
+                    .map(|pip| {
+                        let mut symbols = pip.iter().map(|symbol| format!("{symbol:?}")).collect::<Vec<_>>();
+                        symbols.sort();
+                        symbols.join("/")
+                    })
+                    .collect::<Vec<_>>();
+                key.sort();
+                seen.insert(key);
             });
             Ok(i64::from(seen.len() as i64))
         }
@@ -1090,6 +1144,30 @@ pub(crate) fn resolve_wide(
                     .map(|player_id| game.commander_cast_count_for_player(player_id) as i64)
                     .sum::<i64>(),
             ))
+        }
+        Value::CommandersCastFromCommandZoneBy(player_spec) => {
+            let player_ids = context.player_ids(value, player_spec)?;
+            Ok(player_ids
+                .into_iter()
+                .map(|player_id| i64::from(game.commanders_cast_from_command_zone_by(player_id)))
+                .sum::<i64>())
+        }
+        // "the number of times it's been cast from the command zone this
+        // game": the referenced commander's own count. In a cost-reduction
+        // context the iterated object is the spell being priced (Myth
+        // Unbound); for an entering permanent it is the source (Opal Palace).
+        Value::CommanderCastCountOf(target_spec) => {
+            let id = match target_spec.base() {
+                ChooseSpec::Source => context.source,
+                _ => {
+                    let ctx = context.require_execution(
+                        value,
+                        "commander cast counts of a referenced object require a resolving context",
+                    );
+                    resolve_primary_object_from_value_spec(game, target_spec, ctx)?
+                }
+            };
+            Ok(i64::from(game.commander_cast_count(id)))
         }
         Value::CommanderColorIdentityColors(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;

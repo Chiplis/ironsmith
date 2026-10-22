@@ -117,6 +117,7 @@ fn retarget_it_restriction_for_counter_followup(
             retarget_it_filter_for_counter_followup(attacker, source_filter);
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
+        | Restriction::AttackPlayerOrPermanentsControlledBy { attackers, .. }
         | Restriction::AttackPlayer { attackers, .. }
         | Restriction::MustAttackPlayer { attackers, .. }
         | Restriction::PlayLandsMatching(_, attackers)
@@ -735,7 +736,22 @@ pub fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     // "onto the battlefield tapped under your control with two additional
     // +1/+1 counters on it" (The Darkness Crystal) keeps the tapped entry.
     let tapped = shape.destination.tapped;
-    let target = parse_target_phrase(shape.target_tokens)?;
+    let mut target = parse_target_phrase(shape.target_tokens)?;
+    // "If you do, put a permanent card from among them onto the battlefield
+    // with a finality counter on it" (Winter, Cynical Opportunist): the
+    // choice is among the cards the previous instruction acted on, wherever
+    // they now are, never a permanent already on the battlefield.
+    if crate::lexer::token_word_refs(shape.target_tokens).ends_with(&["from", "among", "them"])
+        && let Some(filter) =
+            crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
+        && filter.tagged_constraints.is_empty()
+    {
+        filter.zone = None;
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.key(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
     let move_effect = if shape
         .target_tokens
         .first()

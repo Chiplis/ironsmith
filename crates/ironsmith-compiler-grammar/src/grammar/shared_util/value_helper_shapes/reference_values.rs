@@ -57,6 +57,21 @@ pub fn parse_commander_cast_count_player(words: &[&str]) -> Option<PlayerFilter>
     .then(|| parse_value_player_reference(words))
 }
 
+/// The commander-cast history value named by `words`: "you've cast your
+/// commander" counts the player's own commanders' casts, while "you've cast a
+/// commander" counts every command-zone commander cast that player made,
+/// whoever owns the commander (Jeska, Font of Magic).
+pub fn parse_commander_cast_count_value(words: &[&str]) -> Option<crate::effect::Value> {
+    let player = parse_commander_cast_count_player(words)?;
+    Some(
+        if permission_shapes::find_words(words, &["a", "commander"]).is_some() {
+            crate::effect::Value::CommandersCastFromCommandZoneBy(player)
+        } else {
+            crate::effect::Value::CommanderCastCount(player)
+        },
+    )
+}
+
 pub fn parse_cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter> {
     // A whole-hand scalar must consume its entire noun phrase. Qualified
     // cards are counted by the object-filter reader, preserving color/type.

@@ -206,6 +206,10 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Mutate {
         cost: ManaCost,
     },
+    /// Cast from the graveyard by paying mana and returning a creature as a cost.
+    BeamMeUp {
+        total_cost: TotalCost<C>,
+    },
 }
 
 impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond>
@@ -239,6 +243,7 @@ where
             Self::Warp { .. } => Zone::Hand,
             Self::Plot { .. } | Self::Suspend { .. } => Zone::Exile,
             Self::Flashback { .. }
+            | Self::BeamMeUp { .. }
             | Self::Harmonize { .. }
             | Self::Retrace { .. }
             | Self::JumpStart { .. }
@@ -281,7 +286,8 @@ where
             } => *exiles_after_resolution,
             _ => matches!(
                 self,
-                Self::Flashback { .. } | Self::Harmonize { .. } | Self::JumpStart { .. }
+                Self::Flashback { .. } | Self::BeamMeUp { .. }
+            | Self::Harmonize { .. } | Self::JumpStart { .. }
             ),
         }
     }
@@ -298,7 +304,7 @@ where
             Self::Cleave { cost, .. } => Some(cost),
             Self::Awaken { cost, .. } => Some(cost),
             Self::Flashback { total_cost, .. } => total_cost.mana_cost(),
-            Self::Harmonize { total_cost } => total_cost.mana_cost(),
+            Self::Harmonize { total_cost } | Self::BeamMeUp { total_cost } => total_cost.mana_cost(),
             Self::Retrace { total_cost } => total_cost.mana_cost(),
             Self::JumpStart { .. } => None,
             Self::Escape { cost, .. } => cost.as_ref(),
@@ -324,7 +330,7 @@ where
             Self::Blitz { total_cost } | Self::Madness { total_cost } => {
                 non_mana_components(total_cost)
             }
-            Self::Harmonize { total_cost } => non_mana_components(total_cost),
+            Self::Harmonize { total_cost } | Self::BeamMeUp { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::JumpStart { additional_cost }
             | Self::Warp {
@@ -345,7 +351,7 @@ where
         match self {
             Self::Flashback { total_cost, .. } => Some(total_cost),
             Self::Blitz { total_cost } | Self::Madness { total_cost } => Some(total_cost),
-            Self::Harmonize { total_cost } => Some(total_cost),
+            Self::Harmonize { total_cost } | Self::BeamMeUp { total_cost } => Some(total_cost),
             Self::Retrace { total_cost } => Some(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => Some(total_cost),
             Self::Composed { total_cost, .. } => Some(total_cost),
@@ -421,6 +427,7 @@ where
             Self::Awaken { .. } => "Awaken",
             Self::Flashback { .. } => "Flashback",
             Self::Harmonize { .. } => "Harmonize",
+            Self::BeamMeUp { .. } => "Beam me up",
             Self::Retrace { .. } => "Retrace",
             Self::JumpStart { .. } => "Jump-start",
             Self::Escape { .. } => "Escape",
@@ -717,6 +724,9 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             } => AlternativeCastingMethod::Flashback {
                 total_cost: map_total_cost(total_cost)?,
                 x_minimum,
+            },
+            Self::BeamMeUp { total_cost } => AlternativeCastingMethod::BeamMeUp {
+                total_cost: map_total_cost(total_cost)?,
             },
             Self::Harmonize { total_cost } => AlternativeCastingMethod::Harmonize {
                 total_cost: map_total_cost(total_cost)?,

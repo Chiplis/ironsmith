@@ -690,7 +690,24 @@ fn evaluate_value(
             }
             ValueEval::Scalar(seen.len() as i32)
         }
-        Value::CardTypesAmong(filter) => {
+        Value::PlaneswalkerTypesAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for (id, chars) in baseline {
+                let Some(obj) = objects.get(id) else {
+                    continue;
+                };
+                if object_matches_filter_with_chars(filter, obj, chars, game, effect_controller) {
+                    for subtype in &chars.subtypes {
+                        if subtype.is_planeswalker_subtype() {
+                            seen.insert(*subtype);
+                        }
+                    }
+                }
+            }
+            ValueEval::Scalar(seen.len() as i32)
+        }
+        Value::CardTypesAmong(filter) | Value::PermanentTypesAmong(filter) => {
+            let permanent_only = matches!(value, Value::PermanentTypesAmong(_));
             let mut seen = std::collections::HashSet::new();
             for (id, chars) in baseline {
                 let Some(obj) = objects.get(id) else {
@@ -698,7 +715,9 @@ fn evaluate_value(
                 };
                 if object_matches_filter_with_chars(filter, obj, chars, game, effect_controller) {
                     for card_type in &chars.card_types {
-                        seen.insert(*card_type);
+                        if !permanent_only || card_type.is_permanent_type() {
+                            seen.insert(*card_type);
+                        }
                     }
                 }
             }
@@ -1660,6 +1679,8 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::LeastManaValue(_)
         | Value::BasicLandTypesAmong(_)
         | Value::CreatureTypesAmong(_)
+        | Value::PlaneswalkerTypesAmong(_)
+        | Value::PermanentTypesAmong(_)
         | Value::CardTypesAmong(_)
         | Value::StaticAbilitiesAmong { .. }
         | Value::ColorsAmong(_)
@@ -1667,6 +1688,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::DistinctCounterTypesAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctManaValues(_)
+        | Value::DistinctManaCosts(_)
         | Value::UnlockedDoorsAmong(_)
         | Value::DistinctPowers(_)
         | Value::TurnHistoryCount(_)
@@ -1698,6 +1720,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
+        | Value::CommanderCastCountOf(_)
         | Value::ColorsOf(_)
         | Value::ChosenColorsOf(_)
         | Value::NotedCreatureTypeCount(_)
@@ -1744,6 +1767,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::CommanderCastCount(_)
+        | Value::CommandersCastFromCommandZoneBy(_)
         | Value::CommanderColorIdentityColors(_)
         | Value::ThisAbilityResolvedThisTurnCount | Value::ThisAbilityManaProductionCountThisTurn
         | Value::SourceRegeneratedThisTurnCount
@@ -2246,6 +2270,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TargetPaidLabel(_)
         | C::ThisSpellWasKicked
         | C::ThisSpellPaidLabel(_)
+        | C::ThisSpellCastOrderThisGame(_)
         | C::TargetSpellCastOrderThisTurn(_)
         | C::TargetSpellControllerIsPoisoned
         | C::TargetSpellManaSpentToCastAtLeast { .. }
@@ -2437,6 +2462,8 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::CommanderCastCount(_)
+        | Value::CommandersCastFromCommandZoneBy(_)
+        | Value::CommanderCastCountOf(_)
         | Value::ThisAbilityResolvedThisTurnCount | Value::ThisAbilityManaProductionCountThisTurn
         | Value::SourceRegeneratedThisTurnCount
         | Value::SourceMutationCount
@@ -2523,12 +2550,15 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::GreatestManaValue(filter)
         | Value::LeastManaValue(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter) => {
             matches!(modification.layer(), Layer::Copy)
                 || modification_can_affect_filter(modification, filter)
         }
         Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PlaneswalkerTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter) => {
             modification_can_change_type_characteristics(modification)
                 || modification_can_affect_filter(modification, filter)

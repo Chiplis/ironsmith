@@ -201,12 +201,14 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => object_filter_mentions_iterated_player(filter),
         Value::PlayersWhoControl { players, filter }
@@ -232,6 +234,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
@@ -276,6 +279,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player)
         | Value::CommanderCastCount(player)
+        | Value::CommandersCastFromCommandZoneBy(player)
         | Value::CardTypesInGraveyard(player)
         | Value::PlayerCounters(player, _)
         | Value::PlayerVoteCount(player) => player.mentions_iterated_player(),
@@ -331,14 +335,20 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 }
                 TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
                 | TurnHistoryCount::Sacrificed { player, filter }
+                | TurnHistoryCount::TokensCreatedMatching { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
-                | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
+                | TurnHistoryCount::CreaturesAttackedWith { player, filter, .. } => {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
                 }
                 TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => {
                     players.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(sources)
+                }
+                TurnHistoryCount::CombatDamageSourcesToPlayers { player, recipients, filter } => {
+                    player.mentions_iterated_player()
+                        || recipients.mentions_iterated_player()
+                        || object_filter_mentions_iterated_player(filter)
                 }
                 TurnHistoryCount::SpellsCast { player, filter, .. } => {
                     player.mentions_iterated_player()
@@ -414,12 +424,14 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => object_filter_contains_pending_effect_metric(filter),
         Value::PlayersWhoControl { filter, .. }
@@ -435,6 +447,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
@@ -663,7 +676,16 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | MustBeBlockedByAtLeast {
             attacker: filter, ..
         } => object_filter_mentions_iterated_player(filter),
+        ObjectRule { objects, rule } => {
+            object_filter_mentions_iterated_player(objects)
+                || matches!(
+                    rule,
+                    ironsmith_core::ObjectRule::FaceDownVisibleTo(player)
+                        if player.mentions_iterated_player()
+                )
+        }
         AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
+        | AttackPlayerOrPermanentsControlledBy { attackers, player }
         | AttackPlayer { attackers, player }
         | MustAttackPlayer { attackers, player }
         | GainControl(attackers, player) => {

@@ -2341,6 +2341,17 @@ fn last_tagged_target_in_effect(effect: &Effect) -> Option<(TagKey, ChooseSpec)>
         if let Some(target) = tagged.effect.target_spec() {
             return Some((tagged.tag.clone(), target.clone()));
         }
+        // "create a token that's a copy of target token you control. If that
+        // token is a Squirrel, instead ..." (Hazel of the Rootbloom): the
+        // announced copy source is the instruction's declared target, which
+        // resolution binds to this tag while the replacement is chosen.
+        if let Some(copy) = tagged
+            .effect
+            .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+            && copy.target.is_target()
+        {
+            return Some((tagged.tag.clone(), copy.target.clone()));
+        }
         return last_tagged_target_in_effect(&tagged.effect);
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {

@@ -33,6 +33,9 @@ enum CollectionMarker {
     FromYourGraveyard,
     /// "from your graveyard and/or hand" (Invoke Calamity).
     FromYourGraveyardOrHand,
+    /// "from your hand, from your graveyard, or from among cards you own in
+    /// exile" (Kaya the Inexorable's emblem).
+    FromYourHandGraveyardOrOwnedExile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +56,8 @@ enum Collection {
     /// The caster's graveyard and hand together: each chosen card may come
     /// from either zone.
     YourGraveyardOrHand,
+    /// The caster's hand, graveyard, and the exiled cards they own.
+    YourHandGraveyardOrOwnedExile,
     /// Cards the caster owns outside the game (the sideboard, CR 400.11).
     OwnedOutsideGame,
 }
@@ -61,6 +66,14 @@ fn collection_marker<'a>(
     input: &mut crate::lexer::LexStream<'a>,
 ) -> WResult<CollectionMarker> {
     alt((
+        (
+            primitives::phrase(&["from", "your", "hand"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["from", "your", "graveyard"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["or", "from", "among", "cards", "you", "own", "in", "exile"]),
+        )
+            .value(CollectionMarker::FromYourHandGraveyardOrOwnedExile),
         primitives::phrase(&["with", "mana", "value"]).value(CollectionMarker::ManaValue),
         primitives::phrase(&["from", "among"]).value(CollectionMarker::FromAmong),
         primitives::phrase(&["you", "own", "exiled", "with"])
@@ -517,6 +530,12 @@ fn parse_unpriced_collection_cast_clause(
             }
             Collection::YourGraveyardOrHand
         }
+        CollectionMarker::FromYourHandGraveyardOrOwnedExile => {
+            if !reference_tokens.is_empty() {
+                return Ok(None);
+            }
+            Collection::YourHandGraveyardOrOwnedExile
+        }
         CollectionMarker::ManaValue => return Ok(None),
     };
 
@@ -599,6 +618,18 @@ fn parse_unpriced_collection_cast_clause(
             hand.owner = Some(PlayerFilter::You);
             filter = ObjectFilter {
                 any_of: vec![graveyard, hand],
+                ..ObjectFilter::default()
+            };
+        }
+        Collection::YourHandGraveyardOrOwnedExile => {
+            let branch = |zone| {
+                let mut branch = filter.clone();
+                branch.zone = Some(zone);
+                branch.owner = Some(PlayerFilter::You);
+                branch
+            };
+            filter = ObjectFilter {
+                any_of: vec![branch(Zone::Hand), branch(Zone::Graveyard), branch(Zone::Exile)],
                 ..ObjectFilter::default()
             };
         }

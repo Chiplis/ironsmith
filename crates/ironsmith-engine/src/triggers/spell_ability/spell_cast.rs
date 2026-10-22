@@ -136,8 +136,10 @@ impl TriggerMatcher for SpellCastTrigger {
             return false;
         }
 
+        // "during their turn": `IteratedPlayer` names the caster, so the
+        // spell must be cast during the caster's own turn.
         if let Some(turn_filter) = &self.during_turn
-            && !current_turn_matches_player_filter(turn_filter, ctx, None)
+            && !current_turn_matches_player_filter(turn_filter, ctx, Some(e.caster))
         {
             return false;
         }
@@ -585,6 +587,7 @@ impl TriggerMatcher for SpellCastTrigger {
                 PlayerFilter::You => " during your turn",
                 PlayerFilter::Opponent => " during an opponent's turn",
                 PlayerFilter::Specific(_) => " during that player's turn",
+                PlayerFilter::IteratedPlayer => " during their turn",
                 _ => "",
             };
             if !suppress_turn_suffix {
@@ -711,6 +714,52 @@ fn describe_simple_spell_characteristic_union(filter: &ObjectFilter) -> Option<S
         return None;
     };
 
+    Some(format!("{} {phrase}", indefinite_article_for(&phrase)))
+}
+
+/// "a noncreature or Dragon spell" (Firespitter Whelp): a plain spell whose
+/// characteristics are a union of independently qualified branches. Each
+/// branch is described in spell context, so a branch such as "noncreature"
+/// is not widened into the battlefield noun "noncreature permanent".
+fn describe_plain_spell_any_of_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2 {
+        return None;
+    }
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    let mut plain = ObjectFilter::default();
+    plain.zone = outer.zone;
+    plain.stack_kind = outer.stack_kind;
+    plain.has_mana_cost = outer.has_mana_cost;
+    if outer != plain
+        || !matches!(outer.zone, None | Some(Zone::Stack))
+        || !matches!(
+            outer.stack_kind,
+            None | Some(crate::filter::StackObjectKind::Spell)
+        )
+    {
+        return None;
+    }
+    let mut parts = Vec::with_capacity(filter.any_of.len());
+    for branch in &filter.any_of {
+        if branch.zone.is_some() || branch.stack_kind.is_some() || !branch.any_of.is_empty() {
+            return None;
+        }
+        let mut branch = branch.clone();
+        branch.zone = Some(Zone::Stack);
+        branch.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        let text = describe_spell_filter(&branch);
+        let text = text
+            .strip_prefix("a ")
+            .or_else(|| text.strip_prefix("an "))
+            .unwrap_or(text.as_str());
+        let qualifier = text.strip_suffix(" spell")?;
+        if qualifier.is_empty() || qualifier.contains(" spell") {
+            return None;
+        }
+        parts.push(qualifier.to_string());
+    }
+    let phrase = format!("{} spell", join_with_or(&parts));
     Some(format!("{} {phrase}", indefinite_article_for(&phrase)))
 }
 
@@ -1018,16 +1067,34 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         return format!("{} from {hand}", describe_spell_filter(&spell_filter));
     }
 
-    if filter.zone == Some(Zone::Graveyard) {
+    // "an instant or sorcery spell from your library" (Melek, Izzet Paragon)
+    // shares the graveyard origin surface.
+    if let Some(origin_zone @ (Zone::Graveyard | Zone::Library)) = filter.zone {
+        let zone_noun = if origin_zone == Zone::Library { "library" } else { "graveyard" };
         let owner_text = match filter.owner.as_ref().unwrap_or(&PlayerFilter::Any) {
             PlayerFilter::You => "your",
             PlayerFilter::Opponent => "an opponent's",
             _ => "a",
         };
+        // "a Dragon creature spell from your graveyard" (Rivaz of the Claw):
+        // the spell's own characteristics still restrict the trigger.
+        let mut spell_filter = filter.clone();
+        spell_filter.zone = Some(Zone::Stack);
+        spell_filter.owner = None;
+        spell_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        let mut bare = ObjectFilter::default();
+        bare.zone = Some(Zone::Stack);
+        bare.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        bare.union_surface = spell_filter.union_surface.clone();
+        let spell = if spell_filter == bare {
+            "a spell".to_string()
+        } else {
+            describe_spell_filter(&spell_filter)
+        };
         if owner_text == "a" {
-            return "a spell from a graveyard".to_string();
+            return format!("{spell} from a {zone_noun}");
         }
-        return format!("a spell from {owner_text} graveyard");
+        return format!("{spell} from {owner_text} {zone_noun}");
     }
     if filter.zone == Some(Zone::Exile) {
         return "a spell from exile".to_string();
@@ -1043,6 +1110,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         return "a noncreature spell".to_string();
     }
     if let Some(description) = describe_simple_spell_characteristic_union(filter) {
+        return description;
+    }
+    if let Some(description) = describe_plain_spell_any_of_union(filter) {
         return description;
     }
     let mut subtype_only_spell_filter = ObjectFilter::default();
@@ -1063,7 +1133,10 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         );
     }
 
-    let fallback = filter.description();
+    // Zone-unrestricted branches of a cast filter ("a spell with mana
+    // value, power, or toughness equal to the chosen number", Talion)
+    // describe spells, never the battlefield noun "permanent".
+    let fallback = filter.description_with_default_noun("spell");
     if filter.zone == Some(Zone::Stack) {
         match fallback.as_str() {
             "you own"

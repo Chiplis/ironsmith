@@ -157,6 +157,42 @@ pub(super) fn read_from_among_them(
                 "contextual-controller collection entry requires an actor-owned selection program".into(),
             ));
         }
+        let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked");
+        let chosen_tag = crate::util::helper_tag_for_tokens(tokens, "chosen");
+        // "Put all land cards from among them onto the battlefield and the
+        // rest into your hand" (Nissa, Nature's Artisan): every matching
+        // card moves, with no choice.
+        if shape.filter_tokens.first().is_some_and(|token| token.is_word("all"))
+            && shape.filter_tokens.len() > 1
+            && shape.rest_destination != Some(cca_shapes::RestDestinationShape::BottomOfLibrary)
+            && let Some(filter) =
+                crate::effect_sentences::parse_looked_card_choice_filter(&shape.filter_tokens[1..])
+        {
+            let mut effects = compose_put_all_filtered_looked_cards_to_zone(
+                filter,
+                looked_tag.clone().into(),
+                chosen_tag.clone().into(),
+                Zone::Battlefield,
+            );
+            let rest_zone = match shape.rest_destination {
+                Some(cca_shapes::RestDestinationShape::Hand) => Some(Zone::Hand),
+                Some(cca_shapes::RestDestinationShape::Graveyard) => Some(Zone::Graveyard),
+                Some(cca_shapes::RestDestinationShape::BottomOfLibrary) | None => None,
+            };
+            if let Some(zone) = rest_zone {
+                effects.push(EffectAst::subject_verb(
+                    SubjectVerbRoleAst::Actor,
+                    PlayerAst::Implicit,
+                    SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+                        tag: crate::tag::TagRef::of(looked_tag),
+                        keep_tagged: crate::tag::TagRef::of(chosen_tag),
+                        zone,
+                        surface: ironsmith_core::LibraryRemainderSurface::Rest,
+                    }),
+                ));
+            }
+            return Ok(Some(EffectAst::Sequence { effects }));
+        }
         let filter = crate::effect_sentences::parse_looked_card_choice_filter(shape.filter_tokens)
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -164,8 +200,6 @@ pub(super) fn read_from_among_them(
                     clause_words.join(" ")
                 ))
             })?;
-        let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked");
-        let chosen_tag = crate::util::helper_tag_for_tokens(tokens, "chosen");
         let effects = if shape.rest_destination == Some(cca_shapes::RestDestinationShape::Hand) {
             compose_put_filtered_looked_cards_to_zone_rest_to_zone(
                 player,

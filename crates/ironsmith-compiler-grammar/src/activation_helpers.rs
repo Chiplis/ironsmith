@@ -195,6 +195,84 @@ fn parse_drafted_chosen_color_mana_tail(tail_tokens: &[OwnedLexToken]) -> Option
     (!name.is_empty()).then_some(name)
 }
 
+/// "Add X {G} or X {W}, where X is the number of other creatures you
+/// control" (Brigid, Doun's Mind): the player chooses one symbol and adds X
+/// mana of it. Each `X {S}` arm repeats the amount; the trailing where-X
+/// binding names that shared amount.
+fn parse_add_x_of_one_mana_symbol_choice(
+    tokens: &[OwnedLexToken],
+    player: PlayerAst,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    // The line-level where-X binding may already have bound X; otherwise the
+    // trailing binding is read here.
+    let where_idx = tokens
+        .iter()
+        .position(|token| token.is_word("where"))
+        .unwrap_or(tokens.len());
+    let arms_tokens = &tokens[..where_idx];
+    let mut symbols = Vec::new();
+    let mut index = 0usize;
+    let mut has_or = false;
+    while index < arms_tokens.len() {
+        let token = &arms_tokens[index];
+        if token.is_comma() {
+            index += 1;
+            continue;
+        }
+        if token.is_word("or") {
+            has_or = true;
+            index += 1;
+            continue;
+        }
+        if !token.is_word("x") {
+            return Ok(None);
+        }
+        let Some(pip) = arms_tokens
+            .get(index + 1)
+            .and_then(|token| crate::grammar::leaf::parse_leaf_surface_mana_pip_token(token))
+        else {
+            return Ok(None);
+        };
+        let pip_symbols = pip.into_pip();
+        let [symbol] = pip_symbols.as_slice() else {
+            return Ok(None);
+        };
+        symbols.push(*symbol);
+        index += 2;
+    }
+    if !has_or || symbols.len() < 2 {
+        return Ok(None);
+    }
+    let amount = if where_idx == tokens.len() {
+        Value::X
+    } else {
+        let Some(amount) = parse_value_binding_clause_lexed(&tokens[where_idx..]) else {
+            return Ok(None);
+        };
+        amount
+    };
+    Ok(Some(EffectAst::ObjectChoices(
+        crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: crate::target::PlayerFilter::You,
+            modes: symbols
+                .into_iter()
+                .map(|symbol| crate::cards::builders::ChooseOneModeAst {
+                    description: format!(
+                        "Add X {}",
+                        crate::mana::ManaCost::from_symbols(vec![symbol]).to_oracle()
+                    ),
+                    effects: vec![EffectAst::subject_verb_add_mana_scaled(
+                        player,
+                        vec![symbol],
+                        amount.clone(),
+                    )],
+                })
+                .collect(),
+        },
+    )))
+}
+
 pub fn parse_add_mana(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -225,6 +303,9 @@ pub fn parse_add_mana(
         )))
     };
 
+    if let Some(effect) = parse_add_x_of_one_mana_symbol_choice(tokens, player)? {
+        return Ok(effect);
+    }
     if let Some(any_color_among) = parse_add_one_mana_any_color_among_filter(tokens)? {
         return Ok(EffectAst::subject_verb_add_one_mana_any_color_among(
             player,

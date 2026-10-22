@@ -180,7 +180,7 @@ fn preserved_keyword_label(input: &mut LexStream<'_>) -> WResult<PreservedKeywor
     match head {
         "buyback" | "blitz" | "bestow" | "cumulative" | "cycling" | "echo" | "equip" | "epic"
         | "escape" | "escalate" | "eternalize" | "evoke" | "flashback" | "freerunning"
-        | "kicker" | "multikicker" | "modular" | "morph" | "megamorph" | "prototype"
+        | "kicker" | "multikicker" | "modular" | "morph" | "megamorph" | "prototype" | "recover"
         | "replicate" | "reinforce" | "splice" | "squad" | "spectacle" | "strive" | "surge"
         | "suspend" | "ward" => Ok(PreservedKeywordLabelKind::CostOrCasting),
         "boast" | "renew" | "reconfigure" => Ok(PreservedKeywordLabelKind::Activated),

@@ -1700,6 +1700,15 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
             return Some(Value::CountPlayers(PlayerFilter::TaggedPlayer(tag.bind().into())));
         }
     }
+    // "the number of time counters among permanents you control" (Kate
+    // Stewart) counts counters, not the objects that carry them. The broad
+    // `number of <filter>` capture would keep only the trailing object
+    // scope, so leave the counter aggregate to the typed value grammar.
+    if crate::word_primitives::sequence_occurs(&words, &["counters", "among"])
+        || crate::word_primitives::sequence_occurs(&words, &["counter", "among"])
+    {
+        return None;
+    }
     if words.iter().any(|word| matches!(*word, "plus" | "minus"))
         || crate::word_primitives::sequence_occurs(&words, &["in", "excess", "of"])
     {
@@ -1894,6 +1903,17 @@ pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
         return Some(Value::Add(
             Box::new(Value::Fixed(fixed_value as i32)),
             Box::new(Value::Count(filter)),
+        ));
+    }
+    // "one plus the number of opponents who control an artifact" (Journey
+    // On): the counted noun is a player group; never collapse it to a
+    // count of the controlled objects.
+    if let Some(value) =
+        crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(filter_tokens)
+    {
+        return Some(Value::Add(
+            Box::new(Value::Fixed(fixed_value as i32)),
+            Box::new(value),
         ));
     }
     let filter =
@@ -3122,6 +3142,7 @@ fn bind_it_reference_to_entering_object_in_value(value: &mut Value) -> bool {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::CountersOn(spec, _) => bind_it_reference_to_entering_object_in_choose_spec(spec),
         _ => false,
     }
@@ -3512,6 +3533,25 @@ fn parse_enters_with_additional_counter_for_each_value(
         crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
     {
         return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
+    }
+    // "for each Angel you already control" (Giada, Font of Hope): the entering
+    // permanent is not on the battlefield yet, so "already" adds no predicate
+    // beyond the controller relation it qualifies.
+    if tokens.windows(3).any(|window| {
+        window[0].is_word("you") && window[1].is_word("already") && window[2].is_word("control")
+    }) {
+        let filtered = tokens
+            .iter()
+            .enumerate()
+            .filter(|(index, token)| {
+                !(token.is_word("already")
+                    && *index > 0
+                    && tokens[*index - 1].is_word("you")
+                    && tokens.get(*index + 1).is_some_and(|next| next.is_word("control")))
+            })
+            .map(|(_, token)| token.clone())
+            .collect::<Vec<_>>();
+        return parse_dynamic_cost_modifier_value(&filtered);
     }
 
     parse_dynamic_cost_modifier_value(tokens)

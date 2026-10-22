@@ -470,8 +470,13 @@ fn read_conditional_put_counters(
     }
     let tokens = document.tokens;
     if effect_grammar::split_conditional_sentence_family_head_lexed(tokens).is_some() {
-        let words = crate::lexer::parser_token_word_refs(tokens);
-        if crate::word_primitives::sequence_occurs(&words, &["put"])
+        let ParseOutcome::Match(plan) = effect_grammar::control_flow::recognize_control_flow(tokens) else {
+            return Ok(None);
+        };
+        // Ownership follows the consequence, not words in the condition:
+        // "If you put ... counters this way, draw a card" is a draw body.
+        let words = crate::lexer::parser_token_word_refs(plan.value.body_tokens);
+        if words.first() == Some(&"put")
             && words
                 .iter()
                 .any(|word| matches!(*word, "counter" | "counters"))
@@ -485,6 +490,22 @@ fn read_conditional_put_counters(
     }
     Ok(None)
 }
+
+#[cfg(test)]
+mod conditional_counter_ownership_tests {
+    use super::*;
+
+    #[test]
+    fn conditional_counter_reader_owns_only_counter_consequences() {
+        let draw = crate::lexer::lex_line(
+            "if you put two or more +1/+1 counters on creatures this way, draw a card.", 0).unwrap();
+        assert!(read_conditional_put_counters(&Document::new(&draw)).unwrap().is_none());
+        let put = crate::lexer::lex_line(
+            "if you control an artifact, put a +1/+1 counter on target creature.", 0).unwrap();
+        assert!(read_conditional_put_counters(&Document::new(&put)).unwrap().is_some());
+    }
+}
+
 fn read_emblem_payload(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = document.tokens;
     if effect_grammar::emblem_shapes::parse_damaged_player_emblem_payload_tokens(tokens)

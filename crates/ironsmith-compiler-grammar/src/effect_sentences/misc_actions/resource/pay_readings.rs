@@ -104,6 +104,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_compound_pay(input)),
     },
     Reading {
+        id: RuleId::new("disjunctive-pay"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_disjunctive_pay(input)),
+    },
+    Reading {
         id: RuleId::new("repeated-tagged-mana-payment"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -338,6 +344,61 @@ fn read_compound_pay(input: &PayClause<'_>) -> Result<Option<EffectAst>, CardTex
         return Ok(Some(compound));
     }
     Ok(None)
+}
+/// "that player may pay {R}{R} or 2 life" (Emberwilde Djinn): one payment
+/// chosen from two complete alternatives, at least one not mana. Lowered as a
+/// choice between the payments, so either one paid satisfies "if they do".
+fn read_disjunctive_pay(input: &PayClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
+    let or_positions = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("or"))
+        .map(|(idx, _)| idx)
+        .collect::<Vec<_>>();
+    let [or_idx] = or_positions.as_slice() else {
+        return Ok(None);
+    };
+    let chooser = match input.player {
+        PlayerAst::You | PlayerAst::Implicit => crate::target::PlayerFilter::You,
+        PlayerAst::That => crate::target::PlayerFilter::IteratedPlayer,
+        PlayerAst::Target => crate::target::PlayerFilter::target_player(),
+        PlayerAst::TargetOpponent => crate::target::PlayerFilter::target_opponent(),
+        _ => return Ok(None),
+    };
+    let parts = [&tokens[..*or_idx], &tokens[or_idx + 1..]];
+    let mut modes = Vec::new();
+    for part in parts {
+        let Some(effect) = super::super::exact_pay_component(part, input.player) else {
+            return Ok(None);
+        };
+        modes.push(effect);
+    }
+    if modes.iter().all(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Mana(
+                    ManaActionAst::PayMana { .. }
+                ),
+                ..
+            })
+        )
+    }) {
+        return Ok(None);
+    }
+    Ok(Some(EffectAst::ObjectChoices(
+        crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+            chooser,
+            modes: modes
+                .into_iter()
+                .map(|effect| crate::cards::builders::ChooseOneModeAst {
+                    description: String::new(),
+                    effects: vec![effect],
+                })
+                .collect(),
+        },
+    )))
 }
 fn read_repeated_tagged_mana_payment(
     input: &PayClause<'_>,

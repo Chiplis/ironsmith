@@ -518,8 +518,10 @@ pub(super) fn read_end_of_combat_remainder(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     let delayed_shape = sentence_shapes::parse_delayed_sentence_tokens(tokens);
-    if let Some(sentence_shapes::DelayedSentenceShape::EndOfCombat { remainder_tokens }) =
-        delayed_shape
+    if let Some(sentence_shapes::DelayedSentenceShape::EndOfCombat {
+        remainder_tokens,
+        this_turn,
+    }) = delayed_shape
     {
         let remainder = trim_commas(remainder_tokens);
         if remainder.is_empty() {
@@ -529,6 +531,18 @@ pub(super) fn read_end_of_combat_remainder(
             .map(Some);
         }
         let effects = parse_effect_sentence_lexed_inner(&remainder)?;
+        if this_turn {
+            // "At this turn's next end of combat": a one-shot delayed
+            // trigger that expires at end of turn, so an instruction made
+            // after combat never waits for a later turn's combat.
+            return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+                trigger: crate::cards::builders::TriggerSpec::EndOfCombat,
+                effects,
+                one_shot: true,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
+            })]));
+        }
         return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })]));
     }
     Ok(None)

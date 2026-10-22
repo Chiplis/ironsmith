@@ -1131,12 +1131,14 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => {
             bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
@@ -1194,14 +1196,20 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 }
                 TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
                 | TurnHistoryCount::Sacrificed { player, filter }
+                | TurnHistoryCount::TokensCreatedMatching { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
-                | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
+                | TurnHistoryCount::CreaturesAttackedWith { player, filter, .. } => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
                 TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => {
                     bind_relative_iterated_player_filter_to_player_filter(players, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(sources, player_filter);
+                }
+                TurnHistoryCount::CombatDamageSourcesToPlayers { player, recipients, filter } => {
+                    bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+                    bind_relative_iterated_player_filter_to_player_filter(recipients, player_filter);
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
                 TurnHistoryCount::SpellsCast { player, filter, .. } => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
@@ -1260,6 +1268,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player)
         | Value::CommanderCastCount(player)
+        | Value::CommandersCastFromCommandZoneBy(player)
         | Value::CardTypesInGraveyard(player)
         | Value::PlayerCounters(player, _)
         | Value::PlayerVoteCount(player)
@@ -1297,6 +1306,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
@@ -2451,6 +2461,8 @@ fn static_ability_for_token_keyword(
         token_grammar::TokenKeywordShape::Devour(_) => return None,
         token_grammar::TokenKeywordShape::Vanishing(_) => return None,
         token_grammar::TokenKeywordShape::Fading(_) => return None,
+        token_grammar::TokenKeywordShape::Training => return None,
+        token_grammar::TokenKeywordShape::Flanking => StaticAbility::flanking(),
         token_grammar::TokenKeywordShape::Flying => StaticAbility::flying(),
         token_grammar::TokenKeywordShape::WardGeneric(amount) => {
             StaticAbility::ward(TotalCost::mana(ManaCost::from_symbols(vec![
@@ -3338,8 +3350,15 @@ fn build_artifact_token_definition(
     let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
         .token()
         .card_types(vec![CardType::Artifact]);
+    let mut supertypes = Vec::new();
     if shape.legendary {
-        builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
+        supertypes.push(crate::types::Supertype::Legendary);
+    }
+    if shape.snow {
+        supertypes.push(crate::types::Supertype::Snow);
+    }
+    if !supertypes.is_empty() {
+        builder = builder.supertypes(supertypes);
     }
     if !shape.subtypes.is_empty() {
         builder = builder.subtypes(shape.subtypes);
@@ -3391,6 +3410,7 @@ pub fn apply_standard_token_keyword(
         token_grammar::TokenKeywordShape::DoubleStrike => builder.double_strike(),
         token_grammar::TokenKeywordShape::Hexproof => builder.hexproof(),
         token_grammar::TokenKeywordShape::Indestructible => builder.indestructible(),
+        token_grammar::TokenKeywordShape::Training => builder.training(),
         other => match static_ability_for_token_keyword(other) {
             Some(ability) => builder.with_ability(crate::ability::Ability::static_ability(ability)),
             None => builder,
@@ -3909,6 +3929,26 @@ where
         tag_object_target_effect(build(spec.clone()), &spec, ctx, tag_prefix)
     };
     Ok((vec![effect], choices))
+}
+
+/// A non-target subject quantified with "each"/"all" ("turn all other
+/// nontoken creatures face down", "each Merfolk you control explores") names
+/// every matching object, not one chosen object.
+pub fn quantified_object_spec_as_all(spec: ChooseSpec) -> ChooseSpec {
+    match spec {
+        ChooseSpec::Object(filter)
+            if matches!(
+                filter.union_surface.set_quantifier(),
+                Some(
+                    ironsmith_core::SetQuantifierSurface::Each
+                        | ironsmith_core::SetQuantifierSurface::All
+                )
+            ) =>
+        {
+            ChooseSpec::All(filter)
+        }
+        other => other,
+    }
 }
 
 pub fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {

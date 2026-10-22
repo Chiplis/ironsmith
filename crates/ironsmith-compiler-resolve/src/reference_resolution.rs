@@ -282,6 +282,14 @@ pub fn annotate_effect_sequence_owned(
         }
     }
     assign_persistent_result_tags(&mut effects, &mut id_gen);
+    crate::exile_result_unions::union_singular_exiles_for_plural_permission(
+        &mut effects,
+        &mut id_gen,
+    );
+    crate::exile_result_unions::bind_plural_demonstratives_to_counted_roll_set(
+        &mut effects,
+        &mut id_gen,
+    );
     annotate_effect_sequence_with_env_internal(effects, env, config, &mut id_gen)
 }
 
@@ -1726,6 +1734,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         | Value::KicksPaidOf(spec)
         | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
@@ -4860,6 +4869,10 @@ fn annotate_effect_sequence_with_env_internal(
             &resolution_env.recent_object_target_bindings,
         );
         rebind_noun_excluded_antecedent_references(&mut effect, &resolution_env);
+        crate::exile_result_unions::rebind_plural_demonstrative_past_library_selection(
+            &mut effect,
+            &resolution_env,
+        );
         rebind_chosen_collection_noun_references(&mut effect, &resolution_env);
         bind_counted_choice_amount_to_antecedent(&mut effect, &resolution_env);
         // Some surface parsers initially spell "the exiled card" as the
@@ -5387,7 +5400,9 @@ fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
     let (predicate, _) = result_gate_surface(effect)?;
     match predicate {
         IfResultPredicate::PriorEffectResult(surface) => Some(surface.action),
-        IfResultPredicate::ExcessDamageDealt => Some(PriorEffectAction::DealtDamage),
+        IfResultPredicate::ExcessDamageDealt | IfResultPredicate::ExcessDamageDealtToCreature => {
+            Some(PriorEffectAction::DealtDamage)
+        }
         _ => None,
     }
 }
@@ -5516,7 +5531,56 @@ fn result_gate_exports_outcome_to_fallback(effect: &EffectAst, next: Option<&Eff
             !reflexive && *predicate == IfResultPredicate::Otherwise
         })
     });
-    is_result_gate && is_fallback
+    is_result_gate && (is_fallback || gated_creation_this_way_fallback(effect, next))
+}
+
+/// "You may pay {1}{G}. If you do, create a token that's a copy of that
+/// creature. If you didn't create a token this way, create a 1/1 green
+/// Insect creature token." (Springheart Nantuko): a negated "this way" result
+/// right after a gated token creation asks whether that creation produced a
+/// token, not whether the payment was made. The gate's own outcome is empty
+/// both when it is not taken and when the creation creates nothing.
+fn gated_creation_this_way_fallback(effect: &EffectAst, next: Option<&EffectAst>) -> bool {
+    fn unwrap(effect: &EffectAst) -> &EffectAst {
+        match effect {
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+                if effects.len() == 1 =>
+            {
+                unwrap(&effects[0])
+            }
+            _ => effect,
+        }
+    }
+    let gated_creation = match unwrap(effect) {
+        EffectAst::Conditionals(
+            ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects,
+            }
+            | ConditionalEffectAst::ResolvedIfResult {
+                predicate: IfResultPredicate::Did,
+                effects,
+                ..
+            },
+        ) => matches!(
+            effects.iter().map(unwrap).collect::<Vec<_>>().as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Tokens(
+                    TokenActionAst::CreateTokenCopy { .. }
+                        | TokenActionAst::CreateTokenCopyFromSource { .. }
+                        | TokenActionAst::CreateTokenWithMods { .. }
+                ),
+                ..
+            })]
+        ),
+        _ => false,
+    };
+    gated_creation
+        && next.is_some_and(|next| {
+            result_gate_surface(next).is_some_and(|(predicate, reflexive)| {
+                !reflexive && *predicate == IfResultPredicate::DidNot
+            })
+        })
 }
 
 pub fn if_result_predicate_is_searched_library(predicate: &IfResultPredicate) -> bool {
@@ -6350,7 +6414,9 @@ fn typed_result_branch_pinned_metric_id(
 ) -> Option<EffectId> {
     (matches!(
         predicate,
-        IfResultPredicate::PriorEffectResult(_) | IfResultPredicate::ExcessDamageDealt
+        IfResultPredicate::PriorEffectResult(_)
+            | IfResultPredicate::ExcessDamageDealt
+            | IfResultPredicate::ExcessDamageDealtToCreature
     ) && effects.iter().any(effect_references_pending_effect_metric))
     .then_some(condition)
 }
@@ -6880,7 +6946,8 @@ fn resolve_effect_references_in_effect(
     }) = &*effect
         && state.last_effect_id.is_none()
         && surface.action == PriorEffectAction::Sacrificed
-        && surface.actor == ironsmith_core::PriorEffectResultActor::Passive
+        && matches!(surface.actor, ironsmith_core::PriorEffectResultActor::Passive
+            | ironsmith_core::PriorEffectResultActor::You)
         && surface.quantifier == ironsmith_core::PriorEffectResultQuantifier::One
         && surface.required_count.is_none()
         && surface.shared_characteristic.is_none()
@@ -6890,8 +6957,9 @@ fn resolve_effect_references_in_effect(
         // sacrifice has no EffectId for an ordinary `IfResult` to read. The
         // cost nevertheless exports exact last-known-information snapshots
         // under `sacrifice_cost_*`; use that durable set as the executable
-        // predicate. Restrict this bridge to the passive singular shape that
-        // `TaggedObjectMatches` represents exactly. A compatible sacrifice
+        // predicate. The activation's payer is "you", so both passive and
+        // active-controller singular shapes use this cost's snapshots.
+        // Other actors must not inherit the payer's sacrifice. A compatible sacrifice
         // inside the resolution program still receives an EffectId and wins
         // through the ordinary result path above.
         *effect = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
@@ -10008,7 +10076,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ..
             }) => {
                 let mut replacements = bind_unresolved_it_in_target(target, seed_tag);
-                if let RetargetModeAst::OneToFixed { target } = mode {
+                if let RetargetModeAst::OneToFixed { target }
+                | RetargetModeAst::AllToFixed { target } = mode
+                {
                     replacements += bind_unresolved_it_in_target(target, seed_tag);
                 }
                 replacements
@@ -10826,12 +10896,15 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PlaneswalkerTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::DistinctPowers(filter) => bind_unresolved_it_in_filter(filter, seed_tag),
         Value::StaticAbilitiesAmong { filter, .. } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
@@ -10844,6 +10917,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::KicksPaidOf(spec)
         | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
@@ -10987,6 +11061,7 @@ fn bind_unresolved_it_in_restriction(
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
+        | Restriction::AttackPlayerOrPermanentsControlledBy { attackers, .. }
         | Restriction::AttackPlayer { attackers, .. }
         | Restriction::MustAttackPlayer { attackers, .. } => {
             bind_unresolved_it_in_filter(attackers, seed_tag)

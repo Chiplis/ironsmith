@@ -354,6 +354,7 @@ fn rebind_it_reference_in_value(value: &mut crate::effect::Value, alias: &crate:
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::CountersOn(spec, _) => rebind_spec(spec, alias),
         _ => false,
     }

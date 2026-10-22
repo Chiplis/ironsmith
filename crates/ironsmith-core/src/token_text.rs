@@ -58,6 +58,8 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
         };
     }
     vocabulary! {
+        Officer=>"Officer", Klingon=>"Klingon", Tribble=>"Tribble",
+        Borg=>"Borg", Vulcan=>"Vulcan", ElAurian=>"El-Aurian", Q=>"Q", Ferengi=>"Ferengi",
         Aetherborn=>"Aetherborn", Advisor=>"Advisor", Ally=>"Ally", Alien=>"Alien", Angel=>"Angel",
         Antelope=>"Antelope", Ape=>"Ape", Aurochs=>"Aurochs", Army=>"Army", Archer=>"Archer",
         Archon=>"Archon", Artificer=>"Artificer", Assassin=>"Assassin", Astartes=>"Astartes", Atog=>"Atog",

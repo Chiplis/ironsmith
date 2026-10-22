@@ -245,14 +245,25 @@ fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
 
 pub(crate) fn with_sacrificed_object_surface(mut value: Value, words: &[&str]) -> Value {
     if words.contains(&"exiled") {
+        // The authored noun: "the exiled creature" names the object before it
+        // was exiled (read as last known information); "the exiled card"
+        // names the card in exile.
+        let noun = match words
+            .iter()
+            .position(|word| *word == "exiled")
+            .and_then(|index| words.get(index + 1))
+            .copied()
+        {
+            Some("creature" | "creature's" | "creatures") => "the exiled creature",
+            Some("permanent" | "permanent's" | "permanents") => "the exiled permanent",
+            _ => "the exiled card",
+        };
         if let Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) =
             &mut value
         {
             **spec = (**spec).clone().with_surface_hint(
                 crate::target::ChooseSpecSurfaceHint::SourceReference(
-                    crate::target::SourceReferenceSurface::ThisPermanentType(
-                        "the exiled card".to_string(),
-                    ),
+                    crate::target::SourceReferenceSurface::ThisPermanentType(noun.to_string()),
                 ),
             );
         }

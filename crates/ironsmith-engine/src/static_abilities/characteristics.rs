@@ -53,6 +53,41 @@ pub(crate) fn exclude_cdas_from_copy(
     std::sync::Arc::make_mut(abilities).retain(|ability| !excluded(ability));
 }
 
+/// CR 707.9b: an ability a copy exception grants ("except it has menace") is
+/// part of the copiable values, so it is part of the rules text as well. Keep
+/// the text and the per-ability labels in step with the ability list: the card
+/// frame reads `compiled_card_text` whenever an object's current abilities equal
+/// its copiable ones, so an ability added here without its line never shows.
+/// `printed` is the exception's own wording for the ability, when known;
+/// otherwise the line is the ability's runtime wording ("Menace").
+pub(crate) fn add_copy_exception_ability(
+    abilities: &mut std::sync::Arc<Vec<crate::ability::Ability>>,
+    labels: &mut Vec<String>,
+    text: &mut String,
+    ability: crate::ability::Ability,
+    printed: Option<&str>,
+) {
+    let labels_aligned = labels.len() == abilities.len();
+    let line = printed.map(str::to_string).unwrap_or_else(|| {
+        let wording = crate::runtime_display::ability_surface_text(&ability);
+        let mut chars = wording.chars();
+        chars
+            .next()
+            .map(|first| first.to_uppercase().chain(chars).collect())
+            .unwrap_or_default()
+    });
+    std::sync::Arc::make_mut(abilities).push(ability);
+    if labels_aligned {
+        labels.push(line.clone());
+    }
+    let trimmed = text.trim_end().len();
+    text.truncate(trimmed);
+    if !text.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(&line);
+}
+
 /// Characteristic-defining ability for power/toughness.
 ///
 /// These are applied in layer 7a before other P/T modifications.

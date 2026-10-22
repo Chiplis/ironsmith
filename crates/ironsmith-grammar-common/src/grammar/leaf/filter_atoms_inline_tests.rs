@@ -1,6 +1,16 @@
 use super::*;
 
 #[test]
+fn officer_klingon_and_tribble_filters_accept_singular_and_plural() {
+    for (word, subtype) in [("officer", Subtype::Officer), ("klingon", Subtype::Klingon), ("tribble", Subtype::Tribble)] {
+        for surface in [word.to_string(), format!("{word}s")] {
+            assert_eq!(parse_leaf_subtype_complete(&surface).unwrap(), subtype);
+            assert_eq!(parse_leaf_subtype_flexible_complete(&surface).unwrap(), subtype);
+        }
+    }
+}
+
+#[test]
 fn card_types_and_zones_preserve_singular_and_plural_surfaces() {
     assert_eq!(
         parse_leaf_card_type_complete("sorceries").unwrap(),

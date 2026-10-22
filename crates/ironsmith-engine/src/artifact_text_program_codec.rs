@@ -35,6 +35,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
         return encoded("DestroyNoRegenerationEffect", ironsmith_core::DestroyNoRegenerationEffect {
             filter: None, target: Some(model.spec.clone()),
             creature_destroyed_this_way_surface: model.creature_destroyed_this_way_surface,
+            definite_noun_rider_surface: model.definite_noun_rider_surface,
         });
     }
     if let Some(model) = effect.downcast_ref::<LoseLifeEffect>() {
@@ -130,6 +131,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             condition: model.condition.clone(), if_true: children(&model.if_true)?,
             if_false: children(&model.if_false)?, surface: model.surface,
             capture_condition_result: model.capture_condition_result,
+            presentation_label: model.presentation_label.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<IfEffect>() {
@@ -150,6 +152,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
         // Explicit construction preserves every modal flag and cost along
         // with each definition's source text; only children change vocabulary.
         return encoded("ChooseModeEffect", ironsmith_core::ChooseModeEffect {
+            faces_dilemma: model.faces_dilemma,
             modes: model.modes.iter().map(|mode| Ok(ironsmith_core::EffectMode {
                 source_text: mode.source_text.clone(), effects: children(&mode.effects)?,
             })).collect::<Result<_, RuntimePayloadEncodingError>>()?,
@@ -237,6 +240,7 @@ mod tests {
         let mut modal = ChooseModeEffect::new(vec![ironsmith_core::EffectMode::new(
             "black-mode-label", vec![child()],
         )], Value::Fixed(1), quantity(), true);
+        modal.faces_dilemma = true;
         modal.common_prefix_effects = vec![child()];
         modal.chooser = Some(PlayerFilter::ControlsMost { filter: Box::new(black()) });
         modal.min_choose_count = Value::Fixed(1);

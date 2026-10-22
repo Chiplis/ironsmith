@@ -48,6 +48,11 @@ pub(super) fn stored_emblem_rules_text(
     emblem: &crate::effect::EmblemDescription,
 ) -> Option<String> {
     let mut text = emblem.text.trim().to_string();
+    // An unbalanced opening quote is the emblem's own quotation mark captured
+    // with its rules text; the caller adds the quotes.
+    if text.starts_with('"') && text.matches('"').count() % 2 == 1 {
+        text = text[1..].trim_start().to_string();
+    }
     if text.is_empty() {
         return None;
     }
@@ -106,6 +111,31 @@ pub(super) fn stored_emblem_rules_text(
 
     for subtype in typed_subtypes {
         text = replace_whole_phrase_case_insensitive(&text, &subtype, &subtype);
+    }
+
+    // "You may play cards exiled with Tibalt, Cosmic Impostor" (CR 607.2a):
+    // an emblem's linked-exile grant reads its creator's pool (the engine
+    // aliases the emblem to the creating card), so the self-reference in
+    // its stored text names that card, not the emblem.
+    let reads_creator_exile_pool = emblem.abilities.iter().any(|ability| {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        static_ability.grant_spec().is_some_and(|spec| {
+            spec.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            })
+        })
+    });
+    if reads_creator_exile_pool {
+        text = text.replace(
+            " exiled with this,",
+            &format!(" exiled with {},", crate::compiled_text::SOURCE_CARD_NAME_SURFACE),
+        );
+        text = text.replace(
+            " exiled with this ",
+            &format!(" exiled with {} ", crate::compiled_text::SOURCE_CARD_NAME_SURFACE),
+        );
     }
 
     let mut abilities = text

@@ -50,6 +50,9 @@ fn parse_adventure_until_next_turn(tokens: &[OwnedLexToken]) -> Option<EffectAst
     {
         let mut adventure = crate::target::ObjectFilter::default();
         adventure.subtypes.push(crate::types::Subtype::Adventure);
+        // "from your graveyard": the permission exists only for the card in
+        // that zone (lowered as the grant's resolution-time zone check).
+        adventure.zone = Some(crate::zone::Zone::Graveyard);
         *spell_filter = Some(adventure);
     }
     Some(effect)
@@ -89,14 +92,24 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         Cast::SourceCard => crate::tag::CompilerReferenceTag::SourceObject.bind(),
         Cast::Antecedent => crate::tag::CompilerReferenceTag::It.bind(),
     };
+    let mut cast = EffectAst::subject_verb_cast_tagged(
+        tag,
+        PlayerAst::You,
+        false,
+        false,
+        without_paying_mana_cost,
+        None,
+    );
+    // "from your graveyard" names where the card is cast from: a card a
+    // replacement put elsewhere (a discard redirected to exile) isn't cast.
+    if let EffectAst::SubjectVerb(subject) = &mut cast
+        && let crate::cards::builders::SubjectVerbActionAst::Stack(
+            crate::cards::builders::StackActionAst::CastTagged { required_zone, .. },
+        ) = &mut subject.action
+    {
+        *required_zone = Some(crate::zone::Zone::Graveyard);
+    }
     Ok(Some(EffectAst::Permissions(PermissionEffectAst::May {
-        effects: vec![EffectAst::subject_verb_cast_tagged(
-            tag,
-            PlayerAst::You,
-            false,
-            false,
-            without_paying_mana_cost,
-            None,
-        )],
+        effects: vec![cast],
     })))
 }

@@ -257,6 +257,7 @@ const SHAPES: &[Shape] = &[
     no_life_lost_this_way,
     you_changed_life_this_way,
     distinct_names_among_controlled_qualities,
+    distinct_names_among_unlocked_doors,
     source_card_in_your_graveyard,
     source_is_on_the_stack,
     source_escaped,
@@ -1418,6 +1419,24 @@ fn distinct_names_among_controlled_qualities(words: &[&str]) -> Option<Predicate
     })
 }
 
+/// "there are eight or more different names among unlocked doors of Rooms
+/// you control" (Promising Stairs): a Room permanent's names are the names of
+/// its unlocked doors (CR 709.5), so this counts distinct names among those
+/// Rooms, a fully unlocked Room contributing both.
+fn distinct_names_among_unlocked_doors(words: &[&str]) -> Option<PredicateAst> {
+    let ["there", "are", count, "or", "more", "different", "names", "among", "unlocked", "doors", "of", rest @ ..] =
+        words
+    else {
+        return None;
+    };
+    let count = number(count)?;
+    let filter = filter_from_words(rest)?;
+    if !filter.subtypes.contains(&crate::types::Subtype::Room) {
+        return None;
+    }
+    Some(at_least(Value::DistinctNames(filter), count))
+}
+
 /// "If seven or more {E} was paid this way" (Wheel of Potential): a
 /// threshold on the energy an earlier "pay any amount of {E}" removed, which
 /// other instructions (a per-player loop) may separate from this gate. The
@@ -1532,6 +1551,8 @@ fn creatures_attacked_this_turn(words: &[&str]) -> Option<PredicateAst> {
         ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
             player: PlayerFilter::Any,
             filter: ObjectFilter::creature(),
+            this_combat: false,
+            attacked: None,
         },
         number(count)?,
     ))

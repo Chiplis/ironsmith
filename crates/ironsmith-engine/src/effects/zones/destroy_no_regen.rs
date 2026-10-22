@@ -19,6 +19,9 @@ pub struct DestroyNoRegenerationEffect {
     /// What to destroy - can be targeted, all matching, source, etc.
     pub spec: ChooseSpec,
     pub creature_destroyed_this_way_surface: bool,
+    /// "The creature can't be regenerated." (Mephitic Ooze): the rider names
+    /// the destroyed object by a definite noun rather than a pronoun.
+    pub definite_noun_rider_surface: bool,
 }
 
 impl DestroyNoRegenerationEffect {
@@ -27,6 +30,7 @@ impl DestroyNoRegenerationEffect {
         Self {
             spec,
             creature_destroyed_this_way_surface: false,
+            definite_noun_rider_surface: false,
         }
     }
 
@@ -35,6 +39,7 @@ impl DestroyNoRegenerationEffect {
         Self {
             spec: ChooseSpec::target(spec),
             creature_destroyed_this_way_surface: false,
+            definite_noun_rider_surface: false,
         }
     }
 
@@ -43,6 +48,7 @@ impl DestroyNoRegenerationEffect {
         Self {
             spec: ChooseSpec::target(spec).with_count(count),
             creature_destroyed_this_way_surface: false,
+            definite_noun_rider_surface: false,
         }
     }
 
@@ -51,11 +57,17 @@ impl DestroyNoRegenerationEffect {
         Self {
             spec: ChooseSpec::all(filter),
             creature_destroyed_this_way_surface: false,
+            definite_noun_rider_surface: false,
         }
     }
 
     pub fn with_creature_destroyed_this_way_surface(mut self, present: bool) -> Self {
         self.creature_destroyed_this_way_surface = present;
+        self
+    }
+
+    pub fn with_definite_noun_rider_surface(mut self, present: bool) -> Self {
+        self.definite_noun_rider_surface = present;
         self
     }
 }

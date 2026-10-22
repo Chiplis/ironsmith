@@ -356,6 +356,8 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
             | crate::target::PlayerFilter::AliasedTarget(_)
             | crate::target::PlayerFilter::IteratedPlayer => return "that player".to_string(),
             crate::target::PlayerFilter::ChosenPlayer => return "the chosen player".to_string(),
+            // "protection from each of your opponents" (Cliffside Rescuer).
+            crate::target::PlayerFilter::Opponent => return "each of your opponents".to_string(),
             _ => {}
         }
     }

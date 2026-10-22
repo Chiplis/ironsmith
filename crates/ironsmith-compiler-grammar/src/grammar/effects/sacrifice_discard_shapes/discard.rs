@@ -252,6 +252,12 @@ pub fn parse_discard_clause_shape(
     let (uses_all_count, count, any_number, used) =
         if let Some((_, rest)) = primitives::parse_prefix(tokens, primitives::kw("all").void()) {
             (true, Value::Fixed(0), false, tokens.len() - rest.len())
+        } else if let Some((_, rest)) =
+            primitives::parse_prefix(tokens, primitives::kw("each").void())
+        {
+            // "discards each nonland card revealed this way" (Fall): a
+            // distributive selection is every matching card, like "all".
+            (true, Value::Fixed(0), false, tokens.len() - rest.len())
         } else if let Some((choice_count, used)) =
             crate::util::parse_choice_count_token_prefix_consumed(tokens)
             && let Some((count, any_number)) = discard_value_from_choice_count(choice_count)

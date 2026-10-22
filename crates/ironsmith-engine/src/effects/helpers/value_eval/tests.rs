@@ -861,3 +861,38 @@ fn linked_scalar_unknown_native_and_source_only_import_require_recovery() {
     game = native_checkpoint;
     assert_eq!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 9);
 }
+
+/// Semantic-loss wave (Tam, the Possibility): "the number of planeswalker
+/// types among planeswalkers you control" counts distinct planeswalker
+/// subtypes, not planeswalkers.
+#[test]
+fn planeswalker_types_among_counts_distinct_planeswalker_types() {
+    let (mut game, source, alice) = fixture();
+    let walker = |subtype: crate::types::Subtype| {
+        CardBuilder::new(CardId::new(), "Walker")
+            .card_types(vec![CardType::Planeswalker])
+            .subtypes(vec![subtype])
+            .build()
+    };
+    for subtype in [
+        crate::types::Subtype::Jace,
+        crate::types::Subtype::Jace,
+        crate::types::Subtype::Chandra,
+    ] {
+        game.create_object_from_card(&walker(subtype), alice, Zone::Battlefield);
+    }
+    let bob = game.players[1].id;
+    game.create_object_from_card(&walker(crate::types::Subtype::Tamiyo), bob, Zone::Battlefield);
+    let value = Value::PlaneswalkerTypesAmong(
+        ObjectFilter::default()
+            .in_zone(Zone::Battlefield)
+            .with_type(CardType::Planeswalker)
+            .you_control(),
+    );
+    let exec = ExecutionContext::new_default(source, alice);
+    assert_eq!(
+        resolve(&value, &EvaluationContext::execution_context(&game, &exec)).unwrap(),
+        2
+    );
+    assert_eq!(continuous(&value, &game, source, alice), 2);
+}

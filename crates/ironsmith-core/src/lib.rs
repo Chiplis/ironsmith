@@ -124,7 +124,7 @@ pub use effect::{
     DamageFilter, DealDamageEffect, DealDistributedDamageEffect, DelayedTriggerDuration,
     DelayedTriggerPrepayment, DelayedTriggerSpec, DestinationPlayerReferenceSurface, DestroyEffect,
     DestroyNoRegenerationEffect, DetainEffect, DevourEffect,
-    DirectionalAdjacentPlayerControlEffect, DiscardEffect, DiscardHandEffect, DiscoverEffect,
+    DirectionalAdjacentPlayerControlEffect, SeatingDirection, DiscardEffect, DiscardHandEffect, DiscoverEffect,
     DoubleCountersEffect, DoubleManaPoolEffect, DrawCardsEffect, DrawForEachTaggedMatchingEffect,
     DrawTheGameEffect, EachPlayerScryEffect, EarthbendEffect, EffectId, EffectMode,
     EffectPredicate, EmitGiftGivenEffect, EmitKeywordActionEffect, EmitKeywordActionObjectTag,
@@ -294,7 +294,7 @@ pub use value_model::{
     AttachmentConditionHost, Condition, CombatParticipantCondition, ConditionConjunction, DeathHistoryControllerSurface,
     EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
     ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
-    PriorEffectMetricQuery, ColorChoiceReference, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
+    PriorEffectMetricQuery, ColorChoiceReference, ObjectRule, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
     TurnHistoryCondition, TurnHistoryCount, Value, ValueSurfaceHint,
 };
 pub use zone::Zone;

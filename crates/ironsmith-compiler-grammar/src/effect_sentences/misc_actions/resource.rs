@@ -45,6 +45,14 @@ pub fn parse_pay(
             clause_words.join(" ")
         )));
     }
+    // "you may pay {G}, {W}, or {U}" (Isu the Abominable): one payment of
+    // any one of the listed symbols, not all of them.
+    if let Some(alternatives) = single_symbol_payment_alternatives(tokens) {
+        return Ok(EffectAst::subject_verb_pay_mana(
+            player,
+            ManaCost::from_pips(vec![alternatives]),
+        ));
+    }
     let pips = {
         use winnow::prelude::*;
         let mut stream = LexStream::new(tokens);
@@ -62,4 +70,44 @@ pub fn parse_pay(
         player,
         ManaCost::from_pips(pips),
     ))
+}
+
+/// "{G}, {W}, or {U}": a disjunctive list of single mana symbols.
+fn single_symbol_payment_alternatives(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<crate::mana::ManaSymbol>> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let mut symbols = Vec::new();
+    let mut saw_or = false;
+    let mut after_separator = true;
+    for token in tokens {
+        if token.is_comma() {
+            if after_separator {
+                return None;
+            }
+            after_separator = true;
+            continue;
+        }
+        if token.is_word("or") {
+            if symbols.is_empty() || saw_or {
+                return None;
+            }
+            saw_or = true;
+            after_separator = true;
+            continue;
+        }
+        if !after_separator {
+            return None;
+        }
+        let pip = crate::grammar::leaf::parse_leaf_surface_mana_pip_token(token)?;
+        let crate::grammar::leaf::LeafManaPipToken::ManaGroup(group) = pip else {
+            return None;
+        };
+        let [symbol] = group.as_slice() else {
+            return None;
+        };
+        symbols.push(*symbol);
+        after_separator = false;
+    }
+    (saw_or && !after_separator && symbols.len() >= 2).then_some(symbols)
 }

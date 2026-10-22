@@ -9,6 +9,10 @@ pub enum DynamicManaDisplayHint {
     Default,
     ManaEqualTo,
     EnchantedCreatureManaCost,
+    /// "{10}. This cost is reduced by {2} for each basic land type among
+    /// lands you control" (Draco): see [`DynamicManaCost::reduced_for_each`].
+    /// Appended.
+    ReducedForEach,
 }
 
 impl Default for DynamicManaDisplayHint {
@@ -85,6 +89,69 @@ impl DynamicManaCost {
         )
     }
 
+    /// A printed cost reduced by `per` generic mana for each unit of `count`
+    /// ("{5}{R}. This cost is reduced by {1} for each instant and sorcery card
+    /// in your graveyard"). Only the generic part can be reduced (CR 601.2f,
+    /// 118.7d): the colored symbols stay in `base`, and the printed generic
+    /// amount minus the reduction is `additional_generic`, clamped at zero
+    /// when the cost is determined.
+    pub fn reduced_for_each(printed: &ManaCost, per: u32, count: Value) -> Self {
+        let generic = printed.generic_mana_total();
+        let colored = ManaCost::from_pips(
+            printed
+                .pips()
+                .iter()
+                .filter(|pip| {
+                    !(pip.len() == 1 && matches!(pip[0], crate::mana::ManaSymbol::Generic(_)))
+                })
+                .cloned()
+                .collect(),
+        );
+        Self::new(
+            colored,
+            None,
+            Some(Value::Add(
+                Box::new(Value::Fixed(i32::try_from(generic).unwrap_or(i32::MAX))),
+                Box::new(Value::Scaled(
+                    Box::new(count),
+                    -i32::try_from(per).unwrap_or(i32::MAX),
+                )),
+            )),
+            None,
+            DynamicManaDisplayHint::ReducedForEach,
+        )
+    }
+
+    /// The parts of a [`Self::reduced_for_each`] cost: the printed cost, the
+    /// per-unit generic reduction, and the counted value.
+    pub fn reduced_for_each_parts(&self) -> Option<(ManaCost, u32, &Value)> {
+        if self.display_hint != DynamicManaDisplayHint::ReducedForEach
+            || self.x_value.is_some()
+            || self.multiplier.is_some()
+        {
+            return None;
+        }
+        let Some(Value::Add(printed_generic, reduction)) = self.additional_generic.as_ref() else {
+            return None;
+        };
+        let (Value::Fixed(generic), Value::Scaled(count, per)) =
+            (printed_generic.as_ref(), reduction.as_ref())
+        else {
+            return None;
+        };
+        if *per >= 0 || *generic < 0 {
+            return None;
+        }
+        let mut pips = Vec::new();
+        if *generic > 0 {
+            pips.push(vec![crate::mana::ManaSymbol::Generic(
+                u8::try_from(*generic).unwrap_or(u8::MAX),
+            )]);
+        }
+        pips.extend(self.base.pips().iter().cloned());
+        Some((ManaCost::from_pips(pips), per.unsigned_abs(), count.as_ref()))
+    }
+
     pub fn from_source_mana_cost() -> Self {
         Self {
             base: ManaCost::new(),
@@ -126,7 +193,7 @@ impl DynamicManaCost {
                     return format!("its mana cost reduced by {{{}}}", self.generic_reduction);
                 }
                 return if self.display_hint == DynamicManaDisplayHint::EnchantedCreatureManaCost {
-                    "enchanted creature's mana cost".into()
+                    "pay enchanted creature's mana cost".into()
                 } else { "its mana cost".into() };
             }
         }
@@ -141,6 +208,14 @@ impl DynamicManaCost {
             DynamicManaDisplayHint::ManaEqualTo => {
                 if let Some(value) = self.additional_generic.as_ref() {
                     return format!("mana equal to {value:?}");
+                }
+            }
+            DynamicManaDisplayHint::ReducedForEach => {
+                if let Some((printed, per, count)) = self.reduced_for_each_parts() {
+                    return format!(
+                        "{}. This cost is reduced by {{{per}}} for each {count:?}",
+                        printed.to_oracle()
+                    );
                 }
             }
             DynamicManaDisplayHint::Default | DynamicManaDisplayHint::EnchantedCreatureManaCost => {}

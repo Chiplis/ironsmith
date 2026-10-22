@@ -578,14 +578,14 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { target }) => {
             let (effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "turned_face_down", |spec| {
-                    Effect::turn_face_down(spec)
+                    Effect::turn_face_down(quantified_object_spec_as_all(spec))
                 })?;
             Ok((effects, choices))
         }
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target }) => {
             let (effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "turned_face_up", |spec| {
-                    Effect::turn_face_up(spec)
+                    Effect::turn_face_up(quantified_object_spec_as_all(spec))
                 })?;
             Ok((effects, choices))
         }
@@ -1383,13 +1383,15 @@ pub(super) fn compile_subject_verb_late(
             target,
             no_regeneration,
             creature_destroyed_this_way_surface,
+            definite_noun_rider_surface,
         }) => compile_tagged_effect_for_target(target, ctx, "destroyed", |spec| {
             if *no_regeneration {
                 Effect::new(
                     crate::effects::DestroyNoRegenerationEffect::with_spec(spec)
                         .with_creature_destroyed_this_way_surface(
                             *creature_destroyed_this_way_surface,
-                        ),
+                        )
+                        .with_definite_noun_rider_surface(*definite_noun_rider_surface),
                 )
             } else {
                 Effect::new(crate::effects::DestroyEffect::with_spec(spec))
@@ -1604,6 +1606,7 @@ pub(super) fn compile_subject_verb_late(
             face_down,
             source_controller_may_look,
             source_top_only,
+            source_bottom_only,
             target_plural_surface,
         }) => {
             if *source_controller_may_look {
@@ -1618,12 +1621,17 @@ pub(super) fn compile_subject_verb_late(
                     choices,
                 )));
             }
-            if *source_top_only {
+            if *source_top_only || *source_bottom_only {
                 let (spec, choices) =
                     resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
                 let collection_is_plural = !spec.count().is_single();
-                let (choose, chosen_spec) =
-                    lower_source_top_only_choice(&spec, player, ctx, "chosen_top")?;
+                let (choose, chosen_spec) = lower_source_edge_choice(
+                    &spec,
+                    player,
+                    ctx,
+                    if *source_bottom_only { "chosen_bottom" } else { "chosen_top" },
+                    *source_bottom_only,
+                )?;
                 let chosen_tag = match chosen_spec.base() {
                     ChooseSpec::Tagged(tag) => tag.clone(),
                     _ => unreachable!("ordered source choice always lowers to a tagged object"),
@@ -2552,8 +2560,10 @@ pub(super) fn compile_subject_verb_late(
                 {
                     // "That player discards that card. Then if that player
                     // ...": the named discarding player stays the antecedent.
-                    ctx.last_player_filter =
-                        Some(as_followup_player_alias(inferred_player.clone()));
+                    // The demonstrative never announces a new target: it is
+                    // the alias of the declaration it names (Revealing Eye).
+                    let inferred_player = as_followup_player_alias(inferred_player);
+                    ctx.last_player_filter = Some(inferred_player.clone());
                     (inferred_player, Vec::new())
                 } else {
                     let subject = LoweredSubject::resolve_affected_player(
@@ -2959,6 +2969,21 @@ pub(super) fn compile_subject_verb_late(
                 }
                 _ => None,
             };
+            // "You control target opponent ... If ..., you control that
+            // player during their next turn instead": a demonstrative bound to
+            // an announced target player is that same target, never a second
+            // announcement.
+            let rebound_player = rebound_player.or_else(|| match target_player {
+                PlayerFilter::Target(inner)
+                    if matches!(
+                        inner.as_ref(),
+                        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+                    ) =>
+                {
+                    Some(as_followup_player_alias((**inner).clone()))
+                }
+                _ => None,
+            });
             let target_player = rebound_player.as_ref().unwrap_or(target_player);
             let (start, duration) = match duration {
                 ControlDurationAst::UntilEndOfTurn => (
@@ -3581,18 +3606,58 @@ pub(super) fn compile_subject_verb_late(
                 } else {
                     None
                 };
+                // "Its controller sacrifices it" where "it" is this source
+                // (Goblin Ski Patrol): the possessive and the pronoun both name
+                // the source, so its current controller is the only player who
+                // can sacrifice it. There is no target to read a controller
+                // from; the sacrifice needs no separate actor restriction.
+                let source_self_reference = matches!(player, PlayerAst::ItsController)
+                    && referenced_tag.is_none()
+                    && matches!(
+                        resolve_target_spec_with_choices(&target, &current_reference_env(ctx)),
+                        Ok((ChooseSpec::Source, _))
+                    );
                 let chooser = match referenced_tag {
                     Some(tag) => PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(tag)),
                     None => chooser,
                 };
                 let (effects, mut choices) =
                     compile_tagged_effect_for_target(&target, ctx, "sacrificed", |spec| {
-                        Effect::new(
-                            crate::effects::SacrificeTargetEffect::new(
-                                sacrifice_incarnation_reference(spec),
-                            )
-                            .with_player(chooser.clone()),
-                        )
+                        let mut spec = sacrifice_incarnation_reference(spec);
+                        // "Sacrifice them" (Pull): the plural pronoun names
+                        // every member of the referenced target set; keep that
+                        // authored surface on the exact-incarnation filter.
+                        if filter.has_plural_pronoun_reference_surface()
+                            && let ChooseSpec::Object(referenced) = &mut spec
+                        {
+                            referenced.set_plural_pronoun_reference_surface(true);
+                        }
+                        // "Sacrifice those tokens" (Force of Rage): the plural
+                        // demonstrative names every created token.
+                        let authored_tokens = |candidate: &ObjectFilter| {
+                            candidate.has_plural_object_noun_surface() && candidate.token
+                        };
+                        let mut authored = &target;
+                        while let TargetAst::WithCount(inner, _)
+                        | TargetAst::WithCountValue(inner, _, _) = authored
+                        {
+                            authored = &**inner;
+                        }
+                        let plural_tokens = authored_tokens(filter)
+                            || matches!(authored, TargetAst::Object(target_filter, ..)
+                                if authored_tokens(target_filter));
+                        if plural_tokens
+                            && let ChooseSpec::Object(referenced) = &mut spec
+                        {
+                            referenced.token = true;
+                            referenced.set_plural_object_noun_surface(true);
+                        }
+                        let sacrifice = crate::effects::SacrificeTargetEffect::new(spec);
+                        Effect::new(if source_self_reference {
+                            sacrifice
+                        } else {
+                            sacrifice.with_player(chooser.clone())
+                        })
                     })?;
                 ctx.last_player_filter = Some(chooser);
                 for choice in subject.into_choices() {
@@ -3669,11 +3734,21 @@ pub(super) fn compile_subject_verb_late(
                 };
                 // CR 701.21a: the named player sacrifices the referenced
                 // permanent only while controlling it.
+                // "Sacrifice them": the reference names every member of the
+                // antecedent set; keep that plural surface.
+                let mut referenced = ObjectFilter::exact_tagged(tag);
+                if filter.has_plural_pronoun_reference_surface() {
+                    referenced.set_plural_pronoun_reference_surface(true);
+                }
+                // "Sacrifice those tokens" (Force of Rage): the demonstrative
+                // names every created token; keep the plural token noun.
+                if filter.has_plural_object_noun_surface() && filter.token {
+                    referenced.token = true;
+                    referenced.set_plural_object_noun_surface(true);
+                }
                 effects.push(Effect::new(
-                    crate::effects::SacrificeTargetEffect::new(ChooseSpec::Object(
-                        ObjectFilter::exact_tagged(tag),
-                    ))
-                    .with_player(chooser.clone()),
+                    crate::effects::SacrificeTargetEffect::new(ChooseSpec::Object(referenced))
+                        .with_player(chooser.clone()),
                 ));
                 return Ok(Some((effects, subject.into_choices())));
             }
@@ -3737,15 +3812,25 @@ fn lower_actor_chosen_exile_target(
     ) {
         return Ok(None);
     }
-    let (filter, count) = match target {
+    let (filter, count, count_value) = match target {
         TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
-            (filter, ChoiceCount::exactly(1))
+            (filter, ChoiceCount::exactly(1), None)
         }
         TargetAst::WithCount(inner, count) => match inner.as_ref() {
             TargetAst::Object(filter, explicit_target_span, _)
                 if explicit_target_span.is_none() =>
             {
-                (filter, *count)
+                (filter, *count, None)
+            }
+            _ => return Ok(None),
+        },
+        // "they exile cards from their hand equal to the difference"
+        // (Isildur's Fateful Strike): the named player chooses that many.
+        TargetAst::WithCountValue(inner, count, value) => match inner.as_ref() {
+            TargetAst::Object(filter, explicit_target_span, _)
+                if explicit_target_span.is_none() =>
+            {
+                (filter, *count, Some(value.clone()))
             }
             _ => return Ok(None),
         },
@@ -3754,6 +3839,9 @@ fn lower_actor_chosen_exile_target(
     if !filter.tagged_constraints.is_empty() || filter.source {
         return Ok(None);
     }
+    let count_value = count_value
+        .map(|value| resolve_value_it_tag(&value, &current_reference_env(ctx)))
+        .transpose()?;
 
     let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
     let chooser = subject.clone_player_filter();
@@ -3778,7 +3866,8 @@ fn lower_actor_chosen_exile_target(
 
     let mut choose =
         crate::effects::ChooseObjectsEffect::new(resolved_filter, count, chooser, tag_key.clone())
-            .in_zone(choice_zone);
+            .in_zone(choice_zone)
+            .with_count_value_opt(count_value);
     if choice_zone == Zone::Library {
         choose = choose.top_only();
     }

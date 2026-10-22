@@ -104,6 +104,15 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::AliasedControllerOf(
             ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
         )),
+        // "Whenever you cast your first spell during each opponent's turn,
+        // look at the top card of that player's library" (Blightwing
+        // Bandit): you are the caster, so the only other player the event
+        // names is the opponent whose turn it is.
+        TriggerSpec::SpellCast {
+            caster: PlayerFilter::You,
+            during_turn: Some(PlayerFilter::Opponent),
+            ..
+        } => Some(PlayerFilter::Active),
         TriggerSpec::SpellCast { caster, .. }
         | TriggerSpec::SpellCastSameNameCardInZone { caster, .. } => {
             if *caster == PlayerFilter::Any {
@@ -219,6 +228,15 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
             )))
         }
+        // "Whenever one or more Pirates you control deal damage to your
+        // opponents, ... those opponents": one trigger names every player
+        // damaged in the batch.
+        TriggerSpec::DealsDamageToPlayer {
+            damaged_player_one_or_more: true,
+            ..
+        } => Some(PlayerFilter::TaggedPlayer(
+            ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG.into(),
+        )),
         TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
@@ -359,6 +377,14 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
             } else {
                 Some(PlayerFilter::IteratedPlayer)
             }
+        }
+        // "When a player doesn't pay this enchantment's cumulative upkeep,
+        // that player ..." (Thought Lash): the keyword-action event names the
+        // player who acted on this source, who need not be the active player
+        // (a copied upkeep trigger). The resolving ability binds it from the
+        // triggering event (CR 603.2).
+        TriggerSpec::KeywordActionFromSource { player, .. } if *player == PlayerFilter::Any => {
+            Some(PlayerFilter::IteratedPlayer)
         }
         TriggerSpec::KeywordAction { player, .. }
         | TriggerSpec::KeywordActionTaggedObject { player, .. }

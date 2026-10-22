@@ -86,7 +86,7 @@ pub(super) fn compile_search_participant_bundle(
     let rewards = rewards.iter().map(|effect| capture_searches(effect, &tag)).collect::<Result<Vec<_>, _>>()?;
     let reward_loop = crate::effects::ForPlayersEffect {
         filter: PlayerFilter::excluding(PlayerFilter::TaggedPlayer(tag.clone()), PlayerFilter::your_team()),
-        effects: rewards, sequential: true, starting_with_controller: false, stop_after_first_happened: false,
+        effects: rewards, sequential: true, starting_with_controller: false, stop_after_first_happened: false, announcement_condition: None,
     };
     compiled.push(Effect::new(reward_loop));
     compiled.push(Effect::new(crate::effects::ForEachTaggedPlayerEffect {

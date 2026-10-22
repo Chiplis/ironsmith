@@ -550,7 +550,23 @@ pub fn parse_cant_restrictions(
         }
     }
 
-    let segments = grammar::split_lexed_slices_on_and(tokens);
+    let and_segments = grammar::split_lexed_slices_on_and(tokens);
+    // "you can't lose life this turn, you can't lose the game this turn, and
+    // your opponents can't win the game this turn" (Courageous Resolve): an
+    // Oxford list of complete restrictions. Split a comma-joined segment only
+    // when every piece is itself a negated clause.
+    let mut segments = Vec::with_capacity(and_segments.len());
+    for segment in and_segments {
+        let pieces = segment
+            .split(|token| token.is_comma())
+            .filter(|piece| !piece.is_empty())
+            .collect::<Vec<_>>();
+        if pieces.len() > 1 && pieces.iter().all(|piece| find_negation_span(piece).is_some()) {
+            segments.extend(pieces);
+        } else {
+            segments.push(segment);
+        }
+    }
     if segments.len() > 1 {
         // A conjunction before the clause's only negation belongs to the
         // subject ("each attacking creature and each blocking creature
@@ -1584,6 +1600,22 @@ pub fn parse_negated_object_restriction_clause(
 
     let player_subject = player_negated_restriction_subject(&subject_words);
     if let Some(player) = player_subject {
+        // A player can sacrifice only permanents they control. Preserve both
+        // that player scope and the printed object filter (including token).
+        if remainder_tokens.first().is_some_and(|token| token.is_word("sacrifice"))
+            && !matches!(remainder_words.get(1), Some(&"it" | &"them" | &"that" | &"those"))
+        {
+            let mut objects = parse_object_filter(&remainder_tokens[1..], false)?;
+            if objects.controller.is_none() {
+                objects.controller = Some(player.clone());
+            } else if objects.controller != Some(player.clone()) {
+                return Ok(None);
+            }
+            return Ok(Some(ParsedCantRestriction {
+                restriction: Restriction::be_sacrificed(objects),
+                target: None,
+            }));
+        }
         if let Some(color) = parse_unspent_mana_retention_tail(&remainder_words) {
             return Ok(Some(ParsedCantRestriction {
                 restriction: Restriction::lose_unspent_mana(player, color),
@@ -1718,8 +1750,33 @@ pub fn parse_negated_object_restriction_clause(
     }
     use restriction_grammar::NegatedObjectTailShape;
     let tail_shape = restriction_grammar::parse_negated_object_tail_words(&remainder_words);
+    // "they can't attack you ..." after a player-actor trigger (Sandswirl
+    // Wanderglyph): the pronoun names the triggering player, so the
+    // restricted attackers are the creatures that player controls.
+    let player_pronoun_attackers = || {
+        let mut attackers = ObjectFilter::creature();
+        attackers.controller = Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::Tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind().into(),
+            ),
+        ));
+        attackers
+    };
+    // Only a bare object back-reference ("they" bound to the triggering
+    // spell) is reinterpreted; a subject already resolved to a player's
+    // creatures ("creatures that player controls") keeps its filter.
+    let player_pronoun_subject = subject_words.as_slice() == ["they"]
+        && !filter.tagged_constraints.is_empty()
+        && filter.controller.is_none()
+        && filter.card_types.is_empty();
     let restriction = match tail_shape {
         Some(NegatedObjectTailShape::BecomeSuspected) => Restriction::BecomeSuspected(filter),
+        Some(NegatedObjectTailShape::AttackYouOrPlaneswalkers) if player_pronoun_subject => {
+            Restriction::attack_player_or_planeswalkers_controlled_by(
+                player_pronoun_attackers(),
+                PlayerFilter::You,
+            )
+        }
         Some(NegatedObjectTailShape::AttackYou) => {
             Restriction::attack_player(filter, PlayerFilter::You)
         }

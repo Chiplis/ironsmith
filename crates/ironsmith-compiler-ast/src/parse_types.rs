@@ -188,6 +188,8 @@ pub enum RetargetModeAst<
 > {
     All,
     OneToFixed { target: Target },
+    /// "The copy targets <X>": every target instance becomes X.
+    AllToFixed { target: Target },
     /// "reselect the targets at random": every target slot is refilled
     /// at random from its legal targets.
     AllAtRandom,

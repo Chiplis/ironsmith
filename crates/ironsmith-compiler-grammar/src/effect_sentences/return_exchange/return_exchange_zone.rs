@@ -102,6 +102,24 @@ fn parse_half_the_objects_return(
 }
 
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    // "return it to the battlefield flipped" (Homura, Human Ascendant): the
+    // returned flip card is flipped as part of the same instruction.
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    if let Some((last, head)) = trimmed.split_last()
+        && last.is_word("flipped")
+        && head.iter().any(|token| token.is_word("battlefield"))
+    {
+        let returned = parse_return(head)?;
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                returned,
+                EffectAst::subject_verb_flip(TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    None,
+                )),
+            ],
+        });
+    }
     if let Some(effect) = parse_half_the_objects_return(tokens)? {
         return Ok(effect);
     }

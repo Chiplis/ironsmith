@@ -1516,6 +1516,18 @@ fn parse_statement_to_chunks_impl(
     if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(parse_tokens) {
         return Ok(vec![chunk]);
     }
+    // "As Tibalt enters, you get an emblem with \"...\"" (Tibalt, Cosmic
+    // Impostor): the entry program's body is one quoted emblem payload.
+    if line.info.semantic_facts.statement.as_enters_effect_program.is_some()
+        && let Some(comma) = parse_tokens.iter().position(OwnedLexToken::is_comma)
+        && crate::grammar::effects::emblem_shapes::parse_emblem_payload_tokens(
+            &parse_tokens[comma + 1..],
+        )
+        .is_some()
+    {
+        let effects = parse_effect_sentences_preserving_source_boundaries(&parse_tokens[comma + 1..])?;
+        return Ok(vec![LineAst::Statement { effects }]);
+    }
     // An entry-time exile, failed-fulfillment destination and per-exiled
     // counter choices are one replacement program with shared local results.
     let entry_words = crate::lexer::parser_token_word_refs(parse_tokens);
@@ -1676,6 +1688,13 @@ fn parse_statement_to_chunks_impl(
             let effects = parse_effect_sentences_preserving_source_boundaries(&group_tokens)?;
             return Ok(vec![LineAst::Statement { effects }]);
         }
+        // "... get +1/+1. As long as you have the city's blessing, they also
+        // have vigilance." (Radiant Destiny): an independent conditional
+        // static sentence keeps the previous sentence's recipients.
+        let rebound_groups = crate::keyword_static::rebind_conditional_pronoun_recipient_sentences(
+            &parse_groups.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+        );
+        let parse_groups = rebound_groups.as_slice();
         let mut chunks = Vec::with_capacity(parse_groups.len());
         for group_tokens in parse_groups {
             if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
@@ -1703,7 +1722,16 @@ fn parse_statement_to_chunks_impl(
     if !parse_tokens.is_empty() {
         let statement_grouping =
             crate::grammar::statement_grouping::parse_statement_grouping_tokens(parse_tokens);
-        let sentence_tokens = statement_grouping.sentences;
+        // "... get +1/+1. As long as you have the city's blessing, they also
+        // have vigilance." (Radiant Destiny): an independent conditional
+        // static sentence keeps the previous sentence's recipients.
+        let sentence_tokens = crate::keyword_static::rebind_conditional_pronoun_recipient_sentences(
+            &statement_grouping
+                .sentences
+                .iter()
+                .map(Vec::as_slice)
+                .collect::<Vec<_>>(),
+        );
         let grouped_tokens = statement_grouping.groups;
         let keep_linked_statement_grouped = linked_statement_should_stay_grouped(parse_tokens);
         if keep_linked_statement_grouped {

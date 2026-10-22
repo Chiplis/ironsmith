@@ -14,6 +14,23 @@ pub type CastTaggedEffect = ironsmith_core::CastTaggedEffect<crate::costs::Cost>
 
 use super::runtime_helpers::with_spell_cast_event_with_outputs;
 
+/// The source reference denotes the resolving ability's exact incarnation.
+/// Keep its copiable native definition when it has already changed zones;
+/// never follow a physical card's stable id to a different incarnation.
+fn source_card_copy_snapshot(game: &GameState, ctx: &ExecutionContext) -> Option<crate::snapshot::ObjectSnapshot> {
+    let mut snapshot = game.object(ctx.source)
+        .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+        .or_else(|| game.source_last_known_snapshot(ctx.source).cloned())
+        .or_else(|| ctx.source_snapshot.clone())?;
+    let mut copied = crate::object::Object::token_copy_from_snapshot(
+        &snapshot, snapshot.object_id, snapshot.owner);
+    copied.kind = crate::object::ObjectKind::Card;
+    copied.card = snapshot.card;
+    copied.zone = snapshot.zone;
+    snapshot.revealed_cast_definition = Some(std::sync::Arc::new(copied.to_card_definition()));
+    Some(snapshot)
+}
+
 /// "If the chosen card is cast as a spell, you control the player while that
 /// spell is resolving." (CR 722): a waiting control record keyed to the cast
 /// spell, started and ended around its resolution by the stack owner.
@@ -92,6 +109,9 @@ impl EffectExecutor for CastTaggedEffect {
                 let Some(snapshot) = ctx.get_tagged(self.tag.as_str()).cloned().or_else(|| {
                     game.object(ctx.source).and_then(|source| source.cast_tagged_objects.get(&self.tag))
                         .and_then(|objects| objects.first()).cloned()
+                }).or_else(|| {
+                    (self.as_copy && self.tag.as_str() == ironsmith_core::tag::SOURCE_OBJECT_TAG)
+                        .then(|| source_card_copy_snapshot(game, ctx)).flatten()
                 }) else {
                     return Ok(EffectOutcome::target_invalid());
                 };
@@ -184,6 +204,15 @@ impl EffectExecutor for CastTaggedEffect {
                     };
                     (obj.is_land(), obj.zone)
                 };
+                // "cast it from your graveyard": the permission covers only
+                // the card in the named zone, never a card a replacement put
+                // elsewhere (a discard redirected to exile).
+                if self
+                    .required_zone
+                    .is_some_and(|zone| zone != from_zone)
+                {
+                    return Ok(EffectOutcome::target_invalid());
+                }
 
                 let caster = resolve_player_filter(game, &self.player, ctx)?;
 
@@ -248,6 +277,8 @@ impl EffectExecutor for CastTaggedEffect {
                         }
                     };
                     let cast_tags = ctx.tagged_objects.clone();
+                    let requirement_ctx =
+                        self.required_spell.as_ref().map(|_| ctx.filter_context(game));
                     let result =
                         crate::game_loop::cast_spell_from_resolving_effect_with_price_lock_and_outputs(
                             game,
@@ -264,6 +295,7 @@ impl EffectExecutor for CastTaggedEffect {
                             cast_tags,
                             ctx.provenance,
                             &mut ctx.decision_maker,
+                            self.required_spell.as_ref().zip(requirement_ctx.as_ref()),
                         )
                         .map_err(super::runtime_helpers::effect_driven_cast_error)?;
                     let Some(cast) = result else {
@@ -316,6 +348,8 @@ impl EffectExecutor for CastTaggedEffect {
                 };
 
                 let cast_tags = ctx.tagged_objects.clone();
+                let requirement_ctx =
+                    self.required_spell.as_ref().map(|_| ctx.filter_context(game));
                 let result =
                     crate::game_loop::cast_spell_from_resolving_effect_with_price_lock_and_outputs(
                         game,
@@ -332,6 +366,7 @@ impl EffectExecutor for CastTaggedEffect {
                         cast_tags,
                         ctx.provenance,
                         &mut ctx.decision_maker,
+                        self.required_spell.as_ref().zip(requirement_ctx.as_ref()),
                     )
                     .map_err(super::runtime_helpers::effect_driven_cast_error)?;
                 let Some(cast) = result else {

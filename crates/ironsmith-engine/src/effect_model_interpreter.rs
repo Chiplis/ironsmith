@@ -265,6 +265,7 @@ where
             payload.max.clone(),
             payload.allow_repeat,
         );
+        converted.faces_dilemma = payload.faces_dilemma;
         converted.choose_count = payload.choose_count.clone();
         converted.common_prefix_effects = payload
             .common_prefix_effects
@@ -317,7 +318,8 @@ where
                 convert_effects(payload.if_false.iter().cloned(), hooks)?,
             )
             .with_surface(payload.surface)
-            .with_condition_result(payload.capture_condition_result),
+            .with_condition_result(payload.capture_condition_result)
+            .with_presentation_label(payload.presentation_label.clone()),
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::IfEffect<M::Effect>>(&effect) {
@@ -407,6 +409,7 @@ where
             converted = converted.linking_source_exiled_this_resolution();
         }
         converted.entry_counters = payload.entry_counters.clone();
+        converted.must_attack_player_this_turn = payload.must_attack_player_this_turn.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::TapEffect>(&effect) {
@@ -508,6 +511,19 @@ where
         if let Some(player) = &payload.duration_player {
             converted = converted.with_duration_player(player.clone());
         }
+        if let Some(intro) = payload.intro_surface {
+            converted.trigger = converted.trigger.with_intro_surface(match intro {
+                ironsmith_core::CompilerTriggerIntroSurface::When => {
+                    crate::triggers::TriggerIntroSurface::When
+                }
+                ironsmith_core::CompilerTriggerIntroSurface::Whenever => {
+                    crate::triggers::TriggerIntroSurface::Whenever
+                }
+                ironsmith_core::CompilerTriggerIntroSurface::At => {
+                    crate::triggers::TriggerIntroSurface::At
+                }
+            });
+        }
         converted = match payload.duration {
             ironsmith_core::DelayedTriggerDuration::Forever => converted,
             ironsmith_core::DelayedTriggerDuration::EndOfTurn => converted.until_end_of_turn(),
@@ -591,6 +607,7 @@ where
             set_base_power_toughness_value: payload.set_base_power_toughness_value.clone(),
             starting_loyalty: payload.starting_loyalty,
             set_colors: payload.set_colors,
+            added_colors: payload.added_colors,
             set_card_types: payload.set_card_types.clone(),
             set_subtypes: payload.set_subtypes.clone(),
             granted_static_abilities: payload
@@ -600,6 +617,7 @@ where
                 .map(|ability| hooks.runtime_static_ability_hook(ability))
                 .collect::<Result<Vec<_>, _>>()?,
             entry_counters: payload.entry_counters.clone(),
+            enters_blocking: payload.enters_blocking.clone(),
             suppress_aura_attachment_choice: payload.suppress_aura_attachment_choice,
         }));
     }
@@ -710,7 +728,8 @@ where
                 "destroy-no-regeneration effect without target or filter".to_string(),
             ));
         }
-        .with_creature_destroyed_this_way_surface(payload.creature_destroyed_this_way_surface);
+        .with_creature_destroyed_this_way_surface(payload.creature_destroyed_this_way_surface)
+        .with_definite_noun_rider_surface(payload.definite_noun_rider_surface);
         return Ok(Effect::new(converted));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RegenerateEffect<M::Effect>>(&effect) {
@@ -1105,6 +1124,7 @@ where
             crate::effects::ForPlayersEffect::new(payload.filter.clone(), effects)
         };
         converted.sequential = payload.sequential;
+        converted.announcement_condition = payload.announcement_condition.clone();
         if payload.stop_after_first_happened {
             converted = converted.stop_after_first_happened();
         }
@@ -1673,6 +1693,8 @@ where
         grant.spell_cost_reduction_per_opponent = payload.spell_cost_reduction_per_opponent;
         grant.during_your_turns = payload.during_your_turns;
         grant.alternative_cost_x_is_mana_value = payload.alternative_cost_x_is_mana_value;
+        grant.while_player_controls = payload.while_player_controls.clone();
+        grant.permanents_enter_tapped = payload.permanents_enter_tapped;
         grant = grant.with_lands_enter_tapped(payload.lands_enter_tapped);
         return Ok(Effect::new(grant));
     }

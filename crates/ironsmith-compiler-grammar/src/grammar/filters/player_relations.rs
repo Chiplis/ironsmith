@@ -43,6 +43,9 @@ const PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     &["put", "onto", "battlefield", "with", "this", "enchantment"],
     &["put", "onto", "battlefield", "with", "this", "permanent"],
     &["put", "onto", "battlefield", "with", "this", "source"],
+    // "if it wasn't put onto the battlefield with this ability" (Kodama of
+    // the East Tree): the source's put-onto-battlefield provenance.
+    &["put", "onto", "battlefield", "with", "this", "ability"],
 ];
 const CREATED_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     &["created", "with", "it"],
@@ -617,7 +620,28 @@ pub(super) fn try_apply_player_relation_clause(
     }
 
     apply_player_relation(filter, player, verb);
-    Some(subject_consumed + verb_consumed)
+    // "target creature you cast this turn" (Cycle of Life): the cast
+    // relation keeps its turn bound.
+    let consumed = subject_consumed + verb_consumed;
+    // "cards that player owns in exile" (Kaya, Orzhov Usurper): the authored
+    // ownership clause precedes the zone instead of the possessive zone
+    // surface "in that player's exile".
+    if matches!(verb, PlayerRelationVerb::Own)
+        && words.get(consumed) == Some(&"in")
+        && matches!(
+            words.get(consumed + 1),
+            Some(&("exile" | "graveyard" | "hand" | "library"))
+        )
+    {
+        filter.set_owner_before_zone_surface(true);
+    }
+    if matches!(verb, PlayerRelationVerb::Cast)
+        && words.get(consumed..consumed + 2) == Some(&["this", "turn"][..])
+    {
+        filter.cast_this_turn = true;
+        return Some(consumed + 2);
+    }
+    Some(consumed)
 }
 
 pub(super) fn try_apply_passive_player_relation_clause(
@@ -1032,6 +1056,58 @@ pub(super) fn try_apply_put_there_from_their_library_this_turn_clause(
                 words: &[
                     "that", "were", "put", "there", "from", "your", "library", "this", "turn",
                 ],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
+/// "target creature or planeswalker card in your graveyard that wasn't put
+/// there this combat" (Storrev, Devkarin Lich): this graveyard incarnation
+/// did not enter the graveyard during the current combat phase.
+pub(super) fn try_apply_not_put_there_this_combat_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    const PHRASES: &[&[&str]] = &[
+        &["that", "wasn't", "put", "there", "this", "combat"],
+        &["that", "wasnt", "put", "there", "this", "combat"],
+        &["that", "weren't", "put", "there", "this", "combat"],
+        &["that", "werent", "put", "there", "this", "combat"],
+        &["that", "was", "not", "put", "there", "this", "combat"],
+    ];
+    let Some((word_start, consumed)) = all_words.iter().enumerate().find_map(|(idx, _)| {
+        crate::word_primitives::find_any_phrase_start(&all_words[idx..], PHRASES)
+            .filter(|(_, start)| *start == 0)
+            .map(|(phrase, _)| (idx, phrase.len()))
+    }) else {
+        return false;
+    };
+    filter.not_put_into_graveyard_this_combat = true;
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &["that", "wasn't", "put", "there", "this", "combat"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "weren't", "put", "there", "this", "combat"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "wasnt", "put", "there", "this", "combat"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "werent", "put", "there", "this", "combat"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "was", "not", "put", "there", "this", "combat"],
                 drain_start_offset: 0,
             },
         ],
@@ -1664,10 +1740,20 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
             }
         }
         if let Some(start) = crate::word_primitives::parse_sequence_start(all_words, prefix)
-            && let Some((player, used)) = parse_player_relation_subject(
-                &all_words[start + prefix.len()..],
-                &PlayerFilter::IteratedPlayer,
-            )
+            && let Some((player, used)) = {
+                // "that dealt combat damage to a player this turn" (Excess):
+                // any player is a damage recipient, though "a player" is not
+                // an owner/controller relation subject.
+                let rest = &all_words[start + prefix.len()..];
+                if rest.starts_with(&["a", "player"]) || rest.starts_with(&["any", "player"]) {
+                    Some((PlayerFilter::Any, 2))
+                } else if rest.starts_with(&["player", "this", "turn"]) {
+                    // The article may already be stripped from the word view.
+                    Some((PlayerFilter::Any, 1))
+                } else {
+                    parse_player_relation_subject(rest, &PlayerFilter::IteratedPlayer)
+                }
+            }
             && all_words.get(start + prefix.len() + used..start + prefix.len() + used + 2)
                 == Some(&["this", "turn"][..])
         {

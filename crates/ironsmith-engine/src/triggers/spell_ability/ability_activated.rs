@@ -388,7 +388,7 @@ impl TriggerMatcher for AbilityActivatedTrigger {
             )
         };
         if self.filter.has_x_in_cost {
-            text.push_str(" with an activation cost that contains {X}");
+            text.push_str(" with {X} in its activation cost");
         }
         if self.non_mana_only && !self.loyalty_only {
             text.push_str(

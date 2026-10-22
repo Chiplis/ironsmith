@@ -1091,6 +1091,7 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             on_use_effects: spec.on_use_effects.into_iter().map(|effect|
                 runtime_effect_from_core_model_with_card_definitions(effect, self.card_definition)).collect::<Result<_, _>>()?,
             requires_linked_exile_pair: spec.requires_linked_exile_pair,
+            land_play_companion: spec.land_play_companion,
             may_look_at_linked_exile: spec.may_look_at_linked_exile,
             cast_mana_spend_mode: spec.cast_mana_spend_mode,
             linked_exile_pair: spec.linked_exile_pair,
@@ -1862,6 +1863,7 @@ pub fn encode_runtime_effect(
             exile_at_end_of_combat, sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step, exile_at_next_end_step,
             next_end_step_player, link_source_exiled_this_resolution, entry_counters,
+            must_attack_player_this_turn,
         } = payload.clone();
         let converted = ironsmith_core::CreateTokenEffect {
             token: encode_runtime_definition(token)?, text_roles, dynamic_power_toughness, count, controller,
@@ -1872,6 +1874,7 @@ pub fn encode_runtime_effect(
             exile_at_end_of_combat, sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step, exile_at_next_end_step,
             next_end_step_player, link_source_exiled_this_resolution, entry_counters,
+            must_attack_player_this_turn,
         };
         return serde_json::to_value(converted)
             .map(|payload| wire::WireEffect::new("CreateTokenEffect", payload))
@@ -1911,6 +1914,7 @@ pub fn encode_runtime_effect(
             filter: payload.filter.clone(), sequential: payload.sequential,
             starting_with_controller: payload.starting_with_controller,
             stop_after_first_happened: payload.stop_after_first_happened,
+            announcement_condition: payload.announcement_condition.clone(),
         };
         return serde_json::to_value(converted)
             .map(|payload| wire::WireEffect::new("ForPlayersEffect", payload))

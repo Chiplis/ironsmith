@@ -751,6 +751,34 @@ fn read_lose_all_abilities_and_base_pt_line(
     input: &EarlyLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
+    // "Enchanted creature loses all abilities and can't attack or block."
+    // (Observed Stasis): the conjoined restriction is its own static ability
+    // over the same subject; the lose-all-abilities shape alone would drop it.
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if let Some(lose) = words.iter().position(|word| matches!(*word, "lose" | "loses"))
+        && lose > 0
+        && words.get(lose + 1..lose + 5).is_some_and(|tail| {
+            tail[..3] == ["all", "abilities", "and"] && matches!(tail[3], "can't" | "cant")
+        })
+        && let Some(subject_end) = view.token_index_after_words(lose)
+        && let Some(lose_end) = view.token_index_after_words(lose + 3)
+        && let Some(restriction_start) = view.token_index_after_words(lose + 4)
+    {
+        let Some(mut abilities) = parse_lose_all_abilities_and_base_pt_line(&tokens[..lose_end])?
+        else {
+            return Ok(None);
+        };
+        let mut restriction_tokens = tokens[..subject_end].to_vec();
+        restriction_tokens.extend_from_slice(&tokens[restriction_start..]);
+        let Some(restrictions) = parse_static_ability_ast_line_lexed(&restriction_tokens)? else {
+            return Ok(None);
+        };
+        let mut out: Vec<StaticAbilityAst> =
+            abilities.drain(..).map(StaticAbilityAst::from).collect();
+        out.extend(restrictions);
+        return Ok(Some(out));
+    }
     if let Some(abilities) = parse_lose_all_abilities_and_base_pt_line(tokens)? {
         return Ok(Some(
             abilities.into_iter().map(StaticAbilityAst::from).collect(),
@@ -872,14 +900,18 @@ fn read_untap_each_other_players_untap_step_line(
         let subject_tokens = trim_commas(spec.subject_tokens);
         let filter = parse_object_filter(&subject_tokens, false)?;
         let subject_text = crate::lexer::token_word_refs(&subject_tokens).join(" ");
+        let step = if spec.opponents_only { "each opponent's" } else { "each other player's" };
         let display = if spec.untap_all {
-            format!("Untap all {subject_text} during each other player's untap step")
+            format!("Untap all {subject_text} during {step} untap step")
         } else {
-            format!("Untap {subject_text} during each other player's untap step")
+            format!("Untap {subject_text} during {step} untap step")
         };
-        return Ok(Some(vec![
-            StaticAbility::untap_during_each_other_players_untap_step(filter, display).into(),
-        ]));
+        let ability = if spec.opponents_only {
+            StaticAbility::untap_during_each_opponents_untap_step(filter, display)
+        } else {
+            StaticAbility::untap_during_each_other_players_untap_step(filter, display)
+        };
+        return Ok(Some(vec![ability.into()]));
     }
     Ok(None)
 }

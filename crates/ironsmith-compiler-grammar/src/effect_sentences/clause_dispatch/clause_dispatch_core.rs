@@ -475,9 +475,26 @@ pub(super) fn parse_effect_clause_unstacked(
         && let Some(sentences) =
             super::super::gain_ability::split_anaphor_pair_subject_sentences(tokens)
     {
+        // "Alandra and Drakes you control each get +X/+X": the source is one
+        // of two recipients of a single coordinated predicate.
+        let source_recipient = {
+            let words = crate::lexer::token_word_refs(&sentences[0]);
+            let verb = words
+                .iter()
+                .position(|word| matches!(*word, "gain" | "gains" | "get" | "gets"))
+                .unwrap_or(words.len());
+            crate::util::is_source_reference_words(&words[..verb])
+        };
         let mut effects = Vec::new();
         for sentence in sentences {
             effects.push(parse_effect_clause_unstacked(&sentence)?);
+        }
+        if source_recipient {
+            return Ok(EffectAst::Coordinated {
+                effects,
+                leading_duration: false,
+                result_conjunction: false,
+            });
         }
         return Ok(EffectAst::Sequence { effects });
     }
@@ -968,4 +985,34 @@ pub(super) fn parse_passive_goad_clause(
 
 pub fn parse_effect_clause_lexed(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     parse_effect_clause(tokens)
+}
+
+/// "The tokens are goaded for as long as this Saga remains on the
+/// battlefield." (The War Games): the definite description names the tokens
+/// just created, never every token on the battlefield, and the goad lasts
+/// for the source-lifetime duration (CR 701.15, 611.2b).
+pub(crate) fn parse_referenced_tokens_goaded_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let subject_len = match words.as_slice() {
+        ["the" | "that", "token", "is", "goaded", ..] => 4,
+        ["the" | "those", "tokens", "are", "goaded", ..] => 4,
+        _ => return None,
+    };
+    let goaded = tokens
+        .iter()
+        .position(|token| token.is_word("goaded"))?;
+    let tail = crate::lexer::trim_lexed_commas(&tokens[goaded + 1..]);
+    let tail_words = &words[subject_len..];
+    // Undurationed and rest-of-game forms keep their existing readings.
+    if tail_words.is_empty() {
+        return None;
+    }
+    let duration = crate::grammar::effects::parse_source_lifetime_duration(tail)?;
+    let it = crate::cards::builders::TargetAst::Tagged(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        None,
+    );
+    Some(EffectAst::subject_verb_goad_for(it, duration))
 }

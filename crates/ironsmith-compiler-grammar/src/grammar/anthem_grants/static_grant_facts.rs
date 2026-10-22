@@ -14,6 +14,9 @@ pub enum GrantedAlternativeCastKeyword {
     Emerge,
     Miracle,
     Escape,
+    /// "Each nonland card in your graveyard has mayhem. The mayhem cost is
+    /// equal to its mana cost." (Green Goblin)
+    Mayhem,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +73,7 @@ fn granted_alternative_cast_keyword(
         primitives::kw("emerge").value(GrantedAlternativeCastKeyword::Emerge),
         primitives::kw("miracle").value(GrantedAlternativeCastKeyword::Miracle),
         primitives::kw("escape").value(GrantedAlternativeCastKeyword::Escape),
+        primitives::kw("mayhem").value(GrantedAlternativeCastKeyword::Mayhem),
     ))
     .parse_next(input)
 }

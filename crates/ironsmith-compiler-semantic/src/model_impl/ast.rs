@@ -247,6 +247,9 @@ pub enum TriggerSpec {
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
         min_total_attackers: u32,
+        /// "[a player] attacks with [N or more] creatures": grouped per
+        /// attacking player rather than across the whole declaration.
+        per_attacking_player: bool,
     },
     AttacksOneOrMoreWithExactTotal {
         filter: ObjectFilter,
@@ -375,6 +378,8 @@ pub enum TriggerSpec {
         source: ObjectFilter,
         player: PlayerFilter,
         source_surface: crate::triggers::DamageSourceSurface,
+        /// "deal damage to your opponents": one event for the whole batch.
+        damaged_player_one_or_more: bool,
     },
     DealsExactDamageToObjectOrPlayer {
         source: ObjectFilter,
@@ -676,6 +681,10 @@ pub enum TriggerSpec {
     /// only meaningful as a delayed trigger linked to the preceding shield.
     /// Delayed watcher bound to the preceding play permission.
     SpellCastThroughPreviousPermission,
+    /// "whenever you play a land or cast a spell this way" (Apple of Eden):
+    /// a delayed watcher bound to the exact preceding play grants. The boxed
+    /// play-or-cast event supplies the body's event references.
+    PlayedOrCastThroughPreviousPermission(Box<TriggerSpec>),
     DamagePreventedThisWay {
         source_filter: Option<ObjectFilter>,
     },
@@ -722,6 +731,9 @@ pub enum TriggerSpec {
         /// grammatical subject of this trigger.
         recipient_passive: bool,
         during_your_turn: bool,
+        /// "... to a player or battle" (Zurgo and Ojutai): damaged
+        /// permanents matching this filter are grouped recipients too.
+        object_recipient: Option<ObjectFilter>,
     },
     YouCastThisSpell,
     KeywordAction {

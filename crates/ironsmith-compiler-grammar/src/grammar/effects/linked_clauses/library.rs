@@ -355,6 +355,12 @@ fn looked_partition_destination(input: &mut LexStream<'_>) -> WResult<LookedPart
 }
 
 fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartitionShape> {
+    // "You may put any number of them into your hand and the rest into your
+    // graveyard" (Search for Blex): an any-number selection already admits
+    // choosing none, so the permission is the same partition.
+    let optional = opt(primitives::phrase(&["you", "may"]))
+        .parse_next(input)?
+        .is_some();
     primitives::kw("put").parse_next(input)?;
     // "Put one back and the rest into that player's graveyard" (Dimir
     // Charm): a bare "back" returns the selected cards to the top of the
@@ -374,6 +380,12 @@ fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartiti
         (looked_partition_count, looked_partition_destination),
     ))
     .parse_next(input)?;
+    if optional && !(selected_count.min == 0 && selected_count.max.is_none()) {
+        return Err(primitives::backtrack_err(
+            "looked-card partition",
+            "an any-number selection under \"you may\"",
+        ));
+    }
     primitives::kw("and").parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
     alt((primitives::kw("rest"), primitives::kw("other")))

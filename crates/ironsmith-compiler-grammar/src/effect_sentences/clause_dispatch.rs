@@ -216,6 +216,7 @@ fn bind_explicit_damage_subject_characteristics_to_source(value: &mut Value) {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::CountersOn(spec, _)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
             if matches!(
@@ -1303,6 +1304,35 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
         {
             *surface = set_quantifier_surface;
         }
+        // "each creature you control attacking a player gets +1/+0 ... for
+        // each creature that player controls" (Jurin, Leading the Charge):
+        // the count is per attacked player, so the pump runs once per player
+        // over the creatures attacking that player directly.
+        let subject_words = crate::lexer::parser_token_word_refs(subject_shape.subject_tokens);
+        let full_words = crate::lexer::parser_token_word_refs(full_tokens);
+        if subject_words
+            .windows(3)
+            .any(|window| window == ["attacking", "a", "player"])
+            && full_words
+                .windows(2)
+                .any(|window| window == ["that", "player"])
+            && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. }),
+                ..
+            }) = &mut effect
+            && filter.attacking
+            && filter.attacking_player_or_planeswalker_controlled_by.is_none()
+        {
+            filter.attacking_player_or_planeswalker_controlled_by =
+                Some(crate::target::PlayerFilter::IteratedPlayer);
+            filter.attacking_player_only = true;
+            return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: crate::target::PlayerFilter::Any,
+                effects: vec![effect],
+            })));
+        }
         return Ok(Some(effect));
     }
 
@@ -1719,6 +1749,7 @@ mod tests;
 mod clause_dispatch_core_programs;
 pub use clause_dispatch_core_programs::parse_effect_clause_lexed;
 pub(crate) use clause_dispatch_core_programs::parse_inline_loyalty_symbol_clause;
+pub(crate) use clause_dispatch_core_programs::parse_referenced_tokens_goaded_sentence;
 use clause_dispatch_core_programs::{parse_effect_clause_unstacked, parse_passive_goad_clause};
 #[path = "clause_dispatch/clause_dispatch_reference.rs"]
 mod clause_dispatch_reference_programs;

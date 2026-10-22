@@ -34,6 +34,10 @@ fn bind(effects: &mut Vec<EffectAst>, sentence: &SentenceInput) -> bool {
             effects,
             sentence.lowered(),
         )
+        || super::cast_spell_graveyard_rider::bind_cast_spell_graveyard_entry_rider(
+            effects,
+            sentence.lowered(),
+        )
         || super::discarded_keyword_entry_counters::bind_discarded_keyword_entry_counter(
             effects,
             sentence.lowered(),

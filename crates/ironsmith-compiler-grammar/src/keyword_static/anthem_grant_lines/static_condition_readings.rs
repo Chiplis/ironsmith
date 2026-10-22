@@ -261,6 +261,8 @@ fn read_typed_attack_history_threshold_condition(
         left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
             player: PlayerFilter::You,
             filter: ObjectFilter::creature().with_subtype(subtype),
+            this_combat: false,
+            attacked: None,
         }),
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(count),
@@ -360,7 +362,7 @@ fn read_player_counter_condition(
             && let Ok(count) = u32::try_from(*count)
         {
             return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
-                player, count,
+                player, count, as_you_cast: false,
             })));
         }
         let Some((operator, value)) =
@@ -803,6 +805,8 @@ mod typed_attack_history_tests {
             left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
                 player: PlayerFilter::You,
                 filter: ObjectFilter::creature().with_subtype(Subtype::Merfolk),
+                this_combat: false,
+                attacked: None,
             }),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(3),

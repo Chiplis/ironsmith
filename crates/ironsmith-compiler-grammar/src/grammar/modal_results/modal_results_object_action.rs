@@ -476,6 +476,17 @@ pub fn parse_if_result_predicate_lexed_tokens(
     ) {
         return Some(IfResultPredicate::ExcessDamageDealt);
     }
+    // "If excess damage was dealt to a creature this way" (Vikya, Scorching
+    // Stalwart): only excess dealt to a creature recipient counts.
+    if matches_phrase(
+        &normalized,
+        &["excess", "damage", "was", "dealt", "to", "creature", "this", "way"],
+    ) || matches_phrase(
+        &normalized,
+        &["excess", "damage", "is", "dealt", "to", "creature", "this", "way"],
+    ) {
+        return Some(IfResultPredicate::ExcessDamageDealtToCreature);
+    }
     if (starts_with_phrase(&normalized, &["excess", "damage", "was", "dealt", "to"])
         || starts_with_phrase(&normalized, &["excess", "damage", "is", "dealt", "to"]))
         && (has_phrase(&normalized, &["creature"])
@@ -504,7 +515,17 @@ pub fn parse_if_result_predicate_lexed_tokens(
             || starts_with_phrase(&normalized, &["it", "power", "becomes"]))
         && ends_with_phrase(&normalized, &["this", "way"])
     {
-        return Some(IfResultPredicate::Did);
+        // "When its power becomes 20 this way" (Inferno of the Star Mounts):
+        // the reflexive ability triggers only at that exact power.
+        return Some(
+            normalized
+                .get(3)
+                .map(OwnedLexToken::parser_text)
+                .and_then(|word| {
+                    word.parse::<u32>().ok().or_else(|| crate::util::parse_number_word_u32(word))
+                })
+                .map_or(IfResultPredicate::Did, IfResultPredicate::SourcePowerBecomes),
+        );
     }
     if (starts_with_phrase(&normalized, &["you", "lose"])
         || starts_with_phrase(&normalized, &["you", "lost"]))

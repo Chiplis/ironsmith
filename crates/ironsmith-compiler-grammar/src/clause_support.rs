@@ -938,6 +938,13 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
     if crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens).is_some() {
         return None;
     }
+    // "Recover—Pay half your life, rounded up" (Garza's Assassin): an
+    // em-dash keyword cost is one phrase; its commas aren't keyword separators.
+    if let Some(action @ (KeywordAction::RecoverTotalCost(_) | KeywordAction::UnearthTotalCost(_))) =
+        parse_ability_phrase(tokens)
+    {
+        return Some(vec![action]);
+    }
     let segments = clause_grammar::parse_ability_segments_tokens(tokens);
     let mut actions = Vec::new();
     for span in segments {
@@ -1582,7 +1589,7 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                         ))
                     })?;
                     if filter.controller.is_none() {
-                        filter.controller = Some(player);
+                        filter.controller = Some(player.clone());
                     }
                     filter.set_union_one_or_more(one_or_more);
                     let trigger = if let Some(total_attackers) = exact_total_attackers {
@@ -1592,8 +1599,15 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                         }
                     } else if let Some(min_total_attackers) = min_total_attackers {
                         TriggerSpec::AttacksOneOrMoreWithMinTotal {
+                            per_attacking_player: player != PlayerFilter::You,
                             filter,
                             min_total_attackers,
+                        }
+                    } else if one_or_more && player != PlayerFilter::You {
+                        TriggerSpec::AttacksOneOrMoreWithMinTotal {
+                            filter,
+                            min_total_attackers: 1,
+                            per_attacking_player: true,
                         }
                     } else if one_or_more {
                         TriggerSpec::AttacksOneOrMore(filter)
@@ -1660,7 +1674,7 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                         ))
                     })?;
                     if filter.controller.is_none() {
-                        filter.controller = Some(player);
+                        filter.controller = Some(player.clone());
                     }
                     filter.set_union_one_or_more(one_or_more);
                     filter.attacking_player_or_planeswalker_controlled_by = Some(attacked_player);
@@ -1674,8 +1688,15 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                         }
                     } else if let Some(min_total_attackers) = min_total_attackers {
                         TriggerSpec::AttacksOneOrMoreWithMinTotal {
+                            per_attacking_player: player != PlayerFilter::You,
                             filter,
                             min_total_attackers,
+                        }
+                    } else if one_or_more && player != PlayerFilter::You {
+                        TriggerSpec::AttacksOneOrMoreWithMinTotal {
+                            filter,
+                            min_total_attackers: 1,
+                            per_attacking_player: true,
                         }
                     } else if one_or_more {
                         TriggerSpec::AttacksOneOrMore(filter)

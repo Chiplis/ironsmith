@@ -920,6 +920,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
+    /// "As this becomes attached to a creature, choose an exiled creature
+    /// card used to craft this" (Dinosaur Headdress).
+    fn craft_material_choice_as_becomes_attached(&self) -> bool {
+        false
+    }
+
     /// Returns info for "as this enters, choose a player" abilities.
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         None
@@ -1253,6 +1259,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         &self,
     ) -> Option<&crate::target::ObjectFilter> {
         None
+    }
+
+    /// Whether that untap applies only during opponents' untap steps.
+    fn untap_during_other_players_untap_step_opponents_only(&self) -> bool {
+        false
     }
 
     /// "Players can't untap more than N <filter> during their untap steps":
@@ -1761,6 +1772,10 @@ impl StaticAbility {
 
     pub fn creature_card_name_and_type_choice_as_becomes_attached(&self) -> bool {
         self.0.creature_card_name_and_type_choice_as_becomes_attached()
+    }
+
+    pub fn craft_material_choice_as_becomes_attached(&self) -> bool {
+        self.0.craft_material_choice_as_becomes_attached()
     }
 
     pub fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
@@ -2587,6 +2602,10 @@ impl StaticAbility {
         &self,
     ) -> Option<&crate::target::ObjectFilter> {
         self.0.untap_during_each_other_players_untap_step_filter()
+    }
+
+    pub fn untap_during_other_players_untap_step_opponents_only(&self) -> bool {
+        self.0.untap_during_other_players_untap_step_opponents_only()
     }
 
     pub fn untap_step_limit_spec(
@@ -4225,6 +4244,10 @@ impl StaticAbility {
         Self::new(ChooseCreatureCardNameAndTypeAsBecomesAttached { display })
     }
 
+    pub fn choose_craft_material_as_becomes_attached(display: String) -> Self {
+        Self::new(ChooseCraftMaterialAsBecomesAttached { display })
+    }
+
     pub fn attached_has_source_chosen_name_and_creature_type() -> Self {
         Self::new(AttachedHasSourceChosenNameAndCreatureType)
     }
@@ -5204,6 +5227,15 @@ impl StaticAbility {
         display: String,
     ) -> Self {
         Self::new(UntapDuringEachOtherPlayersUntapStep::new(filter, display))
+    }
+
+    pub fn untap_during_each_opponents_untap_step(
+        filter: crate::target::ObjectFilter,
+        display: String,
+    ) -> Self {
+        let mut ability = UntapDuringEachOtherPlayersUntapStep::new(filter, display);
+        ability.opponents_only = true;
+        Self::new(ability)
     }
 
     pub fn can_be_commander() -> Self {

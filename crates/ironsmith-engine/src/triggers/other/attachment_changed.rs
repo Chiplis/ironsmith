@@ -75,7 +75,24 @@ impl TriggerMatcher for AttachmentChangedTrigger {
             } else {
                 "unattached from"
             },
-            self.recipient.description()
+            {
+                // "becomes attached to a creature": a bare noun phrase takes
+                // its indefinite article.
+                let recipient = self.recipient.description();
+                let first = recipient.split_whitespace().next().unwrap_or_default();
+                if matches!(
+                    first,
+                    "a" | "an" | "another" | "each" | "target" | "this" | "that" | "the"
+                        | "enchanted" | "equipped" | "it" | "you" | "your"
+                ) || recipient.is_empty()
+                {
+                    recipient
+                } else if first.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                    format!("an {recipient}")
+                } else {
+                    format!("a {recipient}")
+                }
+            }
         )
     }
 }

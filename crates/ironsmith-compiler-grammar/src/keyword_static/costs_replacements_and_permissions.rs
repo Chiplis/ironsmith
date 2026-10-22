@@ -233,6 +233,20 @@ pub fn parse_cost_modifier_target_spec(
     {
         return Ok((None, Some(Box::new(ObjectFilter::source())), false));
     }
+    // "Spells you cast that target enchanted player" (Infectious Curse): a
+    // player Aura's host is a player, never an enchanted permanent.
+    if let [first, second] = target_tokens
+        && first.is_word("enchanted")
+        && second.is_word("player")
+    {
+        return Ok((
+            Some(PlayerFilter::TaggedPlayer(
+                (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
+            )),
+            None,
+            false,
+        ));
+    }
 
     match static_mid_facts::parse_cost_modifier_target_fact(target_tokens) {
         Some(static_mid_facts::CostTargetFact::You) => Ok((Some(PlayerFilter::You), None, false)),
@@ -685,6 +699,7 @@ pub fn parse_spells_cost_modifier_line(
             &["you", "cast"][..],
             &["your", "opponents", "cast"],
             &["an", "opponent", "casts"],
+            &["enchanted", "player", "casts"],
         ] {
             let view = TokenWordView::new(&between_for_filter);
             let actor_words = view.to_word_refs();
@@ -709,6 +724,15 @@ pub fn parse_spells_cost_modifier_line(
             }
             Some(static_mid_facts::SpellCastActorFact::Opponent) => {
                 filter.cast_by = Some(PlayerFilter::Opponent)
+            }
+            // "Spells with the chosen name enchanted player casts cost {2}
+            // more to cast" (Curse of Silence): the Aura's enchanted player.
+            None if cost_words_contain_phrase(
+                &between_words,
+                &["enchanted", "player", "casts"],
+            ) =>
+            {
+                filter.cast_by = Some(PlayerFilter::TaggedPlayer("enchanted".into()));
             }
             None => {}
         }
@@ -910,7 +934,17 @@ pub fn parse_spells_cost_modifier_line(
         && let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)?
     {
         tail_read_by_amount = true;
-        if parsed_mana_cost.is_some() && is_this_spell {
+        // A colored per-count reduction ("costs {U} less to cast for each
+        // land ...", Eluge) keeps its mana symbols and repeats them; only a
+        // purely generic one folds into a scaled generic amount.
+        let colored_mana_cost = parsed_mana_cost.as_ref().is_some_and(|(cost, _)| {
+            cost.pips().iter().flatten().any(|symbol| {
+                !matches!(symbol, crate::mana::ManaSymbol::Generic(_))
+            })
+        });
+        if parsed_mana_cost.is_some()
+            && (is_this_spell || (colored_mana_cost && direction == CostModifierDirection::Less))
+        {
             parsed_mana_cost_repetitions = Some(dynamic_value);
         } else {
             if parsed_mana_cost.is_some() {
@@ -1037,6 +1071,22 @@ pub fn parse_spells_cost_modifier_line(
             None => condition,
         });
     }
+    // "Spells your opponents cast during your turn cost {1} more to cast."
+    // (Paladin Class): the turn restriction gates the modifier.
+    if !is_this_spell
+        && first_spell_fact.is_none()
+        && crate::word_primitives::sequence_occurs(
+            &crate::lexer::parser_token_word_refs(&tokens[spells_token_idx + 1..cost_token_idx]),
+            &["cast", "during", "your", "turn"],
+        )
+    {
+        non_this_condition = Some(match non_this_condition.take() {
+            Some(existing) => {
+                PredicateAst::And(Box::new(existing), Box::new(PredicateAst::YourTurn))
+            }
+            None => PredicateAst::YourTurn,
+        });
+    }
     if first_spell_fact.is_some_and(|fact| fact.during_each_of_your_turns) && !is_this_spell {
         non_this_condition = Some(match non_this_condition.take() {
             Some(existing) => {
@@ -1071,6 +1121,9 @@ pub fn parse_spells_cost_modifier_line(
         if let Some((cost, _)) = parsed_mana_cost {
             let mut ability = crate::static_abilities::CostReductionManaCost::new(filter, cost)
                 .with_colored_only(cost_reduction_is_colored_only(tokens));
+            if let Some(repetitions) = parsed_mana_cost_repetitions {
+                ability = ability.with_repetitions(repetitions);
+            }
             if per_target {
                 ability = ability.with_per_target();
             }
@@ -2517,8 +2570,22 @@ pub fn parse_dynamic_cost_modifier_value(
                 )
             {
                 with_for_each_surface(value)
-            } else if let Some(player) = parse_commander_cast_count_player(filter_tokens) {
-                Value::CommanderCastCount(player)
+            } else if matches!(
+                parser_token_word_refs(filter_tokens).as_slice(),
+                ["time" | "times", "it's" | "its", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+                    | ["time" | "times", "it", "has" | "s", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+            ) {
+                // "for each time it's been cast from the command zone this
+                // game" (Myth Unbound): within a cost modifier "it" is the
+                // spell being priced, the iterated object of that context.
+                with_for_each_surface(Value::CommanderCastCountOf(Box::new(ChooseSpec::Iterated)))
+            } else if parse_commander_cast_count_player(filter_tokens).is_some()
+                && let Some(value) =
+                    crate::grammar::shared_util::value_helper_shapes::parse_commander_cast_count_value(
+                        &parser_token_word_refs(filter_tokens),
+                    )
+            {
+                with_for_each_surface(value)
             } else {
                 let filter_words = parser_token_word_refs(filter_tokens);
                 let mut count_words = vec!["for", "each"];
@@ -2834,7 +2901,14 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
         return Ok(None);
     }
 
-    let filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
+    // A bare "it" subject of a permanent's own static ("It is a land in
+    // addition to its other types") names that permanent; it is not an
+    // unconstrained object filter (which would read as "all permanents").
+    let filter = if matches!(parser_token_word_refs(fact.subject_tokens).as_slice(), ["it"]) {
+        ObjectFilter::source()
+    } else {
+        parse_object_filter_lexed(fact.subject_tokens, false)?
+    };
 
     let mut abilities = Vec::new();
     if !card_types.is_empty() {
@@ -3577,7 +3651,11 @@ pub fn parse_conditional_copular_creature_line(
             crate::slice_primitives::push_unique(&mut subtypes, subtype);
         } else { return Ok(None); }
     }
-    if !card_types.contains(&CardType::Creature) { return Ok(None); }
+    // "As long as this creature is on the battlefield, it's a land in addition
+    // to its other types." (Awakened Skyclave): an explicit additive card type
+    // on the source pronoun is the same layer-4 addition for any card type.
+    let additive_source_type = addition.is_some() && source_pronoun && !card_types.is_empty();
+    if !card_types.contains(&CardType::Creature) && !additive_source_type { return Ok(None); }
     // CR 205.1b: becoming an artifact creature retains existing types and
     // subtypes even without "in addition". Other replacements are not this rule.
     if addition.is_none() && card_types != [CardType::Artifact, CardType::Creature] {
@@ -3586,7 +3664,9 @@ pub fn parse_conditional_copular_creature_line(
     let condition = parse_static_condition_clause(condition_tokens)?;
     // Explicit off-battlefield functioning belongs to its separate owner;
     // a battlefield-only conditional would otherwise be a vacuous success.
-    if copular_condition_has_source_zone(&condition) {
+    if copular_condition_has_source_zone(&condition)
+        && !copular_condition_is_source_on_battlefield(&condition)
+    {
         return Err(CardTextError::ParseError("unsupported source-zone condition in copular static".into()));
     }
     let filter = if source_pronoun {
@@ -3611,6 +3691,20 @@ pub fn parse_conditional_copular_creature_line(
         result.push(StaticAbility::set_base_power_toughness(filter, power, toughness).with_condition(condition).into());
     }
     Ok(Some(result))
+}
+
+/// "As long as this creature is on the battlefield, ..." names the zone the
+/// static already functions in (CR 611.3b), so the condition holds whenever the
+/// ability applies; unlike an off-battlefield condition it is not vacuous.
+fn copular_condition_is_source_on_battlefield(condition: &PredicateAst) -> bool {
+    match condition {
+        PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => *zone == Zone::Battlefield,
+        PredicateAst::CountComparison { count: AnthemCountExpression::MatchingFilter(filter), comparison, .. } =>
+            filter.source
+                && filter.zone == Some(Zone::Battlefield)
+                && matches!(comparison, crate::effect::Comparison::GreaterThanOrEqual(1)),
+        _ => false,
+    }
 }
 
 fn copular_condition_has_source_zone(condition: &PredicateAst) -> bool {
@@ -4208,6 +4302,19 @@ pub fn parse_double_counters_replacement_line(
         return Ok(None);
     };
     Ok(Some(match shape {
+        keyword_static_lines::CounterReplacementShape::ActorScopedDouble { filter_tokens, counter_type } => {
+            let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Battlefield);
+            }
+            let mut ability = StaticAbility::double_counters_replacement(
+                filter, counter_type, display_text_for_tokens(tokens, true),
+            );
+            if let ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement { actor, .. } = &mut ability.payload {
+                *actor = Some(PlayerFilter::You);
+            }
+            ability
+        }
         keyword_static_lines::CounterReplacementShape::ActorAnyKindAdd {
             filter_tokens,
             includes_player,
@@ -4844,12 +4951,17 @@ pub fn parse_untap_during_each_other_players_untap_step_line(
 
     let filter = parse_object_filter(&subject_tokens, false)?;
     let subject_text = render_token_slice(&subject_tokens);
-    Ok(Some(
+    Ok(Some(if spec.opponents_only {
+        StaticAbility::untap_during_each_opponents_untap_step(
+            filter,
+            format!("Untap all {subject_text} during each opponent's untap step"),
+        )
+    } else {
         StaticAbility::untap_during_each_other_players_untap_step(
             filter,
             format!("Untap all {subject_text} during each other player's untap step"),
-        ),
-    ))
+        )
+    }))
 }
 
 /// "Prevent all damage that would be dealt to you." (Solitary Confinement)
@@ -5103,12 +5215,16 @@ pub fn parse_untap_step_limit_line(
     let words = parser_token_word_refs(tokens);
     let Some((subject, rest)) = crate::word_primitives::strip_any_prefix(
         &words,
-        &[&["players"], &["each", "player"], &["you"]],
+        &[&["players"], &["each", "player"], &["you"], &["your", "opponents"], &["each", "opponent"]],
     ) else {
         return Ok(None);
     };
     let player = if subject == ["you"] {
         PlayerFilter::You
+    } else if subject.contains(&"opponents") || subject.contains(&"opponent") {
+        // "Your opponents can't untap more than two permanents during their
+        // untap steps." (Dovin Baan's emblem)
+        PlayerFilter::Opponent
     } else {
         PlayerFilter::Any
     };
@@ -5153,10 +5269,10 @@ pub fn parse_untap_step_limit_line(
     };
     let filter_tokens = trim_commas(&tokens[filter_start..filter_end]);
     let filter = parse_object_filter(&filter_tokens, false)?;
-    let subject_text = if player == PlayerFilter::You {
-        "You"
-    } else {
-        "Players"
+    let subject_text = match player {
+        PlayerFilter::You => "You",
+        PlayerFilter::Opponent => "Your opponents",
+        _ => "Players",
     };
     Ok(Some(StaticAbility::untap_step_limit(
         player,
@@ -5231,9 +5347,11 @@ pub fn parse_attached_untap_and_activation_restrictions_line(
     let Some(DoesntUntapDuringUntapStepSpec::Attached { subject_tokens, tail_tokens, .. }) =
         parse_doesnt_untap_during_untap_step_spec_lexed(tokens)
     else { return Ok(None); };
-    if crate::lexer::parser_token_word_refs(tail_tokens)
-        != ["and", "its", "activated", "abilities", "cant", "be", "activated"]
-    { return Ok(None); }
+    let beam_prohibition = match crate::lexer::parser_token_word_refs(tail_tokens).as_slice() {
+        ["and", "its", "activated", "abilities", "cant", "be", "activated"] => false,
+        ["and", "cant" | "can't", "be", "beamed", "up"] => true,
+        _ => return Ok(None),
+    };
     let Some(and_index) = tokens.iter().position(|token| token.is_word("and")) else {
         return Ok(None);
     };
@@ -5248,10 +5366,16 @@ pub fn parse_attached_untap_and_activation_restrictions_line(
     let filter = ObjectFilter::permanent_card().in_zone(Zone::Battlefield).match_tagged(
         tag.bind(), crate::filter::TaggedOpbjectRelation::IsTaggedObject,
     );
-    let activation = StaticAbilityAst::Static(StaticAbility::restriction(
-        crate::effect::Restriction::activate_abilities_of(filter),
-        format!("{} activated abilities can't be activated", render_token_slice(subject_tokens)),
-    ));
+    let (restriction, text) = if beam_prohibition {
+        (crate::effect::Restriction::ObjectRule {
+            objects: filter,
+            rule: ironsmith_core::ObjectRule::CantBeBeamedUp,
+        }, format!("{} can't be beamed up", render_token_slice(subject_tokens)))
+    } else {
+        (crate::effect::Restriction::activate_abilities_of(filter),
+            format!("{} activated abilities can't be activated", render_token_slice(subject_tokens)))
+    };
+    let activation = StaticAbilityAst::Static(StaticAbility::restriction(restriction, text));
     Ok(Some(vec![untap, activation]))
 }
 
@@ -5315,8 +5439,9 @@ pub fn parse_doesnt_untap_during_untap_step_line(
             tail_tokens,
             during_your_untap_step,
         }) => {
-            if crate::lexer::parser_token_word_refs(tail_tokens)
-                == ["and", "its", "activated", "abilities", "cant", "be", "activated"]
+            if matches!(crate::lexer::parser_token_word_refs(tail_tokens).as_slice(),
+                ["and", "its", "activated", "abilities", "cant", "be", "activated"]
+                | ["and", "cant" | "can't", "be", "beamed", "up"])
             {
                 // The complete compound reader owns both restrictions.
                 return Ok(None);
@@ -5327,7 +5452,13 @@ pub fn parse_doesnt_untap_during_untap_step_line(
             } else {
                 "its controller's"
             };
-            let text = format!("{subject} doesn't untap during {step_owner} untap step");
+            let mut text = format!("{subject} doesn't untap during {step_owner} untap step");
+            // The authored trailing gate ("if this Aura has a net counter on
+            // it", "unless that player is the monarch") stays part of the
+            // rule's own sentence; the typed condition below gates it.
+            if !tail_tokens.is_empty() {
+                text = format!("{text} {}", render_token_slice(&trim_edge_punctuation(tail_tokens)));
+            }
             let condition = if tail_tokens.is_empty() {
                 None
             } else {
@@ -5402,10 +5533,32 @@ pub fn parse_doesnt_untap_during_untap_step_line(
             } else {
                 condition
             };
-            Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
-                ability: Box::new(StaticAbilityAst::Static(StaticAbility::doesnt_untap())),
-                display: text,
-                condition,
+            // "Enchanted creature doesn't untap ..." is an effect of the Aura
+            // or Equipment on the permanent it's attached to, not an ability
+            // that permanent gains: removing the permanent's abilities can't
+            // end it (CR 303.4, 613.1).
+            let tag = if subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("equipped"))
+            {
+                crate::tag::CompilerReferenceTag::Equipped
+            } else {
+                crate::tag::CompilerReferenceTag::Enchanted
+            };
+            let attached = ObjectFilter::permanent_card().in_zone(Zone::Battlefield).match_tagged(
+                tag.bind(),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            );
+            let restriction = StaticAbilityAst::Static(StaticAbility::restriction_with_display(
+                crate::effect::Restriction::untap(attached),
+                text,
+            ));
+            Ok(Some(match condition {
+                Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                    ability: Box::new(restriction),
+                    condition,
+                },
+                None => restriction,
             }))
         }
         None => Ok(None),
@@ -6221,6 +6374,14 @@ pub fn parse_you_may_static_grant_line(
             tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
             relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
         });
+        // "you may cast the exiled card" (Null Summoner): a cast-only
+        // permission never lets a land be played from the pool.
+        let words = parser_token_word_refs(tokens);
+        if words.windows(3).any(|window| window == ["you", "may", "cast"])
+            && !words.contains(&"play")
+        {
+            filter.excluded_card_types.push(crate::types::CardType::Land);
+        }
         let mut spec = crate::model::CompilerGrantSpecCore::new(
             crate::model::CompilerGrantableCore::play_from(), filter, Zone::Exile,
         ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
@@ -6439,10 +6600,22 @@ pub fn parse_you_may_look_top_card_any_time_line(
 pub fn parse_you_may_look_face_down_creatures_you_dont_control_any_time_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    if is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(tokens) {
-        return Ok(Some(
-            StaticAbility::look_at_face_down_creatures_you_dont_control(),
-        ));
+    // CR 708.6: a permission of this source's controller, modeled as a rule
+    // effect that reveals the matching face-down creatures to that player.
+    if let Some(objects) = crate::grammar::abilities::face_down_look_permission_objects_lexed(tokens) {
+        let rule = ironsmith_core::ObjectRule::FaceDownVisibleTo(PlayerFilter::You);
+        let display = {
+            let text = rule.describe(&objects);
+            let mut chars = text.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        };
+        return Ok(Some(StaticAbility::restriction_with_display(
+            crate::effect::Restriction::object_rule(objects, rule),
+            display,
+        )));
     }
     Ok(None)
 }
@@ -9885,13 +10058,15 @@ mod attached_your_untap_tests {
         let parsed = parse_doesnt_untap_during_untap_step_line(&tokens)
             .unwrap()
             .expect("conditional attached restriction");
-        let StaticAbilityAst::AttachedStaticAbilityGrant {
-            condition: Some(condition),
-            ..
+        let StaticAbilityAst::ConditionalStaticAbility {
+            condition,
+            ability,
         } = parsed
         else {
-            panic!("conditional attached grant required");
+            panic!("conditional attached restriction required");
         };
+        assert!(matches!(ability.as_ref(), StaticAbilityAst::Static(ability)
+            if matches!(&ability.payload, ironsmith_core::StaticAbilityPayload::RuleRestriction { .. })));
         let text = format!("{condition:?}");
         assert!(text.contains("YourTurn"), "{text}");
         assert!(text.contains("pupa"), "{text}");
@@ -10223,6 +10398,25 @@ mod loyalty_timing_tests {
 mod scoped_counter_replacement_tests {
     use super::*;
     use crate::lexer::lex_line;
+    #[test]
+    fn actor_scoped_counter_doubling_preserves_kind_and_recipient() {
+        for (text, kind, card_type) in [
+            ("If you would put one or more counters on a creature you control, put twice that many of each of those kinds of counters on that creature instead.", None, CardType::Creature),
+            ("If you would put one or more charge counters on an artifact you control, put twice that many charge counters on that artifact instead.", Some(CounterType::Charge), CardType::Artifact),
+        ] {
+            let ability = parse_double_counters_replacement_line(&lex_line(text, 0).unwrap()).unwrap().unwrap();
+            let ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement { filter, counter_type, actor, effect_only, .. } = ability.payload else { panic!() };
+            assert_eq!(counter_type, kind);
+            assert_eq!(actor, Some(PlayerFilter::You));
+            assert_eq!(filter.controller, Some(PlayerFilter::You));
+            assert_eq!(filter.card_types, vec![card_type]);
+            assert!(!effect_only);
+            let invalid = format!("{text} Draw a card.");
+            assert!(!matches!(parse_double_counters_replacement_line(&lex_line(&invalid, 0).unwrap()), Ok(Some(_))));
+        }
+        let mismatched = "If you would put one or more charge counters on an artifact you control, put twice that many shield counters on that artifact instead.";
+        assert!(!matches!(parse_double_counters_replacement_line(&lex_line(mismatched, 0).unwrap()), Ok(Some(_))));
+    }
     #[test]
     fn counter_addition_keeps_actor_and_permanent_player_scopes() {
         let text = "If you would put one or more counters on a creature or planeswalker you control or on yourself, put that many plus one of each of those kinds of counters on that permanent or player instead.";

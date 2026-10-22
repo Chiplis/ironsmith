@@ -59,6 +59,7 @@ enum SimpleObjectFilterAtom {
     Nonhistoric,
     Modified,
     Suspected,
+    Renowned,
     Transformed,
     Prepared,
     Stickered,
@@ -578,6 +579,7 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Nonhistoric => filter.nonhistoric = true,
             SimpleObjectFilterAtom::Modified => filter.modified = true,
             SimpleObjectFilterAtom::Suspected => filter.suspected = true,
+            SimpleObjectFilterAtom::Renowned => filter.renowned = true,
             SimpleObjectFilterAtom::Transformed => filter.transformed = true,
             SimpleObjectFilterAtom::Prepared => filter.prepared = true,
             SimpleObjectFilterAtom::Stickered => {
@@ -906,6 +908,7 @@ fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilt
         "nonhistoric" | "non-historic" => SimpleObjectFilterAtom::Nonhistoric,
         "modified" => SimpleObjectFilterAtom::Modified,
         "suspected" => SimpleObjectFilterAtom::Suspected,
+        "renowned" => SimpleObjectFilterAtom::Renowned,
         "transformed" => SimpleObjectFilterAtom::Transformed,
         "prepared" => SimpleObjectFilterAtom::Prepared,
         "stickered" => SimpleObjectFilterAtom::Stickered,

@@ -497,6 +497,10 @@ pub fn parse_value_comparison_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ValueComparisonOperator, &[OwnedLexToken])> {
     for (phrase, operator) in [
+        (&["is", "equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
+        (&["equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
+        (&["is", "equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
+        (&["equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
         (
             &["is", "at", "least"][..],
             ValueComparisonOperator::GreaterThanOrEqual,
@@ -591,6 +595,10 @@ pub fn parse_value_comparison_words<'a>(
     words: &'a [&'a str],
 ) -> Option<(ValueComparisonOperator, &'a [&'a str], usize)> {
     for (phrase, operator) in [
+        (&["is", "equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
+        (&["equal", "to", "or", "less", "than"][..], ValueComparisonOperator::LessThanOrEqual),
+        (&["is", "equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
+        (&["equal", "to", "or", "greater", "than"][..], ValueComparisonOperator::GreaterThanOrEqual),
         (&["is", "exactly"][..], ValueComparisonOperator::Equal),
         (&["exactly"][..], ValueComparisonOperator::Equal),
         // "power equal to or greater than the enchanted creature's

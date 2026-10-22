@@ -78,6 +78,11 @@ impl ironsmith_core::GrantStaticAbility for StaticAbility {
         self.compiled_model().is_some_and(|model|
             ironsmith_core::GrantStaticAbility::grant_is_source_any_graveyard_exile(model))
     }
+
+    fn grant_source_added_subtypes(&self) -> Option<Vec<crate::types::Subtype>> {
+        self.compiled_model().and_then(|model|
+            ironsmith_core::GrantStaticAbility::grant_source_added_subtypes(model))
+    }
 }
 
 pub trait DerivedAlternativeCastRuntimeExt {

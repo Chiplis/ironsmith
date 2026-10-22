@@ -4236,6 +4236,34 @@ impl GameState {
             .sum()
     }
 
+    /// Returns how many times a player has cast any commander from the
+    /// command zone this game ("each time you've cast a commander from the
+    /// command zone this game"), regardless of who owns that commander.
+    pub fn commanders_cast_from_command_zone_by(&self, caster: PlayerId) -> u32 {
+        self.commander_tracking
+            .commander_casts_from_command_zone_by_player
+            .get(&caster)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Records that `caster` cast a commander from the command zone, both
+    /// for the commander's own count and for the caster's tally.
+    pub fn record_commander_cast_from_command_zone_by(
+        &mut self,
+        commander_id: ObjectId,
+        caster: PlayerId,
+    ) {
+        if self.commander_identity(commander_id).is_some() {
+            *self
+                .commander_tracking_mut()
+                .commander_casts_from_command_zone_by_player
+                .entry(caster)
+                .or_insert(0) += 1;
+        }
+        self.record_commander_cast_from_command_zone(commander_id);
+    }
+
     /// Records that a commander was cast from the command zone.
     pub fn record_commander_cast_from_command_zone(&mut self, commander_id: ObjectId) {
         if let Some(identity) = self.commander_identity(commander_id) {

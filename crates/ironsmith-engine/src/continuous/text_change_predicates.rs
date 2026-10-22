@@ -107,7 +107,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         single_graveyard, targets_player, targets_object, targets_any_of, stack_kind,
         target_count, target_set_same_controller, target_set_different_controllers,
         target_controller_fixed_on_announcement,
-        target_set_shared_creature_type, target_set_aggregate_constraint,
+        target_set_shared_creature_type, target_set_equal_metric, target_set_aggregate_constraint,
         targets_only_player, targets_only_object, targets_only_any_of, could_be_targeted_by,
         not_targeted_by_ability_from, would_destroy_object,
         card_types, all_card_types, card_type_count, excluded_card_types,
@@ -121,7 +121,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         monocolored, all_colors, exactly_two_colors, color_count,
         historic, nonhistoric, modified, suspected, transformed, goaded, prepared, ring_bearer, sector,
         sticker, token, nontoken, face_down, foretold, other, tapped, untapped,
-        attacking, attacking_alone, attacked_this_turn, attacked_player_this_turn,
+        attacking, attacking_alone, blocking_alone, attacked_this_turn, attacked_player_this_turn,
         ability_activated_this_turn,
         blocked_this_turn, was_blocked_this_turn, didnt_attack_this_turn,
         could_have_attacked_this_turn, attacking_player_or_planeswalker_controlled_by,
@@ -129,7 +129,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         with_attached_object, without_attached_object, could_enchant_object,
         controller_controls, nonattacking, enlist_eligible, blocking, nonblocking,
         blocked, blocked_by, blocked_by_source, blocked_source_this_turn,
-        crewed_by_source_this_turn, not_phased_out_with_source,
+        crewed_by_source_this_turn, tapped_to_pay_for_source_abilities_this_turn, not_phased_out_with_source,
         blocked_or_was_blocked_by_this_turn,
         unblocked, is_target_object, in_combat_with_source, attacking_same_defender_as_source,
         could_be_enchanted_by_source, in_combat_with, entered_since_your_last_turn_ended,
@@ -138,7 +138,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         put_onto_battlefield_with_source, put_onto_battlefield_with_source_surface,
         created_with_source, created_with_source_surface, entered_graveyard_this_turn,
         entered_graveyard_from_battlefield_this_turn, entered_graveyard_from_library_this_turn,
-        entered_graveyard_not_from_battlefield_this_turn,
+        entered_graveyard_not_from_battlefield_this_turn, not_put_into_graveyard_this_combat,
         milled_into_graveyard_this_turn, surveilled_this_turn, fought_this_turn, attacking_battle,
         counters_put_on_this_turn, counter_source_history, discarded_or_cycled_this_turn_by,
         was_dealt_damage_this_turn, dealt_damage_this_turn, dealt_damage_by_source_this_turn,
@@ -158,8 +158,8 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         no_shared_creature_types_with, characteristic_relations,
         shares_creature_type_with_source, is_commander, noncommander,
         tagged_constraints, specific, any_of, source, source_surface, shares_name,
-        shares_color, last_drawn_this_turn, mana_symbol_count, colored_mana_symbol_count, physical_card,
-        match_captured_public_destination,
+        shares_color, last_drawn_this_turn, mana_symbol_count, colored_mana_symbol_count, physical_card, not_cast,
+        match_captured_public_destination, castable_face_match,
     );
     if residual != empty { return Err(TextChangeDomainError::ObjectFilter); }
     let mut rewritten = filter.clone();
@@ -273,10 +273,12 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::GreatestPower(filter) | Value::GreatestToughness(filter) | Value::GreatestManaValue(filter)
         | Value::LeastPower(filter) | Value::LeastToughness(filter) | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter) | Value::CreatureTypesAmong(filter)
+        | Value::PlaneswalkerTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter) | Value::StaticAbilitiesAmong { filter, .. }
         | Value::ColorsAmong(filter) | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter) | Value::DistinctNames(filter)
-        | Value::DistinctManaValues(filter) | Value::UnlockedDoorsAmong(filter) | Value::DistinctPowers(filter)
+        | Value::DistinctManaValues(filter) | Value::DistinctManaCosts(filter) | Value::UnlockedDoorsAmong(filter) | Value::DistinctPowers(filter)
         | Value::ManaFromSourceSpentToCastThisSpell { source_filter: filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
@@ -299,6 +301,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::MaxSpeed(player)
         | Value::CardsInGraveyard(player) | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player) | Value::CommanderCastCount(player)
+        | Value::CommandersCastFromCommandZoneBy(player)
         | Value::CommanderColorIdentityColors(player) | Value::CardTypesInGraveyard(player)
         | Value::PlayerCounters(player, _) | Value::PlayerVoteCount(player)
         | Value::MaximumLifeTotal(player) | Value::CountPlayersBelowHalfStartingLifeTotal(player) => {
@@ -314,6 +317,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
             *filter = rewrite_filter_words(filter, change)?;
         }
         Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::ManaSpentToCast(spec) | Value::ColorsOf(spec) | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
@@ -461,10 +465,12 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
             *player = rewrite_player_filter_words(player, change)?;
         }
         TurnHistoryCount::Sacrificed { player, filter } | TurnHistoryCount::SacrificedCardTypes { player, filter }
-        | TurnHistoryCount::CreaturesAttackedWith { player, filter }
+        | TurnHistoryCount::CreaturesAttackedWith { player, filter, .. }
+        | TurnHistoryCount::CombatDamageSourcesToPlayers { player, filter, .. }
         | TurnHistoryCount::PlayersDealtCombatDamageBy { players: player, sources: filter }
         | TurnHistoryCount::SpellsCast { player, filter, .. }
-        | TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => {
+        | TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
+        | TurnHistoryCount::TokensCreatedMatching { player, filter } => {
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }
@@ -503,7 +509,8 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
         | TurnHistoryCondition::PlayerActivatedAbilityOfCardInZoneThisTurn { player, .. }
         | TurnHistoryCondition::PlayerVisitedAttractionThisTurn(player)
         | TurnHistoryCondition::PlayerLostLifeLastTurn(player)
-        | TurnHistoryCondition::PlayerWasDealtNoncombatDamageLastTurn(player) => {
+        | TurnHistoryCondition::PlayerWasDealtNoncombatDamageLastTurn(player)
+        | TurnHistoryCondition::PlayerWasDealtCombatDamageSinceTheirLastTurn(player) => {
             *player = rewrite_player_filter_words(player, change)?;
         }
         TurnHistoryCondition::TriggeringAttackerBlockers { required, prohibited, .. } => {
@@ -633,7 +640,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::NoSpellsWereCastLastTurn | Condition::SpellsWereCastLastTurnOrMore(_)
         | Condition::TargetIsTapped | Condition::TargetIsAttacking | Condition::TargetIsBlocked
         | Condition::TargetWasKicked | Condition::TargetPaidLabel(_) | Condition::ThisSpellWasKicked | Condition::ThisSpellPaidLabel(_)
-        | Condition::YouHaveFullParty | Condition::TargetSpellCastOrderThisTurn(_)
+        | Condition::YouHaveFullParty | Condition::ThisSpellCastOrderThisGame(_) | Condition::TargetSpellCastOrderThisTurn(_)
         | Condition::TargetSpellControllerIsPoisoned | Condition::TargetSpellManaSpentToCastAtLeast { .. }
         | Condition::TriggeringSpellManaSpentToCastAtLeast { .. }
         | Condition::ColoredManaSpentToCastThisSpellAtLeast(_) | Condition::TriggeringSpellColoredManaSpentToCastAtLeast(_)

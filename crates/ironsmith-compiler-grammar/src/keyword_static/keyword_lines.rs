@@ -21,6 +21,13 @@ pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
     if let Some(action @ KeywordAction::CumulativeUpkeep { .. }) = parse_ability_phrase(tokens) {
         return Some(vec![action]);
     }
+    // "Recover—Pay half your life, rounded up" (Garza's Assassin): an
+    // em-dash keyword cost is one phrase; its commas aren't keyword separators.
+    if let Some(action @ (KeywordAction::RecoverTotalCost(_) | KeywordAction::UnearthTotalCost(_))) =
+        parse_ability_phrase(tokens)
+    {
+        return Some(vec![action]);
+    }
 
     if let Some(result) = crate::clause_support::parse_protection_keyword_line(tokens) { return result; }
     let segments = split_lexed_slices_on_commas_or_semicolons(tokens);

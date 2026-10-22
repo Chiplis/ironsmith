@@ -1080,6 +1080,8 @@ pub fn parse_directional_adjacent_player_control(
         left_option: "left".to_string(),
         right_option: "right".to_string(),
         all_matching: false,
+        fixed_direction: None,
+        controller_chooses: false,
     }]))
 }
 
@@ -1131,8 +1133,58 @@ pub fn parse_directional_adjacent_player_control_all(
             left_option: "left".to_string(),
             right_option: "right".to_string(),
             all_matching: true,
+            fixed_direction: None,
+            controller_chooses: false,
         },
     ]))
+}
+
+/// "Each player gains control of a nonland permanent of your choice
+/// controlled by the player to their right." (Inniaz, the Gale Force): one
+/// object per player, chosen by you from the matching objects of that
+/// player's fixed-direction neighbour, all gained at once.
+pub fn parse_fixed_direction_adjacent_player_control(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    const PREFIX: &[&str] = &["each", "player", "gains", "control", "of"];
+    if !words.starts_with(PREFIX) {
+        return Ok(None);
+    }
+    let (direction, suffix_len) = match words.as_slice() {
+        [.., "controlled", "by", "the", "player", "to", "their", "right"] => {
+            (ironsmith_core::SeatingDirection::Right, 7)
+        }
+        [.., "controlled", "by", "the", "player", "to", "their", "left"] => {
+            (ironsmith_core::SeatingDirection::Left, 7)
+        }
+        _ => return Ok(None),
+    };
+    let object_words = &words[PREFIX.len()..words.len() - suffix_len];
+    let (controller_chooses, choice_len) = match object_words {
+        [.., "of", "your", "choice"] => (true, 3),
+        [.., "of", "their", "choice"] => (false, 3),
+        _ => return Ok(None),
+    };
+    let object_end = PREFIX.len() + object_words.len() - choice_len;
+    if !matches!(object_words.first(), Some(&"a" | &"an")) || object_end <= PREFIX.len() + 1 {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let Some(object_range) = view.token_span_for_words(PREFIX.len() + 1, object_end) else {
+        return Ok(None);
+    };
+    let Ok(filter) = parse_object_filter_lexed(&trim_commas(&tokens[object_range]), false) else {
+        return Ok(None);
+    };
+    Ok(Some(EffectAst::DirectionalAdjacentPlayerControl {
+        filter,
+        left_option: "left".to_string(),
+        right_option: "right".to_string(),
+        all_matching: false,
+        fixed_direction: Some(direction),
+        controller_chooses,
+    }))
 }
 
 pub fn parse_reciprocal_creature_control_sequence(
@@ -2201,6 +2253,81 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
             unless_targets_surcharge,
         )?.map(|effects| vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })]));
     }
+    // "you may cast a spell from each opponent's graveyard without paying its
+    // mana cost. If a spell cast this way would be put into a graveyard,
+    // exile it instead." (Jetsam): for each opponent, one optional spell
+    // chosen from that player's graveyard; the spell cast that way is exiled
+    // instead of going to a graveyard.
+    let each_opponent_words = view.word_refs();
+    if let [
+        "you", "may", "cast", "a", "spell", "from", "each", "opponent's" | "opponents", "graveyard",
+        rest @ ..,
+    ] = each_opponent_words.as_slice()
+    {
+        if !(rest.is_empty() || rest == ["without", "paying", "its", "mana", "cost"])
+            || shape.until_end_of_turn
+            || unless_targets_surcharge.is_some()
+            || shape.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+            || shape.additional_mana_cost.is_some()
+        {
+            return Ok(None);
+        }
+        let chosen_tag = helper_tag_for_tokens(first, "graveyard_cast_target");
+        let cast_spell_tag = helper_tag_for_tokens(first, "cast_spell");
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::IteratedPlayer);
+        filter.excluded_card_types.push(CardType::Land);
+        let replacement_filter = ObjectFilter::spell()
+            .match_tagged(cast_spell_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+        let replacement = EffectAst::subject_verb_register_future_zone_replacement(
+            replacement_filter,
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+            crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+            false,
+        );
+        let replacement = if cast_this_way {
+            replacement.with_cast_this_way_replacement_surface()
+        } else {
+            replacement
+        };
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects: vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter,
+                    count: ChoiceCount::up_to(1),
+                    count_value: None,
+                    player: PlayerAst::You,
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                }),
+                EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                    player: PlayerAst::You,
+                    effects: vec![EffectAst::TagAffected {
+                        effect: Box::new(
+                            EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                                crate::tag::TagRef::of(chosen_tag),
+                                PlayerAst::You,
+                                false,
+                                false,
+                                shape.without_paying_mana_cost,
+                                None,
+                                None,
+                                shape.mana_spend_mode,
+                            ),
+                        ),
+                        tag: crate::tag::TagRef::of(cast_spell_tag),
+                    }],
+                }),
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: IfResultPredicate::Did,
+                    effects: vec![replacement],
+                }),
+            ],
+        })]));
+    }
     // "... from your graveyard this turn": the trailing duration is not part
     // of the target description.
     let first = if shape.trailing_this_turn {
@@ -2374,7 +2501,21 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
         replacement_filter = replacement_filter.owned_by(PlayerFilter::You);
     }
 
+    // CR 601.3e: "cast an instant or sorcery spell with mana value ..."
+    // permits only a spell with those characteristics; the face actually
+    // proposed for casting is checked, not just the card chosen.
+    let required_spell = chosen_not_targeted.then(|| {
+        let mut spell = filter.clone();
+        spell.zone = None;
+        spell.owner = None;
+        spell
+    });
     let select_card = if chosen_not_targeted {
+        // The card may qualify through any face it could be cast as (a split
+        // half, an Adventure, a modal DFC's back face); the cast itself then
+        // requires the proposed spell to qualify.
+        let mut filter = filter;
+        filter.castable_face_match = true;
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::exactly(1),
@@ -2396,18 +2537,33 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: vec![EffectAst::TagAffected {
-                effect: Box::new(
-                    EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
-                        crate::tag::TagRef::of(chosen_tag),
-                        PlayerAst::You,
-                        false,
-                        false,
-                        shape.without_paying_mana_cost,
-                        shape.additional_mana_cost.clone(),
-                        None,
-                        shape.mana_spend_mode,
-                    ),
-                ),
+                effect: Box::new({
+                    let mut cast =
+                        EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                            crate::tag::TagRef::of(chosen_tag),
+                            PlayerAst::You,
+                            false,
+                            false,
+                            shape.without_paying_mana_cost,
+                            shape.additional_mana_cost.clone(),
+                            None,
+                            shape.mana_spend_mode,
+                        );
+                    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action:
+                            SubjectVerbActionAst::Stack(
+                                crate::cards::builders::StackActionAst::CastTagged {
+                                    required_spell: slot,
+                                    ..
+                                },
+                            ),
+                        ..
+                    }) = &mut cast
+                    {
+                        *slot = required_spell;
+                    }
+                    cast
+                }),
                 tag: crate::tag::TagRef::of(cast_spell_tag),
             }],
         }),

@@ -1112,6 +1112,21 @@ pub(super) fn maybe_apply_carried_player_with_clause_facts(
     let should_skip = match carried_context {
         CarryContext::Player(_) => {
             imperative_return
+                // "Target opponent mills three cards. Put a land card from
+                // their graveyard onto the battlefield ..." (Realmbreaker):
+                // the uninflected "put" is the controller's imperative, never
+                // the earlier sentence's third-person subject.
+                || (imperative_collection_move
+                    && matches!(
+                        effect,
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            subject: SubjectVerbSubjectAst {
+                                player: PlayerAst::Implicit,
+                                ..
+                            },
+                            ..
+                        })
+                    ))
                 || (matches!(
                     effect,
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {

@@ -13,6 +13,9 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CopyModifierSpec {
     pub set_colors: Option<ColorSet>,
+    /// "in addition to its other colors and types": colors added to the
+    /// copied ones (CR 707.9b).
+    pub added_colors: ColorSet,
     pub set_card_types: Option<Vec<CardType>>,
     pub set_subtypes: Option<Vec<Subtype>>,
     pub added_card_types: Vec<CardType>,

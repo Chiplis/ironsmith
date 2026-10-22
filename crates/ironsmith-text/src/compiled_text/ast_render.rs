@@ -1159,6 +1159,8 @@ fn describe_prior_exile_until_next_turn_permission_program(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
+        || permission.while_player_controls.is_some()
+        || permission.permanents_enter_tapped
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.max_plays.is_some()
@@ -10162,8 +10164,10 @@ fn describe_cross_segment_target_then_delayed_destroy_blocked_by_that_creature_w
         .is_none()
         || !delayed.one_shot
         || delayed.start_next_turn
-        || delayed.duration != ironsmith_core::DelayedTriggerDuration::Forever
-        || delayed.until_end_of_turn
+        // "this turn's next end of combat": the registration expires at end
+        // of turn.
+        || delayed.duration != ironsmith_core::DelayedTriggerDuration::EndOfTurn
+        || !delayed.until_end_of_turn
         || delayed.until_end_of_combat
         || delayed.leading_duration_surface
         || delayed.watch_ability_source
@@ -10807,8 +10811,11 @@ fn describe_cross_segment_two_target_characteristic_damage_window(
     let first_reference = definite_reference(first_target)?;
     let second_reference = definite_reference(second_target)?;
     let conditional_text = describe_effect(conditional_effect);
+    // The authored ability word is printed by this sentence frame itself.
     let conditional_text = conditional_text
         .trim()
+        .strip_prefix("Delirium — ")
+        .unwrap_or(conditional_text.trim())
         .trim_end_matches('.')
         .strip_suffix(" on it")?;
     Some((
@@ -12214,6 +12221,41 @@ fn describe_cross_segment_search_reveal_opponent_choose_rest_window(
 /// Rejoin an optional action with its exact declined branch when authored
 /// sentence boundaries place the `WithId` producer and `If` consumer in
 /// adjacent resolution segments.
+/// "There's an additional combat phase after this phase. At the beginning
+/// of that combat, ..." (Moraug, Fury of Akoum): the added combat and its
+/// one-shot delayed rider sit in adjacent sentence segments; render them as
+/// one pair so the rider names "that combat".
+fn describe_cross_segment_additional_combat_that_combat_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [phases_segment, rider_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !phases_segment.self_replacements.is_empty() || !rider_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [phases] = phases_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [rider] = rider_segment.default_effects.as_slice() else {
+        return None;
+    };
+    phases.downcast_ref::<crate::effects::AdditionalPhasesEffect>()?;
+    if !rider
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .is_some_and(|delayed| delayed.one_shot)
+    {
+        return None;
+    }
+    let pair = [phases.clone(), rider.clone()];
+    let rendered = describe_effect_list(&pair);
+    rendered
+        .contains("At the beginning of that combat, ")
+        .then_some((rendered, 2))
+}
+
 fn describe_cross_segment_declined_may_mill_damage_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
@@ -15545,10 +15587,13 @@ fn describe_cross_segment_filtered_exile_cast_then_has_ability_window(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
+        || grant.while_player_controls.is_some()
+        || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
-        || grant.max_plays.is_some()
+        // "You may cast an artifact spell from among them" is one spell.
+        || grant.max_plays.is_some_and(|plays| plays != 1)
     {
         return None;
     }
@@ -15734,6 +15779,8 @@ fn describe_filtered_exile_cast_parts(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
+        || grant.while_player_controls.is_some()
+        || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -16154,6 +16201,8 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
+        || grant.while_player_controls.is_some()
+        || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -19517,6 +19566,8 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
+        || grant.while_player_controls.is_some()
+        || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -22464,6 +22515,8 @@ fn describe_you_life_change_exile_then_play_program(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
+        || permission.while_player_controls.is_some()
+        || permission.permanents_enter_tapped
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.cast_pool_is_plural
@@ -24007,6 +24060,15 @@ fn name_new_line_tagged_target_grant(
 pub(super) fn describe_resolution_program(
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
+    super::normalize_common::with_source_exiled_this_way_noun(
+        program_exiled_object_noun(program),
+        || describe_resolution_program_unscoped(program),
+    )
+}
+
+fn describe_resolution_program_unscoped(
+    program: &crate::resolution::ResolutionProgram,
+) -> String {
     if let Some(collapsed) = collapse_program_exiled_suspend_grant_loops(program) {
         return describe_resolution_program(&collapsed);
     }
@@ -24583,6 +24645,28 @@ fn describe_resolution_program_inner(
     if let Some(rendered) = describe_manifest_then_draw_per_manifested_program(program) {
         return rendered;
     }
+    if program
+        .segments
+        .iter()
+        .all(|segment| segment.self_replacements.is_empty())
+        && let Some(rendered) = super::render_effects::describe_gated_creation_fallback_program(
+            &program.flattened_default_effects(),
+        )
+    {
+        return rendered;
+    }
+    // "As this artifact enters, choose an opponent and a card name ..."
+    // (Booby Trap): the coordinated choices lower into separate segments.
+    if program
+        .segments
+        .iter()
+        .all(|segment| segment.self_replacements.is_empty())
+        && let Some(rendered) = super::render_effects::describe_player_and_card_name_choice(
+            &program.flattened_default_effects(),
+        )
+    {
+        return rendered;
+    }
     if let [segment] = program.segments.as_slice()
         && segment.self_replacements.is_empty()
         && let Some(rendered) =
@@ -24663,6 +24747,17 @@ fn describe_resolution_program_inner(
         !segment.starts_new_source_line && segment.self_replacements.is_empty()
     }) && let Some(rendered) =
         super::render_effects::describe_least_count_equalization_program(
+            program.flattened_default_effects(),
+        )
+    {
+        return rendered;
+    }
+    if program.segments.len() > 1
+        && program
+            .segments
+            .iter()
+            .all(|segment| segment.self_replacements.is_empty())
+        && let Some(rendered) = super::render_effects::describe_cross_segment_reference_program(
             program.flattened_default_effects(),
         )
     {
@@ -25670,6 +25765,16 @@ fn describe_resolution_program_inner(
         }
         if let Some((rendered, consumed)) =
             describe_cross_segment_search_reveal_may_move_else_hand_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_additional_combat_that_combat_window(
                 &program.segments,
                 segment_index,
             )
@@ -27848,6 +27953,21 @@ fn describe_conjoined_same_source_damage(effects: &[Effect]) -> Option<String> {
                 })
         })
         .collect::<Option<Vec<_>>>()?;
+    // "deals X damage to any target and X damage to any other target, where
+    // X is the number of artifacts you control" (The Brothers' War): one
+    // shared X definition closes the conjoined sentence once.
+    let mut parts = parts;
+    if parts.len() >= 2
+        && let Some(suffix) = parts
+            .last()
+            .and_then(|last| last.find(", where X is ").map(|idx| last[idx..].to_string()))
+        && parts.iter().all(|part| part.ends_with(&suffix))
+    {
+        let last_index = parts.len() - 1;
+        for part in &mut parts[..last_index] {
+            part.truncate(part.len() - suffix.len());
+        }
+    }
     let joined = match parts.as_slice() {
         [] => return None,
         [only] => only.clone(),
@@ -34161,7 +34281,62 @@ mod searched_exile_opponent_remainder_cast_tests {
     }
 }
 
+/// The noun for the objects a program's own exile instructions act on: only
+/// battlefield targets name a permanent noun ("creature" when every target
+/// is one card type, else "permanent"); any other exile keeps "card".
+fn program_exiled_object_noun(program: &crate::resolution::ResolutionProgram) -> Option<String> {
+    fn collect<'a>(effect: &'a Effect, out: &mut Vec<&'a crate::effects::ExileEffect>) {
+        let effect = structural_unwrap_render_wrappers(effect);
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+            out.push(exile);
+        } else if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            for inner in &sequence.effects {
+                collect(inner, out);
+            }
+        }
+    }
+    let mut exiles = Vec::new();
+    for effect in program.flattened_default_effects() {
+        collect(effect, &mut exiles);
+    }
+    if exiles.is_empty() {
+        return None;
+    }
+    let mut types = Vec::new();
+    for exile in exiles {
+        if !exile.spec.is_target() {
+            return None;
+        }
+        let ChooseSpec::Object(filter) = exile.spec.base() else {
+            return None;
+        };
+        if filter.zone != Some(Zone::Battlefield) {
+            return None;
+        }
+        types.push(match filter.card_types.as_slice() {
+            [card_type] => Some(*card_type),
+            _ => None,
+        });
+    }
+    Some(match types.first() {
+        Some(Some(first)) if types.iter().all(|card_type| *card_type == Some(*first)) => {
+            first.to_string().to_ascii_lowercase()
+        }
+        _ => "permanent".to_string(),
+    })
+}
+
 fn describe_resolution_program_for_card(
+    def: &CardDefinition,
+    program: &crate::resolution::ResolutionProgram,
+) -> String {
+    super::normalize_common::with_source_exiled_this_way_noun(
+        program_exiled_object_noun(program),
+        || describe_resolution_program_for_card_unscoped(def, program),
+    )
+}
+
+fn describe_resolution_program_for_card_unscoped(
     def: &CardDefinition,
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
@@ -36359,7 +36534,7 @@ fn describe_structural_evolve_keyword(ability: &Ability) -> Option<String> {
         .then(|| "Evolve".to_string())
 }
 
-fn describe_structural_training_keyword(ability: &Ability) -> Option<String> {
+pub(super) fn describe_structural_training_keyword(ability: &Ability) -> Option<String> {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return None;
     };
@@ -37994,6 +38169,8 @@ pub(super) fn describe_alternative_cast_line(
                 format!("Harmonize {mana_cost}, {extra}")
             }
         }
+        AlternativeCastingMethod::BeamMeUp { total_cost } => format!("Beam me up {}",
+            total_cost.mana_cost().map(|cost| cost.to_oracle()).unwrap_or_else(|| "{0}".to_string())),
         AlternativeCastingMethod::Retrace { .. } => "Retrace".to_string(),
         AlternativeCastingMethod::JumpStart { .. } => "Jump-start".to_string(),
         AlternativeCastingMethod::Escape {
@@ -38349,6 +38526,9 @@ fn aura_attaches_to_plain_creature(
     // `ObjectFilter::creature()` carries the battlefield zone by default.
     // Treat an omitted zone as that same ordinary Aura attachment domain.
     normalized.zone = Some(Zone::Battlefield);
+    // "Enchant creature you control" / "an opponent controls": the
+    // controller qualifier keeps the enchanted object a creature.
+    normalized.controller = None;
     normalized == ObjectFilter::creature()
 }
 
@@ -38393,10 +38573,65 @@ fn aura_attaches_to_plain_permanent_type_union(
     normalized == expected
 }
 
+/// "Enchant creature or Vehicle" (Flood the Engine): the attachment may be a
+/// noncreature permanent, unlike a plain creature-type union.
+fn aura_attaches_to_creature_or_noncreature_union(
+    attachment: Option<&crate::object::AuraAttachmentFilter>,
+) -> bool {
+    let Some(crate::object::AuraAttachmentFilter::Object(filter)) = attachment else {
+        return false;
+    };
+    filter.any_of.len() >= 2
+        && filter
+            .any_of
+            .iter()
+            .any(|arm| arm.card_types.as_slice() == [CardType::Creature])
+        && filter
+            .any_of
+            .iter()
+            .any(|arm| !arm.card_types.contains(&CardType::Creature))
+}
+
+/// An Aura ability's resolving instructions refer to the enchanted object by
+/// identity (an untyped `enchanted` tag), so under an attachment that may be
+/// a noncreature permanent they name it "enchanted permanent". Static
+/// abilities keep their own typed filters ("Enchanted creature gets +2/+2").
+fn rewrite_aura_subject_for_ability(
+    attachment: Option<&crate::object::AuraAttachmentFilter>,
+    ability: &crate::ability::Ability,
+    line: &str,
+) -> String {
+    let line = rewrite_plain_creature_aura_subject(attachment, line);
+    if matches!(
+        ability.kind,
+        crate::ability::AbilityKind::Triggered(_) | crate::ability::AbilityKind::Activated(_)
+    ) && aura_attaches_to_creature_or_noncreature_union(attachment)
+    {
+        return line
+            .replace("Enchanted creature", "Enchanted permanent")
+            .replace("enchanted creature", "enchanted permanent");
+    }
+    line
+}
+
 fn rewrite_plain_creature_aura_subject(
     attachment: Option<&crate::object::AuraAttachmentFilter>,
     line: &str,
 ) -> String {
+    // "Enchant instant card in a graveyard" (Spellweaver Volute): the
+    // enchanted object is a noncreature card outside the battlefield, so the
+    // tagged "enchanted" referent is that card, never a creature.
+    if let Some(crate::object::AuraAttachmentFilter::Object(filter)) = attachment
+        && filter.zone.is_some_and(|zone| zone != Zone::Battlefield)
+        && !filter.card_types.is_empty()
+        && !filter.card_types.contains(&CardType::Creature)
+    {
+        return line
+            .replace("Enchanted creature", "Enchanted card")
+            .replace("enchanted creature", "enchanted card")
+            .replace("Enchanted permanent", "Enchanted card")
+            .replace("enchanted permanent", "enchanted card");
+    }
     if aura_attaches_to_plain_creature(attachment) {
         return line
             .replace("Enchanted permanent", "Enchanted creature")
@@ -41801,7 +42036,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     subject,
                     oracle_short.as_deref(),
                 );
-                *line = rewrite_plain_creature_aura_subject(def.aura_attach_filter.as_ref(), line);
+                *line = rewrite_aura_subject_for_ability(def.aura_attach_filter.as_ref(), ability, line);
             }
             output.extend(ability_lines);
             ability_idx += 1;
@@ -41885,7 +42120,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     subject,
                     oracle_short.as_deref(),
                 );
-                *line = rewrite_plain_creature_aura_subject(def.aura_attach_filter.as_ref(), line);
+                *line = rewrite_aura_subject_for_ability(def.aura_attach_filter.as_ref(), ability, line);
             }
             out.extend(ability_lines);
         }
@@ -44012,6 +44247,123 @@ fn describe_source_line_distributive_type_and_grant_pair(
     Some(format!("{type_subject} is {type_predicate} and has {grant_predicate}"))
 }
 
+/// "Enchanted creature loses all abilities and is a Citizen with base power
+/// and toughness 1/1 and "{T}: Add {C}" named Humble Merchant." (Honest
+/// Work): a creature-type-only transformation (CR 205.1a keeps its card
+/// types) whose members all share one filter.
+fn describe_source_line_ability_loss_subtype_transform_group(
+    abilities: &[Ability],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let mut shared_filter: Option<&ObjectFilter> = None;
+    let mut loses_abilities = false;
+    let mut subtypes: Option<&Vec<Subtype>> = None;
+    let mut colors = None;
+    let mut name = None;
+    let mut base = None;
+    let mut granted_texts = Vec::new();
+    for ability in abilities {
+        if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+            return None;
+        }
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        let filter = match &model.payload {
+            P::RemoveAllAbilities(filter) if !loses_abilities => {
+                loses_abilities = true;
+                filter
+            }
+            P::SetCreatureSubtypes { filter, subtypes: set } if subtypes.is_none() => {
+                subtypes = Some(set);
+                filter
+            }
+            P::SetColors { filter, colors: set, .. } if colors.is_none() => {
+                colors = Some(*set);
+                filter
+            }
+            P::SetName { filter, name: set } if name.is_none() => {
+                name = Some(set.clone());
+                filter
+            }
+            P::SetBasePowerToughness { filter, power, toughness } if base.is_none() => {
+                base = Some((*power, *toughness));
+                filter
+            }
+            P::GrantObjectAbilityForFilter(grant)
+                if grant.condition.is_none()
+                    && grant.additional_abilities.is_empty()
+                    && grant.set_quantifier_surface.is_none() =>
+            {
+                let granted =
+                    crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
+                        &grant.ability,
+                    );
+                let mut text = super::render_effects::describe_inline_ability_with_self_subject(
+                    &granted,
+                    "this creature",
+                )
+                .trim()
+                .trim_end_matches('.')
+                .to_string();
+                if text.is_empty() {
+                    return None;
+                }
+                text = capitalize_first(&text);
+                granted_texts.push(format!("\"{text}\""));
+                &grant.filter
+            }
+            _ => return None,
+        };
+        if shared_filter.is_some_and(|shared| shared != filter) {
+            return None;
+        }
+        shared_filter = Some(filter);
+    }
+    let subtypes = subtypes?;
+    if !loses_abilities || subtypes.is_empty() {
+        return None;
+    }
+    let mut descriptor = Vec::new();
+    if let Some(colors) = colors {
+        let names = crate::color::Color::ALL
+            .into_iter()
+            .filter(|color| colors.contains(*color))
+            .map(|color| color.name().to_string())
+            .collect::<Vec<_>>();
+        if names.is_empty() {
+            return None;
+        }
+        descriptor.push(join_with_and(&names));
+    }
+    descriptor.push(
+        subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
+    let subject = capitalize_first(&shared_filter?.description());
+    let mut text = format!(
+        "{subject} loses all abilities and is {}",
+        with_indefinite_article(&descriptor.join(" "))
+    );
+    let mut qualities = Vec::new();
+    if let Some((power, toughness)) = base {
+        qualities.push(format!("base power and toughness {power}/{toughness}"));
+    }
+    qualities.extend(granted_texts);
+    if !qualities.is_empty() {
+        text.push_str(" with ");
+        text.push_str(&join_with_and(&qualities));
+    }
+    if let Some(name) = name {
+        text.push_str(&format!(" named {name}"));
+    }
+    Some(text)
+}
+
 fn describe_source_line_static_group(
     abilities: &[Ability],
     member_count: usize,
@@ -44036,7 +44388,8 @@ fn describe_source_line_static_group(
     {
         return Some(text);
     }
-    describe_source_line_distributive_type_and_grant_pair(members, subject)
+    describe_source_line_ability_loss_subtype_transform_group(members)
+        .or_else(|| describe_source_line_distributive_type_and_grant_pair(members, subject))
         .or_else(|| describe_implied_basic_type_landwalk_group(members, subject))
         .or_else(|| describe_source_line_your_turn_group(members, subject))
         .or_else(|| describe_source_line_chosen_abilities_grant_group(members))
@@ -50389,7 +50742,10 @@ fn rewrite_additional_sacrifice_reference_surface(def: &CardDefinition, text: &s
             "the total toughness of the sacrificed creatures",
         );
 
-    if !normalized.contains("sacrificed creature's") {
+    // Once the text already names the sacrificed object ("the sacrificed
+    // permanent's mana value"), a bare "its" refers to something else (Anchor
+    // to Reality: the searched card).
+    if !normalized.contains("sacrificed creature's") && !normalized.contains("the sacrificed ") {
         normalized = normalized
             .replace("its power", "the sacrificed creature's power")
             .replace("its toughness", "the sacrificed creature's toughness")

@@ -151,7 +151,16 @@ pub fn parse_fixed_mana_output(tokens: &[OwnedLexToken]) -> FixedManaOutput {
     let words = view.word_refs();
     let first_for_each_token = phrase_offset(&words, FOR_EACH_PREFIX)
         .and_then(|word| view.token_start_indices().get(word).copied());
-    let scan_end = first_for_each_token.unwrap_or(tokens.len());
+    // "Add an amount of {C} equal to X plus one" (Kyren Toy): the amount
+    // phrase after "equal to" is a value, never more mana symbols.
+    let first_equal_to_token = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("equal") && pair[1].is_word("to"));
+    let scan_end = first_for_each_token
+        .into_iter()
+        .chain(first_equal_to_token)
+        .min()
+        .unwrap_or(tokens.len());
     let has_explicit_symbol = tokens
         .iter()
         .any(|token| leaf::parse_leaf_surface_mana_pip_token(token).is_some());

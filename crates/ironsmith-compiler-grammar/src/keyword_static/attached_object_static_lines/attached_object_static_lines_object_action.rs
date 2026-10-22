@@ -47,6 +47,44 @@ pub fn parse_attached_is_legendary_gets_and_has_keywords_line(
     Ok(Some(out))
 }
 
+/// "Enchanted creature gets +1/+1 and has flying, haste, and "{1}: ... until
+/// end of turn." It's a Dragon in addition to its other types." (Draconic
+/// Destiny): a quoted grant that ends its own sentence is followed by a
+/// second, top-level sentence about the same attached subject. Split at the
+/// closing quote so the type assignment stays a static of the Aura instead of
+/// becoming part of the quoted ability.
+pub fn parse_attached_quoted_grant_then_type_sentence_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(shape) = attached_grammar::parse_attached_gets_and_has_tokens(tokens) else {
+        return Ok(None);
+    };
+    if let Some(close) = top_level_sentence_end_after_closing_quote(tokens)
+        && let Some(rest) = tokens.get(close + 1..)
+        && let Some(tail_start) = match crate::lexer::token_word_refs(rest).as_slice() {
+            ["it's" | "it’s", ..] => Some(1),
+            ["it", "is", ..] => Some(2),
+            _ => None,
+        }
+    {
+        let mut transform = tokens[..shape.get_token].to_vec();
+        transform.extend(crate::lexer::synthetic_word_tokens(["is"]));
+        transform.extend_from_slice(&rest[tail_start..]);
+        let changes = match parse_attached_type_transform_line(&transform)? {
+            Some(changes) => Some(changes),
+            None => parse_static_ability_ast_line_lexed_single(&transform)?,
+        };
+        if let Some(mut changes) = changes
+            && let Some(mut abilities) =
+                parse_attached_gets_and_has_ability_line(&tokens[..=close])?
+        {
+            abilities.append(&mut changes);
+            return Ok(Some(abilities));
+        }
+    }
+    Ok(None)
+}
+
 pub fn parse_attached_gets_and_has_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -293,4 +331,25 @@ pub fn parse_equipped_gets_and_has_activated_ability_line(
     });
 
     Ok(Some(static_abilities))
+}
+
+/// Index of a closing double quote that ends a quoted sentence (`."`) and is
+/// followed by more top-level tokens: the boundary between a quoted grant and
+/// a following sentence on the same line.
+fn top_level_sentence_end_after_closing_quote(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let mut inside_quotes = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if !token.is_quote() {
+            continue;
+        }
+        if inside_quotes
+            && index > 0
+            && tokens[index - 1].is_period()
+            && tokens.get(index + 1).is_some_and(|next| next.as_word().is_some())
+        {
+            return Some(index);
+        }
+        inside_quotes = !inside_quotes;
+    }
+    None
 }

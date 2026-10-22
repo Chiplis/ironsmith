@@ -217,7 +217,7 @@ impl EffectExecutor for KeywordActionCompletion {
 /// reconstructing its subjects from the instruction source. The caller freezes
 /// action-specific observations at the semantic completion boundary.
 #[derive(Debug, Clone)]
-struct PublishKeywordActionCompletion(TriggerEvent);
+pub(super) struct PublishKeywordActionCompletion(pub(super) TriggerEvent);
 
 impl EffectExecutor for PublishKeywordActionCompletion {
     fn execute(

@@ -147,7 +147,7 @@ fn delayed_cast_watcher_binds_only_the_immediately_preceding_grants() {
     let current = ctx.last_play_permissions.clone();
     assert_ne!(earlier, current);
     let delayed = ScheduleDelayedTriggerEffect::new(
-        Trigger::new(SpellCastThroughPermissionTrigger { permissions: Vec::new() }),
+        Trigger::new(SpellCastThroughPermissionTrigger { permissions: Vec::new(), include_land_plays: false }),
         vec![Effect::lose_life(1)], true, Vec::new(), ironsmith::PlayerFilter::You,
     ).until_end_of_turn();
     execute_effect(&mut game, &Effect::new(delayed), &mut ctx).unwrap();

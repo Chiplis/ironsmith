@@ -1174,6 +1174,14 @@ const SENTENCE_READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |input| {
             let tokens = input.tokens;
+            // "for each {R}{R} spent to cast it, it gets +1/+0 and gains
+            // trample and haste" (Bladecoil Serpent): the multiplier owns the
+            // whole coordinated payload, ahead of the and-split.
+            if effect_grammar::for_each_shapes::parse_for_each_mana_symbol_spent_effect_shape(tokens)
+                .is_some()
+            {
+                return true;
+            }
             (super::super::super::sentence_unsupported::diagnose_known_partial_parse_lexed(tokens))
                 .is_none()
                 // A coordinated chain of explicit actions is the and-split composition's.

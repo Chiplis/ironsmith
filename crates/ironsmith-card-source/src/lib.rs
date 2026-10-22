@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+const UNRELEASED_MARKER: &str = "ironsmith_unreleased";
 const SUPPORTED_PAPER_FORMATS: &[&str] = &[
     "commander",
     "standard",
@@ -271,6 +272,11 @@ fn registry_card_content_hash(
 }
 
 fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
+    // scripts/download_scryfall_cards.py keeps previewed cards that no format
+    // lists yet, so lobbies can opt into them.
+    if card.get(UNRELEASED_MARKER).and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
     let Some(legalities) = card.get("legalities").and_then(Value::as_object) else {
         return true;
     };
@@ -363,6 +369,23 @@ mod tests {
         card["legalities"]["vintage"] = Value::from("restricted");
         card["digital"] = Value::from(true);
         assert!(build_registry_card_record(&card, &includes).is_none());
+    }
+
+    #[test]
+    fn unreleased_card_is_registered_despite_no_legal_format() {
+        let mut card = serde_json::json!({
+            "name": "Preview Dragon",
+            "mana_cost": "{4}{R}",
+            "type_line": "Creature — Dragon",
+            "oracle_text": "Flying",
+            "power": "4",
+            "toughness": "4",
+            "legalities": {"standard": "not_legal", "vintage": "not_legal"}
+        });
+        let includes = BTreeSet::new();
+        assert!(build_registry_card_record(&card, &includes).is_none());
+        card[UNRELEASED_MARKER] = Value::from(true);
+        assert!(build_registry_card_record(&card, &includes).is_some());
     }
 
     #[test]

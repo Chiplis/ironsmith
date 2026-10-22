@@ -165,6 +165,7 @@ enum Statement {
     /// "Put two time counters on that card." (plain reading, an exile
     /// traversal stopping at one match)
     PutCountersOnMatch,
+    GrantAbilitiesToMatch,
     /// "You may put it onto the battlefield. If you don't, put it into its
     /// owner's hand." (plain reading, an exile traversal)
     BattlefieldOrHand,
@@ -190,6 +191,7 @@ impl Statement {
             | Self::CastThenBottom
             | Self::HandExileOthers
             | Self::AllToGraveyard
+            | Self::GrantAbilitiesToMatch
             | Self::PutCountersOnMatch
             | Self::BattlefieldOrHand
             | Self::Cleanup
@@ -241,6 +243,9 @@ fn first_statement(
         {
             return Some(Statement::HandExileOthers);
         }
+        if single_match && abilities_on_match(next).is_some() {
+            return Some(Statement::GrantAbilitiesToMatch);
+        }
         if mode == LibraryConsultModeAst::Exile && single_match && counters_on_match(next).is_some()
         {
             return Some(Statement::PutCountersOnMatch);
@@ -278,8 +283,14 @@ fn first_statement(
     None
 }
 
-/// "Put two time counters on that card": one counter statement whose target
-/// is the match.
+/// Grant an ability to the single card found by the library traversal.
+fn abilities_on_match(next: &SentenceInput) -> Option<SubjectVerbEffectAst> {
+    let effects = crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(next.lowered()))?;
+    let [EffectAst::SubjectVerb(effect)] = effects.as_slice() else { return None; };
+    let SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantAbilitiesToTarget { target, .. }) = &effect.action else { return None; };
+    super::dispatch_entry::target_references_it(target).then(|| effect.clone())
+}
+
 fn counters_on_match(next: &SentenceInput) -> Option<SubjectVerbEffectAst> {
     let effects = crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(
         next.lowered(),
@@ -594,10 +605,16 @@ pub(super) fn continue_with(
                 .parts
                 .as_ref()
                 .expect("a cast statement chose a reading");
+            // "Put each other card exiled this way on the bottom" (Codie,
+            // Vociferous Codex): the found card stays exiled with its cast
+            // permission; only the rest move.
+            let keeps_match = crate::lexer::token_word_refs(sentence.lowered())
+                .windows(2)
+                .any(|window| window == ["each", "other"]);
             group.followups.push(
                 EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                     crate::tag::TagRef::of(parts.all_tag.clone()),
-                    None,
+                    keeps_match.then(|| crate::tag::TagRef::of(parts.match_tag.clone())),
                     order,
                     parts.player,
                 ),
@@ -710,15 +727,18 @@ pub(super) fn continue_with(
                 ConsultMoveBottomShape::MoveMatchAndBottom {
                     zone,
                     battlefield_tapped,
+                    battlefield_attacking,
                     attached_to_tokens,
                     order,
                 } => {
-                    group.followups.push(EffectAst::subject_verb_move_to_zone(
+                    group.followups.push(EffectAst::subject_verb_move_to_zone_with_attacking(
                         TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                         zone,
                         false,
                         ReturnControllerAst::Preserve,
                         battlefield_tapped,
+                        battlefield_attacking,
+                        false,
                         attached_to_tokens
                             .map(|(start, end)| {
                                 crate::util::parse_target_phrase(&tokens[start..end])
@@ -820,6 +840,13 @@ pub(super) fn continue_with(
                         if_false: vec![EffectAst::subject_verb_exile(it(), false)],
                     })],
                 }));
+        }
+        Statement::GrantAbilitiesToMatch => {
+            let mut effect = abilities_on_match(sentence).expect("the statement was recognized");
+            if let SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantAbilitiesToTarget { target, .. }) = &mut effect.action {
+                *target = TargetAst::Tagged(crate::tag::TagRef::of(match_tag), None);
+            }
+            group.followups.push(EffectAst::SubjectVerb(effect));
         }
         Statement::PutCountersOnMatch => {
             let mut effect = counters_on_match(sentence).expect("the statement was recognized");

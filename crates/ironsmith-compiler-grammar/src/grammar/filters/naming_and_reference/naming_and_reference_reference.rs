@@ -233,6 +233,21 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         all_words.truncate(relation_idx);
     }
 
+    // "all Merfolk tapped this turn to pay for its abilities" (Vodalian War
+    // Machine): cost-tap history tied to the source's abilities, not the
+    // candidate's current tapped state.
+    if let Some(relation_idx) = find_tapped_to_pay_for_source_abilities_phrase(all_words) {
+        filter.tapped_to_pay_for_source_abilities_this_turn = true;
+        let segment_words = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+        let segment_word_refs = segment_words.to_word_refs();
+        if let Some(segment_idx) = find_tapped_to_pay_for_source_abilities_phrase(&segment_word_refs)
+            && let Some(token_start) = segment_words.map_word_or_end_to_token_boundary(segment_idx)
+        {
+            segment_tokens.truncate(token_start);
+        }
+        all_words.truncate(relation_idx);
+    }
+
     // "that weren't put there this way" — exclude the objects the previous
     // effect just moved to this zone (the sacrificed set).
     for phrase in [
@@ -245,6 +260,25 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
             all_words.drain(idx..idx + 6);
+            break;
+        }
+    }
+
+    // "all cards revealed this way that weren't put onto the battlefield"
+    // (Genesis Storm, Genesis Wave): the revealed cards never left the
+    // library; the ones put onto the battlefield did. Restricting the set to
+    // the library excludes them even though they keep their identity.
+    for phrase in [
+        &["that", "weren't", "put", "onto", "the", "battlefield"][..],
+        &["that", "werent", "put", "onto", "the", "battlefield"][..],
+        &["that", "weren't", "put", "onto", "battlefield"][..],
+        &["that", "werent", "put", "onto", "battlefield"][..],
+    ] {
+        if let Some(idx) = crate::word_primitives::parse_sequence_start(all_words, phrase)
+            && all_words[..idx].ends_with(&["revealed", "this", "way"])
+        {
+            filter.zone = Some(Zone::Library);
+            all_words.drain(idx..idx + phrase.len());
             break;
         }
     }
@@ -328,11 +362,19 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             .zip(find_phrase_start(all_words, EXILED_WITH_PHRASE))
             .is_some_and(|(same_name_idx, exiled_with_idx)| same_name_idx < exiled_with_idx);
     let has_used_to_craft_phrase = find_phrase_start(all_words, USED_TO_CRAFT_PHRASE).is_some();
+    // "an exiled creature card used to craft this creature" (The Grim
+    // Captain): a typed noun between "exiled" and "card" names the same
+    // craft-linked set (CR 702.167c).
+    let starts_with_exiled_adjective = all_words.first().is_some_and(|word| *word == "exiled");
     let is_source_linked_exile_reference = has_exiled_with_phrase
-        || (starts_with_exiled_card && (all_words.len() == 2 || has_used_to_craft_phrase));
+        || (starts_with_exiled_card && (all_words.len() == 2 || has_used_to_craft_phrase))
+        || (starts_with_exiled_adjective && has_used_to_craft_phrase);
     let mut source_linked_exile_reference = false;
     if is_source_linked_exile_reference {
         source_linked_exile_reference = true;
+        if has_used_to_craft_phrase {
+            filter.set_craft_material_reference(true);
+        }
         if !source_exiled_is_same_name_antecedent {
             filter.zone = Some(Zone::Exile);
             filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -648,18 +690,37 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         });
     }
     if find_phrase_start(all_words, CREWED_IT_THIS_TURN_TAG_PHRASE).is_some() {
+        // "a creature that crewed it this turn" names the exact permanents
+        // tapped to crew it: one that has since changed zones is a new object
+        // that didn't (CR 400.7), same as "saddled it this turn" below.
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::CrewedItThisTurn.bind()).into(),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
+            relation: TaggedOpbjectRelation::SameObjectId,
         });
     }
     if find_phrase_start(all_words, SADDLED_IT_THIS_TURN_TAG_PHRASE).is_some() {
+        // "a creature that saddled it this turn" (Calamity, Galloping
+        // Inferno) names the exact permanents that saddled it: one that has
+        // since changed zones is a new object that didn't (CR 400.7).
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::SaddledItThisTurn.bind()).into(),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
+            relation: TaggedOpbjectRelation::SameObjectId,
         });
     }
-    if find_any_phrase_start(all_words, AMASSED_ARMY_TAG_PHRASES).is_some() {
+    // "the amassed Army" names the Army itself; "the amassed Army's power"
+    // inside a comparison ("with power less than or equal to the amassed
+    // Army's power", Grishnákh) only measures it and selects another object.
+    let names_amassed_army = AMASSED_ARMY_TAG_PHRASES.iter().any(|phrase| {
+        all_words.windows(phrase.len()).enumerate().any(|(start, window)| {
+            window == *phrase
+                && phrase.last() != Some(&"armys")
+                && !matches!(
+                    all_words.get(start + phrase.len()).copied(),
+                    Some("power" | "toughness" | "powers" | "toughnesses")
+                )
+        })
+    });
+    if names_amassed_army {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,

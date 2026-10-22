@@ -68,6 +68,13 @@ pub struct GrantPlayTaggedEffect {
     pub during_your_turns: bool,
     /// Each X in `alternative_cost` is the granted card's mana value.
     pub alternative_cost_x_is_mana_value: bool,
+    /// "you may play them if you control a Wizard" (Flameshape): a lasting
+    /// permission usable only while its player controls a matching
+    /// permanent.
+    pub while_player_controls: Option<ObjectFilter>,
+    /// "If you do, it enters tapped" (Kaldring, the Rimestaff): the land
+    /// played or permanent spell cast through this permission enters tapped.
+    pub permanents_enter_tapped: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -105,6 +112,8 @@ impl GrantPlayTaggedEffect {
             spell_cost_reduction_per_opponent: 0,
             during_your_turns: false,
             alternative_cost_x_is_mana_value: false,
+            while_player_controls: None,
+            permanents_enter_tapped: false,
         }
     }
 
@@ -157,16 +166,24 @@ impl GrantPlayTaggedEffect {
 
     /// Oracle clause appended to a temporary cast permission.
     pub fn mana_spend_cast_clause(&self, spell_reference: &str) -> Option<String> {
+        // The permission's holder spends the mana: "that creature's
+        // controller may play that card and they may spend mana as though it
+        // were mana of any color" (Curse of Hospitality).
+        let spender = if matches!(self.player, PlayerFilter::You) {
+            "you"
+        } else {
+            "they"
+        };
         match self.mana_spend_mode {
             ironsmith_core::value_model::ManaSpendMode::Normal => None,
             ironsmith_core::value_model::ManaSpendMode::AnyColor => Some(format!(
-                "you may spend mana as though it were mana of any color to cast {spell_reference}"
+                "{spender} may spend mana as though it were mana of any color to cast {spell_reference}"
             )),
             ironsmith_core::value_model::ManaSpendMode::AnyType => Some(format!(
                 "mana of any type can be spent to cast {spell_reference}"
             )),
             ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor => Some(format!(
-                "you may spend colorless mana as though it were mana of any color to cast {spell_reference}"
+                "{spender} may spend colorless mana as though it were mana of any color to cast {spell_reference}"
             )),
         }
     }
@@ -390,6 +407,22 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     .collect::<Vec<_>>()
             })
         });
+        // "you may cast this card from your graveyard ..." in the card's own
+        // ability: the permission names the ability's source card (CR
+        // 113.7a), found through its last-known snapshot and stable identity
+        // after a zone change; the characteristic filter keeps the named zone.
+        let snapshots = snapshots.or_else(|| {
+            (self.tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
+                && !self.permission_bound_mana
+                && self.duration != GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield)
+                .then(|| {
+                    game.object(ctx.source)
+                        .map(|source| crate::snapshot::ObjectSnapshot::from_object(source, game))
+                        .or_else(|| ctx.source_snapshot.clone())
+                })
+                .flatten()
+                .map(|snapshot| vec![snapshot])
+        });
         let Some(snapshots) = snapshots.filter(|snapshots| !snapshots.is_empty()) else {
             return Ok(EffectOutcome::count(0));
         };
@@ -486,6 +519,16 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 GrantSource::EffectDuringTurnsCastAnotherSpell {
                     source_id: ctx.source,
                     player: player_id,
+                }
+            } else if let Some(filter) = &self.while_player_controls
+                && self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
+            {
+                // "... if you control a Wizard": the player is fixed now;
+                // what they control is read whenever the permission is used.
+                GrantSource::EffectWhilePlayerControls {
+                    source_id: ctx.source,
+                    player: player_id,
+                    filter: filter.clone(),
                 }
             } else if self.while_on_top_of_library {
                 GrantSource::EffectWhileStableCardOnTopOfLibrary {
@@ -690,6 +733,17 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             granted += 1;
         }
 
+        if self.permanents_enter_tapped {
+            // "If you do, it enters tapped": the land played through this
+            // permission enters tapped, and so does the permanent a spell
+            // cast through it becomes (CR 614.1c).
+            for grant in &mut game.effect_store.grant_registry.grants[first_grant..] {
+                grant.play_from_constraints.lands_enter_tapped = true;
+                grant
+                    .cast_this_way_grants
+                    .push(crate::static_abilities::StaticAbility::enters_tapped_ability());
+            }
+        }
         if self.during_your_turns {
             // "you may cast the exiled card during your turn": every
             // permission this instruction created is usable only while its

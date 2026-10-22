@@ -983,6 +983,25 @@ pub(super) fn rewrite_type_line_parser_handles_supertypes_types_and_subtypes() {
 }
 
 #[test]
+pub(super) fn rewrite_type_line_parser_recognizes_officer_klingon_and_tribble() {
+    for (word, subtype) in [
+        ("Officer", Subtype::Officer),
+        ("Klingon", Subtype::Klingon),
+        ("Tribble", Subtype::Tribble),
+        ("Borg", Subtype::Borg),
+        ("Vulcan", Subtype::Vulcan),
+        ("El-Aurian", Subtype::ElAurian),
+        ("Q", Subtype::Q),
+        ("Ferengi", Subtype::Ferengi),
+    ] {
+        let parsed = parse_type_line_rewrite(&format!("Creature — {word}"))
+            .expect("registered creature subtype");
+        assert_eq!(parsed.subtypes, vec![subtype]);
+        assert!(subtype.is_creature_type());
+    }
+}
+
+#[test]
 pub(super) fn rewrite_type_line_parser_recognizes_spacecraft_as_an_artifact_subtype() {
     let parsed = parse_type_line_rewrite("Artifact — Spacecraft")
         .expect("Spacecraft should be registered as an artifact subtype");

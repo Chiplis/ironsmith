@@ -278,7 +278,14 @@ pub fn parse_become_clause(
             && let Some(body) = dynamic_base_values::next_upkeep_end_duration_body(&become_clause_tokens)
         {
             (Until::YourNextUpkeepEnd, subject_tokens.clone(), body.to_vec(), None)
-        } else if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)? {
+        } else if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)?
+            // Only a leading duration ("Until end of turn, target creature
+            // becomes ...") belongs to the animation. A trailing "this turn"
+            // inside the subject is part of a relative clause ("target
+            // creature that attacked this turn") and stays in the filter.
+            && remainder.last().map(|token| token.span)
+                == subject_tokens.last().map(|token| token.span)
+        {
             (
                 duration,
                 remainder,

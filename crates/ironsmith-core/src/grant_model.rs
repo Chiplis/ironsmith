@@ -20,6 +20,11 @@ pub trait GrantStaticAbility: Clone + PartialEq {
     fn grant_is_source_any_graveyard_exile(&self) -> bool {
         false
     }
+    /// The subtypes this payload adds to its own recipient ("is a Vampire in
+    /// addition to its other types"), when that is all it does.
+    fn grant_source_added_subtypes(&self) -> Option<Vec<crate::Subtype>> {
+        None
+    }
 }
 
 /// A granted alternative cast whose exact cost is derived from the granted card.
@@ -501,7 +506,27 @@ where
     pub fn display(&self) -> String {
         match self {
             Self::Ability(a) => a.grant_display(),
-            Self::AlternativeCast(m) => m.name().to_string(),
+            // "Creature cards in your graveyard have sneak {3}{B}" (Ninja
+            // Teen): a granted keyword cost reads with its mana cost.
+            Self::AlternativeCast(m) => match m.mana_cost() {
+                Some(cost)
+                    if m.keyword()
+                        == Some(crate::alternative_cast_model::AlternativeCastKeyword::Sneak) =>
+                {
+                    format!("{} {}", m.name(), cost.to_oracle())
+                }
+                // "Each Lesson card in your graveyard has flashback {1}"
+                // (Iroh, Grand Lotus): a granted flashback with its own cost.
+                Some(cost)
+                    if matches!(
+                        m,
+                        crate::alternative_cast_model::AlternativeCastingMethod::Flashback { .. }
+                    ) =>
+                {
+                    format!("{} {}", m.name(), cost.to_oracle())
+                }
+                _ => m.name().to_string(),
+            },
             Self::DerivedAlternativeCast(spec) => spec.display_name().to_string(),
             Self::PlayFrom => "play from zone".to_string(),
             Self::AlternativePrice { .. } => "alternative spell price".to_string(),
@@ -546,6 +571,13 @@ pub struct GrantSpec<SA, E, C, Cond> {
     /// Older source-wide readers remain outside that supported scope.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
     pub requires_linked_exile_pair: bool,
+    /// "Once during each of your turns, you may play a land or cast a spell
+    /// from among the cards exiled with this permanent without paying its
+    /// mana cost." (Hauken's Insight): an `AlternativeCast` permission also
+    /// lets its beneficiary play land cards from the same pool. Both are one
+    /// permission (one identity), so they share one use budget.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub land_play_companion: bool,
     /// This static ability also entitles its current beneficiary to inspect
     /// each exact paired exile member. Once entitled, that player retains
     /// inspection subject to CR 406.3, independently of play authority.
@@ -610,6 +642,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             requires_linked_exile_pair: false,
+            land_play_companion: false,
             may_look_at_linked_exile: false,
             cast_mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             linked_exile_pair: None,
@@ -656,6 +689,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             cast_this_way_filter: self.cast_this_way_filter,
             on_use_effects: self.on_use_effects.into_iter().map(&mut map_effect).collect::<Result<_, _>>()?,
             requires_linked_exile_pair: self.requires_linked_exile_pair,
+            land_play_companion: self.land_play_companion,
             may_look_at_linked_exile: self.may_look_at_linked_exile,
             cast_mana_spend_mode: self.cast_mana_spend_mode,
             linked_exile_pair: self.linked_exile_pair,
@@ -676,7 +710,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
         let mut zones = vec![self.zone];
         for zone in &self.additional_zones { if !zones.contains(zone) { zones.push(*zone); } }
         let multiple = zones.len() > 1;
-        zones.into_iter().map(|zone| {
+        let specs: Vec<Self> = zones.into_iter().map(|zone| {
             let mut spec = self.clone(); spec.additional_zones.clear(); spec.zone = zone;
             if multiple {
                 spec.filter.zone = Some(zone);
@@ -687,6 +721,23 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
                 }
             }
             spec
+        }).collect();
+        if !self.land_play_companion || !matches!(self.grantable, Grantable::AlternativeCast(_)) {
+            return specs;
+        }
+        // "play a land or cast a spell from among ...": the same permission
+        // (same identity and use budget) also plays the pool's land cards.
+        specs.into_iter().flat_map(|spec| {
+            let mut land = spec.clone();
+            land.land_play_companion = false;
+            land.grantable = Grantable::PlayFrom;
+            land.filter.excluded_card_types.retain(|card_type| *card_type != CardType::Land);
+            land.filter.card_types = vec![CardType::Land];
+            land.cast_this_way_grants.clear();
+            land.cast_this_way_filter = None;
+            let mut cast = spec;
+            cast.land_play_companion = false;
+            [cast, land]
         }).collect()
     }
 
@@ -767,6 +818,7 @@ where
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             requires_linked_exile_pair: false,
+            land_play_companion: false,
             may_look_at_linked_exile: false,
             cast_mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             linked_exile_pair: None,
@@ -855,6 +907,7 @@ where
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             requires_linked_exile_pair: false,
+            land_play_companion: false,
             may_look_at_linked_exile: false,
             cast_mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             linked_exile_pair: None,
@@ -875,6 +928,26 @@ where
     C: CostComponent,
     Cond: Clone,
 {
+    /// A captured permission sentence can start after the usage limit's
+    /// lead-in ("During your turn, you may cast ..."); the limit is part of
+    /// the permission, so it stays in the text.
+    fn surface_with_usage_lead_in(&self, surface: &str) -> String {
+        let lead_in = match self.usage_limit {
+            Some(GrantUsageLimit::DuringYourTurns) => Some("During your turn, you may"),
+            Some(GrantUsageLimit::OnceEachTurn) => Some("Once each turn, you may"),
+            Some(GrantUsageLimit::OnceDuringEachOfYourTurns) => {
+                Some("Once during each of your turns, you may")
+            }
+            None => None,
+        };
+        if let Some(lead_in) = lead_in
+            && let Some(rest) = surface.strip_prefix("You may")
+        {
+            return format!("{lead_in}{rest}");
+        }
+        surface.to_string()
+    }
+
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
         if let Some(surface) = &self.filtered_zone_surface {
@@ -895,7 +968,10 @@ where
                     || surface.contains(" this way")
                     || surface.contains("If you do"))
             {
-                return surface.clone();
+                // The captured sentence can start after the usage limit's
+                // lead-in ("During your turn, you may cast ..."); the limit
+                // is part of the permission, so keep it in the text.
+                return self.surface_with_usage_lead_in(surface);
             }
             return self.display_base();
         }
@@ -1034,6 +1110,36 @@ where
             match phrase.chars().next().map(|c| c.to_ascii_lowercase()) {
                 Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
                 _ => "a",
+            }
+        }
+
+        /// Qualifier words for a hand-card grant ("nonland", "enchantment"),
+        /// rendered from the card filter itself rather than the castable-spell
+        /// description (which drops "nonland" because spells are never lands).
+        fn hand_card_grant_base(filter: &ObjectFilter) -> String {
+            let mut base_filter = filter.clone();
+            base_filter.zone = None;
+            if matches!(base_filter.owner, Some(PlayerFilter::You)) {
+                base_filter.owner = None;
+            }
+            if base_filter == ObjectFilter::default() {
+                return String::new();
+            }
+            let description = base_filter.description();
+            let trimmed = description
+                .strip_prefix("an ")
+                .or_else(|| description.strip_prefix("a "))
+                .unwrap_or(description.as_str());
+            let trimmed = trimmed
+                .strip_suffix(" cards")
+                .or_else(|| trimmed.strip_suffix(" card"))
+                .or_else(|| trimmed.strip_suffix(" permanents"))
+                .or_else(|| trimmed.strip_suffix(" permanent"))
+                .unwrap_or(trimmed);
+            if trimmed == "card" || trimmed == "cards" {
+                String::new()
+            } else {
+                format!("{trimmed} ")
             }
         }
 
@@ -1732,8 +1838,20 @@ where
             let cast_spell_text = || {
                 // An authored permission sentence already names what may be
                 // cast; its rider reads "If you cast a spell this way".
+                // "instant and sorcery spells from your graveyard. If a spell
+                // cast this way ..." (Jaya Ballard, The Great Work): a bare
+                // card-type union already named what may be cast.
+                let bare_type_union = cast_filter.any_of.len() >= 2
+                    && cast_filter.any_of.iter().all(|branch| {
+                        let mut bare = branch.clone();
+                        bare.card_types.clear();
+                        bare.zone = None;
+                        bare.union_surface = Default::default();
+                        branch.card_types.len() == 1 && bare == ObjectFilter::default()
+                    });
                 if self.filtered_zone_surface.is_some()
                     || self.top_card_only
+                    || (bare_type_union && self.zone == Zone::Graveyard)
                     || self
                         .source_exiled_surface
                         .as_ref()
@@ -1792,6 +1910,34 @@ where
                 if self.filter.source {
                     return format!(". If you do, it enters with {rest}");
                 }
+                // "You may cast a creature spell from your graveyard this
+                // turn. If you do, it enters with a finality counter on it
+                // and is a Vampire in addition to its other types." (The
+                // Tomb of Aclazotz): a single-use permission's rider, with
+                // the recipient's added subtypes kept on the permanent.
+                if self.max_plays == Some(1) && self.usage_limit.is_none() {
+                    let added = self
+                        .permanent_this_way_grants
+                        .iter()
+                        .map(GrantStaticAbility::grant_source_added_subtypes)
+                        .collect::<Option<Vec<_>>>()
+                        .map(|lists| lists.into_iter().flatten().collect::<Vec<_>>());
+                    match added {
+                        Some(subtypes) if !subtypes.is_empty() => {
+                            let names = subtypes
+                                .iter()
+                                .map(|subtype| subtype.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            return format!(
+                                ". If you do, it enters with {rest} and is {} {names} in addition to its other types",
+                                article_for(names.as_str())
+                            );
+                        }
+                        Some(_) => return format!(". If you do, it enters with {rest}"),
+                        None => {}
+                    }
+                }
                 if let Some(subject) = cast_this_way_entered_object_subject(entered_object_filter) {
                     return format!(
                         ". If you cast {spell_text} this way, that {subject} enters with {rest}"
@@ -1804,7 +1950,11 @@ where
         // A rider attached after the permission sentence was captured
         // ("If you do, it enters with a finality counter on it").
         if let Some(surface) = &self.filtered_zone_surface {
-            return format!("{surface}{}", cast_this_way_ability_suffix());
+            return format!(
+                "{}{}",
+                self.surface_with_usage_lead_in(surface),
+                cast_this_way_ability_suffix()
+            );
         }
         let cast_this_way_suffix = || {
             let mut suffix = cast_this_way_ability_suffix();
@@ -1832,12 +1982,32 @@ where
         {
             return "Mayhem".to_string();
         }
+        // "Each nonland card in your graveyard has mayhem. The mayhem cost is
+        // equal to its mana cost." (Green Goblin): a graveyard play
+        // permission over the cards you discarded this turn, at their own
+        // mana cost.
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && !self.filter.source
+            && self.filter.discarded_or_cycled_this_turn_by == Some(PlayerFilter::You)
+            && self.cast_this_way_grants.is_empty()
+            && self.usage_limit.is_none()
+        {
+            let mut subject = filter.clone();
+            subject.discarded_or_cycled_this_turn_by = None;
+            let filter_desc = flashback_filter_description(&subject);
+            return format!(
+                "Each {filter_desc} has mayhem. The mayhem cost is equal to its mana cost"
+            );
+        }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter == ObjectFilter::source()
         {
+            // A bare source filter (no nonland exclusion) admits land
+            // plays: "play this card", not "cast this card".
             return format!(
-                "{may_prefix} cast this card from your graveyard{}",
+                "{may_prefix} play this card from your graveyard{}",
                 cast_this_way_suffix()
             );
         }
@@ -1845,6 +2015,8 @@ where
             && self.zone == Zone::Exile
             && self.filter == ObjectFilter::source()
         {
+            // "You may cast this card from exile" lowers to a bare source
+            // permission (unlike the graveyard form, which excludes lands).
             return format!(
                 "{may_prefix} cast this card from exile{}",
                 cast_this_way_suffix()
@@ -1993,9 +2165,16 @@ where
             && self.zone == Zone::Graveyard
             && !filter_can_include_lands(&self.filter)
         {
+            // The graveyard's owner is stated by the origin phrase, not the
+            // spell subject: "from your graveyard" / "from any graveyard".
+            let any_graveyard = matches!(self.filter.owner, Some(PlayerFilter::Any));
+            let mut subject_filter = self.filter.clone();
+            if matches!(subject_filter.owner, Some(PlayerFilter::You | PlayerFilter::Any)) {
+                subject_filter.owner = None;
+            }
             // "instant and sorcery spells from the top of your graveyard"
             // (Bösium Strip): a bare two-type union reads as one plural noun.
-            let bare_type_union = (self.top_card_only && self.filter.any_of.len() == 2)
+            let bare_type_union = (self.filter.any_of.len() == 2)
                 .then(|| {
                     self.filter
                         .any_of
@@ -2015,14 +2194,20 @@ where
                 .flatten();
             let spell_subject = if let Some(names) = bare_type_union {
                 format!("{} spells", names.join(" and "))
+            } else if self.max_plays == Some(1) && self.usage_limit.is_none() {
+                // One spell in all: "You may cast a creature spell from your
+                // graveyard this turn" (Chainer, Nightmare Adept).
+                castable_filter_description(&subject_filter)
             } else {
-                simple_ability_marker_spell_subject(&self.filter)
-                    .unwrap_or_else(|| unlimited_zone_castable_filter_description(&self.filter))
+                simple_ability_marker_spell_subject(&subject_filter)
+                    .unwrap_or_else(|| unlimited_zone_castable_filter_description(&subject_filter))
             };
             // "from the top of your graveyard" (Bösium Strip): only the
             // topmost graveyard card is castable.
             let origin = if self.top_card_only {
                 "from the top of your graveyard"
+            } else if any_graveyard {
+                "from any graveyard"
             } else {
                 "from your graveyard"
             };
@@ -2382,22 +2567,14 @@ where
         ) = &self.grantable
             && self.zone == Zone::Hand
         {
-            let mut base_filter = self.filter.clone();
-            base_filter.zone = None;
-            if matches!(base_filter.owner, Some(PlayerFilter::You)) {
-                base_filter.owner = None;
-            }
-            let base = castable_filter_description(&base_filter)
-                .strip_suffix(" spells")
-                .unwrap_or("cards")
-                .to_string();
+            let base = hand_card_grant_base(&self.filter);
             let owner_phrase = if matches!(self.filter.owner, Some(PlayerFilter::You)) {
                 "your"
             } else {
                 "that"
             };
             return format!(
-                "Each {base} card in {owner_phrase} hand without foretell has foretell. Its foretell cost is equal to its mana cost reduced by {{{reduction}}}"
+                "Each {base}card in {owner_phrase} hand without foretell has foretell. Its foretell cost is equal to its mana cost reduced by {{{reduction}}}"
             );
         }
         if let Grantable::DerivedAlternativeCast(
@@ -2405,22 +2582,14 @@ where
         ) = &self.grantable
             && self.zone == Zone::Hand
         {
-            let mut base_filter = self.filter.clone();
-            base_filter.zone = None;
-            if matches!(base_filter.owner, Some(PlayerFilter::You)) {
-                base_filter.owner = None;
-            }
-            let base = castable_filter_description(&base_filter)
-                .strip_suffix(" spells")
-                .unwrap_or("cards")
-                .to_string();
+            let base = hand_card_grant_base(&self.filter);
             let owner_phrase = if matches!(self.filter.owner, Some(PlayerFilter::You)) {
                 "your"
             } else {
                 "that"
             };
             return format!(
-                "Each {base} card in {owner_phrase} hand has miracle. Its miracle cost is equal to its mana cost reduced by {{{reduction}}}"
+                "Each {base}card in {owner_phrase} hand has miracle. Its miracle cost is equal to its mana cost reduced by {{{reduction}}}"
             );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand) =
@@ -2446,12 +2615,17 @@ where
                 ""
             };
             let filter_desc = castable_filter_description(&self.filter);
-            let singular_filter_desc = filter_desc
-                .strip_suffix(" spells")
-                .map(|base| format!("a {base} spell"))
-                .unwrap_or(filter_desc);
+            let singular_filter_desc = match filter_desc.as_str() {
+                "spell" | "spells" | "a spell" => "a spell".to_string(),
+                _ => filter_desc
+                    .strip_suffix(" spells")
+                    .map(|base| format!("{} {base} spell", article_for(base)))
+                    .unwrap_or(filter_desc),
+            };
+            // The permission is hand-scoped ("cast a spell from your hand by
+            // paying life ...", Access Maze).
             return format!(
-                "{prefix}{} cast {singular_filter_desc} by paying life equal to its mana value rather than paying its mana cost",
+                "{prefix}{} cast {singular_filter_desc} from your hand by paying life equal to its mana value rather than paying its mana cost",
                 may_prefix.to_ascii_lowercase()
             );
         }
@@ -2531,6 +2705,17 @@ where
                 "Once during each of your turns, "
             } else {
                 ""
+            };
+            // An unlimited permission covers every matching spell: "you may
+            // cast creature spells from your graveyard by foraging in
+            // addition to paying their other costs" (Osteomancer Adept).
+            let (filter_desc, cost_text) = if usage_limit.is_none() {
+                (
+                    pluralize_castable_spell_subject(filter_desc),
+                    cost_text.replace("paying its other costs", "paying their other costs"),
+                )
+            } else {
+                (filter_desc, cost_text)
             };
             let mut line = if additional_costs.is_empty() {
                 format!(

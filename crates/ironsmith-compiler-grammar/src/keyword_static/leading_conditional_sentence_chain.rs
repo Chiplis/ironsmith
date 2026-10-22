@@ -100,14 +100,29 @@ fn parse_borrowed_static_variant_chain(
     let mut selectors = Vec::new();
     let mut phrases = Vec::new();
 
+    let mut trailing_form = None;
     for sentence in sentences {
-        let crate::grammar::preprocess::BorrowStaticSentenceSurfaceTokens::Leading {
-            condition,
-            consequence,
-        } = crate::grammar::preprocess::parse_borrow_static_sentence_surface_tokens(sentence)?
-        else {
-            return None;
-        };
+        // "This creature has flying as long as an exiled card used to craft
+        // it has flying. The same is true for ..." (Wretched Bonemass) is the
+        // same borrowed-variant chain with the condition after the grant.
+        let (condition, consequence, trailing) =
+            match crate::grammar::preprocess::parse_borrow_static_sentence_surface_tokens(
+                sentence,
+            )? {
+                crate::grammar::preprocess::BorrowStaticSentenceSurfaceTokens::Leading {
+                    condition,
+                    consequence,
+                } => (condition, consequence, false),
+                crate::grammar::preprocess::BorrowStaticSentenceSurfaceTokens::Trailing {
+                    prefix,
+                    condition,
+                } => (condition, prefix, true),
+            };
+        match trailing_form {
+            Some(expected) if expected != trailing => return None,
+            None => trailing_form = Some(trailing),
+            _ => {}
+        }
         let phrase =
             crate::grammar::preprocess::parse_borrow_ability_surface_tokens(consequence)?.phrase;
         let sentence_selectors = selectors_for_borrowed_keyword(phrase)?;
@@ -165,6 +180,11 @@ pub(super) fn parse_independent_leading_conditional_static_sentence_chain(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<StaticAbilityAst>> {
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() >= 2
+        && let Some(copied_variants) = parse_borrowed_static_variant_chain(&sentences)
+    {
+        return Some(copied_variants);
+    }
     if sentences.len() < 2
         || !sentences
             .iter()

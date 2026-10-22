@@ -210,9 +210,25 @@ pub(super) fn open(
         crate::grammar::effects::triple_sequence_shapes::is_milled_creature_exile_shape(
             crate::util::trim_commas(next.lowered()).as_slice(),
         );
-    if per_player && !exiles_milled_creatures {
+    // "Each player mills four cards. Put a creature card ... from among the
+    // milled cards onto the battlefield under your control." (Gyruda, Doom
+    // of Depths): the imperative selection is yours, over every card milled
+    // by every player.
+    let per_player_battlefield_put = per_player
+        && !exiles_milled_creatures
+        && crate::lexer::token_word_refs(next.lowered())
+            .windows(3)
+            .any(|window| window == ["onto", "the", "battlefield"])
+        && parse_put_from_milled_cards_followup(next.lowered(), PlayerAst::You, tag.clone().into())?
+            .is_some();
+    if per_player && !exiles_milled_creatures && !per_player_battlefield_put {
         return Ok(None);
     }
+    let player = if per_player_battlefield_put {
+        PlayerAst::You
+    } else {
+        player
+    };
     let continues =
         parse_put_from_milled_cards_followup(next.lowered(), player, tag.clone().into())?.is_some()
             || may_cast_from_among(next).is_some()

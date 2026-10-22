@@ -385,6 +385,7 @@ pub fn parse_verb_first_clause(
         "sacrifice" => Verb::Sacrifice,
         "create" => Verb::Create,
         "investigate" => Verb::Investigate,
+        "assimilate" => Verb::Assimilate,
         "proliferate" => Verb::Proliferate,
         "tap" => Verb::Tap,
         "attach" => Verb::Attach,
@@ -494,17 +495,11 @@ pub fn parse_copy_spell_clause(
         {
             Ok(history_count)
         } else if let words = crate::lexer::token_word_refs(tokens)
-            && let Some(player) =
-                crate::grammar::shared_util::value_helper_shapes::parse_commander_cast_count_player(
+            && let Some(value) =
+                crate::grammar::shared_util::value_helper_shapes::parse_commander_cast_count_value(
                     &words,
                 )
         {
-            let mut value = Value::CommanderCastCount(player);
-            if crate::word_primitives::sequence_occurs(&words, &["a", "commander"]) {
-                value = value.with_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference,
-                );
-            }
             Ok(value)
         } else {
             Ok(Value::Count(parse_object_filter(tokens, false)?))
@@ -1710,6 +1705,45 @@ pub fn parse_prevent_all_damage_clause(
                     ),
                 ));
             }
+            // "by a source of your choice that shares a color with the
+            // exiled card" (Mourner's Shield): one qualifying source is
+            // chosen on resolution (CR 609.7a); the relative clause only
+            // limits that choice.
+            if let Some(choice_idx) = source_tokens.windows(3).position(|window| {
+                window[0].is_word("of") && window[1].is_word("your") && window[2].is_word("choice")
+            }) && choice_idx + 3 < source_tokens.len()
+                && let base = &source_tokens[..choice_idx]
+                && base.last().is_some_and(|token| token.is_word("source"))
+                && base
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["a", "an"]))
+            {
+                let choice_len = 3;
+                let mut described = base.to_vec();
+                described.extend_from_slice(&source_tokens[base.len() + choice_len..]);
+                let (choice_filter, of_chosen_color) = parse_damage_sources_filter(&described)?;
+                if of_chosen_color {
+                    return Err(CardTextError::ParseError(
+                        "chosen-color source must retain its explicit decision".into(),
+                    ));
+                }
+                let mut effect = filtered_prevention(
+                    TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None),
+                    choice_filter,
+                    false,
+                );
+                if let EffectAst::SubjectVerb(subject) = &mut effect
+                    && let SubjectVerbActionAst::DamagePrevention(
+                        DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                            source_of_your_choice,
+                            ..
+                        },
+                    ) = &mut subject.action
+                {
+                    *source_of_your_choice = true;
+                }
+                return Ok(Some(effect));
+            }
             let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
             if of_chosen_color {
                 return Err(CardTextError::ParseError(
@@ -2827,8 +2861,8 @@ pub fn parse_keyword_mechanic_clause(
     // A keyword action can have a player actor, just as draw or sacrifice can.
     // Keep the creature choice inside that player's scope; it is not a target.
     if let Some(verb) = tokens.iter().position(|token| token.is_word("blights")) {
-        let player = match parse_target_phrase(&tokens[..verb])? {
-            TargetAst::Player(player, _) => player,
+        let (player, announced_target) = match parse_target_phrase(&tokens[..verb])? {
+            TargetAst::Player(player, span) => (player, span.is_some()),
             _ => return Ok(None),
         };
         let mut action_tokens = tokens[verb..].to_vec();
@@ -2846,6 +2880,23 @@ pub fn parse_keyword_mechanic_clause(
         }) = &mut effect
         {
             filter.controller = Some(PlayerFilter::IteratedPlayer);
+        }
+        // "Each opponent blights 1" (High Perfect Morcant) quantifies over
+        // players; only "target opponent blights 2" announces a target. The
+        // per-opponent fanout hands this clause the anaphor "that player"
+        // (an unannounced target alias), which names the iterated player.
+        let player = match player {
+            PlayerFilter::Target(_) if !announced_target => PlayerFilter::IteratedPlayer,
+            other => other,
+        };
+        if !announced_target && !matches!(player, PlayerFilter::Target(_)) {
+            return Ok(Some(EffectAst::ForEach(
+                ForEachEffectAst::ForEachPlayersFiltered {
+                    sequential: false,
+                    filter: player,
+                    effects: vec![effect],
+                },
+            )));
         }
         return Ok(Some(EffectAst::ForEach(
             ForEachEffectAst::ForEachTargetPlayers {

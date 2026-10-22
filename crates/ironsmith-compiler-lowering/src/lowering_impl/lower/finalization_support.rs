@@ -2358,6 +2358,7 @@ fn correlate_additional_cost_damage_replacement(
         if_false: vec![crate::effect::Effect::new(base_damage.clone())],
         surface: conditional.surface,
         capture_condition_result: conditional.capture_condition_result,
+        presentation_label: conditional.presentation_label.clone(),
     });
     *program = crate::resolution::ResolutionProgram::from_effects(vec![replacement]);
 }
@@ -2815,6 +2816,7 @@ mod quantified_player_damage_value_tests {
                 starting_with_controller: false,
                 sequential: false,
                 stop_after_first_happened: false,
+                announcement_condition: None,
             },
         )])
     }

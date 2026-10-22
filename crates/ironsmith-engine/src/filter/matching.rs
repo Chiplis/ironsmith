@@ -9,6 +9,13 @@ pub(super) fn matches_subject(
     allow_calculated_pt: bool,
     view: Option<&crate::derived_view::DerivedGameView<'_>>,
 ) -> bool {
+    if !filter.excluded_rules.is_empty()
+        && (game.object(subject.object_id()).is_none()
+            || filter.excluded_rules.iter().any(|rule|
+                game.effect_store.cant_effects.object_has_rule(subject.object_id(), rule)))
+    {
+        return false;
+    }
     if filter.renowned && !game.is_renowned(subject.object_id()) {
         return false;
     }
@@ -223,6 +230,18 @@ pub(super) fn matches_subject(
                     subject.object_id(),
                     Some(Zone::Battlefield),
                 ))
+    {
+        return false;
+    }
+
+    // "that wasn't put there this combat" (Storrev, Devkarin Lich).
+    if subject.is_live()
+        && filter.not_put_into_graveyard_this_combat
+        && subject.zone() == Zone::Graveyard
+        && game
+            .turn_store
+            .turn_history
+            .graveyard_incarnation_entered_this_combat(subject.object_id())
     {
         return false;
     }
@@ -544,6 +563,12 @@ pub(super) fn matches_subject(
         let cast_player = ctx.caster.or_else(|| {
             if subject.zone() == Zone::Stack {
                 subject.cast_player(stack_entry)
+            } else if filter.cast_this_turn {
+                // "target creature you cast this turn" (Cycle of Life): a
+                // resolved permanent keeps its cast record for this turn.
+                game.turn_store
+                    .turn_history
+                    .spell_caster_this_turn(subject.object_id())
             } else {
                 None
             }
@@ -978,6 +1003,24 @@ pub(super) fn matches_subject(
     if filter.physical_card && !subject.is_physical_card() {
         return false;
     }
+    // "a spell that wasn't cast" (CR 601.1, 707.10): a copy, or a card put
+    // onto the stack without a cast. Every spell still on the stack entered
+    // it this turn, so the turn's cast history is complete for it.
+    if filter.not_cast {
+        let is_copy = match subject {
+            ObjectSubject::Live(object) => object.kind == ObjectKind::SpellCopy,
+            ObjectSubject::Snapshot(snapshot) => snapshot.kind == ObjectKind::SpellCopy,
+        };
+        if !is_copy
+            && game
+                .turn_store
+                .turn_history
+                .spell_cast_order(subject.object_id())
+                .is_some()
+        {
+            return false;
+        }
+    }
     if let Some(require_face_down) = filter.face_down {
         // A prospective cast has a selected object view before its public
         // status is installed. Use that view only for this exact candidate;
@@ -1060,21 +1103,11 @@ pub(super) fn matches_subject(
     {
         return false;
     }
-    if filter.attacking_alone {
-        let Some(combat) = game.combat.as_ref() else {
-            return false;
-        };
-        let controller = game.controller_of_id(subject.object_id());
-        if !subject.attacking(game)
-            || combat
-                .attackers
-                .iter()
-                .filter(|attacker| game.controller_of_id(attacker.creature) == controller)
-                .count()
-                != 1
-        {
-            return false;
-        }
+    if filter.attacking_alone && !subject.attacking_alone(game) {
+        return false;
+    }
+    if filter.blocking_alone && !subject.blocking_alone(game) {
+        return false;
     }
     if filter.attacking_battle
         && !game.combat.as_ref().is_some_and(|combat| {
@@ -1242,6 +1275,30 @@ pub(super) fn matches_subject(
             .crewed_this_turn
             .get(&subject.object_id())
             .is_some_and(|crewers| crewers.contains(&source_id))
+        {
+            return false;
+        }
+    }
+    // "Merfolk tapped this turn to pay for its abilities": a cost tap whose
+    // ability source is the current source (or its last-known incarnation).
+    if filter.tapped_to_pay_for_source_abilities_this_turn {
+        let sources = ctx
+            .source
+            .into_iter()
+            .chain(ctx.source_snapshot.as_ref().map(|snapshot| snapshot.object_id))
+            .collect::<Vec<_>>();
+        if sources.is_empty()
+            || !game.turn_store.turn_history.projected_records().any(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::PermanentTappedEvent>()
+                    .is_some_and(|tapped| {
+                        tapped.permanent == subject.object_id()
+                            && tapped
+                                .cost_source
+                                .is_some_and(|source| sources.contains(&source))
+                    })
+            })
         {
             return false;
         }

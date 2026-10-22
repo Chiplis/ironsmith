@@ -52,6 +52,9 @@ pub use static_shapes::{
 pub struct UntapEachOtherPlayersUntapStepSpec<'a> {
     pub untap_all: bool,
     pub subject_tokens: &'a [OwnedLexToken],
+    /// "during each opponent's untap step" (Teferi, Who Slows the Sunset's
+    /// emblem) rather than "each other player's".
+    pub opponents_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,20 +162,30 @@ pub fn is_krrik_black_mana_life_payment_line_lexed(tokens: &[OwnedLexToken]) -> 
 
 fn parse_each_other_players_untap_step_suffix<'a>(
     input: &mut LexStream<'a>,
-) -> Result<(), ErrMode<ContextError>> {
+) -> Result<bool, ErrMode<ContextError>> {
     (
         primitives::kw("during"),
         primitives::kw("each"),
-        primitives::kw("other"),
         winnow::combinator::alt((
-            primitives::phrase(&["player's", "untap", "step"]),
-            primitives::phrase(&["players", "untap", "step"]),
-            primitives::phrase(&["player", "s", "untap", "step"]),
-            primitives::phrase(&["player", "untap", "step"]),
+            (
+                primitives::kw("other"),
+                winnow::combinator::alt((
+                    primitives::phrase(&["player's", "untap", "step"]),
+                    primitives::phrase(&["players", "untap", "step"]),
+                    primitives::phrase(&["player", "s", "untap", "step"]),
+                    primitives::phrase(&["player", "untap", "step"]),
+                )),
+            )
+                .value(false),
+            winnow::combinator::alt((
+                primitives::phrase(&["opponent's", "untap", "step"]),
+                primitives::phrase(&["opponents", "untap", "step"]),
+            ))
+            .value(true),
         )),
         primitives::sentence_end(),
     )
-        .void()
+        .map(|(_, _, opponents_only, ())| opponents_only)
         .parse_next(input)
 }
 
@@ -183,12 +196,14 @@ pub fn split_untap_each_other_players_untap_step_line_lexed(
         tokens,
         (primitives::kw("untap"), opt(primitives::kw("all"))),
     )?;
-    let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(remainder, 1, || {
-        parse_each_other_players_untap_step_suffix
-    })?;
+    let (subject_tokens, opponents_only) =
+        primitives::split_lexed_once_before_suffix(remainder, 1, || {
+            parse_each_other_players_untap_step_suffix
+        })?;
     Some(UntapEachOtherPlayersUntapStepSpec {
         untap_all: untap_all.is_some(),
         subject_tokens,
+        opponents_only,
     })
 }
 
@@ -726,6 +741,7 @@ pub fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedLexToken
     contains_token_word_sequence(tokens, &["would", "be", "put"])
         && contains_token_word(tokens, "graveyard")
         && contains_token_word(tokens, "anywhere")
+        && contains_token_word(tokens, "reveal")
         && contains_token_word(tokens, "shuffle")
         && contains_token_word(tokens, "library")
         && contains_token_word(tokens, "instead")
@@ -2205,6 +2221,29 @@ pub fn is_you_may_look_top_card_any_time_line_lexed(tokens: &[OwnedLexToken]) ->
     )
 }
 
+/// The face-down creatures a "you may look at face-down creatures ... any
+/// time" permission covers: "you don't control" (Lumbering Laundry) or "your
+/// opponents control" (Found Footage, which excludes teammates).
+pub fn face_down_look_permission_objects_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::target::ObjectFilter> {
+    if !is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(tokens) {
+        return None;
+    }
+    let words = crate::lexer::token_word_refs(tokens);
+    let controller = if words.contains(&"opponents") {
+        crate::target::PlayerFilter::Opponent
+    } else {
+        crate::target::PlayerFilter::NotYou
+    };
+    let mut filter = crate::target::ObjectFilter::creature()
+        .in_zone(crate::zone::Zone::Battlefield)
+        .face_down()
+        .controlled_by(controller);
+    filter.set_plural_object_noun_surface(true);
+    Some(filter)
+}
+
 pub fn is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
@@ -2406,6 +2445,9 @@ pub fn is_attached_is_copy_of_chosen_object_line_lexed(tokens: &[OwnedLexToken])
             &["enchanted", "creature", "is", "copy", "of", "chosen", "creature"],
             &["enchanted", "permanent", "is", "a", "copy", "of", "the", "chosen", "permanent"],
             &["enchanted", "permanent", "is", "copy", "of", "chosen", "permanent"],
+            // "Equipped creature is a copy of the last chosen card." (Dinosaur
+            // Headdress): the card chosen as this became attached.
+            &["equipped", "creature", "is", "a", "copy", "of", "the", "last", "chosen", "card"],
         ],
     )
 }

@@ -3000,6 +3000,7 @@ pub(super) fn each_player_may_discard_draw_commander_value_compaction_preserves_
         starting_with_controller: false,
         sequential: false,
         stop_after_first_happened: false,
+        announcement_condition: None,
     })];
 
     assert_eq!(
@@ -5904,6 +5905,7 @@ pub(super) fn for_each_opponent_life_loss_you_gain_shared_count_uses_x_surface()
             starting_with_controller: false,
             sequential: false,
             stop_after_first_happened: false,
+            announcement_condition: None,
         }),
         Effect::new(crate::effects::GainLifeEffect::you(party)),
     ];

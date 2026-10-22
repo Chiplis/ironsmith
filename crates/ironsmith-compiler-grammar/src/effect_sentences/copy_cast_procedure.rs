@@ -61,6 +61,19 @@ enum CopyStatement {
     EachThenCast,
 }
 
+/// "Create a copy of this card. You may cast the copy."
+pub(super) fn source_card_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<EffectAst>> {
+    let [copy, cast] = sentences else { return None; };
+    let words = crate::lexer::parser_token_word_refs(copy.lowered());
+    if !matches!(words.as_slice(),
+        ["create", "a", "copy", "of", "this", "card"] | ["copy", "this", "card"]
+    ) { return None; }
+    let mut cast = parse_may_cast_it_sentence(cast.lowered())?;
+    if !cast.as_copy { return None; }
+    cast.tag = CompilerReferenceTag::SourceObject.bind().key;
+    Some(vec![build_may_cast_tagged_effect(&cast)])
+}
+
 enum Exiled {
     /// One card exiled from a graveyard.
     Card { copy: Option<CopyStatement> },

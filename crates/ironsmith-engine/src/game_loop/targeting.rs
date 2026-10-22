@@ -458,6 +458,20 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                     }
                     zone_groups.insert(instance_key, trigger_queue.entries.len());
                 } else if simultaneous_groups_seen.contains(&key) {
+                    // One grouped trigger for the whole damage batch: later
+                    // receipts only add their damaged player ("each of those
+                    // opponents").
+                    if group == crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch
+                        && let Some(indices) = damage_groups.get(&key)
+                    {
+                        for &index in indices {
+                            crate::triggers::record_damage_batch_player(
+                                &mut trigger_queue.entries[index],
+                                &trigger.triggering_event,
+                            );
+                        }
+                        continue;
+                    }
                     if matches!(
                         group,
                         crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
@@ -489,7 +503,8 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                     continue;
                 } else if matches!(
                     group,
-                    crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
+                    crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceController(_, _)
@@ -508,6 +523,12 @@ pub(super) fn queue_triggers_for_simultaneous_events(
         }
         simultaneous_groups_seen.extend(groups_from_this_event);
         for (key, index) in damage_groups_from_this_event {
+            if key.2 == crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch
+                && let Some(entry) = trigger_queue.entries.get_mut(index)
+            {
+                let event = entry.triggering_event.clone();
+                crate::triggers::record_damage_batch_player(entry, &event);
+            }
             damage_groups.entry(key).or_default().push(index);
         }
     }
@@ -3083,6 +3104,26 @@ fn link_relative_target_to_prior_requirement(
     Some(group)
 }
 
+/// "For each opponent who has three or more poison counters as you cast
+/// this spell" (Geth's Summons): evaluate the per-player condition now, with
+/// that player as the iterated player.
+fn for_players_announcement_condition_holds(
+    game: &GameState,
+    condition: &crate::effect::Condition,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    player: PlayerId,
+) -> bool {
+    let mut decisions = crate::decision::SelectFirstDecisionMaker;
+    let mut context = crate::effects::ExecutionContext::new(
+        source_id.unwrap_or(ObjectId::from_raw(0)),
+        caster,
+        &mut decisions,
+    );
+    context.iteration.iterated_player = Some(player);
+    crate::condition_eval::evaluate_condition_resolution(game, condition, &context).unwrap_or(false)
+}
+
 fn extract_for_players_target_requirements(
     game: &GameState,
     for_players: &crate::effects::ForPlayersEffect,
@@ -3113,6 +3154,11 @@ fn extract_for_players_target_requirements(
         .filter(|player| player.is_in_game())
         .filter(|player| crate::filter::player_filter_matches_game(&for_players.filter, player.id, game, &filter_ctx))
         .map(|player| player.id)
+        .filter(|player| {
+            for_players.announcement_condition.as_ref().is_none_or(|condition| {
+                for_players_announcement_condition_holds(game, condition, caster, source_id, *player)
+            })
+        })
         .collect::<Vec<_>>();
 
     for player in players {
@@ -4801,7 +4847,7 @@ fn combat_attacking_player_for_entry(game: &GameState, entry: &StackEntry) -> Op
         .map(|attacker| game.controller_of(attacker))
 }
 
-fn damaged_player_from_event(event: Option<&TriggerEvent>) -> Option<PlayerId> {
+pub(super) fn damaged_player_from_event(event: Option<&TriggerEvent>) -> Option<PlayerId> {
     let damage = event?.downcast::<crate::events::DamageEvent>()?;
     match damage.target {
         crate::events::DamageTarget::Player(player) => Some(player),

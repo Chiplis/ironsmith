@@ -450,6 +450,8 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
+        || permission.while_player_controls.is_some()
+        || permission.permanents_enter_tapped
         || !permission.lands_enter_tapped
         || !matches!(
             &permission.player,
@@ -2884,7 +2886,27 @@ fn describe_same_name_search_reference_setup(effect: &Effect) -> Option<(&TagKey
     if choose.is_search || choose.replace_tagged_objects || choose_exact_count(choose) != Some(1) {
         return None;
     }
-    Some((&choose.tag, describe_choose_selection(choose)))
+    let mut selection = describe_choose_selection(choose);
+    // "with the same name as a card in your graveyard" (Frostpyre Arcanist):
+    // the comparison card's zone is part of the reference.
+    if let Some(zone) = choose_primary_zone(choose)
+        && zone != Zone::Battlefield
+        && !selection.contains(" in ")
+        && !selection.contains(" from ")
+    {
+        let owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+        let possessive = describe_possessive_player_filter(owner);
+        let zone_text = match zone {
+            Zone::Graveyard => Some(format!("{possessive} graveyard")),
+            Zone::Hand => Some(format!("{possessive} hand")),
+            Zone::Exile => Some("exile".to_string()),
+            _ => None,
+        };
+        if let Some(zone_text) = zone_text {
+            selection = format!("{selection} in {zone_text}");
+        }
+    }
+    Some((&choose.tag, selection))
 }
 
 fn same_name_search_move_for_tag<'a>(
@@ -5127,8 +5149,25 @@ pub(super) fn describe_copy_target_candidates(
 pub(super) fn describe_copy_spell_for_each_target(
     effect: &crate::effects::CopySpellForEachTargetEffect,
 ) -> String {
-    let stack_object = describe_stack_object_copy_target(&effect.target);
-    let legal_target_antecedent = describe_stack_object_legal_target_antecedent(&effect.target);
+    let mut stack_object = describe_stack_object_copy_target(&effect.target);
+    let mut legal_target_antecedent = describe_stack_object_legal_target_antecedent(&effect.target);
+    // The authored back-reference noun ("copy that ability", "copy that
+    // spell or ability"): a tagged stack target only knows its identity.
+    let authored_noun = match effect.target_reference_kind {
+        Some(crate::filter::StackObjectKind::Ability) => Some("ability"),
+        Some(crate::filter::StackObjectKind::SpellOrAbility) => Some("spell or ability"),
+        _ => None,
+    };
+    if let Some(noun) = authored_noun {
+        if stack_object == "that spell" {
+            stack_object = format!("that {noun}");
+        }
+        if legal_target_antecedent == "that spell" {
+            legal_target_antecedent = format!("that {noun}");
+        } else if legal_target_antecedent == "the spell" {
+            legal_target_antecedent = format!("the {noun}");
+        }
+    }
     let candidate = describe_copy_target_candidates(
         effect.object_filter.as_ref(),
         effect.player_filter.as_ref(),
@@ -5145,8 +5184,15 @@ pub(super) fn describe_copy_spell_for_each_target(
         true,
     );
 
+    // "that player copies that spell for each ..." (Mirrorwing Dragon): the
+    // copies belong to a player other than the ability's controller.
+    let copy_verb = match &effect.copier {
+        PlayerFilter::You => "Copy".to_string(),
+        PlayerFilter::IteratedPlayer => "That player copies".to_string(),
+        other => format!("{} copies", capitalize_first(&describe_player_filter(other))),
+    };
     let mut text = format!(
-        "Copy {stack_object} for each {candidate} {legal_target_antecedent} could target. Each copy targets a different one of those {plural_candidate}"
+        "{copy_verb} {stack_object} for each {candidate} {legal_target_antecedent} could target. Each copy targets a different one of those {plural_candidate}"
     );
     if effect
         .removed_supertypes
@@ -5318,6 +5364,10 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
         )),
         Value::CardTypesAmong(filter) => Some(format!(
             "a card for each card type among {}",
+            describe_count_filter_value_subject(filter)
+        )),
+        Value::PermanentTypesAmong(filter) => Some(format!(
+            "a card for each permanent type among {}",
             describe_count_filter_value_subject(filter)
         )),
         Value::ColorsAmong(filter) => Some(format!(
@@ -5625,7 +5675,7 @@ pub(in crate::compiled_text) fn describe_choose_copy_spell_and_retarget_copy_to_
     {
         return None;
     }
-    let crate::effects::RetargetMode::OneToFixed(fixed_spec) = &retarget.mode else {
+    let Some(fixed_spec) = retarget.mode.fixed_target() else {
         return None;
     };
     if !retarget_fixed_spec_uses_chosen_tag(fixed_spec, &choose.tag) {
@@ -5723,7 +5773,7 @@ pub(in crate::compiled_text) fn describe_create_token_then_copy_retarget_to_crea
     {
         return None;
     }
-    let crate::effects::RetargetMode::OneToFixed(fixed) = &retarget.mode else {
+    let Some(fixed) = retarget.mode.fixed_target() else {
         return None;
     };
     if !fixed_spec_is_exact_created_token_reference(fixed, &tagged_create.tag) {
@@ -6280,10 +6330,12 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => object_filter_references_target_player(filter),
         Value::StaticAbilitiesAmong { filter, .. } => {
@@ -6326,6 +6378,7 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player)
         | Value::CommanderCastCount(player)
+        | Value::CommandersCastFromCommandZoneBy(player)
         | Value::CardTypesInGraveyard(player) => player_filter_references_target_player(player),
         Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, .. }
         | Value::Devotion { player, .. }
@@ -6501,6 +6554,9 @@ pub(super) fn describe_for_each_player_filter(filter: &PlayerFilter) -> String {
         {
             "other opponent".to_string()
         }
+        // "Choose two target players. ... each creature they control"
+        // (The Brothers' War): iterating a declared target set.
+        PlayerFilter::AliasedTarget(_) => "of those players".to_string(),
         _ => describe_player_filter(filter),
     }
 }
@@ -9455,6 +9511,20 @@ fn describe_quantified_player_conditional(
     if qualified_choice_complement {
         action = action.replace(", then sacrifices the rest", " and sacrifices the rest");
         action = action.replace(", then sacrifice the rest", " and sacrifice the rest");
+    }
+    // "Each player who discarded a card with the greatest mana value among
+    // cards discarded this way loses life equal to that mana value" (Scythe
+    // Specter): the life amount is the very quantity the qualifying clause
+    // compared against, so it reads as a back-reference.
+    if let Condition::PlayerTaggedObjectMatches { filter, .. } = &conditional.condition
+        && let Some(crate::filter::Comparison::EqualExpr(compared)) = &filter.mana_value
+        && let [lose_effect] = conditional.if_true.as_slice()
+        && let Some(lose) = structural_unwrap_render_wrappers(lose_effect)
+            .downcast_ref::<crate::effects::LoseLifeEffect>()
+        && lose.player == ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        && lose.amount.unhinted() == compared.unhinted()
+    {
+        action = "loses life equal to that mana value".to_string();
     }
     Some(format!("{subject} who {relative} {action}"))
 }
@@ -14008,6 +14078,24 @@ pub(super) fn join_or_list(items: &[String]) -> Option<String> {
 pub(super) fn structural_revealed_choice_label(
     choose: &crate::effects::ChooseObjectsEffect,
 ) -> Option<String> {
+    // "a card that shares a creature type with that creature" (Conjurer's
+    // Mantle): the relation to the triggering creature is the selection.
+    if choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::SharesSubtypeWithTagged
+            && constraint.tag.as_str() == "triggering"
+    }) {
+        let mut base = choose.filter.clone();
+        base.tagged_constraints.retain(|constraint| {
+            constraint.relation != crate::filter::TaggedOpbjectRelation::SharesSubtypeWithTagged
+        });
+        if looked_filter_has_only_card_type_structure(&base)
+            && base.any_of.is_empty()
+            && (base.card_types.is_empty() || base.card_types == [CardType::Creature])
+        {
+            return Some("card that shares a creature type with that creature".to_string());
+        }
+        return None;
+    }
     if looked_filter_has_only_card_type_structure(&choose.filter)
         && looked_filter_is_creature_land_union(&choose.filter)
     {
@@ -14143,6 +14231,8 @@ pub(in crate::compiled_text) fn describe_opponent_top_exile_and_play(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
+        || permission.while_player_controls.is_some()
+        || permission.permanents_enter_tapped
         || permission.max_plays.is_some()
         || permission.lands_enter_tapped
     {
@@ -14214,6 +14304,8 @@ pub(in crate::compiled_text) fn describe_hand_choice_exile_permission(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
+        || permission.while_player_controls.is_some()
+        || permission.permanents_enter_tapped
     {
         return None;
     }

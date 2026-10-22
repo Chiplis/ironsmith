@@ -414,6 +414,23 @@ fn read_opponent_special_shape(
                         clause_text
                     )));
                 }
+                // "... who has three or more poison counters as you cast
+                // this spell, put up to one target ..." (Geth's Summons):
+                // the set of corrupted opponents is fixed on casting.
+                let (as_you_cast, effect_tokens) = match crate::grammar::primitives::parse_prefix(
+                    effect_tokens,
+                    crate::grammar::primitives::phrase(&["as", "you", "cast", "this", "spell"]),
+                ) {
+                    Some(((), rest)) => (
+                        true,
+                        crate::grammar::primitives::parse_prefix(
+                            rest,
+                            crate::grammar::primitives::comma(),
+                        )
+                        .map_or(rest, |(_, rest)| rest),
+                    ),
+                    None => (false, effect_tokens),
+                };
                 let actor_tokens;
                 let effect_tokens = if outer.participant_is_actor {
                     actor_tokens = prepend_that_player_subject(effect_tokens);
@@ -432,6 +449,7 @@ fn read_opponent_special_shape(
                             PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
                                 player: PlayerAst::That,
                                 count,
+                                as_you_cast,
                             },
                         ),
                         if_true: branch_effects,
@@ -632,10 +650,28 @@ fn read_actor_return_clause(
             .first()
             .is_some_and(|token| token.is_word("return") || token.is_word("returns"))
     {
-        let return_tokens = crate::util::trim_edge_punctuation_tokens(&outer.inner_tokens[1..]);
+        let body = &outer.inner_tokens[1..];
+        // "Each opponent returns ... to its owner's hand, then discards a
+        // card" (Dispersal): the participant's chained "then <verb>" action
+        // is a sibling of the return, not part of the destination phrase.
+        let then_index = body.iter().position(|token| token.is_word("then"));
+        let (return_body, continuation) = match then_index {
+            Some(index) => (&body[..index], Some(&body[index + 1..])),
+            None => (body, None),
+        };
+        let return_tokens = crate::util::trim_edge_punctuation_tokens(return_body);
         let mut effect = super::super::super::zone_handlers::parse_return(return_tokens)?;
         bind_implicit_player_context(&mut effect, PlayerAst::That);
-        return Ok(Some(wrap_players(&iteration_filter, vec![effect])));
+        let mut effects = vec![effect];
+        if let Some(continuation) = continuation {
+            let continuation = crate::util::trim_edge_punctuation_tokens(continuation);
+            if continuation.is_empty() {
+                return Ok(None);
+            }
+            let normalized = prepend_that_player_subject(continuation);
+            effects.extend(parse_maybe_effects(&normalized, true, true)?);
+        }
+        return Ok(Some(wrap_players(&iteration_filter, effects)));
     }
     Ok(None)
 }

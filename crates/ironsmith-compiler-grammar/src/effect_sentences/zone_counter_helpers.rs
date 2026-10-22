@@ -389,6 +389,48 @@ fn parse_put_counters_on_two_independent_targets(
     Ok(Some(effects))
 }
 
+/// "put a +1/+1 counter on that creature and each other creature you control
+/// that shares a creature type with it" (Holy Frazzle-Cannon): one object
+/// recipient and a distributive recipient set receive the same counters.
+/// Each recipient is its own placement; "other" in the set is relative to
+/// the named object, which the set's own filter grammar already reads.
+fn parse_put_counters_on_object_and_each_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(on_idx) = tokens.iter().position(|token| token.is_word("on")) else {
+        return Ok(None);
+    };
+    let target_phrase = crate::util::trim_edge_punctuation_tokens(&tokens[on_idx + 1..]);
+    let and_positions = target_phrase
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("and"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [and_idx] = and_positions.as_slice() else {
+        return Ok(None);
+    };
+    let first = &target_phrase[..*and_idx];
+    let second = &target_phrase[*and_idx + 1..];
+    if first.is_empty()
+        || !second.first().is_some_and(|token| token.is_word("each"))
+        || second.get(1).is_some_and(|token| token.is_word("of"))
+        || first.iter().any(|token| token.is_any_word(&["each", "for", "then"]))
+        || target_phrase.iter().any(|token| {
+            token.is_comma() || token.is_any_word(&["for", "then", "if", "unless", "instead"])
+        })
+    {
+        return Ok(None);
+    }
+    let mut effects = Vec::with_capacity(2);
+    for segment in [first, second] {
+        let mut clause = tokens[..=on_idx].to_vec();
+        clause.extend_from_slice(segment);
+        effects.push(parse_put_counters(&clause)?);
+    }
+    Ok(Some(effects))
+}
+
 /// "that player puts a flood counter on target non-Island land they control
 /// of their choice" (Quicksilver Fountain): the subject player announces the
 /// target (CR 115.4) through a delegated TargetOnly; the counters go on the
@@ -537,6 +579,9 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         return Ok(EffectAst::Sequence { effects });
     }
     if let Some(effects) = parse_put_counters_on_two_independent_targets(tokens)? {
+        return Ok(EffectAst::Sequence { effects });
+    }
+    if let Some(effects) = parse_put_counters_on_object_and_each_filter(tokens)? {
         return Ok(EffectAst::Sequence { effects });
     }
     if !has_counter_placement_head(tokens) {
@@ -696,11 +741,14 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
 
     // The descriptor belongs to the first counter noun. A later count
     // expression can mention counters again without renaming these counters.
+    // "put its +1/+1 counters on target creature" (Selfless Police
+    // Captain): the referential count already consumed the typed counter
+    // noun, so the remaining words hold no descriptor at all.
     let descriptor_end = rest
         .iter()
         .position(|token| token.is_any_word(&["counter", "counters"]))
         .map(|index| index + 1)
-        .unwrap_or(rest.len());
+        .unwrap_or(0);
     let counter_type =
         if let Some(counter_type) = parse_counter_type_from_tokens(&rest[..descriptor_end]) {
             counter_type
@@ -1030,6 +1078,18 @@ fn parse_transform_like(
     tokens: &[OwnedLexToken],
     action: fn(TargetAst) -> EffectAst,
 ) -> Result<EffectAst, CardTextError> {
+    // "convert it at end of combat" (Slicer, High-Speed Antagonist): a
+    // trailing timing marker schedules the action and belongs to the
+    // delayed-timing reading. The object reader would otherwise keep the
+    // pronoun and silently drop the timing words.
+    if crate::grammar::effects::delayed_step_shapes::parse_delayed_timing_marker_shape(tokens)
+        .is_some_and(|marker| marker.start_word > 0)
+    {
+        return Err(CardTextError::ParseError(format!(
+            "transform/convert object carries a delayed timing suffix (clause: '{}')",
+            crate::lexer::LexedClause::new(tokens).text(),
+        )));
+    }
     if let Some((_, filter_tokens)) = crate::grammar::primitives::parse_prefix(
         tokens, crate::grammar::primitives::phrase(&["any", "number", "of"]),
     ) {

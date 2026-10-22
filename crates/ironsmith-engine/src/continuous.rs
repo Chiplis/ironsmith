@@ -6049,6 +6049,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.target_set_same_controller
         || filter.target_set_different_controllers
         || filter.target_set_shared_creature_type
+        || filter.target_set_equal_metric.is_some()
         || filter.target_set_aggregate_constraint.is_some()
         || filter.targets_only_player.is_some()
         || filter.targets_only_object.is_some()
@@ -6087,6 +6088,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.blocked_by.is_some()
         || filter.blocked_by_source
         || filter.crewed_by_source_this_turn
+        || filter.tapped_to_pay_for_source_abilities_this_turn
         || filter.blocked_or_was_blocked_by_this_turn.is_some()
         || filter.attached_to_object.is_some()
         || filter.unblocked
@@ -6105,6 +6107,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.entered_graveyard_from_battlefield_this_turn
         || filter.entered_graveyard_from_library_this_turn
         || filter.entered_graveyard_not_from_battlefield_this_turn
+        || filter.not_put_into_graveyard_this_combat
         || filter.milled_into_graveyard_this_turn
         || filter.surveilled_this_turn
         || filter.fought_this_turn

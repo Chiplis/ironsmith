@@ -100,6 +100,17 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
         _ => None,
     };
     if let Some((value, used)) = linked_characteristic {
+        // "the mana value of the exiled card used to craft it" (Jadeheart
+        // Attendant): the same source-linked set, CR 702.167c.
+        if let Some(["used", "to", "craft", "it" | "them", ..]) = rest.get(used..) {
+            let surface = "the exiled card used to craft it";
+            let value = match value {
+                Value::PowerOf(_) => Value::PowerOf(tagged(Tag::SourceExiled, surface)),
+                Value::ToughnessOf(_) => Value::ToughnessOf(tagged(Tag::SourceExiled, surface)),
+                _ => Value::ManaValueOf(tagged(Tag::SourceExiled, surface)),
+            };
+            return Some((value, offset + used + 4));
+        }
         return Some((value, offset + used));
     }
     // "If the discovered card's mana value is less than 10" (Hit the Mother

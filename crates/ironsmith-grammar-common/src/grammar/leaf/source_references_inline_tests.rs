@@ -1,5 +1,17 @@
 use super::*;
 
+#[test]
+fn titled_name_aliases_preserve_surname_and_reject_bare_title() {
+    let aliases = parse_leaf_source_reference_aliases_for_name("Dr. Ada Example");
+    assert_eq!(exact(&aliases, &["dr", "example"]),
+        Some(SourceReferenceSurface::ShortName("Dr. Example".into())));
+    assert!(exact(&aliases, &["dr"]).is_none());
+    let aliases = parse_leaf_source_reference_aliases_for_name("Captain Ada B. Example");
+    assert_eq!(exact(&aliases, &["captain", "example"]),
+        Some(SourceReferenceSurface::ShortName("Captain Example".into())));
+    assert!(exact(&aliases, &["captain"]).is_none());
+}
+
 fn exact(aliases: &[LeafSourceReferenceAlias], words: &[&str]) -> Option<SourceReferenceSurface> {
     parse_leaf_source_reference_alias_words(aliases, words)
 }

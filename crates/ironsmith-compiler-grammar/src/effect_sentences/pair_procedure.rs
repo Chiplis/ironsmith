@@ -85,6 +85,8 @@ mod each_opponent_consult_cast;
 mod controlled_player_plays_chosen;
 #[path = "pair_procedure/each_player_named_top_guess.rs"]
 mod each_player_named_top_guess;
+#[path = "pair_procedure/each_player_look_reveal_split.rs"]
+mod each_player_look_reveal_split;
 #[path = "pair_procedure/paired_top_reveal.rs"]
 mod paired_top_reveal;
 #[path = "pair_procedure/reveal_put_rest_do_same.rs"]
@@ -1225,6 +1227,18 @@ const PAIR_SHAPES: &[Shape] = &[
                 sentences,
                 sentence_idx,
                 each_player_named_top_guess::read(sentences, sentence_idx),
+            )
+        },
+    },
+    Shape {
+        id: RuleId::new("each-player-look-reveal-to-hand-rest-bottom"),
+        head: HeadDiscriminator::words(&["each"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                each_player_look_reveal_split::read(sentences, sentence_idx),
             )
         },
     },

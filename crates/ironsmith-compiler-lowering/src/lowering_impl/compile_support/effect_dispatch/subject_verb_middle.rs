@@ -153,6 +153,18 @@ fn apply_token_combat_entry(
         choices.extend(target_choices);
         effect = effect.blocking(spec);
     }
+    // CR 508.1d: "tokens that attack that opponent this turn if able";
+    // "that opponent" inside "for each opponent, ..." is the iterated one.
+    if let Some(required) = combat_entry.must_attack_player_this_turn {
+        let player = if matches!(required, PlayerAst::Defending | PlayerAst::That)
+            && ctx.iterated_player
+        {
+            PlayerFilter::IteratedPlayer
+        } else {
+            resolve_non_target_player_filter(required, &current_reference_env(ctx))?
+        };
+        effect.must_attack_player_this_turn = Some(player);
+    }
     Ok((effect, choices))
 }
 
@@ -857,6 +869,7 @@ fn resolve_pump_all_value(value: &Value, pumped: &ObjectFilter, refs: &Reference
             | Value::CountScaled(filter, _)
             | Value::ColorsAmong(filter)
             | Value::CreatureTypesAmong(filter)
+            | Value::PermanentTypesAmong(filter)
             | Value::CardTypesAmong(filter)
             | Value::TotalPower(filter)
             | Value::TotalToughness(filter)
@@ -1168,6 +1181,9 @@ pub(super) fn compile_cant_action(
         }
         if let crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers, ..
+        }
+        | crate::effect::Restriction::AttackPlayerOrPermanentsControlledBy {
+            attackers, ..
         } = &mut restriction
             && attackers.controller == Some(PlayerFilter::IteratedPlayer)
         {
@@ -1182,6 +1198,23 @@ pub(super) fn compile_cant_action(
         {
             *protected = player;
         }
+    }
+    // "that creature can't attack during its controller's next turn" (Wall
+    // of Dust): "its" is the restricted object, so the start player reads the
+    // same tag the restriction's object reference resolved to (the blocked
+    // attacker), never the trigger's own event object.
+    if let crate::effect::RestrictionStart::NextTurn(PlayerFilter::ControllerOf(
+        crate::filter::ObjectRef::Tagged(tag),
+    )) = &mut start
+        && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        && let crate::effect::Restriction::Attack(filter)
+        | crate::effect::Restriction::Block(filter)
+        | crate::effect::Restriction::AttackOrBlock(filter) = &restriction
+        && let Some(resolved) = filter.tagged_constraints.iter().find(|constraint| {
+            constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        *tag = resolved.tag.clone();
     }
     let start = &start;
     if matches!(duration, crate::effect::Until::UntilControllersNextUntapStep { .. }) {
@@ -1547,6 +1580,7 @@ pub(super) fn compile_subject_verb_middle(
             player,
             exclude_current_targets,
             removed_supertypes,
+            target_reference_kind,
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1558,7 +1592,8 @@ pub(super) fn compile_subject_verb_middle(
             let mut copy_effect = crate::effects::CopySpellForEachTargetEffect::new(spec.clone())
                 .with_copier(player_filter_for_copies)
                 .exclude_current_targets(*exclude_current_targets)
-                .with_removed_supertypes(removed_supertypes.clone());
+                .with_removed_supertypes(removed_supertypes.clone())
+                .with_target_reference_kind(*target_reference_kind);
             if let Some(filter) = object_filter {
                 copy_effect = copy_effect
                     .with_object_filter(resolve_it_tag(filter, &current_reference_env(ctx))?);
@@ -1695,6 +1730,8 @@ pub(super) fn compile_subject_verb_middle(
             alternative_payment,
             caster_land_mana_abilities_only,
             control_caster_while_spell_resolves,
+            required_zone,
+            required_spell,
         }) => {
             // "if this card is in your graveyard, ... you may cast it": with
             // no object antecedent other than the source the condition named,
@@ -1714,6 +1751,9 @@ pub(super) fn compile_subject_verb_middle(
                 if *without_paying_mana_cost {
                     cast = cast.without_paying_mana_cost();
                 }
+                if let Some(zone) = required_zone {
+                    cast = cast.from_zone(*zone);
+                }
                 return Ok(Some((vec![Effect::new(cast)], Vec::new())));
             }
             // "you may cast this card from your graveyard" (Syrix, Sproutback
@@ -1730,6 +1770,9 @@ pub(super) fn compile_subject_verb_middle(
                 let mut cast = crate::effects::CastSourceEffect::new();
                 if *without_paying_mana_cost {
                     cast = cast.without_paying_mana_cost();
+                }
+                if let Some(zone) = required_zone {
+                    cast = cast.from_zone(*zone);
                 }
                 return Ok(Some((vec![Effect::new(cast)], Vec::new())));
             }
@@ -1781,6 +1824,13 @@ pub(super) fn compile_subject_verb_middle(
             .with_cast_tagged_instruction_riders(
                 *caster_land_mana_abilities_only,
                 *control_caster_while_spell_resolves,
+            )
+            .with_cast_tagged_required_zone(*required_zone)
+            .with_cast_tagged_required_spell(
+                required_spell
+                    .as_ref()
+                    .map(|filter| resolve_it_tag(filter, &current_reference_env(ctx)))
+                    .transpose()?,
             );
             Ok((vec![cast], Vec::new()))
         }
@@ -1799,6 +1849,7 @@ pub(super) fn compile_subject_verb_middle(
             spell_cost_increase_unless_targets,
             max_plays,
             surface,
+            permanents_enter_tapped,
         }) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1869,6 +1920,7 @@ pub(super) fn compile_subject_verb_middle(
             if let Some(surface) = surface.clone() {
                 grant_play = grant_play.with_surface(surface);
             }
+            grant_play.permanents_enter_tapped = *permanents_enter_tapped;
             let mut effects = vec![Effect::new(grant_play)];
             if *without_paying_mana_cost {
                 let mut grant_free_cast =
@@ -1986,14 +2038,27 @@ pub(super) fn compile_subject_verb_middle(
             )
             .with_max_plays(*max_plays);
             grant_play.spell_filter = spell_filter.clone();
+            // "you may cast it from your graveyard as an Adventure": the
+            // named zone is where the card must be as the permission is
+            // created, not a characteristic of the proposed spell face.
+            if let Some(filter) = grant_play.spell_filter.as_mut()
+                && let Some(zone) = filter.zone.take()
+            {
+                grant_play.filter = Some(crate::target::ObjectFilter::default().in_zone(zone));
+            }
             grant_play.surface = surface.clone();
             if *without_paying_mana_cost {
                 // An empty replacement price is "without paying its mana
                 // cost" (CR 118.9); lands are played normally.
                 grant_play.alternative_cost = Some(crate::cost::TotalCost::free());
             }
+            // "you may play one of those cards" over a collection several
+            // exile instructions built (Flameskull).
+            let authored_plural_pool = surface.as_ref().is_some_and(|surface| {
+                surface.object == Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards)
+            });
             if is_sentence_helper_exiled_collection_tag(&resolved_tag)
-                && ctx.last_exiled_collection_is_plural
+                && (ctx.last_exiled_collection_is_plural || authored_plural_pool)
             {
                 grant_play = grant_play.cast_pool_is_plural(true);
             }
@@ -2253,7 +2318,24 @@ pub(super) fn compile_subject_verb_middle(
                 PlayerFilter::You
             };
             let mut effects = Vec::new();
-            let resolved_spec = if !spec.is_target() {
+            // "Return those cards from your graveyard to the battlefield"
+            // (Revivify): a plural reference to a tagged set returns every
+            // member still in that zone.
+            let plural_tagged_reference = match spec.base() {
+                ChooseSpec::Object(filter)
+                    if !spec.is_target()
+                        && filter.has_plural_pronoun_reference_surface()
+                        && filter.tagged_constraints.iter().any(|constraint| {
+                            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                        }) =>
+                {
+                    Some(ChooseSpec::All(filter.clone()))
+                }
+                _ => None,
+            };
+            let resolved_spec = if let Some(all) = plural_tagged_reference {
+                all
+            } else if !spec.is_target() {
                 match &spec {
                     ChooseSpec::Object(filter)
                         if filter.union_surface.set_quantifier()
@@ -2397,6 +2479,23 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 let mut effect =
                     Effect::return_from_graveyard_to_battlefield(resolved_spec.clone(), *tapped);
+                // "that creature's controller returns this Aura from its
+                // owner's graveyard to the battlefield" (Traveling Plague):
+                // an authored non-"you" actor puts the card onto the
+                // battlefield and so controls it (CR 110.2a).
+                if as_aura.is_none()
+                    && matches!(controller, ReturnControllerAst::Preserve)
+                    && let Some(actor) = explicit_actor.as_ref()
+                    && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                {
+                    effect = Effect::new(
+                        crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
+                            resolved_spec.clone(),
+                            *tapped,
+                        )
+                        .with_returning_player(actor.clone_player_filter()),
+                    );
+                }
                 if let Some(as_aura) = as_aura {
                     let attachment_filter = as_aura.attachment_filter.clone();
                     if !as_aura.granted_abilities.is_empty() {
@@ -2491,6 +2590,17 @@ pub(super) fn compile_subject_verb_middle(
             aura_attachment_filter,
         }) => {
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            // The explicit "exiled with this <source>" marker only guided
+            // reference resolution; the returned cards are not the source.
+            if !resolved_filter.source
+                && resolved_filter.source_surface.is_some()
+                && resolved_filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str()
+                        == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                })
+            {
+                resolved_filter.source_surface = None;
+            }
             let refers_to_milled_cards =
                 resolved_filter.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -2540,6 +2650,8 @@ pub(super) fn compile_subject_verb_middle(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+            entry_type_changes,
+            entry_counters,
             retained_reference_tags,
             target,
             source_top_only,
@@ -2590,10 +2702,31 @@ pub(super) fn compile_subject_verb_middle(
                 // when its members came from a tag and some have since moved.
                 // Resolving it as a bare tagged reference would discard that
                 // restriction before the all-objects movement executes.
-                (
-                    ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?),
-                    Vec::new(),
-                )
+                // "Put all permanent cards exiled with this enchantment onto
+                // the battlefield" (Journey to the Lost City): an explicit
+                // source link names the persistent linked exile set, never
+                // only the cards this resolution just exiled.
+                let explicit_source_link = exiled_with_source_surface.as_ref().is_some_and(
+                    |surface| {
+                        matches!(
+                            surface.source,
+                            ironsmith_core::ExiledWithSourceReferenceSurface::Source(_)
+                        )
+                    },
+                ) && filter.source_surface.is_none();
+                let mut probe = filter.clone();
+                if explicit_source_link
+                    && let Some(ironsmith_core::ExiledWithSourceReferenceSurface::Source(
+                        source,
+                    )) = exiled_with_source_surface.as_ref().map(|surface| surface.source.clone())
+                {
+                    probe.source_surface = Some(source);
+                }
+                let mut resolved = resolve_it_tag(&probe, &current_reference_env(ctx))?;
+                if explicit_source_link {
+                    resolved.source_surface = None;
+                }
+                (ChooseSpec::All(resolved), Vec::new())
             } else {
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?
             };
@@ -2633,6 +2766,8 @@ pub(super) fn compile_subject_verb_middle(
                 .map(|tag| resolve_it_tag_key(tag, &current_reference_env(ctx)))
                 .collect::<Result<Vec<_>, _>>()?;
             let with_move_surfaces = |mut move_effect: crate::effects::MoveToZoneEffect| {
+                move_effect.entry_type_changes = entry_type_changes.clone();
+                move_effect.enters_with_counters = entry_counters.clone();
                 move_effect.retained_reference_tags = retained_reference_tags.clone();
                 let move_effect = if let Some(order) = resolved_library_order.clone() {
                     move_effect.with_library_order(order)
@@ -4180,6 +4315,7 @@ pub(super) fn compile_subject_verb_middle(
             exile_at_next_end_step_reference_surface,
             next_end_step_player,
             set_colors,
+            added_colors,
             set_card_types,
             set_subtypes,
             added_card_types,
@@ -4205,6 +4341,7 @@ pub(super) fn compile_subject_verb_middle(
             let unmodified_copy = !*half_power_toughness_round_up
                 && !*has_haste
                 && set_colors.is_none()
+                && added_colors.is_empty()
                 && set_card_types.is_none()
                 && set_subtypes.is_none()
                 && added_card_types.is_empty()
@@ -4274,6 +4411,9 @@ pub(super) fn compile_subject_verb_middle(
             effect = effect.next_end_step_player(next_end_step_player.clone());
             if let Some(colors) = set_colors {
                 effect = effect.set_colors(*colors);
+            }
+            if !added_colors.is_empty() {
+                effect = effect.added_colors(*added_colors);
             }
             if let Some(card_types) = set_card_types {
                 effect = effect.set_card_types(card_types.clone());
@@ -4367,6 +4507,7 @@ pub(super) fn compile_subject_verb_middle(
             exile_at_next_end_step_reference_surface,
             next_end_step_player,
             set_colors,
+            added_colors,
             set_card_types,
             set_subtypes,
             added_card_types,
@@ -4379,6 +4520,7 @@ pub(super) fn compile_subject_verb_middle(
             set_name,
             added_supertypes,
             attached_to,
+            blocking,
         }) => {
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
@@ -4430,6 +4572,7 @@ pub(super) fn compile_subject_verb_middle(
             let unmodified_copy = !*half_power_toughness_round_up
                 && !*has_haste
                 && set_colors.is_none()
+                && added_colors.is_empty()
                 && set_card_types.is_none()
                 && set_subtypes.is_none()
                 && added_card_types.is_empty()
@@ -4507,6 +4650,9 @@ pub(super) fn compile_subject_verb_middle(
             if let Some(colors) = set_colors {
                 effect = effect.set_colors(*colors);
             }
+            if !added_colors.is_empty() {
+                effect = effect.added_colors(*added_colors);
+            }
             if let Some(card_types) = set_card_types {
                 effect = effect.set_card_types(card_types.clone());
             }
@@ -4547,6 +4693,14 @@ pub(super) fn compile_subject_verb_middle(
                 }
             }
 
+            if let Some(blocked) = blocking {
+                let (spec, target_choices) =
+                    resolve_target_spec_with_choices(blocked, &current_reference_env(ctx))?;
+                for choice in target_choices {
+                    push_choice(&mut choices, choice);
+                }
+                effect.enters_blocking = Some(spec);
+            }
             if attached_to.is_some() {
                 effect.suppress_aura_attachment_choice = true;
             }
@@ -4694,6 +4848,14 @@ pub(super) fn compile_subject_verb_middle(
                         push_choice(&mut choices, choice);
                     }
                     crate::effects::RetargetMode::OneToFixed(fixed_spec)
+                }
+                RetargetModeAst::AllToFixed { target: fixed } => {
+                    let (fixed_spec, fixed_choices) =
+                        resolve_target_spec_with_choices(fixed, &current_reference_env(ctx))?;
+                    for choice in fixed_choices {
+                        push_choice(&mut choices, choice);
+                    }
+                    crate::effects::RetargetMode::AllToFixed(fixed_spec)
                 }
             };
             effect = effect.with_mode(compiled_mode);

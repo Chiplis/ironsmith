@@ -207,6 +207,7 @@ fn parse_combat_damage_trigger_lexed(
                 per_source_controller,
                 recipient_passive: false,
                 during_your_turn: false,
+                object_recipient: None,
             },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None => TriggerSpec::ThisDealsCombatDamageToPlayer {
@@ -219,6 +220,25 @@ fn parse_combat_damage_trigger_lexed(
     if let Some((player, target_filter, player_first)) =
         parse_player_or_object_damage_recipient(&target_tokens)
     {
+        // "Whenever one or more Dragons you control deal combat damage to a
+        // player or battle" (Zurgo and Ojutai): one grouped event for each
+        // damaged player or battle, not a per-source battle trigger.
+        if one_or_more
+            && each_damaged_player
+            && !per_source_controller
+            && player_first
+            && let Some(source) = source_filter.clone()
+        {
+            return Ok(TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                source,
+                player,
+                each_damaged_player,
+                per_source_controller,
+                recipient_passive: false,
+                during_your_turn: false,
+                object_recipient: Some(target_filter),
+            });
+        }
         let player_trigger = match source_filter.clone() {
             Some(source) if one_or_more => TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source,
@@ -227,6 +247,7 @@ fn parse_combat_damage_trigger_lexed(
                 per_source_controller,
                 recipient_passive: false,
                 during_your_turn: false,
+                object_recipient: None,
             },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None if player == PlayerFilter::Any => TriggerSpec::ThisDealsCombatDamageToPlayer {
@@ -679,6 +700,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                                 None
                             };
                         }
+                        // "Whenever you cast an instant or sorcery spell from
+                        // your library" (Melek, Izzet Paragon): the cast origin.
+                        if filter_surface_facts.origin
+                            == Some(crate::grammar::trigger_subjects::SpellOriginSurface::Library)
+                        {
+                            filter.zone = Some(Zone::Library);
+                            if matches!(
+                                filter_surface_facts.owner,
+                                Some(crate::grammar::trigger_subjects::SpellOwnerSurface::SubjectActor)
+                            ) {
+                                filter.owner = Some(actor.clone());
+                            }
+                        }
                         Some(filter)
                     })
                     .map_err(|err| {
@@ -740,9 +774,13 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 }
             }
             let filter = parse_filter(filter_tokens)?;
+            let mana_source_filter =
+                super::super::trigger_subject_filters::spell_cast_using_mana_source_filter(
+                    tokens.get(cast + 1..).unwrap_or_default(),
+                )?;
             return Ok(Some(TriggerSpec::SpellCast {
                 filter,
-                mana_source_filter: None,
+                mana_source_filter,
                 caster: actor,
                 timing,
                 during_turn: None,
@@ -795,6 +833,17 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Err(CardTextError::ParseError(
             "empty trigger clause".to_string(),
         ));
+    }
+
+    if let [subject @ .., "face" | "faces", "a", "dilemma"] = words.as_slice()
+        && let Some(player) = parse_trigger_subject_player_filter(subject)
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::FaceDilemma,
+            player,
+            source_filter: None,
+            during_your_turn: false,
+        });
     }
 
     // "a mana ability of this creature resolves" (Tyvar the Bellicose).
@@ -3026,6 +3075,17 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     )? {
         return Ok(trigger);
     }
+    if let Some(mut trigger) = parse_put_into_your_graveyard_from_exact_zone(
+        tokens,
+        &words,
+        PUT_INTO_OPPONENT_GRAVEYARD_FROM_THEIR_LIBRARY_SUFFIXES,
+        Zone::Library,
+    )? {
+        if let TriggerSpec::PutIntoGraveyardFromZone { filter, .. } = &mut trigger {
+            filter.owner = Some(PlayerFilter::Opponent);
+        }
+        return Ok(trigger);
+    }
 
     if let Some(suffix_word_len) = trigger_suffix_word_len(&words, PUT_INTO_YOUR_GRAVEYARD_SUFFIXES)
     {
@@ -3098,6 +3158,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let subject_words = subject_view.to_word_refs();
         if is_source_reference_words(&subject_words) {
             return Ok(TriggerSpec::PutIntoGraveyard(ObjectFilter::source()));
+        }
+        if subject_starts_one_or_more(&subject_words)
+            && let Ok(filter) =
+                parse_object_filter_lexed(strip_leading_one_or_more_lexed(subject_tokens), false)
+        {
+            return Ok(TriggerSpec::PutIntoGraveyardOneOrMore(filter));
         }
         if let Ok(filter) = parse_object_filter_lexed(subject_tokens, false) {
             return Ok(TriggerSpec::PutIntoGraveyard(filter));
@@ -4189,6 +4255,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 source,
                 player,
                 source_surface: crate::triggers::DamageSourceSurface::PassiveBy,
+                damaged_player_one_or_more: false,
             });
         }
         let target = parse_object_filter_lexed(recipient_tokens, false).map_err(|_| {
@@ -4279,6 +4346,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     per_source_controller: false,
                     recipient_passive: true,
                     during_your_turn,
+                    object_recipient: None,
                 });
             }
         }
@@ -4303,6 +4371,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 source: ObjectFilter::default(),
                 player: PlayerFilter::You,
                 source_surface: crate::triggers::DamageSourceSurface::Filter,
+                damaged_player_one_or_more: false,
             });
         }
         let subject_tokens = &tokens[..is_token_idx];
@@ -4317,6 +4386,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 source: ObjectFilter::default(),
                 player,
                 source_surface: crate::triggers::DamageSourceSurface::Filter,
+                damaged_player_one_or_more: false,
             });
         }
         if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
@@ -4542,6 +4612,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     source: source.clone(),
                     player,
                     source_surface,
+                    damaged_player_one_or_more: false,
                 };
                 let object_trigger = TriggerSpec::DealsDamageTo {
                     source,
@@ -4561,10 +4632,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 && let Some((source, source_surface)) =
                     parse_damage_source_trigger_filter_lexed(subject_tokens)?
             {
+                // "deal damage to your opponents" (Breeches, Malcolm): the
+                // plural recipient groups every damaged opponent of one
+                // simultaneous batch into a single event.
+                let plural_recipient = target_one_or_more
+                    || matches!(
+                        target_words.as_slice(),
+                        ["your", "opponents"] | ["opponents"] | ["players"]
+                    );
                 let trigger = TriggerSpec::DealsDamageToPlayer {
                     source,
                     player,
                     source_surface,
+                    damaged_player_one_or_more: plural_recipient,
                 };
                 // "deals 5 or more damage to a player" (Dragonborn Champion):
                 // the event's damage amount must meet the threshold when the
@@ -5736,6 +5816,27 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 return Ok(TriggerSpec::Attacks(filter));
             }
         }
+        // "Whenever this creature attacks a battle" (CR 508.1b): the attack
+        // target restriction stays on the attacker filter so attacking a
+        // player or planeswalker doesn't trigger it.
+        if tail == ["a", "battle"] {
+            let attacks_token_idx =
+                trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
+            let subject_tokens = trim_edge_punctuation(&tokens[..attacks_token_idx]);
+            let filter = if is_source_reference_words(subject_words) {
+                Some(
+                    source_reference_surface_for_trigger_subject(&subject_tokens)
+                        .map(ObjectFilter::source_with_surface)
+                        .unwrap_or_else(ObjectFilter::source),
+                )
+            } else {
+                parse_attack_trigger_subject_filter_lexed(&subject_tokens)?
+            };
+            if let Some(mut filter) = filter {
+                filter.attacking_battle = true;
+                return Ok(TriggerSpec::Attacks(filter));
+            }
+        }
         if matches!(subject_words.first(), Some(&"this") | Some(&"it"))
             && let Some((count, filter)) = parse_attacks_player_who_controls_at_least_tail(tail)
         {
@@ -5926,6 +6027,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                             TriggerSpec::AttacksOneOrMoreWithMinTotal {
                                 filter,
                                 min_total_attackers,
+                                per_attacking_player: false,
                             }
                         } else if one_or_more {
                             TriggerSpec::AttacksOneOrMore(filter)
@@ -6315,10 +6417,13 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             TriggerSpec::BeginningOfPrecombatMain(parse_possessive_clause_player_filter(words)),
         ),
         _ if trigger_pattern_accepts(words, BEGINNING_POSTCOMBAT_MAIN_TRIGGER_PATTERN) => {
-            let each_of = crate::word_primitives::sequence_occurs(
-                words,
-                &["each", "of", "your", "postcombat"],
-            );
+            // "each of your postcombat main phases" / "each of enchanted
+            // player's postcombat main phases" (Shadow of the Second Sun).
+            let each_of = words.windows(2).any(|pair| pair == ["each", "of"])
+                && crate::word_primitives::sequence_occurs(
+                    words,
+                    &["postcombat", "main", "phases"],
+                );
             Ok(TriggerSpec::BeginningOfPostcombatMain {
                 player: parse_possessive_clause_player_filter(words),
                 surface: if each_of {

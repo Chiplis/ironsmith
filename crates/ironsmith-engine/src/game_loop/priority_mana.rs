@@ -1839,6 +1839,28 @@ fn apply_mana_payment_plan_response_inner(
     commit_prepared_spell_mana_payment(game, trigger_queue, state, pending, payment, decision_maker)
 }
 
+/// One completed modal choice, irrespective of the number of selected modes.
+pub(super) fn record_dilemma(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    source: ObjectId,
+    player: PlayerId,
+) -> Result<(), GameLoopError> {
+    let provenance = game.provenance_graph_mut()
+        .alloc_root_event(crate::events::EventKind::KeywordAction);
+    let completion = crate::effects::composition::observe_keyword_action_completion(
+        game,
+        TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::FaceDilemma, player, source, 1),
+            provenance,
+        ),
+    ).map_err(GameLoopError::ExecutionFailed)?;
+    for event in completion.events {
+        queue_triggers_from_event(game, trigger_queue, event, true);
+    }
+    Ok(())
+}
+
 pub(super) fn apply_modes_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -1880,6 +1902,12 @@ pub(super) fn apply_modes_response(
             ));
         }
 
+        if !modes.is_empty()
+            && extract_modal_spec_from_program(game, &pending.effects, pending.activator, pending.source)
+                .is_some_and(|spec| spec.faces_dilemma)
+        {
+            record_dilemma(game, trigger_queue, pending.source, pending.activator)?;
+        }
         pending.chosen_modes = Some(modes.to_vec());
         pending.remaining_requirements = extract_target_requirements_from_program_with_modes(
             game,
@@ -1999,6 +2027,14 @@ pub(super) fn apply_modes_response(
             )
         });
 
+    if !modes.is_empty()
+        && extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
+            .is_some_and(|spec| spec.faces_dilemma)
+    {
+        record_dilemma(game, trigger_queue, pending.spell_id,
+            pending.mode_chooser.unwrap_or(pending.caster))?;
+    }
+
     if x_from_modes.is_some() {
         pending.x_value = x_from_modes;
     }
@@ -2105,6 +2141,13 @@ pub(super) fn apply_optional_costs_response(
         && let Some(modal_spec) =
             extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
     {
+        if pending.chosen_modes.as_ref().is_none_or(|modes| modes.is_empty())
+            && modal_spec.faces_dilemma
+            && !modal_spec.mode_descriptions.is_empty()
+        {
+            record_dilemma(game, trigger_queue, pending.spell_id,
+                pending.mode_chooser.unwrap_or(pending.caster))?;
+        }
         pending.chosen_modes = Some((0..modal_spec.mode_descriptions.len()).collect());
     }
 
@@ -5070,7 +5113,7 @@ pub(super) fn finalize_spell_cast(
     queue_targeting_crime(game, trigger_queue, &targets, new_id, caster, provenance);
 
     if from_zone == Zone::Command {
-        game.record_commander_cast_from_command_zone(new_id);
+        game.record_commander_cast_from_command_zone_by(new_id, caster);
     }
 
     // CR: the creature stops being prepared as its prepare spell copy is cast.

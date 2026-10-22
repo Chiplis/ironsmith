@@ -47,6 +47,7 @@ pub enum ReplacementActionAst {
     /// "Until end of turn, if you would put one or more <kind> counters on
     /// <filter>, put that many plus N <kind> counters on it instead."
     RegisterCounterPlacementReplacement {
+        actor: Option<ironsmith_core::filter_model::PlayerFilter>,
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
         additional: u32,

@@ -150,6 +150,22 @@ pub fn parse_destroy_or_exile_all_split_sentence(
 pub fn parse_exile_then_return_same_object_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "If Ifrit has three or more lore counters on it, exile it, then return
+    // it to the battlefield" (Ifrit, Warden of Inferno): the same blink
+    // program gated by a leading condition.
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && comma > 1
+        && let Ok(predicate) =
+            crate::grammar::filters::parse_condition_predicate_lexed(&tokens[1..comma])
+        && let Some(effects) = parse_exile_then_return_same_object_sentence(&tokens[comma + 1..])?
+    {
+        return Ok(Some(vec![EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: effects,
+            if_false: Vec::new(),
+        })]));
+    }
     if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "when", "whenever"])) {
         return Ok(None);
     }

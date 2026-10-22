@@ -48,6 +48,9 @@ impl TriggerMatcher for SpellCounteredTrigger {
         match &self.controller {
             PlayerFilter::You => "Whenever a spell you've cast is countered".to_string(),
             PlayerFilter::Opponent => "Whenever a spell an opponent cast is countered".to_string(),
+            // The matcher accepts every countered spell, cast or not (a
+            // countered copy too): no caster qualifier (Lullmage Mentor).
+            PlayerFilter::Any => "Whenever a spell is countered".to_string(),
             player => format!(
                 "Whenever a spell {} cast is countered",
                 describe_player_filter_subject(player)

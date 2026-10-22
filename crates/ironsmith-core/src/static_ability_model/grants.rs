@@ -614,6 +614,11 @@ pub struct CostReductionManaCost<Cond = Condition> {
     /// until it is re-baked. Current payloads always write the field.
     #[cfg_attr(feature = "serde", serde(default = "colored_only_default_for_stale_data"))]
     pub colored_only: bool,
+    /// "costs {U} less to cast for each land you control with a flood
+    /// counter on it" (Eluge): the mana reduction applies once per unit of
+    /// this count, evaluated as the total cost is determined (CR 601.2f).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub repetitions: Option<Value>,
 }
 
 impl<Cond> CostReductionManaCost<Cond> {
@@ -629,6 +634,7 @@ impl<Cond> CostReductionManaCost<Cond> {
             per_target,
             optional_life_additional_cost,
             colored_only,
+            repetitions,
         } = self;
         Ok(CostReductionManaCost {
             condition: condition.map(map_condition).transpose()?,
@@ -637,6 +643,7 @@ impl<Cond> CostReductionManaCost<Cond> {
             per_target,
             optional_life_additional_cost,
             colored_only,
+            repetitions,
         })
     }
 }
@@ -650,11 +657,17 @@ impl<Cond: ConditionConjunction> CostReductionManaCost<Cond> {
             per_target: false,
             optional_life_additional_cost: None,
             colored_only: false,
+            repetitions: None,
         }
     }
 
     pub fn with_colored_only(mut self, colored_only: bool) -> Self {
         self.colored_only = colored_only;
+        self
+    }
+
+    pub fn with_repetitions(mut self, count: Value) -> Self {
+        self.repetitions = Some(count);
         self
     }
 
@@ -1132,6 +1145,8 @@ pub enum EnterAsCopyFollowup {
     RetainOwnColors,
     /// Apply the embalm copy exceptions only if the entering token was embalmed.
     RetainEmbalmCharacteristics,
+    /// Add the chosen permanent's counter kinds and quantities to the entry event.
+    CountersFromCopiedPermanent,
 
 }
 
@@ -1184,6 +1199,17 @@ where
                 filter, graveyard_owner: PlayerFilter::Any,
                 exclude_cycled: false, link_to_source: false,
             } if *filter == ObjectFilter::source())
+    }
+
+    fn grant_source_added_subtypes(&self) -> Option<Vec<crate::Subtype>> {
+        match &self.payload {
+            StaticAbilityPayload::AddSubtypes { filter, subtypes }
+                if *filter == ObjectFilter::source() && !subtypes.is_empty() =>
+            {
+                Some(subtypes.clone())
+            }
+            _ => None,
+        }
     }
 }
 

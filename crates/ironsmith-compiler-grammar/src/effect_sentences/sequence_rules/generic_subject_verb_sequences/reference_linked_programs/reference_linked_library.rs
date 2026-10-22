@@ -189,7 +189,13 @@ pub(crate) fn parse_put_from_milled_cards_followup(
     default_player: PlayerAst,
     milled_tag: TagKey,
 ) -> Result<Option<(Vec<EffectAst>, bool)>, CardTextError> {
-    let sentence_tokens = trim_commas(tokens);
+    let mut sentence_tokens = trim_commas(tokens);
+    // "Mill seven cards. Then put a creature card from among them ...": the
+    // sequencing adverb opens the follow-up sentence but doesn't change the
+    // selection it makes over the milled cards.
+    if sentence_tokens.len() > 1 && sentence_tokens[0].is_word("then") {
+        sentence_tokens = trim_commas(&sentence_tokens[1..]);
+    }
     let (conditional_followup, action_sentence) = if let Some(conditional) =
         sentence_markers::parse_conditional_followup_tokens(&sentence_tokens)
     {
@@ -206,6 +212,19 @@ pub(crate) fn parse_put_from_milled_cards_followup(
     };
     let chooser = leading_may_actor_to_player(action_match.actor, default_player);
     let mut action_tokens = trim_commas(action_match.tail_tokens);
+    // "return up to two permanent cards from among them to your hand"
+    // (Rickety Gazebo): "return ... to" names the same hand destination the
+    // looked-card grammar reads as "into your hand".
+    if action_match.verb == "return"
+        && action_tokens.len() > 3
+        && let [.., to, your, hand] = action_tokens.as_slice()
+        && to.is_word("to")
+        && your.is_word("your")
+        && hand.is_word("hand")
+    {
+        let to_index = action_tokens.len() - 3;
+        action_tokens[to_index] = OwnedLexToken::word("into".to_string(), TextSpan::synthetic());
+    }
     // "... from among the milled cards on top of your library": the same
     // selection with a library-top destination. Read the selection through
     // the shared looked-card grammar, then retarget the destination.
@@ -672,6 +691,7 @@ pub fn parse_consult_match_move_and_bottom_remainder(
     let effect_grammar::ConsultMoveBottomShape::MoveMatchAndBottom {
         zone,
         battlefield_tapped,
+        battlefield_attacking,
         attached_to_tokens,
         order,
     } = shape
@@ -680,12 +700,14 @@ pub fn parse_consult_match_move_and_bottom_remainder(
     };
 
     let followups = vec![
-        EffectAst::subject_verb_move_to_zone(
+        EffectAst::subject_verb_move_to_zone_with_attacking(
             TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
             zone,
             false,
             crate::cards::builders::ReturnControllerAst::Preserve,
             battlefield_tapped,
+            battlefield_attacking,
+            false,
             attached_to_tokens
                 .map(|(start, end)| crate::util::parse_target_phrase(&second_tokens[start..end]))
                 .transpose()?,

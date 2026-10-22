@@ -68,8 +68,26 @@ impl EffectExecutor for CreateEmblemEffect {
         let owner = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
         let emblem_obj = Object::new_emblem(id, owner, self.emblem.name.to_string(), abilities);
 
+        // "You may play cards exiled with Tibalt, Cosmic Impostor" on an
+        // emblem Tibalt created: the emblem's linked pool is its creator's
+        // cards exiled with it, including ones exiled later and after the
+        // creator leaves the battlefield (CR 607.2a, 406.6).
+        let reads_creator_exile_pool = self.emblem.abilities.iter().any(|ability| {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                return false;
+            };
+            static_ability.grant_spec().is_some_and(|spec| {
+                spec.filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                })
+            })
+        });
+
         // add_object handles adding to command_zone for Zone::Command
         game.add_object(emblem_obj);
+        if reads_creator_exile_pool {
+            game.alias_exiled_with_source_links(id, ctx.source);
+        }
 
         let stable_ids = game
             .object(id)

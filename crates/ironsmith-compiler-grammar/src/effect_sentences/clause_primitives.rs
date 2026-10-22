@@ -141,7 +141,8 @@ pub fn parse_copy_targets_clause(
             crate::tag::CompilerReferenceTag::CopiedStackObject.bind(),
             LexedClause::new(tokens).span(),
         ),
-        RetargetModeAst::OneToFixed {
+        // "The copy targets X": every target of the copy becomes X.
+        RetargetModeAst::AllToFixed {
             target: fixed_target,
         },
         false,
@@ -885,6 +886,40 @@ pub fn parse_choose_card_name_clause(
     let Some(shape) = clause_shapes::parse_choose_card_name_shape(tokens) else {
         return Ok(None);
     };
+    // "choose an opponent and a card name other than a basic land card name"
+    // (Booby Trap): a player choice coordinated with the name choice. The
+    // player phrase must not be read into the card-name filter.
+    if matches!(shape.player, PlayerAst::You)
+        && let Some(filter_tokens) = shape.filter_tokens
+        && let Some(and_index) = filter_tokens.iter().position(|token| token.is_word("and"))
+        && and_index > 0
+    {
+        let synthetic = crate::cards::builders::TextSpan::synthetic;
+        let mut player_tokens = vec![OwnedLexToken::word("choose", synthetic())];
+        player_tokens.extend_from_slice(&filter_tokens[..and_index]);
+        if let Some((chooser, player_filter, random, exclude_previous_choices)) =
+            parse_you_choose_player_clause(&player_tokens).ok().flatten()
+        {
+            let mut card_name_tokens = vec![OwnedLexToken::word("choose", synthetic())];
+            card_name_tokens.extend_from_slice(&filter_tokens[and_index + 1..]);
+            card_name_tokens.push(OwnedLexToken::word("card", synthetic()));
+            card_name_tokens.push(OwnedLexToken::word("name", synthetic()));
+            if let Ok(Some(name_choice)) = parse_choose_card_name_clause(&card_name_tokens) {
+                return Ok(Some(EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::subject_verb_choose_player(
+                            chooser,
+                            player_filter,
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            random,
+                            exclude_previous_choices,
+                        ),
+                        name_choice,
+                    ],
+                }));
+            }
+        }
+    }
     let filter = shape
         .filter_tokens
         .map(|filter_tokens| {
@@ -1292,10 +1327,12 @@ pub fn parse_attack_player_if_able_clause(
     let player = match shape.player {
         clause_shapes::AttackRequirementPlayer::ThatPlayer => PlayerFilter::IteratedPlayer,
         clause_shapes::AttackRequirementPlayer::You => PlayerFilter::You,
-        // Any player the creature can attack; the controller is never an
-        // attack target (CR 508.1b), so the requirement is met by attacking
-        // any opponent.
-        clause_shapes::AttackRequirementPlayer::APlayer => PlayerFilter::Opponent,
+        // Any player the creature can attack. The creature's controller is
+        // never its attack target (CR 508.1b), but the requirement's
+        // controller may be: an opponent's creature targeted this way must
+        // attack a player, which can be you. `Opponent` would resolve relative
+        // to this ability's controller and exclude exactly that player.
+        clause_shapes::AttackRequirementPlayer::APlayer => PlayerFilter::Any,
     };
     let subject_clause = LexedClause::new(&subject_storage).trimmed();
     let subject_tokens = subject_clause.tokens();
@@ -1936,7 +1973,17 @@ pub fn parse_until_duration_triggered_clause(
         .map(|comma| LexedClause::new(&trigger_clause.tokens()[..comma]).word_refs())
         .unwrap_or_default();
     if crate::word_primitives::parse_sequence_suffix(&event_words, &["this", "way"]) {
-        restrict_play_or_cast_trigger_to_prior_cards(&mut trigger);
+        // "play a land or cast a spell this way" names plays made through
+        // the preceding permission itself, not merely of the same cards
+        // (another permission could play them too): link the watcher to the
+        // exact grants the preceding instruction created.
+        if is_you_play_land_or_cast_spell_trigger(&trigger) {
+            trigger = crate::model::ast::TriggerSpec::PlayedOrCastThroughPreviousPermission(
+                Box::new(trigger),
+            );
+        } else {
+            restrict_play_or_cast_trigger_to_prior_cards(&mut trigger);
+        }
     }
 
     let delayed = EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
@@ -1977,6 +2024,27 @@ fn damage_source_filter_mut(
 
 /// Bind the played land / cast spell of a "... this way" play-or-cast
 /// trigger to the prior object antecedent (the cards made playable).
+fn is_you_play_land_or_cast_spell_trigger(trigger: &crate::model::ast::TriggerSpec) -> bool {
+    use crate::model::ast::TriggerSpec;
+    let arms: Vec<&TriggerSpec> = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            return is_you_play_land_or_cast_spell_trigger(trigger);
+        }
+        TriggerSpec::Either(left, right) => vec![left.as_ref(), right.as_ref()],
+        TriggerSpec::AnyOf(triggers) => triggers.iter().collect(),
+        _ => return false,
+    };
+    let is_land = |arm: &TriggerSpec| {
+        matches!(arm, TriggerSpec::PlayerPlaysLand { player: PlayerFilter::You, filter }
+            if filter.tagged_constraints.is_empty() && !filter.source)
+    };
+    let is_cast = |arm: &TriggerSpec| {
+        matches!(arm, TriggerSpec::SpellCast { caster: PlayerFilter::You, filter, .. }
+            if filter.as_ref().is_none_or(|filter| filter.tagged_constraints.is_empty() && !filter.source))
+    };
+    arms.len() == 2 && arms.iter().any(|arm| is_land(arm)) && arms.iter().any(|arm| is_cast(arm))
+}
+
 fn restrict_play_or_cast_trigger_to_prior_cards(trigger: &mut crate::model::ast::TriggerSpec) {
     fn restrict(filter: &mut ObjectFilter) {
         let it = crate::tag::CompilerReferenceTag::It.as_str();

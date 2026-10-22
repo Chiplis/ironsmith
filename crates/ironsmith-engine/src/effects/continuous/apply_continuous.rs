@@ -527,11 +527,15 @@ fn resolve_runtime_modification(
                 values
                     .ability_labels
                     .resize(old_len, String::new());
-                std::sync::Arc::make_mut(&mut values.abilities)
-                    .extend(abilities.iter().cloned());
-                values
-                    .ability_labels
-                    .resize(old_len + abilities.len(), String::new());
+                for ability in abilities {
+                    crate::static_abilities::add_copy_exception_ability(
+                        &mut values.abilities,
+                        &mut values.ability_labels,
+                        &mut values.compiled_card_text,
+                        ability.clone(),
+                        None,
+                    );
+                }
             }
                 if let Some(name) = name_override { values.name = name.clone(); }
                 for supertype in add_supertypes { if !values.supertypes.contains(supertype) { values.supertypes.push(*supertype); } }
@@ -881,6 +885,7 @@ fn entry_count_needs_resolution_context(value: &Value) -> bool {
             Value::PowerOf(spec)
             | Value::ToughnessOf(spec)
             | Value::ManaValueOf(spec)
+            | Value::CommanderCastCountOf(spec)
             | Value::CountersOn(spec, _) => matches!(spec.base(), ChooseSpec::Source),
             _ => false,
         }
@@ -1106,6 +1111,7 @@ fn materialize_granted_entry_counter_source(
             Value::PowerOf(spec)
             | Value::ToughnessOf(spec)
             | Value::ManaValueOf(spec)
+            | Value::CommanderCastCountOf(spec)
             | Value::CountersOn(spec, _)
                 if is_outer_source_spec(spec) =>
             {

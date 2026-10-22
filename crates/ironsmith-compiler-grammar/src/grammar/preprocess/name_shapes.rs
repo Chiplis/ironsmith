@@ -144,6 +144,14 @@ pub fn parse_short_self_reference_name_tokens(name: &str, tokens: &[OwnedLexToke
         return name_without_numeral.to_string();
     }
 
+    // A personal title may be retained while given names and middle initials
+    // are omitted ("Dr. Ada Example" -> "Dr. Example"). Never shorten the
+    // title alone: it is not the character's name. Epithets and names with
+    // "of" have already taken their ordinary paths above.
+    if let Some(alias) = crate::grammar::leaf::parse_titled_personal_name(trimmed) {
+        return alias;
+    }
+
     let words = TokenWordView::new(tokens);
     if words.len() <= 1 {
         return trimmed.to_string();

@@ -148,6 +148,9 @@ pub enum PlayerPredicateAst {
     PlayerHasPoisonCountersOrMore {
         player: PlayerAst,
         count: u32,
+        /// "who has three or more poison counters as you cast this spell"
+        /// (Geth's Summons): fixed as the spell is cast (CR 601.2c).
+        as_you_cast: bool,
     },
     PlayerCastSpellsThisTurnOrMore {
         player: PlayerAst,

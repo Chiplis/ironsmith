@@ -266,7 +266,14 @@ pub(in crate::compiled_text) fn describe_single_damage_target_trigger_followup(
         if !exact_damaged_creature_reference(&destroy.spec, tag) {
             return None;
         }
-        return Some("Destroy that creature. It can't be regenerated".to_string());
+        // "The creature can't be regenerated." (Mephitic Ooze) keeps its
+        // definite-noun rider surface.
+        let rider = if destroy.definite_noun_rider_surface {
+            "The creature"
+        } else {
+            "It"
+        };
+        return Some(format!("Destroy that creature. {rider} can't be regenerated"));
     }
     describe_tap_then_untap_lock(action_effect, tag)
         .or_else(|| describe_delayed_end_of_combat_destroy(action_effect, tag))

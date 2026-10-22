@@ -1230,6 +1230,21 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
             idx += 2;
             continue;
         }
+        // Spell subtypes that double as English nouns ("Omen", "Chorus") are
+        // rejected by the rules-text subtype classifier; directly before
+        // "spell(s)" they can only be the spell type ("cast a Dragon spell or
+        // an Omen spell", Maelstrom of the Spirit Dragon).
+        if matches!(words.get(idx + 1).copied(), Some("spell" | "spells"))
+            && let Some(subtype) = match word {
+                "omen" => Some(Subtype::Omen),
+                "chorus" => Some(Subtype::Chorus),
+                _ => None,
+            }
+        {
+            push_unique_filter_value(&mut filter.subtypes, subtype);
+            idx += 1;
+            continue;
+        }
         // `permanent` is an aggregate spell characteristic rather than a
         // literal card type. Preserve its complete executable domain before
         // applying trailing relative qualifiers such as `that have an
@@ -1815,6 +1830,19 @@ fn find_crewed_by_source_this_turn_phrase(words: &[&str]) -> Option<usize> {
         words_start_with_phrase(&words[idx..], CREWED_BY)
             && idx + CREWED_BY.len() < reference_end
             && is_source_reference_words(&words[idx + CREWED_BY.len()..reference_end])
+    })
+}
+
+/// Find a trailing "tapped this turn to pay for its abilities" relation.
+fn find_tapped_to_pay_for_source_abilities_phrase(words: &[&str]) -> Option<usize> {
+    const PHRASES: &[&[&str]] = &[
+        &["tapped", "this", "turn", "to", "pay", "for", "its", "abilities"],
+        &["tapped", "this", "turn", "to", "pay", "for", "its", "ability"],
+    ];
+    PHRASES.iter().find_map(|phrase| {
+        words
+            .ends_with(phrase)
+            .then(|| words.len() - phrase.len())
     })
 }
 

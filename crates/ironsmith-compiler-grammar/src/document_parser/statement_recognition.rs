@@ -973,7 +973,25 @@ pub(super) fn extend_statement_line_with_result_followups_in_place(
         // "Adamant — If ..., it deals 4 damage instead." restates the
         // preceding spell statement's action; kept apart it has no action of
         // its own to replace.
-        let conditional_instead = is_restatement_of_statement(&line.tokens, &statement.parse_tokens);
+        let restatement = is_restatement_of_statement(&line.tokens, &statement.parse_tokens);
+        // "Spell mastery — If ..., that creature enters with two additional
+        // +1/+1 counters on it." (Necromantic Summons): an ability-word line
+        // whose conditional body modifies the preceding instruction's result
+        // ("that creature") belongs to the same resolving program.
+        let labeled_prior_result = !restatement
+            // Replacement lines ("..., instead ...") keep their own family.
+            && !line.tokens.iter().any(|token| token.is_word("instead"))
+            && (super::split_label_prefix_lexed(&line.tokens)
+                .map(|(_, _, body)| body)
+                .or_else(|| super::tokens_after_non_keyword_label_prefix(line))
+                .or(Some(line.tokens.as_slice())))
+            .is_some_and(|body| {
+                matches!(
+                    crate::grammar::semantic_lowering::parse_statement_effect_preference_tokens(body),
+                    Some(crate::grammar::semantic_lowering::StatementEffectPreference::ConditionalPriorResult)
+                )
+            });
+        let conditional_instead = restatement || labeled_prior_result;
         if conditional_instead {
             statement.info.semantic_facts.statement.replacement_starts_new_source_line = true;
             if let Some((label, label_tokens, _)) =

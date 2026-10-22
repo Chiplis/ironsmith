@@ -228,6 +228,7 @@ pub fn parse_token_definition_shape_tokens(
             text_roles: described_roles(named_card.is_some()),
             subtypes: artifact_subtypes(&words),
             legendary: has("legendary"),
+            snow: has("snow"),
             colorless: has("colorless"),
             colors: token_colors(&words),
             equipment_rules: equipment::parse_equipment_rules_tokens(&scope.rule_source),

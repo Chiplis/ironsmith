@@ -497,7 +497,7 @@
                     && let [rest_move] = rest_conditional.if_false.as_slice()
                     && let Some(rest_move) = structural_unwrap_render_wrappers(rest_move)
                         .downcast_ref::<crate::effects::MoveToZoneEffect>()
-                    && rest_move.zone == Zone::Graveyard
+                    && matches!(rest_move.zone, Zone::Graveyard | Zone::Hand)
                     && matches!(rest_move.target.base(), ChooseSpec::Iterated)
                     && let crate::effect::Condition::TaggedObjectMatches(it_tag, membership) =
                         &rest_conditional.condition
@@ -506,7 +506,12 @@
                         constraint.tag == matching.tag
                     })
                 {
-                    Some("the rest into your graveyard".to_string())
+                    // "and the rest into your hand" (Nissa, Nature's Artisan).
+                    Some(if rest_move.zone == Zone::Hand {
+                        "the rest into your hand".to_string()
+                    } else {
+                        "the rest into your graveyard".to_string()
+                    })
                 } else {
                     None
                 }
@@ -531,6 +536,17 @@
             }
         {
             let mut card = matching.filter.clone();
+            // The matched pool is cards in a library/graveyard ("Put all
+            // cards with the chosen name from among them", Tamiyo, Collector
+            // of Tales): clearing the zone must not turn an untyped card
+            // filter into "permanent".
+            if matches!(
+                card.zone,
+                Some(Zone::Library | Zone::Graveyard | Zone::Hand | Zone::Exile)
+            ) && card.card_types.is_empty()
+            {
+                card.set_explicit_card_noun(true);
+            }
             card.zone = None;
             card.tagged_constraints.retain(|constraint| {
                 constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject

@@ -119,6 +119,33 @@ pub(crate) fn merge_trigger_group_tags(
     }
 }
 
+/// Add the damaged player of `event` to a coalesced damage-batch trigger's
+/// player set (`DAMAGE_BATCH_PLAYERS_TAG`), which the resolving ability reads
+/// as "those opponents" / "each opponent dealt damage".
+pub(crate) fn record_damage_batch_player(
+    entry: &mut TriggeredAbilityEntry,
+    event: &crate::triggers::TriggerEvent,
+) {
+    let Some(damage) = event.downcast::<crate::events::DamageEvent>() else {
+        return;
+    };
+    let crate::events::DamageTarget::Player(player) = damage.target else {
+        return;
+    };
+    let tag = crate::tag::TagKey::from(ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG);
+    if entry
+        .triggering_event
+        .player_tags()
+        .get(&tag)
+        .is_some_and(|players| players.contains(&player))
+    {
+        return;
+    }
+    let mut tags = entry.triggering_event.player_tags().clone();
+    tags.entry(tag).or_default().push(player);
+    entry.triggering_event = entry.triggering_event.clone().with_player_tags(tags);
+}
+
 pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::You => "you".to_string(),
@@ -875,6 +902,15 @@ impl Trigger {
         min_total_attackers: usize,
     ) -> Self {
         Self::new(AttacksTrigger::one_or_more_with_min_total_attackers(
+            filter,
+            min_total_attackers,
+        ))
+    }
+
+    /// Create a "whenever [a player] attacks with [N or more] [filter]"
+    /// trigger: one per attacking player's declaration group.
+    pub fn player_attacks_with_min_total(filter: ObjectFilter, min_total_attackers: usize) -> Self {
+        Self::new(AttacksTrigger::per_attacking_player(
             filter,
             min_total_attackers,
         ))

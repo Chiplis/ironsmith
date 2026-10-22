@@ -949,12 +949,31 @@ impl StaticAbilityKind for RuleRestriction {
                 lowercase_first_ascii(self.display.trim())
             );
         }
+        // An untap rule whose authored sentence already carries its gate
+        // ("... doesn't untap during its controller's untap step if it has a
+        // sleep counter on it", Venarian Gold).
+        if matches!(self.restriction, Restriction::Untap(_))
+            && self.additional_restrictions.is_empty()
+            && (self.display.contains(" untap step if ")
+                || self.display.contains(" untap step unless "))
+        {
+            return self.display.clone();
+        }
         let Some(condition_text) = display_rule_restriction_condition(condition) else {
             return self.display.clone();
         };
         let body = self.display.trim();
         let body_lower = body.to_ascii_lowercase();
+        // The authored restriction can already carry its gate as an "if"
+        // clause ("You can't play lands if this creature was cast this
+        // turn", Rock Jockey).
+        let gate_as_if = condition_text
+            .strip_prefix("as long as ")
+            .map(|gate| format!(" if {}", gate.to_ascii_lowercase()));
         if body_lower.contains(&condition_text.to_ascii_lowercase())
+            || gate_as_if
+                .as_ref()
+                .is_some_and(|gate| body_lower.trim_end_matches('.').ends_with(gate.as_str()))
             || (body_lower.contains(" unless ")
                 && matches!(condition, crate::ConditionExpr::Not(_)))
         {

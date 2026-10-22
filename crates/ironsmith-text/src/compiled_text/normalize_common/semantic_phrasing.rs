@@ -1294,6 +1294,17 @@ fn restore_triggering_permanent_mana_value_reference(line: &str) -> Option<Strin
 
 pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    // A look/reveal count bound to an earlier effect's result renders as
+    // "that many" (`describe_look_count_and_noun`); English puts it before
+    // the library position.
+    for (from, to) in [
+        ("the top that many cards of ", "that many cards from the top of "),
+        ("The top that many cards of ", "That many cards from the top of "),
+    ] {
+        if normalized.contains(from) {
+            normalized = normalized.replace(from, to);
+        }
+    }
     if let Some(compact) = restore_triggering_permanent_mana_value_reference(&normalized) {
         normalized = compact;
     }
@@ -1661,10 +1672,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "minsc & Boo deals damage equal to its power to any target",
             "this planeswalker deals X damage to any target, where X is the sacrificed creature's power",
         )
-        .replace_lit(
-            "Those artifacts or creatures don't untap during their controller's next untap step",
-            "Those creatures don't untap during their controller's next untap step",
-        )
         .replace_lit("Create Tamiyos, a legendary", "Create This, a legendary")
         .replace_lit(
             "put this enchantment into your hand. If you don't, put it on the bottom of your library",
@@ -1823,10 +1830,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace_lit(
             "choose up to X enchantment cards from it",
             "choose up to X cards from it",
-        )
-        .replace_lit(
-            "Those nonland permanents don't untap during their controller's next untap step",
-            "Those creatures don't untap during their controller's next untap step",
         )
         .replace_lit(
             "copy that spell the number of other instant and sorcery spells you've cast this turn times",
@@ -3624,9 +3627,23 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             || before_lower.contains_lit("tap all ")
             || (before_lower.contains_lit("tap ") && before_lower.contains_lit(" target creatures"));
         if taps_multiple {
+            // "Tap up to two target nonland permanents. They don't untap
+            // ..." (Tamiyo, Field Researcher): the back-reference keeps the
+            // tapped set's own noun rather than narrowing it to creatures.
+            let tap_sentence = before_lower.rsplit_once(". ").map_or(
+                before_lower.as_str(),
+                |(_, last)| last,
+            );
+            let replacement = if !tap_sentence.contains_lit("creature")
+                && tap_sentence.contains_lit("permanents")
+            {
+                "They don't untap during their controller's next untap step"
+            } else {
+                "Those creatures don't untap during their controller's next untap step"
+            };
             normalized = normalized.replacen(
                 "That permanent doesn't untap during its controller's next untap step",
-                "Those creatures don't untap during their controller's next untap step",
+                replacement,
                 1,
             );
         }
@@ -4402,7 +4419,14 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(tail) = strip_prefix_ascii_ci(
         &normalized,
         "You take an extra turn after this one. At the beginning of your next end step, ",
-    ) && tail
+    )
+    .or_else(|| {
+        // A delayed trigger armed from the next turn on fires in the extra turn.
+        strip_prefix_ascii_ci(
+            &normalized,
+            "You take an extra turn after this one. At the beginning of the end step on your next turn, ",
+        )
+    }) && tail
         .trim()
         .trim_end_matches('.')
         .eq_ignore_ascii_case("you lose the game")

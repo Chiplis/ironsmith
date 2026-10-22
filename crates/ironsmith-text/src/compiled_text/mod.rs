@@ -108,6 +108,7 @@ fn substitute_granting_source_surface(line: String, def: &CardDefinition) -> Str
 pub(super) const SOURCE_CARD_NAME_SURFACE: &str = "__compiled_source_card_name__";
 
 fn debug_compiled_surface_lines(def: &CardDefinition) -> Vec<String> {
+    normalize_common::EXCESS_DAMAGE_CREATURE_RECIPIENT.with(|cell| cell.set(false));
     debug_safe::normalize_debug_safe_surface(ast_compiled_lines(def))
         .into_iter()
         .map(debug_safe::DebugSafeLine::into_string)
@@ -1394,6 +1395,15 @@ fn normalize_triggering_object_anaphor(line: String) -> String {
         return line;
     }
     let lower = line.to_ascii_lowercase();
+    // The line itself declares a spell-or-ability antecedent ("choose
+    // target spell or ability ... Copy that spell or ability", Radiant
+    // Performer): the anaphor keeps that union.
+    if lower
+        .replace("that spell or ability", "")
+        .contains("spell or ability")
+    {
+        return line;
+    }
     let mentions_cast = lower.contains("cast");
     let mentions_activation = lower.contains("activate") || lower.contains("activated");
     if mentions_cast && !mentions_activation {
@@ -2958,9 +2968,48 @@ fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
         ))
     }
 
+    // "Creatures you control of the chosen type get +1/+1." + "As long as you
+    // have the city's blessing, creatures you control of the chosen type have
+    // vigilance." (Radiant Destiny): the conditional grant names the same
+    // recipients, so it reads as a pronoun continuation of the bonus.
+    fn merge_conditional_recipient_continuation(left: &str, right: &str) -> Option<String> {
+        let left = left.trim().trim_end_matches('.');
+        if left.contains(':') || left.to_ascii_lowercase().contains(" as long as ") {
+            return None;
+        }
+        let (subject, verb, _) = split_subject_predicate_clause(left)?;
+        if verb != "get" {
+            return None;
+        }
+        let right = right.trim().trim_end_matches('.');
+        let body = right.strip_prefix("As long as ")?;
+        let (condition, grant) = body.split_once(", ")?;
+        let keywords = grant
+            .strip_prefix(subject)
+            .or_else(|| {
+                let lowered = lowercase_first(subject);
+                grant.strip_prefix(lowered.as_str()).map(|_| &grant[lowered.len()..])
+            })?
+            .strip_prefix(" have ")?;
+        if condition.is_empty() || keywords.is_empty() || keywords.contains(". ") {
+            return None;
+        }
+        Some(format!(
+            "{left}. As long as {condition}, they also have {keywords}."
+        ))
+    }
+
     let mut merged: Vec<String> = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(joined) =
+                merge_conditional_recipient_continuation(&lines[idx], &lines[idx + 1])
+        {
+            merged.push(joined);
+            idx += 2;
+            continue;
+        }
         if idx + 1 < lines.len()
             && let Some(joined) =
                 merge_leading_pronoun_condition_pair(&lines[idx], &lines[idx + 1])

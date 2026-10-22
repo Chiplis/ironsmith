@@ -1,6 +1,7 @@
+use ironsmith_tools::corpus::{aggregate_face_snapshots, load_corpus_cards};
 use ironsmith_tools::{
-    CardPayload, CardStatusDb, CompilationSnapshot, compile_authoritative_snapshot_from_payload,
-    compile_strict_snapshot_from_payload, default_db_path, load_canonical_cards,
+    CardStatusDb, CompilationSnapshot, compile_authoritative_snapshot_from_payload,
+    compile_strict_snapshot_from_payload, default_db_path,
 };
 use rayon::prelude::*;
 use std::{
@@ -112,11 +113,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let load_cards_start = Instant::now();
     let cards = if let Some(cards_path) = args.cards_path.as_deref() {
-        load_canonical_cards(cards_path)?
-            .into_values()
-            .collect::<Vec<CardPayload>>()
+        load_corpus_cards(cards_path)?
     } else {
-        let rows = db.registry_card_payloads()?;
+        let rows = db.registry_corpus_cards()?;
         if rows.is_empty() {
             return Err(format!(
                 "no registry_card rows found in {}; run sync_registry_db first or pass --cards",
@@ -192,17 +191,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let snapshots = filtered_cards
             .par_iter()
             .map(|payload| {
-                let snapshot = if args.strict_only {
-                    compile_strict_snapshot_from_payload(payload)
-                } else {
-                    compile_authoritative_snapshot_from_payload(payload)
-                };
+                let faces = payload
+                    .faces
+                    .iter()
+                    .map(|face| {
+                        if args.strict_only {
+                            compile_strict_snapshot_from_payload(face)
+                        } else {
+                            compile_authoritative_snapshot_from_payload(face)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let snapshot = aggregate_face_snapshots(&payload.name, &faces);
                 let mut completed = completed_cards
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 *completed += 1;
                 eprintln!("{}", format_card_progress(*completed, processed, &snapshot));
-                snapshot
+                (snapshot, faces)
             })
             .collect::<Vec<_>>();
         (snapshots, rayon::current_num_threads())
@@ -210,7 +216,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let compile_elapsed = compile_start.elapsed();
 
     let insert_start = Instant::now();
-    let inserted = db.insert_snapshots_if_changed(&compiled_snapshots)?;
+    let inserted = db.insert_corpus_snapshots_if_changed(&compiled_snapshots)?;
     let insert_elapsed = insert_start.elapsed();
 
     let prune_start = Instant::now();
@@ -229,6 +235,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Card status DB sync complete");
     println!("- Canonical cards processed: {processed}");
+    let face_count: usize = compiled_snapshots
+        .iter()
+        .map(|(_, faces)| faces.len())
+        .sum();
+    let failed_faces = compiled_snapshots
+        .iter()
+        .flat_map(|(_, faces)| faces)
+        .filter(|face| face.parse_status == ironsmith_tools::ParseStatus::ParseFailed)
+        .count();
+    let failed_cards = compiled_snapshots
+        .iter()
+        .filter(|(card, _)| card.parse_status == ironsmith_tools::ParseStatus::ParseFailed)
+        .count();
+    println!("- Faces compiled independently: {face_count}");
+    println!("- Faces failed: {failed_faces}");
+    println!("- Whole cards failed: {failed_cards}");
     println!(
         "- Compile mode: {}",
         if args.strict_only {

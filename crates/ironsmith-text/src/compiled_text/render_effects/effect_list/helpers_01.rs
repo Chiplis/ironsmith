@@ -3780,7 +3780,7 @@ pub(crate) fn describe_ticket_then_may_put_sticker(
     Some(format!(
         "you get {tickets}, then you may put {} on {}",
         sticker_phrase(put_sticker.action),
-        describe_choose_selection(choose)
+        super::helpers_00::sticker_choice_selection(choose)
     ))
 }
 

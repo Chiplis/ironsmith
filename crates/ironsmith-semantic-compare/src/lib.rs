@@ -2986,12 +2986,6 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "Whenever this becomes tapped, if it has one or more -1/-1 counters on it, remove a -1/-1 counter from it",
             "Whenever this becomes tapped while it has a -1/-1 counter on it, remove a -1/-1 counter from it",
         ),
-        // Memorial to Unity refers back with "it" and fronts the rest-put
-        // with "Then".
-        (
-            "You may reveal a creature card from among them and put that card into your hand. Put the rest on the bottom of your library in a random order",
-            "You may reveal a creature card from among them and put it into your hand. Then put the rest on the bottom of your library in a random order",
-        ),
         // Rise bundles both bounces into one clause.
         (
             "Return target creature card from a graveyard to its owner's hand and return target creature to its owner's hand",

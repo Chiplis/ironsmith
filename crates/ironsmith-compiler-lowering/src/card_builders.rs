@@ -1299,8 +1299,32 @@ impl CardDefinitionBuilder {
     }
 
     pub fn recover(self, cost: ManaCost) -> Self {
-        let payment_id = crate::effect::EffectId(0);
         let cost_text = cost.to_oracle();
+        self.recover_with_payment(
+            vec![crate::effect::Effect::new(crate::effects::PayManaEffect::new(
+                cost,
+                crate::target::ChooseSpec::SourceController,
+            ))],
+            cost_text,
+        )
+    }
+
+    /// Recover with a non-mana cost ("Recover—Pay half your life, rounded
+    /// up", Garza's Assassin): the same graveyard trigger, paying that cost.
+    pub fn recover_total_cost(self, total_cost: TotalCost) -> Self {
+        // The renderer reads the payment from the trigger's own optional
+        // payment instruction; the label only marks a non-mana cost.
+        let cost_text = String::new();
+        let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+        self.recover_with_payment(payment_effects, cost_text)
+    }
+
+    fn recover_with_payment(
+        self,
+        payment_effects: Vec<crate::effect::Effect>,
+        cost_text: String,
+    ) -> Self {
+        let payment_id = crate::effect::EffectId(0);
         let trigger = crate::triggers::Trigger::new(
             crate::triggers::ZoneChangeTrigger::new()
                 .from(crate::zone::Zone::Battlefield)
@@ -1320,12 +1344,7 @@ impl CardDefinitionBuilder {
                         vec![
                             crate::effect::Effect::with_id(
                                 payment_id.0,
-                                crate::effect::Effect::may(vec![crate::effect::Effect::new(
-                                    crate::effects::PayManaEffect::new(
-                                        cost,
-                                        crate::target::ChooseSpec::SourceController,
-                                    ),
-                                )]),
+                                crate::effect::Effect::may(payment_effects),
                             ),
                             crate::effect::Effect::if_then(
                                 payment_id,

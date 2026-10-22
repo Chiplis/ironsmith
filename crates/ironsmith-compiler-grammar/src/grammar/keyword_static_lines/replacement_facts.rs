@@ -9,6 +9,10 @@ use super::nearby_primitives::{semantic_all, semantic_kw, semantic_noise, semant
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CounterReplacementShape<'a> {
+    ActorScopedDouble {
+        filter_tokens: &'a [OwnedLexToken],
+        counter_type: Option<ironsmith_core::CounterType>,
+    },
     ActorAnyKindAdd {
         filter_tokens: &'a [OwnedLexToken],
         includes_player: bool,
@@ -170,7 +174,7 @@ pub fn parse_counter_replacement_tokens(
             parse_any_kind_add_lexed,
             parse_player_any_kind_add_lexed,
             parse_actor_any_kind_multiply_lexed,
-            alt((parse_actor_any_kind_add_lexed, parse_any_kind_double_lexed)),
+            alt((parse_actor_scoped_double_lexed, parse_actor_any_kind_add_lexed, parse_any_kind_double_lexed)),
         )),
         "counter replacement",
     )
@@ -1108,6 +1112,42 @@ fn parse_actor_any_kind_add_lexed<'a>(
         filter_tokens: trim_lexed_commas(filter_tokens),
         includes_player,
         additional,
+    })
+}
+
+fn parse_actor_scoped_double_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterReplacementShape<'a>> {
+    primitives::phrase(&["if", "you", "would", "put", "one", "or", "more"])
+        .parse_next(input)?;
+    let counter_type = if opt(peek(primitives::kw("counters"))).parse_next(input)?.is_some() {
+        None
+    } else {
+        let kind = take_until_replacement_phrase(input, &["counters", "on"])?;
+        Some(filters::parse_counter_type_from_tokens(kind).ok_or_else(||
+            primitives::backtrack_err("counter multiplier", "counter kind"))?)
+    };
+    primitives::phrase(&["counters", "on"]).parse_next(input)?;
+    let filter_tokens = take_until_replacement_phrase(input, &["put", "twice", "that", "many"])?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["put", "twice", "that", "many"]).parse_next(input)?;
+    if let Some(counter_type) = counter_type {
+        let repeated = take_until_replacement_phrase(input, &["counters"])?;
+        if filters::parse_counter_type_from_tokens(repeated) != Some(counter_type) {
+            return Err(primitives::backtrack_err("counter multiplier", "matching counter kind"));
+        }
+        primitives::kw("counters").parse_next(input)?;
+    } else {
+        primitives::phrase(&["of", "each", "of", "those", "kinds", "of", "counters"])
+            .parse_next(input)?;
+    }
+    primitives::phrase(&["on", "that"]).parse_next(input)?;
+    alt((primitives::kw("creature"), primitives::kw("artifact"), primitives::kw("permanent")))
+        .parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CounterReplacementShape::ActorScopedDouble {
+        filter_tokens: trim_lexed_commas(filter_tokens), counter_type,
     })
 }
 fn parse_any_kind_double_lexed<'a>(

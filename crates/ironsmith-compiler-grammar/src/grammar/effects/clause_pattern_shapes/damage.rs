@@ -253,6 +253,12 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
             saw_chosen = false;
             continue;
         }
+        // "a source of your choice of the chosen color" (Story Circle).
+        if saw_chosen && word.eq_ignore_ascii_case("color") {
+            filter.chosen_color = true;
+            saw_chosen = false;
+            continue;
+        }
         if let Some(color) = parse_color(word) {
             colors = Some(colors.unwrap_or_default().union(color));
             continue;

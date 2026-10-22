@@ -5,6 +5,37 @@ pub fn parse_exile_dynamic_top_library_shape(
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {
     let tokens = trim_commas(tokens);
+    // "exile a number of cards from the top of your library equal to the
+    // number of differently named tokens you control" (Neriv): the counted
+    // noun phrase reads like "cards ... equal to <value>" once the "a number
+    // of" quantifier is set aside; the trailing "equal to" must supply it.
+    let (tokens, a_number_of) =
+        match primitives::parse_prefix(tokens, primitives::phrase(&["a", "number", "of"])) {
+            Some((_, rest))
+                if TokenWordView::new(rest)
+                    .word_refs()
+                    .windows(2)
+                    .any(|window| window == ["equal", "to"]) =>
+            {
+                (rest, true)
+            }
+            _ => (tokens, false),
+        };
+    let shape = parse_exile_dynamic_top_library_count_shape(tokens, default_player)?;
+    Some(if a_number_of {
+        ExileLibraryCardsShape {
+            count: shape.count.with_surface_hint(ValueSurfaceHint::ANumberOf),
+            ..shape
+        }
+    } else {
+        shape
+    })
+}
+
+fn parse_exile_dynamic_top_library_count_shape(
+    tokens: &[OwnedLexToken],
+    default_player: PlayerAst,
+) -> Option<ExileLibraryCardsShape> {
     // Oracle also places the count basis before the library source:
     // "cards equal to its power from the top of its owner's library".
     // In that exact possessive-owner shape, both occurrences of "its" refer

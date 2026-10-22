@@ -430,6 +430,9 @@ pub enum ValueSurfaceHint {
     /// Append-only. "a card for each 1 damage dealt to them" (Anowon, the
     /// Ruin Thief): the triggering damage amount, authored per point.
     ForEachOneDamage,
+    /// Append-only. "a number of cards ... equal to <value>" (Neriv): the
+    /// count was authored with the "a number of" quantifier.
+    ANumberOf,
 }
 
 /// Payment action and authored reference in a mana-spent count.
@@ -535,6 +538,24 @@ pub enum TurnHistoryCount {
     /// this turn.
     CreaturesAttackedWith {
         player: PlayerFilter,
+        filter: ObjectFilter,
+        /// Only attacks declared in the current combat phase ("attacked this
+        /// combat"), rather than this turn.
+        #[cfg_attr(feature = "serde", serde(default))]
+        this_combat: bool,
+        /// Only creatures whose declared attack target was a matching player
+        /// ("attacked you").
+        #[cfg_attr(feature = "serde", serde(default))]
+        attacked: Option<PlayerFilter>,
+    },
+    /// Distinct objects matching the filter that dealt combat damage to a
+    /// matching player this turn while a matching player controlled them
+    /// ("each creature you controlled that dealt combat damage to a player
+    /// this turn", Excess). History-based: the source's damage-time snapshot
+    /// is evaluated, so a creature that has since left still counts.
+    CombatDamageSourcesToPlayers {
+        player: PlayerFilter,
+        recipients: PlayerFilter,
         filter: ObjectFilter,
     },
     /// Distinct opposing players attacked by matching players this turn.
@@ -648,6 +669,15 @@ pub enum TurnHistoryCount {
         player: PlayerFilter,
         counter_type: Option<CounterType>,
     },
+    /// Tokens matching the filter created this turn by matching players
+    /// ("the number of Treasure tokens you created this turn", Vazi), read
+    /// from creation events rather than battlefield entries, so a token
+    /// created under another player's control still counts for its creator.
+    /// Appended to preserve serialized ordinals.
+    TokensCreatedMatching {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
 }
 
 impl TurnHistoryCount {
@@ -707,6 +737,10 @@ pub enum Value {
     BasicLandTypesAmong(ObjectFilter),
     CreatureTypesAmong(ObjectFilter),
     CardTypesAmong(ObjectFilter),
+    /// The number of permanent types (artifact, battle, creature,
+    /// enchantment, land, planeswalker; CR 110.4) among matching objects.
+    /// Kindred and other nonpermanent card types never count.
+    PermanentTypesAmong(ObjectFilter),
     StaticAbilitiesAmong {
         filter: ObjectFilter,
         abilities: Vec<StaticAbilityId>,
@@ -1073,6 +1107,27 @@ pub enum Value {
     /// Sum printed power or toughness of every P/T sticker on matching
     /// objects. All stickers count even when a newer sticker sets P/T.
     StickerCharacteristicTotal { filter: ObjectFilter, toughness: bool },
+    /// The number of distinct planeswalker types among matching objects
+    /// ("the number of planeswalker types among planeswalkers you control",
+    /// Tam, the Possibility; CR 205.3j). Appended.
+    PlaneswalkerTypesAmong(ObjectFilter),
+    /// Times matching players have cast any commander (theirs or another
+    /// player's) from the command zone this game ("for each time you've cast
+    /// a commander from the command zone this game", Jeska). Unlike
+    /// [`Value::CommanderCastCount`], this counts by caster, not by owner.
+    /// Appended.
+    CommandersCastFromCommandZoneBy(PlayerFilter),
+    /// How many times the referenced commander has been cast from the command
+    /// zone this game ("the number of times it's been cast from the command
+    /// zone this game", Myth Unbound / Opal Palace); 0 for a non-commander.
+    /// Appended.
+    CommanderCastCountOf(Box<ChooseSpec>),
+    /// The number of different mana costs among matching objects ("for each
+    /// different mana cost among nonland cards in your graveyard", Embodiment
+    /// of Agonies). Costs compare as multisets of mana symbols, so {1}{B}{B}
+    /// and {2}{B} differ while symbol order never matters; objects with no
+    /// mana cost don't contribute, but {0} does. Appended.
+    DistinctManaCosts(ObjectFilter),
 }
 
 impl Value {
@@ -1573,7 +1628,152 @@ pub enum Restriction {
     BeAttachedByNew(ObjectFilter, ObjectFilter),
     /// Prohibit matching players acquiring control of matching objects.
     GainControl(ObjectFilter, PlayerFilter),
+    /// A rule modification affecting matching objects, owned by the source
+    /// (static) or resolving effect that creates it rather than granted to
+    /// the objects as an ability (CR 613.1f / 611.3): later ability removal on
+    /// an affected object can't erase it. Appended for wire stability.
+    ObjectRule {
+        objects: ObjectFilter,
+        rule: ObjectRule,
+    },
+    /// "[creatures] can't attack you or permanents you control": bans
+    /// attacking the matching players and every planeswalker or battle they
+    /// control (CR 508.1b). Appended for wire stability.
+    AttackPlayerOrPermanentsControlledBy {
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    },
+}
 
+/// A rules modification applied to the objects of a
+/// [`Restriction::ObjectRule`]. The effect belongs to its source, so the
+/// affected objects keep it even if they lose all abilities.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum ObjectRule {
+    /// "assigns combat damage equal to its toughness rather than its power"
+    /// (CR 510.1a).
+    AssignsCombatDamageUsingToughness,
+    /// "you may have [it] assign its combat damage as though it weren't
+    /// blocked" (CR 510.1c); the creature's controller chooses.
+    MayAssignCombatDamageAsThoughUnblocked,
+    /// "stations permanents using its toughness rather than its power"
+    /// (CR 702.184a).
+    StationsUsingToughness,
+    /// "The \"legend rule\" doesn't apply to [them]" (CR 704.5j).
+    LegendRuleDoesntApply,
+    /// "[players] may look at [face-down objects] any time" (CR 708.6):
+    /// matching players may see the face-down objects' front faces.
+    FaceDownVisibleTo(PlayerFilter),
+    /// Cannot be returned to pay a beam me up alternative casting cost.
+    /// Other return-to-hand effects and costs remain legal.
+    CantBeBeamedUp,
+}
+
+impl ObjectRule {
+    /// The filter's description, in the plural when the filter's noun was
+    /// authored plural ("face-down creatures your opponents control").
+    fn subject_description(objects: &ObjectFilter) -> String {
+        let singular = objects.description();
+        // An authored "each" set quantifier ("Each creature you control with
+        // toughness greater than its power ...", Tapestry Warden, Baldin).
+        if objects.set_quantifier_surface() == Some(crate::effect::SetQuantifierSurface::Each)
+            && !objects.has_plural_object_noun_surface()
+        {
+            if singular.starts_with("each ") {
+                return singular;
+            }
+            let bare = singular
+                .strip_prefix("a ")
+                .or_else(|| singular.strip_prefix("an "))
+                .unwrap_or(&singular);
+            return format!("each {bare}");
+        }
+        if !objects.has_plural_object_noun_surface() {
+            return singular;
+        }
+        let bare = singular
+            .strip_prefix("a ")
+            .or_else(|| singular.strip_prefix("an "))
+            .unwrap_or(&singular);
+        let bare = bare
+            .replace(" an opponent controls", " your opponents control")
+            .replace(" a player controls", " players control");
+        const NOUNS: &[&str] = &[
+            "creature", "permanent", "artifact", "land", "token", "planeswalker",
+            "enchantment", "battle",
+        ];
+        let mut words = bare.split(' ').map(str::to_string).collect::<Vec<_>>();
+        if let Some(word) = words.iter_mut().find(|word| NOUNS.contains(&word.as_str())) {
+            word.push('s');
+        }
+        words.join(" ")
+    }
+
+    /// The Oracle-style rule sentence (without terminal punctuation) for this
+    /// rule applied to `objects`, derived from the filter's own description.
+    pub fn describe(&self, objects: &ObjectFilter) -> String {
+        let subject = Self::subject_description(objects);
+        let lower = subject.to_ascii_lowercase();
+        let singular_head = ["each ", "another ", "a ", "an ", "target ", "enchanted ", "equipped ", "this ", "that "]
+            .iter()
+            .any(|prefix| lower.starts_with(prefix));
+        let plural = !singular_head
+            && lower
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+                .any(|word| {
+                    matches!(
+                        word,
+                        "creatures" | "permanents" | "artifacts" | "lands" | "tokens"
+                            | "planeswalkers" | "enchantments" | "battles"
+                    )
+                });
+        let bare = subject
+            .strip_prefix("a ")
+            .or_else(|| subject.strip_prefix("an "))
+            .unwrap_or(&subject);
+        match self {
+            Self::AssignsCombatDamageUsingToughness => {
+                if plural {
+                    format!("{subject} assign combat damage equal to their toughness rather than their power")
+                } else {
+                    format!("{subject} assigns combat damage equal to its toughness rather than its power")
+                }
+            }
+            Self::StationsUsingToughness => {
+                if plural {
+                    format!("{subject} station permanents using their toughness rather than their power")
+                } else {
+                    format!("{subject} stations permanents using its toughness rather than its power")
+                }
+            }
+            Self::MayAssignCombatDamageAsThoughUnblocked => {
+                // "For each non-Human creature you control, you may have that
+                // creature assign its combat damage as though it weren't
+                // blocked" (Zilortha): a per-creature option.
+                if !plural && !singular_head || lower.starts_with("a ") || lower.starts_with("an ") {
+                    format!(
+                        "for each {bare}, you may have that creature assign its combat damage as though it weren't blocked"
+                    )
+                } else if plural {
+                    format!("you may have {subject} assign their combat damage as though they weren't blocked")
+                } else {
+                    format!("you may have {subject} assign its combat damage as though it weren't blocked")
+                }
+            }
+            Self::LegendRuleDoesntApply => {
+                format!("the \"legend rule\" doesn't apply to {}", if plural { subject.clone() } else { bare.to_string() })
+            }
+            Self::FaceDownVisibleTo(players) => {
+                let who = match players {
+                    PlayerFilter::You => "you".to_string(),
+                    other => other.description(),
+                };
+                format!("{who} may look at {subject} any time")
+            }
+            Self::CantBeBeamedUp => format!("{subject} can't be beamed up"),
+        }
+    }
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -2040,6 +2240,17 @@ impl Restriction {
         Self::AttackPlayer { attackers, player }
     }
 
+    pub fn attack_player_or_permanents_controlled_by(
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    ) -> Self {
+        Self::AttackPlayerOrPermanentsControlledBy { attackers, player }
+    }
+
+    pub fn object_rule(objects: ObjectFilter, rule: ObjectRule) -> Self {
+        Self::ObjectRule { objects, rule }
+    }
+
     pub fn attack_you_unless_controller_pays_per_attacker(
         generic_mana: u32,
         covers_planeswalkers: bool,
@@ -2369,6 +2580,10 @@ pub enum TurnHistoryCondition {
     /// "an opponent was dealt noncombat damage last turn" (Command the
     /// Stage): the previous turn (CR 500.1), whoever its active player was.
     PlayerWasDealtNoncombatDamageLastTurn(PlayerFilter),
+    /// "you haven't been dealt combat damage since your last turn" (Marchesa,
+    /// Resolute Monarch): any turn after the player's most recent completed
+    /// turn, including the current one so far.
+    PlayerWasDealtCombatDamageSinceTheirLastTurn(PlayerFilter),
     TriggeringPlayersTurn {
         definite_player: bool,
     },
@@ -3048,6 +3263,8 @@ pub enum Condition {
     PlayerHasMoreLifeThanAnotherOpponent {
         player: PlayerFilter,
     },
+    /// The source spell was the Nth spell cast by this controller this game.
+    ThisSpellCastOrderThisGame(u32),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

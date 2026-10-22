@@ -119,7 +119,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         | K::AttacksAndIsntBlockedOneOrMore { filter } | K::AttacksWhileSaddled { filter }
         | K::AttacksOneOrMore { filter } | K::AttacksAlone { filter }
         | K::AttacksYou { filter } | K::AttacksYouOneOrMore { filter }
-        | K::AttacksOneOrMoreWithMinTotal { filter, min_total_attackers: _ }
+        | K::AttacksOneOrMoreWithMinTotal { filter, .. }
         | K::AttacksOneOrMoreWithExactTotal { filter, total_attackers: _ }
         | K::ThisBlocksObject { filter, min_blocked_objects: _ }
         | K::Blocks { filter } | K::BlocksOneOrMore { filter }
@@ -217,10 +217,15 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         | K::PlayerPaysLife { player } | K::PlayerBecomesMonarch { player } => {
             *player = rewrite_player_filter_words(player, change)?;
         }
-        K::DealsDamageToPlayer { source, player, source_surface: _ }
-        | K::DealsCombatDamageToPlayer { source, player, one_or_more: _, each_damaged_player: _, per_source_controller: _, recipient_passive: _, during_your_turn: _ } => {
+        K::DealsDamageToPlayer { source, player, source_surface: _, damaged_player_one_or_more: _ }
+        | K::DealsCombatDamageToPlayer { source, player, one_or_more: _, each_damaged_player: _, per_source_controller: _, recipient_passive: _, during_your_turn: _, object_recipient: None } => {
             *source = rewrite_filter_words(source, change)?;
             *player = rewrite_player_filter_words(player, change)?;
+        }
+        K::DealsCombatDamageToPlayer { source, player, object_recipient: Some(object), .. } => {
+            *source = rewrite_filter_words(source, change)?;
+            *player = rewrite_player_filter_words(player, change)?;
+            *object = rewrite_filter_words(object, change)?;
         }
         K::DealsExactDamageToObjectOrPlayer {
             source, object, player, player_first: _, amount: _, source_surface: _,
@@ -517,8 +522,12 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
             K::AttacksOneOrMoreWithAggregate { filter, metric: *metric, comparison: comparison.clone() }
         } else if let Some(total_attackers) = native.max_total_attackers {
             K::AttacksOneOrMoreWithExactTotal { filter, total_attackers }
-        } else if native.min_total_attackers > 1 {
-            K::AttacksOneOrMoreWithMinTotal { filter, min_total_attackers: native.min_total_attackers }
+        } else if native.min_total_attackers > 1 || native.per_attacking_player {
+            K::AttacksOneOrMoreWithMinTotal {
+                filter,
+                min_total_attackers: native.min_total_attackers,
+                per_attacking_player: native.per_attacking_player,
+            }
         } else if native.one_or_more {
             K::AttacksOneOrMore { filter }
         } else {
@@ -622,6 +631,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
         per_source_controller: n.per_source_controller,
         recipient_passive: n.recipient_passive,
         during_your_turn: n.during_your_turn,
+        object_recipient: n.object_recipient.clone(),
     });
     exact!(ThisDealsCombatDamageToPlayerTrigger, n, K::ThisDealsCombatDamageToPlayer {
         player: n.player.clone(), source_surface: n.source_surface.clone(),
@@ -650,7 +660,10 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
                 damaged_player_one_or_more: n.damaged_player_one_or_more, during_turn: n.during_turn.clone(),
             }
         } else {
-            K::DealsDamageToPlayer { source: n.filter.clone(), player: player.clone(), source_surface: n.source_surface }
+            K::DealsDamageToPlayer {
+                source: n.filter.clone(), player: player.clone(), source_surface: n.source_surface,
+                damaged_player_one_or_more: n.damaged_player_one_or_more,
+            }
         }
     } else if n.combat_only {
         K::DealsCombatDamage { filter: n.filter.clone() }

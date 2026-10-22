@@ -362,11 +362,22 @@ fn queue_incremental_combat_damage_event(
                     &mut existing.tagged_objects,
                     &candidate.tagged_objects,
                 );
+                if group == SimultaneousTriggerKey::DamageBatch {
+                    crate::triggers::record_damage_batch_player(
+                        existing,
+                        &candidate.triggering_event,
+                    );
+                }
             }
             continue;
         }
 
         let index = trigger_queue.entries.len();
+        let mut candidate = candidate;
+        if group == SimultaneousTriggerKey::DamageBatch {
+            let event = candidate.triggering_event.clone();
+            crate::triggers::record_damage_batch_player(&mut candidate, &event);
+        }
         trigger_queue.add(candidate);
         groups_from_this_event.entry(key).or_default().push(index);
     }

@@ -662,6 +662,33 @@ fn parse_turn_history_intervening_predicate(
             )));
         }
     }
+    // "you haven't been dealt combat damage since your last turn" (Marchesa,
+    // Resolute Monarch).
+    for (prefix, negated) in [
+        (&["you", "havent", "been"][..], true),
+        (&["you", "haven't", "been"][..], true),
+        (&["you", "have", "not", "been"][..], true),
+        (&["youve", "been"][..], false),
+        (&["you've", "been"][..], false),
+        (&["you", "have", "been"][..], false),
+    ] {
+        if words.len() == prefix.len() + 7
+            && words.starts_with(prefix)
+            && words[prefix.len()..]
+                == ["dealt", "combat", "damage", "since", "your", "last", "turn"]
+        {
+            let predicate = PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::PlayerWasDealtCombatDamageSinceTheirLastTurn(
+                    PlayerAst::You,
+                ),
+            );
+            return Ok(Some(if negated {
+                PredicateAst::Not(Box::new(predicate))
+            } else {
+                predicate
+            }));
+        }
+    }
     if surface::exact_words(&words, &["you", "lost", "life", "last", "turn"]) {
         return Ok(Some(PredicateAst::TurnHistory(
             TurnHistoryPredicateAst::PlayerLostLifeLastTurn(PlayerAst::You),
@@ -1319,6 +1346,11 @@ pub(super) fn parse_attacking_you_count_predicate(
     };
     let mut filter = ObjectFilter::creature();
     filter.attacking = true;
+    // "those creatures" are the triggering player's attack group: in a
+    // shared-team declaration a teammate's attackers never count.
+    filter.controller = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+        crate::tag::CompilerReferenceTag::Triggering.bind(),
+    )));
     let filter = if includes_planeswalkers {
         filter.attacking_player_or_planeswalker_controlled_by(PlayerFilter::You)
     } else {
@@ -2783,6 +2815,17 @@ pub(super) fn parse_battlefield_change_this_turn_predicate(
                 surface,
             }))
         }
+        crate::grammar::conditions::BattlefieldChangeThisTurnConditionAst::CreatureLeftBattlefieldUnderYourControl => {
+            Some(PredicateAst::ValueComparison {
+                left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::MovedZones {
+                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                    from: Some(Zone::Battlefield),
+                    to: None,
+                }),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            })
+        }
         crate::grammar::conditions::BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {
             filter,
         } => Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter))),
@@ -3206,6 +3249,13 @@ pub(super) fn parse_spell_lifecycle_predicate(tokens: &[OwnedLexToken]) -> Optio
         .or_else(|| parse_you_cast_source_shape(tokens))
         .or_else(|| parse_target_was_cast_for_named_cost_shape(tokens))
         .or_else(|| parse_tagged_was_cast_shape(tokens))
+        .or_else(|| {
+            let words = crate::util::non_article_token_word_refs(tokens);
+            matches!(words.as_slice(),
+                ["this", "spell", "is", "first", "spell", "you've" | "youve", "cast", "this", "game"]
+                | ["this", "spell", "is", "first", "spell", "you", "have", "cast", "this", "game"])
+                .then_some(PredicateAst::ThisSpellCastOrderThisGame(1))
+        })
         .or_else(|| parse_this_spell_was_cast_from_shape(tokens))
         .or_else(|| parse_this_spell_was_foretold_shape(tokens))
         .or_else(|| parse_no_spells_cast_last_turn_shape(tokens))
@@ -4526,6 +4576,7 @@ pub(super) fn object_filter_has_state(filter: &ObjectFilter) -> bool {
         || filter.untapped
         || filter.attacking
         || filter.attacking_alone
+        || filter.blocking_alone
         || filter.nonattacking
         || filter.blocking
         || filter.nonblocking
@@ -6646,7 +6697,45 @@ fn parse_indefinite_object_combat_state_predicate(
     }))
 }
 
+pub(super) fn parse_counter_placement_result_count(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let tokens = if tokens.first().is_some_and(|token| token.is_word("if")) {
+        &tokens[1..]
+    } else { tokens };
+    let ((), rest) = crate::grammar::primitives::parse_prefix(tokens,
+        crate::grammar::primitives::phrase(&["you", "put"]))?;
+    let count = crate::util::parse_number_word_i32(rest.first()?.as_word()?)?;
+    let ((), descriptor) = crate::grammar::primitives::parse_prefix(&rest[1..],
+        crate::grammar::primitives::phrase(&["or", "more"]))?;
+    let on = descriptor.iter().position(|token| token.is_word("on"))?;
+    let kind_tokens = &descriptor[..on];
+    if !kind_tokens.last()?.is_any_word(&["counter", "counters"]) {
+        return None;
+    }
+    let counter_type = parse_counter_type_from_tokens(kind_tokens)?;
+    let recipients = &descriptor[on + 1..];
+    if recipients.len() < 3
+        || !recipients[recipients.len() - 2].is_word("this")
+        || !recipients[recipients.len() - 1].is_word("way") {
+        return None;
+    }
+    let filter = crate::grammar::primitives::probe_shape(
+        parse_object_filter(&recipients[..recipients.len() - 2], false))?;
+    let mut query = ironsmith_core::PriorEffectMetricQuery::new(
+        ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::CountersPut);
+    query.action = Some(ironsmith_core::PriorEffectAction::CountersPut);
+    query.counter_type = Some(counter_type);
+    query.filter = Some(filter);
+    Some(PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(query),
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count),
+    })
+}
+
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    if let Some(predicate) = parse_counter_placement_result_count(tokens) {
+        return Ok(predicate);
+    }
     if let Some(predicate) = parse_library_contains_count_predicate(tokens) {
         return Ok(predicate);
     }
@@ -7130,27 +7219,26 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         ));
     }
     // "if none of those creatures attacked you" (Firemane Commando, after an
-    // attack-declaration trigger): only the active player attacks, so the
-    // declared attackers are exactly the creatures attacking in this combat;
-    // none of them attacks you as a player (not your planeswalkers).
-    if let ["none", "of", "those" | "them", ..] = monarch_words.as_slice()
-        && matches!(
-            monarch_words.as_slice(),
-            ["none", "of", "those", "creatures", "attacked", "you"]
-                | ["none", "of", "them", "attacked", "you"]
-        )
-    {
-        let mut filter = ObjectFilter::creature();
-        filter.attacking = true;
-        filter.zone = Some(Zone::Battlefield);
-        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::You);
-        filter.attacking_player_only = true;
-        return Ok(PredicateAst::Not(Box::new(PredicateAst::Player(
-            PlayerPredicateAst::PlayerControls {
-                player: PlayerAst::Any,
-                filter,
-            },
-        ))));
+    // attack-declaration trigger): history of this combat's declaration —
+    // none of the triggering player's attackers was declared attacking you
+    // as a player (not your planeswalkers), even if it has since left combat.
+    if matches!(
+        monarch_words.as_slice(),
+        ["none", "of", "those", "creatures", "attacked", "you"]
+            | ["none", "of", "them", "attacked", "you"]
+    ) {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
+                player: PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
+                )),
+                filter: ObjectFilter::creature(),
+                this_combat: true,
+                attacked: Some(PlayerFilter::You),
+            }),
+            operator: ValueComparisonOperator::Equal,
+            right: Value::Fixed(0),
+        });
     }
     // "if no other creatures are attacking that player" (Jin Sakai, after
     // "Whenever a creature you control attacks a player"): no creature other
@@ -7194,17 +7282,26 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
             && and_idx > 0
             && and_idx + 1 < subject.len()
         {
+            // History, not current state: a creature that attacked and then
+            // left combat (or the battlefield) still attacked this combat.
             let mut conjuncts = Vec::new();
             for part in [&subject[..and_idx], &subject[and_idx + 1..]] {
                 let Ok(mut filter) = parse_object_filter(part, false) else {
                     break;
                 };
-                filter.attacking = true;
-                filter.zone = Some(Zone::Battlefield);
-                conjuncts.push(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
-                    player: PlayerAst::You,
-                    filter,
-                }));
+                filter.zone = None;
+                conjuncts.push(PredicateAst::ValueComparison {
+                    left: Value::TurnHistoryCount(
+                        ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
+                            player: PlayerFilter::Any,
+                            filter,
+                            this_combat: true,
+                            attacked: None,
+                        },
+                    ),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(1),
+                });
             }
             if conjuncts.len() == 2
                 && let Some(second) = conjuncts.pop()

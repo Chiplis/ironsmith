@@ -78,7 +78,16 @@ fn object_filter_references_identity(
             .tagged_constraints
             .iter()
             .any(|constraint| constraint.tag == *tag)
-    }) || filter
+    }) || (identity.tag.is_none()
+        && matches!(identity.target.base(), ChooseSpec::Object(_))
+        // An untagged object declaration is read back through the implicit
+        // "it" reference ("Up to one target creature an opponent controls
+        // attacks Gideon ...", Gideon, Battle-Forged).
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "__it__"
+        }))
+        || filter
         .controller
         .as_ref()
         .is_some_and(|player| player_filter_references_identity(player, identity))
@@ -174,6 +183,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::CountersOn(spec, _) => choose_spec_references_identity(spec, identity),
         Value::ManaSymbolsInManaCostOf { spec, .. } => {
             choose_spec_references_identity(spec, identity)
@@ -194,10 +204,12 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::DistinctPowers(filter) => object_filter_references_identity(filter, identity),
         Value::StaticAbilitiesAmong { filter, .. } => {
             object_filter_references_identity(filter, identity)
@@ -238,6 +250,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player)
         | Value::CommanderCastCount(player)
+        | Value::CommandersCastFromCommandZoneBy(player)
         | Value::CardTypesInGraveyard(player) => {
             player_filter_references_identity(player, identity)
         }
@@ -306,11 +319,20 @@ fn restriction_references_identity(
                 || object_filter_references_identity(filter, identity)
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
+        | Restriction::AttackPlayerOrPermanentsControlledBy { attackers, player }
         | Restriction::AttackPlayer { attackers, player }
         | Restriction::MustAttackPlayer { attackers, player }
         | Restriction::GainControl(attackers, player) => {
             object_filter_references_identity(attackers, identity)
                 || player_filter_references_identity(player, identity)
+        }
+        Restriction::ObjectRule { objects, rule } => {
+            object_filter_references_identity(objects, identity)
+                || matches!(
+                    rule,
+                    ironsmith_core::ObjectRule::FaceDownVisibleTo(player)
+                        if player_filter_references_identity(player, identity)
+                )
         }
         Restriction::BeTargetedPlayerFrom(player, source)
         | Restriction::PlayerHexproofFrom(player, source) => {
@@ -572,6 +594,30 @@ fn synthetic_target_identity<'a>(effect: &'a Effect) -> Option<SyntheticTargetId
         target: &target_only.target,
         tag: wrapped_effect_tag(effect),
     })
+}
+
+/// The single search consumer of a declared target player whose owner is the
+/// anaphoric alias of that declaration, re-pointed at the declaration itself.
+fn declared_player_search_consumer(
+    consumer: &Effect,
+    identity: &SyntheticTargetIdentity<'_>,
+) -> Option<Effect> {
+    let ChooseSpec::Player(declared) = identity.target.base() else {
+        return None;
+    };
+    if !identity.target.is_target() {
+        return None;
+    }
+    let choose = consumer.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.is_search
+        || choose.filter.owner.as_ref()
+            != Some(&PlayerFilter::AliasedTarget(Box::new(declared.clone())))
+    {
+        return None;
+    }
+    let mut declared_choose = choose.clone();
+    declared_choose.filter.owner = Some(PlayerFilter::Target(Box::new(declared.clone())));
+    Some(Effect::new(declared_choose))
 }
 
 fn single_synthetic_target_consumer(
@@ -1073,14 +1119,28 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
         ));
     }
 
+    // "Search target opponent's library for ..." (Eternal Dominion): the
+    // search filter names the declared player only through the anaphoric
+    // alias of the declaration, so its first mention is the declaration.
+    let declared_consumer = declared_player_search_consumer(consumer, &identity);
     let without_target = effects
         .iter()
         .enumerate()
         .filter(|(index, _)| *index != target_index)
-        .map(|(_, effect)| effect.clone())
+        .map(|(index, effect)| match &declared_consumer {
+            Some(declared) if index == consumer_index => declared.clone(),
+            _ => effect.clone(),
+        })
         .collect::<Vec<_>>();
     let rendered = capitalize_first(&describe_effect_list(&without_target));
     let target_text = describe_choose_spec(identity.target);
+    if declared_consumer.is_some()
+        && rendered
+            .to_ascii_lowercase()
+            .contains(&target_text.to_ascii_lowercase())
+    {
+        return Some(rendered);
+    }
     let rendered_consumer = describe_effect(consumer);
     if rendered_consumer
         .to_ascii_lowercase()
@@ -1168,6 +1228,20 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
             &capitalize_first(&target_text),
             1,
         ));
+    }
+    // The sole consumer leads with the anaphor for the declared creature
+    // ("That creature attacks this planeswalker ... if able"): its first
+    // mention is the target declaration.
+    if identity.tag.is_none()
+        && consumer_index == target_index + 1
+        && target_index == 0
+        && matches!(identity.target.base(), ChooseSpec::Object(_))
+        && let Some(rest) = rendered.strip_prefix("That creature ")
+        && !rendered
+            .to_ascii_lowercase()
+            .contains(&target_text.to_ascii_lowercase())
+    {
+        return Some(format!("{} {rest}", capitalize_first(&target_text)));
     }
 
     None

@@ -1844,6 +1844,16 @@ fn resolve_trigger_target_chooser(
         .and_then(|event| event.object_id())
         .and_then(|object_id| game.object(object_id))
         .map(|object| game.controller_of(object));
+    // "target ... of that player's choice" after "deals combat damage to a
+    // player" (Bladegriff Prototype): the damaged player announces it.
+    if let Some(damaged) =
+        super::targeting::damaged_player_from_event(entry.triggering_event.as_ref())
+    {
+        filter_ctx
+            .tagged_players
+            .entry("damaged_player".into())
+            .or_insert_with(|| vec![damaged]);
+    }
 
     let matches = game
         .players
@@ -2098,7 +2108,7 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     game: &mut GameState,
     trigger: &TriggeredAbilityEntry,
     decision_maker: &mut dyn DecisionMaker,
-    _trigger_queue: &mut TriggerQueue,
+    trigger_queue: &mut TriggerQueue,
 ) -> Option<StackEntry> {
     // A reflexive triggered ability chooses its targets as it is put on the
     // stack, against the context of the resolution that triggered it.
@@ -2233,6 +2243,18 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         return None;
     }
 
+    if entry.chosen_modes.as_ref().is_some_and(|modes| !modes.is_empty())
+        && triggered_modal_spec(game, trigger).is_some_and(|spec| spec.faces_dilemma)
+    {
+        if let Err(error) = super::priority_mana::record_dilemma(
+            game, trigger_queue, trigger.source, trigger.controller,
+        ) {
+            if let GameLoopError::ExecutionFailed(error) = &error {
+                game.record_token_resource_failure(error);
+            }
+            return None;
+        }
+    }
     Some(entry)
 }
 

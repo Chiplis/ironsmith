@@ -1998,6 +1998,38 @@ pub fn is_blocking(combat: &CombatState, creature: ObjectId) -> bool {
         .any(|blockers| blockers.contains(&creature))
 }
 
+/// "attacking alone" (CR 506.5): the creature is attacking and no other
+/// creature its controller controls is.
+pub fn is_attacking_alone(game: &crate::game_state::GameState, creature: ObjectId) -> bool {
+    let Some(combat) = game.combat.as_ref() else {
+        return false;
+    };
+    if !is_attacking(combat, creature) {
+        return false;
+    }
+    let controller = game.controller_of_id(creature);
+    combat
+        .attackers
+        .iter()
+        .filter(|attacker| game.controller_of_id(attacker.creature) == controller)
+        .count()
+        == 1
+}
+
+/// "blocking alone" (CR 506.5): the creature is blocking and no other
+/// creature is.
+pub fn is_blocking_alone(game: &crate::game_state::GameState, creature: ObjectId) -> bool {
+    let Some(combat) = game.combat.as_ref() else {
+        return false;
+    };
+    is_blocking(combat, creature)
+        && combat
+            .blockers
+            .values()
+            .flatten()
+            .all(|blocker| *blocker == creature)
+}
+
 /// Returns the blockers assigned to an attacker.
 pub fn get_blockers(combat: &CombatState, attacker: ObjectId) -> &[ObjectId] {
     combat

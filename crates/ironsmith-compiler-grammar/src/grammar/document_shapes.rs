@@ -224,6 +224,26 @@ pub fn parse_nonpermanent_statement_surface(
         // turn" (Shielded Passage): a resolving prevention shield.
         || (permission_shapes::prefix_words(&words, &["prevent"])
             && permission_shapes::find_words(&words, &["this", "turn"]).is_some())
+        // "If you have 5 or less life, you can't lose life this turn, ..."
+        // (Courageous Resolve): a one-turn prohibition created by a resolving
+        // spell, never a static ability of the instant itself.
+        || (permission_shapes::prefix_words(&words, &["if"])
+            && permission_shapes::find_words(&words, &["this", "turn"]).is_some()
+            && words
+                .iter()
+                .any(|word| matches!(*word, "cant" | "can't" | "cannot"))
+            // Only player prohibitions ("you can't lose life this turn");
+            // object restrictions keep their own readings.
+            && tokens
+                .iter()
+                .position(|token| token.is_comma())
+                .and_then(|comma| tokens.get(comma + 1..))
+                .is_some_and(|consequence| {
+                    let consequence = TokenWordView::new(consequence).word_refs();
+                    permission_shapes::prefix_words(&consequence, &["you", "cant"])
+                        || permission_shapes::prefix_words(&consequence, &["you", "can't"])
+                        || permission_shapes::prefix_words(&consequence, &["your", "opponents"])
+                }))
     {
         Some(NonpermanentStatementSurface::UntilEndOfTurn)
     } else if matches!(

@@ -869,6 +869,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     UntapDuringEachOtherPlayersUntapStep {
         filter: ObjectFilter,
         display: String,
+        /// "during each opponent's untap step" (Teferi, Who Slows the
+        /// Sunset's emblem): only opponents' untap steps, not teammates'.
+        #[cfg_attr(feature = "serde", serde(default))]
+        opponents_only: bool,
     },
     /// "Players can't untap more than one land during their untap steps."
     /// (Winter Orb): each affected player untaps at most `max` matching
@@ -2273,6 +2277,7 @@ where
                     .map(&mut *map_effect)
                     .collect::<Result<_, _>>()?,
                 requires_linked_exile_pair: spec.requires_linked_exile_pair,
+                land_play_companion: spec.land_play_companion,
                 may_look_at_linked_exile: spec.may_look_at_linked_exile,
             cast_mana_spend_mode: spec.cast_mana_spend_mode,
                 linked_exile_pair: spec.linked_exile_pair,
@@ -2772,8 +2777,8 @@ where
             StaticAbilityPayload::OpponentsMustTargetFlagbearers => {
                 StaticAbilityPayload::OpponentsMustTargetFlagbearers
             }
-            StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display } => {
-                StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display }
+            StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display, opponents_only } => {
+                StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display, opponents_only }
             }
             StaticAbilityPayload::FirstEquipCostAlternative(display) => {
                 StaticAbilityPayload::FirstEquipCostAlternative(display)
@@ -4692,6 +4697,20 @@ impl<
         Self::restrictions(vec![restriction], detail)
     }
 
+    /// A rule restriction whose display is already plain rule text (no
+    /// Debug quoting/escaping of embedded quotation marks).
+    pub fn restriction_with_display(restriction: Restriction, display: String) -> Self {
+        Self {
+            id: Some(StaticAbilityId::RuleRestriction),
+            label: display.clone(),
+            payload: StaticAbilityPayload::RuleRestriction {
+                restriction,
+                additional_restrictions: Vec::new(),
+                display,
+            },
+        }
+    }
+
     /// A single static rule surface which applies several independent typed
     /// restrictions. Compound Oracle sentences use this to avoid manufacturing
     /// multiple abilities with duplicate display text.
@@ -6161,7 +6180,18 @@ impl<
         Self {
             id: Some(StaticAbilityId::UntapDuringEachOtherPlayersUntapStep),
             label: display.clone(),
-            payload: StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display },
+            payload: StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display, opponents_only: false },
+        }
+    }
+    pub fn untap_during_each_opponents_untap_step(
+        filter: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::UntapDuringEachOtherPlayersUntapStep),
+            label: display.clone(),
+            payload: StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display, opponents_only: true },
         }
     }
     pub fn pregame_action(kind: PregameActionKind, display: impl Into<String>) -> Self {
@@ -7298,6 +7328,15 @@ impl<
     ) -> Self {
         Self {
             id: Some(StaticAbilityId::ChooseCreatureCardNameAndTypeAsBecomesAttached),
+            label: display.into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "As this Equipment becomes attached to a creature, choose an exiled
+    /// creature card used to craft this Equipment." (Dinosaur Headdress)
+    pub fn choose_craft_material_as_becomes_attached(display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ChooseCraftMaterialAsBecomesAttached),
             label: display.into(),
             payload: StaticAbilityPayload::None,
         }

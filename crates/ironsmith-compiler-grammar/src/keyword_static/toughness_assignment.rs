@@ -74,11 +74,16 @@ fn parse_station_using_toughness_line(
     let marker = StaticAbility::keyword_marker(STATIONS_USING_TOUGHNESS_MARKER);
     let ability = match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::Static(marker),
-        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
-            filter,
-            ability: Box::new(StaticAbilityAst::Static(marker)),
-            condition: None,
-        },
+        // A rule of this source applied to other creatures, not an ability
+        // they gain (CR 702.184a; ability removal can't erase it).
+        AnthemSubjectAst::Filter(filter) => {
+            return Ok(Some(vec![object_rule_static(
+                filter,
+                ironsmith_core::ObjectRule::StationsUsingToughness,
+                None,
+                &subject_tokens,
+            )]));
+        }
     };
     let ability = match subject_tokens.first().and_then(OwnedLexToken::as_word) {
         Some("each") => StaticAbilityAst::WithSetQuantifierSurface {
@@ -156,6 +161,17 @@ pub(super) fn parse_filtered_toughness_assignment_line(
         .flatten()
         .or_else(|| infer_attached_subject_filter_from_condition_expr(condition.as_ref()));
     let subject = parse_anthem_subject_with_attached_fallback(&subject_tokens, attached.as_ref())?;
+    // "[Each creature ...] assigns combat damage equal to its toughness" is
+    // a rule effect of this source (CR 510.1a), not an ability the matching
+    // creatures gain, so their losing abilities can't remove it.
+    if !no_defender && let AnthemSubjectAst::Filter(filter) = &subject {
+        return Ok(Some(vec![object_rule_static(
+            filter.clone(),
+            ironsmith_core::ObjectRule::AssignsCombatDamageUsingToughness,
+            condition,
+            &subject_tokens,
+        )]));
+    }
     let lower = |ability: StaticAbility| match &subject {
         AnthemSubjectAst::Source => match &condition {
             Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
@@ -189,6 +205,39 @@ pub(super) fn parse_filtered_toughness_assignment_line(
         }
     }
     Ok(Some(abilities))
+}
+
+/// A source-owned object rule as a static rule restriction, displayed from the
+/// rule's structure ("each" keeps the authored set quantifier).
+fn object_rule_static(
+    filter: ObjectFilter,
+    rule: ironsmith_core::ObjectRule,
+    condition: Option<PredicateAst>,
+    subject_tokens: &[OwnedLexToken],
+) -> StaticAbilityAst {
+    let mut filter = filter;
+    if subject_tokens.first().is_some_and(|token| token.is_word("each")) {
+        filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+    }
+    let display = rule.describe(&filter);
+    let display = {
+        let mut chars = display.chars();
+        match chars.next() {
+            Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+            None => String::new(),
+        }
+    };
+    let ability = StaticAbilityAst::Static(StaticAbility::restriction_with_display(
+        crate::effect::Restriction::object_rule(filter, rule),
+        display,
+    ));
+    match condition {
+        Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ability),
+            condition,
+        },
+        None => ability,
+    }
 }
 
 /// A comparison of the attached creature's own current axes is a per-object

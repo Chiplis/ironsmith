@@ -1950,7 +1950,14 @@ pub(super) fn describe_mana_usage_restriction(
             } else if let Some(scry) = effect.downcast_ref::<crate::effects::ScryEffect>() {
                 match &scry.count {
                     crate::effect::Value::Fixed(1) => "scry 1".to_string(),
-                    crate::effect::Value::CommanderCastCount(crate::target::PlayerFilter::You) => {
+                    // "When you spend this mana to cast a Dragon creature
+                    // spell, scry 2" (Lapis Orb of Dragonkind).
+                    crate::effect::Value::Fixed(n) if *n > 1 => {
+                        return Some(format!(
+                            "When you spend this mana to cast {spell_text}, scry {n}"
+                        ));
+                    }
+                    crate::effect::Value::CommanderCastCountOf(_) => {
                         "scry X, where X is the number of times it's been cast from the command zone this game"
                             .to_string()
                     }
@@ -1974,7 +1981,18 @@ pub(super) fn describe_mana_usage_restriction(
                     "When you spend this mana to cast {spell_text}, you may exile that spell instead of putting it into its owner's graveyard as it resolves"
                 ));
             } else {
-                return None;
+                // "When you spend this mana to cast a spell with mana value 6
+                // or greater, draw a card" (Gilanra): a self-contained
+                // instruction renders as itself.
+                let rendered = describe_effect_impl(effect);
+                let rendered = rendered.trim().trim_end_matches('.');
+                if rendered.is_empty() {
+                    return None;
+                }
+                return Some(format!(
+                    "When you spend this mana to cast {spell_text}, {}",
+                    lowercase_first(rendered)
+                ));
             };
             Some(format!(
                 "When that mana is spent to cast {spell_text}, {tail}"
@@ -2986,7 +3004,13 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
             } else {
                 " "
             };
-            format!("{keyword}{separator}{}", describe_total_cost(cost))
+            let mut cost_text = describe_total_cost(cost);
+            // A cost that carries its own follow-up sentence ("{5}{R}. This
+            // cost is reduced by {1} for each ...") closes that sentence.
+            if cost_text.contains(". ") && !cost_text.ends_with('.') {
+                cost_text.push('.');
+            }
+            format!("{keyword}{separator}{cost_text}")
         };
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::Morph(cost) => {

@@ -105,6 +105,7 @@ pub enum KeywordLineKind {
     Fortify,
     Escape,
     Flashback,
+    BeamMeUp,
     Harmonize,
     Kicker,
     Madness,

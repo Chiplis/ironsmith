@@ -26,6 +26,9 @@ pub struct PermanentTappedEvent {
     /// The tap is the CR 508.1f tap of a creature being declared as an
     /// attacker ("if it isn't being declared as an attacker", Verity Circle).
     pub attack_declaration: bool,
+    /// The source whose ability's cost this tap paid ("tapped this turn to
+    /// pay for its abilities"). `None` for effect taps.
+    pub cost_source: Option<ObjectId>,
 }
 
 impl PermanentTappedEvent {
@@ -38,6 +41,7 @@ impl PermanentTappedEvent {
             actor: None,
             before_snapshot: None,
             attack_declaration: false,
+            cost_source: None,
         }
     }
 
@@ -53,6 +57,7 @@ impl PermanentTappedEvent {
             actor,
             before_snapshot: None,
             attack_declaration: false,
+            cost_source: None,
         }
     }
 

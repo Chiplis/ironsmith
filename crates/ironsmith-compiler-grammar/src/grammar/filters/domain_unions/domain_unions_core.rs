@@ -7,6 +7,7 @@ pub(super) fn branch_has_scoped_state(filter: &ObjectFilter) -> bool {
         || filter.owner.is_some()
         || filter.attacking
         || filter.attacking_alone
+        || filter.blocking_alone
         || filter.blocking
         || filter.blocked
         || filter.unblocked

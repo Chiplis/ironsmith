@@ -227,6 +227,24 @@ fn with_exile_actor(mut effect: EffectAst, subject: Option<SubjectAst>) -> Effec
     effect
 }
 
+/// "the bottom card of target player's graveyard" (Phyrexian Furnace): an
+/// ordered-zone edge selection. Only a singular `card` head of an ordered
+/// graveyard/library source qualifies.
+fn strip_source_bottom_only_prefix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
+    use winnow::Parser as _;
+
+    let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&["the", "bottom"]).void(),
+    ) else {
+        return (tokens, false);
+    };
+    let words = crate::lexer::token_word_refs(rest);
+    let ordered_source = words.first() == Some(&"card")
+        && words.iter().any(|word| matches!(*word, "graveyard" | "library"));
+    if ordered_source { (rest, true) } else { (tokens, false) }
+}
+
 fn strip_source_top_only_prefix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
     use winnow::Parser as _;
 
@@ -882,7 +900,8 @@ fn parse_exile_inner(
     }
 
     let (target_tokens, source_top_only) = strip_source_top_only_prefix(tokens);
-    if source_top_only && until_source_leaves {
+    let (target_tokens, source_bottom_only) = strip_source_bottom_only_prefix(target_tokens);
+    if (source_top_only || source_bottom_only) && until_source_leaves {
         return Err(CardTextError::ParseError(
             "top-of-zone exile-until-source-leaves is not supported".to_string(),
         ));
@@ -895,7 +914,9 @@ fn parse_exile_inner(
         if until_source_leaves {
             EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
         } else {
-            EffectAst::subject_verb_exile(target, face_down).with_source_top_only(source_top_only)
+            EffectAst::subject_verb_exile(target, face_down)
+                .with_source_top_only(source_top_only)
+                .with_source_bottom_only(source_bottom_only)
         }
         .with_move_to_zone_plural_surface_if(plural_surface),
         subject,
@@ -1437,6 +1458,22 @@ pub fn parse_exile_top_library_clause(
                 )],
             }))
         }
+        effect_grammar::ExileLibraryPlayerShape::EachOfThosePlayers => {
+            Some(EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                tag: crate::tag::TagRef::of(TagKey::from(
+                    ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG,
+                )),
+                effects: vec![exile_top_library_effect(
+                    PlayerAst::That,
+                    shape.count,
+                    Vec::new(),
+                    vec![helper_tag_for_tokens(&tag_tokens, "exiled").into()],
+                    None,
+                    face_down,
+                )],
+                require_evidence: false,
+            }))
+        }
         effect_grammar::ExileLibraryPlayerShape::Player(player) => {
             let surface = (default_player != PlayerAst::Implicit && default_player == player)
                 .then_some(ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor);
@@ -1493,6 +1530,15 @@ fn parse_exile_bottom_library_clause(
         effect_grammar::ExileLibraryPlayerShape::EachOpponent => {
             Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                 effects: choose_and_exile(PlayerAst::That, tag.key.clone()),
+            }))
+        }
+        effect_grammar::ExileLibraryPlayerShape::EachOfThosePlayers => {
+            Some(EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                tag: crate::tag::TagRef::of(TagKey::from(
+                    ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG,
+                )),
+                effects: choose_and_exile(PlayerAst::That, tag.key.clone()),
+                require_evidence: false,
             }))
         }
         effect_grammar::ExileLibraryPlayerShape::Player(player) => Some(EffectAst::Sequence {

@@ -18,6 +18,7 @@ impl EffectExecutor for RegisterCounterPlacementReplacementEffect {
             ctx.source,
             ctx.controller,
             self.filter.clone(),
+            self.actor.clone(),
             self.counter_type,
             i64::from(self.additional),
         );

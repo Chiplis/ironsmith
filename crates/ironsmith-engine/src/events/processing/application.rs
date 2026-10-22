@@ -367,6 +367,10 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::MoveToZoneWithCounters { .. } => TraitApplyResult::Replaced(Vec::new()),
 
+        ReplacementAction::MoveToZoneThen { effects, .. } => {
+            TraitApplyResult::Replaced(effects.clone())
+        }
+
         ReplacementAction::ExileWithSourceLink => TraitApplyResult::Replaced(Vec::new()),
 
         ReplacementAction::ExileWithSourceLinkThen(effects) => {
@@ -2132,6 +2136,7 @@ fn etb_value_uses_entering_object(value: &crate::effect::Value) -> bool {
         crate::effect::Value::PowerOf(spec)
         | crate::effect::Value::ToughnessOf(spec)
         | crate::effect::Value::ManaValueOf(spec)
+        | crate::effect::Value::CommanderCastCountOf(spec)
         | crate::effect::Value::CountersOn(spec, _)
             if matches!(spec.base(), crate::target::ChooseSpec::Source) =>
         {

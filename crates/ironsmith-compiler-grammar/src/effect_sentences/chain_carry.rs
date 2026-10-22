@@ -512,7 +512,11 @@ pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAs
     }
     let words = crate::lexer::parser_token_word_refs(tokens);
     let shapes = crate::grammar::effects::gain_ability_shapes::find_primary_gain_ability_verb(&words);
+    // "for each {R}{R} spent to cast it, it gets +1/+0 and gains trample"
+    // (Bladecoil Serpent): a leading multiplier owns the whole grant.
+    let leading_for_each = words.starts_with(&["for", "each"]);
     if !tokens.first().is_some_and(|token| token.is_any_word(&["if", "when", "whenever", "unless", "at", "as"]))
+        && !leading_for_each
         && shapes != crate::grammar::effects::gain_ability_shapes::find_gain_ability_verb(&words)
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
     {
@@ -786,6 +790,8 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
             battlefield_face_down: false,
             battlefield_transformed: false,
             attached_to: None,
+            entry_type_changes: None,
+            entry_counters: Vec::new(),
             all: false,
         }),
     }))
@@ -2065,8 +2071,16 @@ fn parse_effect_chain_inner_lexed_unstacked(
                 merged_lexed_segments.push(segment);
                 continue;
             }
-            if !super::lex_chain_helpers::segment_has_effect_head_lexed(&segment) {
-                if let Some(previous) = merged_lexed_segments.last()
+            let counter_recipient_arm = merged_lexed_segments.last().is_some_and(|previous| {
+                super::lex_chain_helpers::is_counter_placement_recipient_arm_lexed(
+                    previous, &segment,
+                )
+            });
+            if counter_recipient_arm
+                || !super::lex_chain_helpers::segment_has_effect_head_lexed(&segment)
+            {
+                if !counter_recipient_arm
+                    && let Some(previous) = merged_lexed_segments.last()
                     && let Some(previous_tail) =
                         split_segments_on_comma_then_lexed(vec![previous.as_slice()]).last()
                     && previous_tail.len() < previous.len()
@@ -2076,7 +2090,8 @@ fn parse_effect_chain_inner_lexed_unstacked(
                     merged_lexed_segments.push(expanded);
                     continue;
                 }
-                if let Some(previous) = merged_lexed_segments.last()
+                if !counter_recipient_arm
+                    && let Some(previous) = merged_lexed_segments.last()
                     && let Some(expanded) = expand_missing_verb_segment_lexed(previous, &segment)
                 {
                     merged_lexed_segments.push(expanded);
@@ -3071,6 +3086,7 @@ pub enum CarryContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
+    Assimilate,
     Add,
     Move,
     Deal,
@@ -3221,22 +3237,31 @@ pub fn bind_no_regeneration_rider(
 ) -> bool {
     let words = crate::lexer::token_word_refs(sentence);
     if !crate::word_primitives::last_is(&words, "regenerated")
-        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those", "that"])
+        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those", "that", "the"])
         || !crate::slice_primitives::contains_any(&words, &["cant", "can't"])
     {
         return false;
     }
+    // "The creature can't be regenerated." (Mephitic Ooze) names the one
+    // destroyed object by a definite noun.
+    let definite_noun = words.starts_with(&["the", "creature"]);
+    if words.first() == Some(&"the") && !definite_noun {
+        return false;
+    }
     // "That creature can't be regenerated." (Parallax Dementia) is singular.
-    let singular = crate::word_primitives::first_is_any(&words, &["it", "that"]);
+    let singular = crate::word_primitives::first_is_any(&words, &["it", "that", "the"]);
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
     else {
         return false;
     };
     match action {
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
-            no_regeneration, ..
+            no_regeneration,
+            definite_noun_rider_surface,
+            ..
         }) => {
             *no_regeneration = true;
+            *definite_noun_rider_surface |= definite_noun;
             true
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll {
@@ -3488,6 +3513,29 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
             return true;
         }
     }
+    // "The next time ... prevent that damage. When damage is prevented this
+    // way, ..." (New Way Forward): a triggered ability linked to that shield,
+    // not the prevention's inline part (CR 603.12 vs 615.5); it goes on the
+    // stack once the damage is prevented.
+    if matches!(
+        effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventNextTimeDamage {
+                    reflect_damage_to_source_controller: false,
+                    follow_up_effects,
+                    ..
+                },
+            ),
+            ..
+        })) if follow_up_effects.is_empty()
+    ) && sentence.first().is_some_and(|token| token.is_word("when"))
+        && let Ok(Some(super::prevention_source_riders::PreventionRider::Delayed(delayed))) =
+            super::prevention_source_riders::parse(sentence)
+    {
+        effects.push(delayed);
+        return true;
+    }
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
     else {
         return false;
@@ -3539,7 +3587,7 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
                 ..
             },
         ) if follow_up_effects.is_empty() => {
-            // "If/When damage is prevented this way, ~ deals that much damage
+            // "If damage is prevented this way, ~ deals that much damage
             // to that source's controller": the source is the one this shield
             // chose, which only the shield knows when the damage is prevented.
             // "If damage from a red source is prevented this way, ..."

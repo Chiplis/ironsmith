@@ -14,6 +14,9 @@ use rusqlite::{Connection, params};
 
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 const DB_SCHEMA_VERSION: i64 = 11;
+// Version 12 adds per-face compilation snapshots without changing the registry
+// tables. Analysis tools own that migration; new lightweight DBs remain at 11.
+const MAX_COMPATIBLE_DB_SCHEMA_VERSION: i64 = 12;
 
 #[derive(Debug)]
 pub struct StatusDb {
@@ -78,9 +81,9 @@ impl StatusDb {
         let version: i64 = self
             .conn
             .pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > DB_SCHEMA_VERSION {
+        if version > MAX_COMPATIBLE_DB_SCHEMA_VERSION {
             return Err(format!(
-                "engine status DB schema version {version} is newer than supported {DB_SCHEMA_VERSION}"
+                "engine status DB schema version {version} is newer than supported {MAX_COMPATIBLE_DB_SCHEMA_VERSION}"
             )
             .into());
         }
@@ -89,6 +92,11 @@ impl StatusDb {
                 "engine status DB schema version {version} requires migration; run the analysis-tools migration before the lightweight registry sync"
             )
             .into());
+        }
+        if version > DB_SCHEMA_VERSION {
+            // Do not recreate analysis views or downgrade user_version when
+            // opening a compatible schema owned by the analysis tools.
+            return Ok(());
         }
 
         self.conn.execute_batch(
@@ -500,4 +508,87 @@ fn count_not_allowed(
         [],
         read_sqlite_count,
     )?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compatible_schema_preserves_version_and_analysis_objects() {
+        let mut db = StatusDb::open(":memory:").unwrap();
+        db.conn
+            .execute_batch(
+                "CREATE TABLE card_face_compilation (
+                compilation_id INTEGER NOT NULL,
+                face_index INTEGER NOT NULL,
+                snapshot TEXT NOT NULL CHECK(json_valid(snapshot)),
+                PRIMARY KEY (compilation_id, face_index)
+             );
+             INSERT INTO card_face_compilation VALUES (1, 0, '{}');
+             PRAGMA user_version = 12;",
+            )
+            .unwrap();
+        let schema_before: String = db
+            .conn
+            .query_row("SELECT group_concat(sql) FROM sqlite_master", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        db.initialize().unwrap();
+        let row = RegistryCardRecord {
+            name: "Test Card".into(),
+            oracle_text: "Draw a card.".into(),
+            raw_oracle_text: "Draw a card.".into(),
+            parse_input: "Draw a card.".into(),
+            raw_card_json: "{}".into(),
+            mana_cost: None,
+            type_line: None,
+            power: None,
+            toughness: None,
+            loyalty: None,
+            defense: None,
+            layout: None,
+            content_hash: "test".into(),
+        };
+        let result = db.sync_registry_card_text_changes(&[row]).unwrap();
+        assert_eq!(result.inserted_names, ["Test Card"]);
+        let version: i64 = db
+            .conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 12);
+        let schema_after: String = db
+            .conn
+            .query_row("SELECT group_concat(sql) FROM sqlite_master", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(schema_before, schema_after);
+        let snapshot: String = db
+            .conn
+            .query_row("SELECT snapshot FROM card_face_compilation", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(snapshot, "{}");
+    }
+
+    #[test]
+    fn unsupported_schemas_are_rejected_without_changing_version() {
+        for (version, message) in [(10, "requires migration"), (13, "newer than supported 12")] {
+            let db = StatusDb {
+                conn: Connection::open_in_memory().unwrap(),
+            };
+            db.conn
+                .pragma_update(None, "user_version", version)
+                .unwrap();
+            assert!(db.initialize().unwrap_err().to_string().contains(message));
+            let after: i64 = db
+                .conn
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .unwrap();
+            assert_eq!(after, version);
+        }
+    }
 }

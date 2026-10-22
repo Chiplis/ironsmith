@@ -416,6 +416,14 @@ const CAST_FROM_GRAVEYARD: &[&[&str]] = &[
     &["from", "an", "opponents", "graveyard"],
     &["from", "that", "player's", "graveyard"],
     &["from", "that", "players", "graveyard"],
+    &["from", "each", "opponent's", "graveyard"],
+    &["from", "each", "opponents", "graveyard"],
+];
+/// "you may cast a spell from each opponent's graveyard" (Jetsam): one
+/// optional spell from every opponent's graveyard, of any card type.
+pub const CAST_A_SPELL_FROM_EACH_OPPONENT_GRAVEYARD: &[&[&str]] = &[
+    &["you", "may", "cast", "a", "spell", "from", "each", "opponent's", "graveyard"],
+    &["you", "may", "cast", "a", "spell", "from", "each", "opponents", "graveyard"],
 ];
 /// Graveyards other than the caster's own ("from an opponent's graveyard",
 /// "from that player's graveyard").

@@ -71,7 +71,27 @@ pub(super) fn post_rule_reflexive_object_followup(
             || crate::tag_support::effects_reference_tag(
                 sentence_effects,
                 crate::tag::CompilerReferenceTag::WhereXObjectAntecedent.as_str(),
-            );
+            )
+            // "When ..., exile target card ... . Copy the exiled card. You may
+            // cast the copy ..." (Saruman of Many Colors): "the exiled card"
+            // is the reflexive ability's exile result, so the follow-up
+            // belongs to that ability, after its exile resolves.
+            || (crate::tag_support::effects_reference_tag(
+                sentence_effects,
+                crate::tag::CompilerReferenceTag::SourceExiled.as_str(),
+            ) && matches!(
+                state.effects.last(),
+                Some(EffectAst::Conditionals(ConditionalEffectAst::WhenResult { effects, .. }))
+                    if effects.iter().any(|effect| matches!(
+                        effect,
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::ZoneMoves(
+                                crate::cards::builders::ZoneMoveActionAst::Exile { .. }
+                            ),
+                            ..
+                        })
+                    ))
+            ));
     if sentence_effects.is_empty() || !references_reflexive_object {
         return Ok(None);
     }
@@ -252,6 +272,26 @@ pub(super) fn post_rule_iterated_result_followup(
                 return Ok(Some(PostParseFollowupResult::Annotated));
             }
         }
+        return Ok(None);
+    }
+    // "Each opponent mills two cards. When one or more cards are milled this
+    // way, ..." (Saruman of Many Colors): the passive one-or-more result
+    // names the loop's aggregate outcome even after its unqualified reading
+    // was normalized to "when you do", so it is one reflexive trigger after
+    // the loop rather than one per player (CR 603.12).
+    // The dispatcher has already normalized an unqualified result prefix to
+    // "when you do"; read the authored sentence.
+    let authored = _sentences
+        .get(_sentence_idx)
+        .map(|sentence| sentence.lexed())
+        .unwrap_or(_sentence_tokens);
+    let sentence_words = crate::lexer::parser_token_word_refs(authored);
+    if matches!(
+        sentence_effects.as_slice(),
+        [EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })]
+    ) && sentence_words.starts_with(&["when", "one", "or", "more"])
+        && sentence_words.windows(2).any(|pair| pair == ["this", "way"])
+    {
         return Ok(None);
     }
     body.append(sentence_effects);

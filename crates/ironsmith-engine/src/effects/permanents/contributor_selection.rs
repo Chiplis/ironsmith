@@ -176,7 +176,10 @@ pub(crate) const STATIONS_USING_TOUGHNESS_MARKER: &str =
     "this creature stations permanents using its toughness rather than its power";
 
 pub(crate) fn stations_using_toughness(game: &GameState, object_id: ObjectId) -> bool {
-    keyword_marker_texts(game, object_id)
+    game.effect_store.cant_effects.object_has_rule(
+        object_id,
+        &ironsmith_core::ObjectRule::StationsUsingToughness,
+    ) || keyword_marker_texts(game, object_id)
         .iter()
         .any(|marker| marker.trim_end_matches('.') == STATIONS_USING_TOUGHNESS_MARKER)
 }

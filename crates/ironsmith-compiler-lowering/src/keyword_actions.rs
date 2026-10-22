@@ -60,6 +60,10 @@ pub fn apply_keyword_action(
         KeywordAction::Soulshift(amount) => builder.soulshift(amount),
         KeywordAction::SoulshiftValue(value) => builder.soulshift_value(value),
         KeywordAction::Recover(cost) => builder.recover(cost),
+        KeywordAction::RecoverTotalCost(cost) => builder.recover_total_cost(
+            crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)
+                .expect("compiler-owned recover cost must materialize"),
+        ),
         KeywordAction::Outlast(cost) => builder.outlast(cost),
         KeywordAction::Scavenge(cost) => builder.scavenge(cost),
         KeywordAction::Unearth(cost) => builder.unearth(cost),

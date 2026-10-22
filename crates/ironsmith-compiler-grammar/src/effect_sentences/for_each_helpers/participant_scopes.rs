@@ -164,6 +164,14 @@ mod for_each_player_readings;
 pub fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // "each player gains control of a nonland permanent of your choice
+    // controlled by the player to their right" (Inniaz): one simultaneous
+    // exchange, not a per-player loop.
+    if let Some(effect) = crate::effect_sentences::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_fixed_direction_adjacent_player_control(
+        crate::util::trim_edge_punctuation_tokens(tokens),
+    )? {
+        return Ok(Some(effect));
+    }
     if has_independent_participant_continuation(tokens) {
         return Ok(None);
     }

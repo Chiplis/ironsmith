@@ -667,6 +667,7 @@ fn materialize_statement(
         has_unique_cross_line_self_replacement_target_condition(&prepared, statement_facts);
     let mut lowered = lower_prepared_statement_effects(&prepared)?;
     preserve_single_statement_self_replacement_surface(&mut lowered.effects, statement_facts);
+    attach_statement_conditional_presentation_label(&mut lowered.effects, statement_facts);
     fuse_repeatable_mana_payment_prevention_until_end_of_turn(
         &mut lowered.effects,
         statement_facts.repeatable_instant_timing_payment_until_end_of_turn,
@@ -739,6 +740,40 @@ fn materialize_statement(
         builder.spell_effect = Some(lowered.effects);
     }
     Ok(builder)
+}
+
+/// "Fateful hour — If you have 5 or less life, you can't lose life this turn,
+/// ..." (Courageous Resolve): a statement that is exactly one leading-if
+/// conditional instruction keeps its authored ability word on that
+/// instruction. Presentation only; the conditional's semantics are unchanged.
+fn attach_statement_conditional_presentation_label(
+    program: &mut crate::resolution::ResolutionProgram,
+    facts: &crate::model::facts::StatementLineSemanticFacts,
+) {
+    let Some(label @ crate::ability::PresentationLabel::AbilityWord(_)) =
+        facts.presentation_label.clone()
+    else {
+        return;
+    };
+    let [segment] = program.segments.as_mut_slice() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() {
+        return;
+    }
+    let [effect] = segment.default_effects.as_mut_slice() else {
+        return;
+    };
+    let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() else {
+        return;
+    };
+    if conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || conditional.presentation_label.is_some()
+    {
+        return;
+    }
+    let labeled = conditional.clone().with_presentation_label(Some(label));
+    *effect = crate::effect::Effect::new(labeled);
 }
 
 /// A self replacement parsed inside one statement is materialized before the

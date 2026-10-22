@@ -61,6 +61,10 @@ const SPELL_CAST_SUFFIXES: &[(&[&str], PlayerFilter)] = &[
         PlayerFilter::IteratedPlayer,
     ),
     (
+        &["they've", "cast", "this", "turn"],
+        PlayerFilter::IteratedPlayer,
+    ),
+    (
         &["they", "cast", "this", "turn"],
         PlayerFilter::IteratedPlayer,
     ),
@@ -162,11 +166,14 @@ pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
     match surface.metric {
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
         AggregateValueMetric::CardTypes => Some(Value::CardTypesAmong(filter)),
+        AggregateValueMetric::PermanentTypes => Some(Value::PermanentTypesAmong(filter)),
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
+        AggregateValueMetric::PlaneswalkerTypes => Some(Value::PlaneswalkerTypesAmong(filter)),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
         AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
         AggregateValueMetric::DistinctManaValues => Some(Value::DistinctManaValues(filter)),
+        AggregateValueMetric::DistinctManaCosts => Some(Value::DistinctManaCosts(filter)),
         AggregateValueMetric::UnlockedDoors => Some(Value::UnlockedDoorsAmong(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
         AggregateValueMetric::DistinctCounterTypes => {
@@ -180,6 +187,11 @@ pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
 }
 
 pub fn parse_prior_effect_metric_source(words: &[&str]) -> Option<EffectMetricSource> {
+    // "the exiled cards used to craft it" names the craft materials linked to
+    // the permanent (CR 702.167c), not objects a prior instruction exiled.
+    if permission_shapes::find_words(words, &["used", "to", "craft"]).is_some() {
+        return None;
+    }
     let references_prior_effect = permission_shapes::find_words(words, &["this", "way"]).is_some()
         || words.iter().enumerate().any(|(index, word)| {
             matches!(

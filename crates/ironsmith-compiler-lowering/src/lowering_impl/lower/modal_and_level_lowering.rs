@@ -64,6 +64,7 @@ pub fn try_merge_modal_into_remove_mode(
 
     effects.push(crate::effect::Effect::new(
         crate::effects::ChooseModeEffect {
+            faces_dilemma: choose_mode.faces_dilemma,
             modes,
             common_prefix_effects: choose_mode.common_prefix_effects.clone(),
             chooser: choose_mode.chooser.clone(),
@@ -293,13 +294,13 @@ pub fn lower_parsed_modal(
         .map(|change| {
             let mut ctx = EffectLoweringContext::new();
             compile_condition_from_predicate_ast(&change.condition, &mut ctx, &None)
-                .map(|condition| (condition, change.selection))
+                .map(|condition| (condition, change.selection, change.optional))
         })
         .transpose()?;
     let conditional_optional_range =
         compiled_conditional_mode_change
             .as_ref()
-            .and_then(|(condition, selection)| {
+            .and_then(|(condition, selection, optional)| {
                 let required_cost = match condition {
                     crate::effect::Condition::ThisSpellWasKicked => {
                         crate::cost::OptionalCostRef::from("Kicker")
@@ -312,7 +313,12 @@ pub fn lower_parsed_modal(
                     _ => return None,
                 };
                 let (min_modes, max_modes) = match selection {
-                    crate::cards::builders::ConditionalModeSelection::BothOrTwo => (1, 2),
+                    // "If this spell's additional cost was paid, choose both
+                    // instead" (Pyrrhic Strike) requires both modes; only
+                    // "you may choose both" keeps the one-mode floor.
+                    crate::cards::builders::ConditionalModeSelection::BothOrTwo => {
+                        (if *optional { 1 } else { 2.min(mode_count).max(1) }, 2)
+                    }
                     crate::cards::builders::ConditionalModeSelection::AnyNumber => (0, mode_count),
                     crate::cards::builders::ConditionalModeSelection::OneOrMore => (1, mode_count),
                     crate::cards::builders::ConditionalModeSelection::One => (1, 1),
@@ -328,6 +334,7 @@ pub fn lower_parsed_modal(
             return effect;
         };
         let mut choose_mode = choose_mode.clone();
+        choose_mode.faces_dilemma = cost_choice_keywords.is_empty();
         if same_mode_more_than_once {
             choose_mode = choose_mode.with_repeated_modes();
         }
@@ -386,7 +393,7 @@ pub fn lower_parsed_modal(
     let choose_both_condition =
         if if_kicked_choose_any_number || conditional_optional_range.is_some() {
             None
-        } else if let Some((condition, _)) = &compiled_conditional_mode_change {
+        } else if let Some((condition, _, _)) = &compiled_conditional_mode_change {
             Some(condition.clone())
         } else if commander_allows_both {
             Some(crate::effect::Condition::YouControlCommander)
@@ -419,9 +426,12 @@ pub fn lower_parsed_modal(
     let modal_effect = if let Some(choose_both_condition) = choose_both_condition {
         let (min_both, max_both) = compiled_conditional_mode_change
             .as_ref()
-            .map(|(_, selection)| match selection {
+            .map(|(_, selection, optional)| match selection {
+                // CR 700.2: "you may choose both instead" widens the range
+                // to one-or-two; a bare "choose both instead" requires both.
                 crate::cards::builders::ConditionalModeSelection::BothOrTwo => {
-                    (1, mode_count.clamp(1, 2))
+                    let max = mode_count.clamp(1, 2);
+                    (if *optional { 1 } else { max }, max)
                 }
                 crate::cards::builders::ConditionalModeSelection::AnyNumber => {
                     (0, mode_count.max(1))

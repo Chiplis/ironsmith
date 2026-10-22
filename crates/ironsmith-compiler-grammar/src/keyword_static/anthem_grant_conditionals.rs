@@ -291,13 +291,30 @@ pub fn parse_controlled_creatures_may_assign_as_unblocked_line(
     } else {
         return Ok(None);
     };
-    Ok(Some(vec![StaticAbilityAst::GrantStaticAbility {
-        filter,
-        ability: Box::new(StaticAbilityAst::Static(
-            StaticAbility::may_assign_damage_as_unblocked(),
-        )),
-        condition,
+    // CR 510.1c: the permission is an effect of this source checked when
+    // combat damage is assigned, not an ability the creatures gain, so
+    // removing their abilities can't remove it.
+    let rule = ironsmith_core::ObjectRule::MayAssignCombatDamageAsThoughUnblocked;
+    let display = capitalize_first_ascii(&rule.describe(&filter));
+    let ability = StaticAbilityAst::Static(StaticAbility::restriction_with_display(
+        crate::effect::Restriction::object_rule(filter, rule),
+        display,
+    ));
+    Ok(Some(vec![match condition {
+        Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ability),
+            condition,
+        },
+        None => ability,
     }]))
+}
+
+fn capitalize_first_ascii(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 pub fn parse_anthem_and_keyword_line(

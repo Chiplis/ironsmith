@@ -2023,6 +2023,21 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         return false;
     }
 
+    // "for each lore counter on Genesis of the Daleks" / "the number of
+    // charge counters on <name>": the counted holder of counters is always
+    // the source itself. Count grammars read only the typed self-reference,
+    // so normalize it rather than leaving the name to a permissive object
+    // filter reading ("each Dalek").
+    if previous_word == Some("on")
+        && matches!(previous_previous_word, Some("counter" | "counters"))
+        && start_word >= 4
+        && pieces[start_word - 5.min(start_word)..start_word - 2]
+            .iter()
+            .any(|piece| matches!(piece.text, "each" | "of"))
+    {
+        return false;
+    }
+
     if previous_word == Some("is") && previous_previous_word == Some("name") {
         return true;
     }
@@ -2802,6 +2817,13 @@ fn is_fully_parenthetical_line(line: &PreprocessedLine) -> bool {
 
 fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     document_grammar::parse_delayed_prior_object_dies_surface(tokens).is_some()
+        // CR 603.7: "When that creature dies, ..." (Xira) after an
+        // instruction naming that creature is a delayed trigger the ability
+        // creates, linked to that object, with no turn-based expiry.
+        || matches!(
+            crate::lexer::token_word_refs(tokens).as_slice(),
+            ["when", "that", "creature" | "permanent", "dies", ..]
+        ) && tokens.get(4).is_some_and(|token| token.is_comma())
 }
 
 fn is_delayed_when_that_leaves_battlefield_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -2891,7 +2913,12 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
                 // CR 603.12: "When you win the flip, ..." / "When you lose
                 // the flip, ..." (Breeches, the Blastmaker) are reflexive
                 // triggers on the preceding coin flip.
-                || is_reflexive_flip_result_followup_sentence(sentence_tokens);
+                || is_reflexive_flip_result_followup_sentence(sentence_tokens)
+                // "At the beginning of that combat, ..." (Moraug) names the
+                // combat the preceding instruction adds: a delayed trigger of
+                // this ability, never a sibling "each combat" ability.
+                || crate::lexer::parser_token_word_refs(sentence_tokens)
+                    .starts_with(&["at", "the", "beginning", "of", "that", "combat"]);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty()
@@ -3107,7 +3134,37 @@ fn try_parse_labeled_line_dispatch(
         // untyped subject `this` before the static grammar sees it.
         // Max speed carries a gameplay condition, so retain the dedicated
         // labeled dispatch below instead of treating it as presentation only.
+        // "Fateful hour — If you have 5 or less life, you can't lose life this
+        // turn, ..." (Courageous Resolve) on an instant is a resolving one-turn
+        // effect; the statement reader below owns it before any static probe.
+        let one_turn_spell_statement = matches!(
+            document_grammar::parse_nonpermanent_statement_surface(&body_line.tokens),
+            Some(document_grammar::NonpermanentStatementSurface::UntilEndOfTurn)
+        ) && should_prefer_statement_before_static_for_nonpermanent_spell(
+            preprocessed,
+            &body_line.tokens,
+        );
+        if one_turn_spell_statement
+            && looks_like_ability_word_label(label_tokens, false)
+            && let Ok(Some(mut statement_line)) = recognize_statement_line(&body_line)
+        {
+            apply_labeled_statement_surface_facts(
+                &mut statement_line,
+                line,
+                Some(PresentationLabel::AbilityWord(label.clone())),
+            );
+            let (statement_line, next_idx) = extend_statement_line_with_result_followups(
+                &preprocessed.items,
+                idx,
+                statement_line,
+            );
+            return Ok(Some(LineDispatchResult::single(
+                RecognizedLine::Statement(statement_line),
+                next_idx,
+            )));
+        }
         if looks_like_ability_word_label(label_tokens, false)
+            && !one_turn_spell_statement
             && !label.eq_ignore_ascii_case("max speed")
             && (!looks_like_leading_conditional_self_replacement(&body_line.tokens)
                 || is_case_ability_label(label_tokens))

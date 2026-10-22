@@ -351,6 +351,7 @@ fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
         | PredicateAst::TaggedObjectIsTopOfLibrary { .. }
         | PredicateAst::TargetWasKicked
         | PredicateAst::TargetPaidLabel(_)
+        | PredicateAst::ThisSpellCastOrderThisGame(_)
         | PredicateAst::TargetSpellCastOrderThisTurn(_)
         | PredicateAst::TargetSpellControllerIsPoisoned
         | PredicateAst::TargetSpellNoManaSpentToCast

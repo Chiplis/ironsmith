@@ -74,6 +74,15 @@ pub(in crate::compiled_text) fn describe_rounded_token_damage_program(
 ) -> Option<String> {
     effect_lists::describe_rounded_token_damage(effects)
 }
+/// Cross-segment shapes whose later instruction refers to what an earlier
+/// segment established (targets chosen, an extra turn created).
+pub(in crate::compiled_text) fn describe_cross_segment_reference_program(
+    effects: &[Effect],
+) -> Option<String> {
+    let refs = effects.iter().collect::<Vec<_>>();
+    continuous_and_choices::describe_target_opponent_create_tokens_with_count(&refs)
+        .or_else(|| effect_lists::describe_extra_turn_bound_end_step(effects))
+}
 pub(in crate::compiled_text) fn describe_least_count_equalization_program(
     effects: &[Effect],
 ) -> Option<String> {

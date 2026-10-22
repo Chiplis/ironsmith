@@ -102,6 +102,7 @@ fn materialize_named_creator_source_in_value(
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::CommanderCastCountOf(spec)
         | Value::CountersOn(spec, _) => materialize_named_creator_source_spec(spec, source),
         Value::ManaSymbolsInManaCostOf { spec, .. } => {
             materialize_named_creator_source_spec(spec, source)
@@ -745,6 +746,22 @@ fn commit_token_original(
         ));
     }
     created_ids.extend(additional_ids);
+    // CR 508.1d: "tokens that attack that opponent this turn if able".
+    if let Some(player_filter) = &effect.must_attack_player_this_turn
+        && let Ok(player) = resolve_player_filter(game, player_filter, ctx)
+    {
+        let turn = game.turn.turn_number;
+        for &id in &created_ids {
+            if game
+                .object(id)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+            {
+                game.effect_store
+                    .attack_player_requirements
+                    .push((id, player, turn));
+            }
+        }
+    }
     let cleanup = schedule_token_batch_cleanup_with_outputs(
         game, ctx, &created_ids, controller_id, cleanup_options,
     )?;

@@ -594,6 +594,11 @@ pub enum StaticAbilityId {
     /// Mandatory public reveal of every card drawn by matching players.
     RevealCardsDrawn,
     ExtraPlanarDieIgnoreOne,
+    /// "As this Equipment becomes attached to a creature, choose an exiled
+    /// creature card used to craft this Equipment." (Dinosaur Headdress):
+    /// each attachment records one craft material (CR 702.167c) as this
+    /// source's chosen object; appended for wire compatibility.
+    ChooseCraftMaterialAsBecomesAttached,
 }
 
 impl StaticAbilityId {
@@ -811,6 +816,7 @@ impl StaticAbilityId {
             | ChooseColorAsEnters
             | ChooseColorAsBecomesAttached
             | ChooseCreatureCardNameAndTypeAsBecomesAttached
+            | ChooseCraftMaterialAsBecomesAttached
             | ChoosePlayerAsEnters
             | NoteLifeTotalAsEnters
             | DiscardHandAsEnters

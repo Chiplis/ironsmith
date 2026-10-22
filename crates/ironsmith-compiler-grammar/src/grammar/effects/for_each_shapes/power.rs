@@ -94,6 +94,10 @@ fn has_shared_gain_tail(tokens: &[OwnedLexToken]) -> bool {
         trim_edge_punctuation_tokens(tokens),
         (
             winnow::combinator::opt(primitives::kw("and")),
+            // "..., it has base power and toughness 5/5, and it gains ..."
+            // (Tenth District Hero): the repeated pronoun names the same
+            // shared subject.
+            winnow::combinator::opt(alt((primitives::kw("it"), primitives::kw("they")))),
             alt((
                 primitives::kw("gain"),
                 primitives::kw("gains"),

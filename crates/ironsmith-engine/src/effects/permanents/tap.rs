@@ -22,6 +22,8 @@ pub(crate) struct TapAction {
     actor: crate::ids::PlayerId,
     provenance: crate::provenance::ProvNodeId,
     attack_declaration: bool,
+    /// The ability source whose cost these taps pay.
+    cost_source: Option<crate::ids::ObjectId>,
 }
 
 impl TapAction {
@@ -39,7 +41,14 @@ impl TapAction {
             actor,
             provenance,
             attack_declaration: false,
+            cost_source: None,
         })
+    }
+
+    /// Record the ability source whose cost this batch pays.
+    pub(crate) fn paying_cost_of(mut self, source: Option<crate::ids::ObjectId>) -> Self {
+        self.cost_source = source;
+        self
     }
 
     /// Mark every tap in this batch as an attack-declaration tap (CR 508.1f).
@@ -83,6 +92,7 @@ impl TapAction {
         event.snapshot = ObjectSnapshot::try_from_object_id(game, id)?;
         event.cost_kind = self.cost_kind.clone();
         event.attack_declaration = self.attack_declaration;
+        event.cost_source = self.cost_source;
         self.events.push(TriggerEvent::new_with_provenance(
             event,
             event_provenance,
@@ -177,7 +187,9 @@ fn commit_tap_cost_objects_for_kind(
                 return Ok(EffectOutcome::count(0));
             }
         }
-        let mut action = TapAction::new(game, ctx.controller, ctx.provenance)?.with_cost_kind(cost_kind);
+        let mut action = TapAction::new(game, ctx.controller, ctx.provenance)?
+            .with_cost_kind(cost_kind)
+            .paying_cost_of(Some(ctx.source));
         for id in objects {
             if !action.tap(game, *id)? {
                 return Err(ExecutionError::Impossible(
@@ -243,7 +255,9 @@ impl EffectExecutor for TapEffect {
             }
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             // The original tap batch begins after its mandatory face-up actions.
-            let mut action = TapAction::new(game, actor, ctx.provenance)?;
+            let cost_source = (ctx.cause.cause_type == crate::events::cause::CauseType::Cost)
+                .then_some(ctx.source);
+            let mut action = TapAction::new(game, actor, ctx.provenance)?.paying_cost_of(cost_source);
             let result_policy = if self.target.is_target() && self.target.is_single() {
                 ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
             } else { ObjectApplyResultPolicy::CountApplied };

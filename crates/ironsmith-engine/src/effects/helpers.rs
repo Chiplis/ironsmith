@@ -4867,7 +4867,17 @@ pub(crate) fn resolve_player_filter_to_list(
             .players
             .iter()
             .filter(|player| player.is_in_game())
-            .filter(|player| crate::filter::player_turn_history_matches(game, player.id, *history))
+            .filter(|player| {
+                if *history == ironsmith_core::PlayerTurnHistoryFilter::AttackedYouOrYourPlaneswalker {
+                    crate::filter::player_attacked_you_or_your_planeswalker_this_turn(
+                        game,
+                        player.id,
+                        ctx.controller,
+                    )
+                } else {
+                    crate::filter::player_turn_history_matches(game, player.id, *history)
+                }
+            })
             .map(|player| player.id)
             .collect()),
         PlayerFilter::CastCardTypeThisTurn(card_type) => Ok(game

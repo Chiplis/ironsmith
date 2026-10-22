@@ -171,7 +171,7 @@ pub(super) fn apply_triggered_presentation_label(
             }
         }
         PresentationLabel::Keyword(PresentationKeyword::Recover(cost)) => {
-            format!("Recover {cost}")
+            super::abilities_and_costs::recover_keyword_text(triggered, cost)
         }
         PresentationLabel::Keyword(PresentationKeyword::Firebending(amount)) => {
             format!("Firebending {amount}")
@@ -1116,6 +1116,13 @@ fn describe_dynamic_mana_cost_with_target(
     {
         return "its mana cost".to_string();
     }
+    if let Some((printed, per, count)) = dynamic.reduced_for_each_parts() {
+        return format!(
+            "{}. This cost is reduced by {{{per}}} for each {}",
+            printed.to_oracle(),
+            describe_payment_each_value(count)
+        );
+    }
     if matches!(
         dynamic.display_hint,
         ironsmith_core::DynamicManaDisplayHint::ManaEqualTo
@@ -1471,6 +1478,10 @@ pub(super) fn describe_payment_each_value(value: &Value) -> String {
             "card type among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::PermanentTypesAmong(filter) => format!(
+            "permanent type among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::ColorsAmong(filter) => describe_colors_among(filter),
         Value::DistinctPowers(filter) => format!(
             "different power among {}",
@@ -1633,6 +1644,28 @@ fn describe_cost_component_parts_with_target(
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < costs.len() {
+        // "behold two creatures of that type" (Celestial Reunion): choosing
+        // creatures you control or revealing cards from your hand of the
+        // chosen type.
+        if let Some(choose) = costs[idx]
+            .effect_ref()
+            .map(unwrap_basic_tag_wrappers)
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && choose.tag.as_str() == "beheld_chosen_type"
+            && choose.count.max == Some(choose.count.min)
+        {
+            let count = choose.count.min;
+            parts.push(if count == 1 {
+                "behold a creature of that type".to_string()
+            } else {
+                format!(
+                    "behold {} creatures of that type",
+                    small_number_word(count as u32).unwrap_or_else(|| count.to_string())
+                )
+            });
+            idx += 1;
+            continue;
+        }
         if idx + 1 < costs.len()
             && let Some(evidence) = describe_collect_evidence_cost(&costs[idx], &costs[idx + 1])
         {
@@ -2495,6 +2528,14 @@ pub(super) fn title_case_named_card_selection(selection: &str) -> String {
     // card name ("cards with the chosen name").
     if let Some(rest) = name.strip_prefix("{chosen name}") {
         return format!("{head} with the chosen name{rest}");
+    }
+    // "not named Tiamat with different names": the set qualifier is not part
+    // of the card name.
+    if let Some((name, rest)) = name.split_once(" with different names") {
+        return format!(
+            "{head} named {} with different names{rest}",
+            title_case_card_name_fragment(name)
+        );
     }
     format!("{head} named {}", title_case_card_name_fragment(name))
 }
@@ -3695,6 +3736,17 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
             pluralize_noun_phrase(head)
         );
     }
+    // A post-noun "blocked by ..." participle qualifies the head noun
+    // ("creature blocked by one of those creatures this turn").
+    if let Some((head, tail)) = base.split_once(" blocked by ")
+        && !head.contains(' ')
+        && !head.is_empty()
+    {
+        return format!(
+            "{} blocked by {tail}{trailing}",
+            pluralize_noun_phrase(head)
+        );
+    }
     // Coordinated color adjectives modify the following noun; they are not
     // separate nouns to pluralize ("black or red card" -> "black or red cards").
     let words: Vec<&str> = base.split_whitespace().collect();
@@ -3868,6 +3920,7 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     for suffix in [
         " you both own and control",
         " you control but don't own",
+        " they control but don't own",
         " that player both owns and controls",
         " the active player controls",
     ] {
@@ -4016,6 +4069,7 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         " of the chosen type",
         " of the chosen color",
         " that aren't of the chosen type",
+        " with different names",
     ] {
         if let Some(head) = base.strip_suffix(suffix) {
             let head = head.trim_end();
@@ -4024,6 +4078,15 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
             let head_plural = pluralize_noun_phrase(head);
             return format!("{head_plural}{suffix}{trailing}");
         }
+    }
+    // "Dragon cards not named Tiamat": the noun pluralizes, not "not".
+    if let Some((head, tail)) = base.split_once(" not named ") {
+        return format!(
+            "{} not named {}{}",
+            pluralize_noun_phrase(head.trim()),
+            title_case_card_name_fragment(tail.trim()),
+            trailing
+        );
     }
     if let Some((head, tail)) = base.split_once(" named ") {
         return format!(
@@ -4204,6 +4267,13 @@ pub(in crate::compiled_text) fn describe_for_players_may_choose_then_destroy_cho
         _ => return None,
     };
     let chosen = describe_choose_selection(choose);
+    // "starting with you, each player may choose ..." (Druid of
+    // Purification): the authored turn order of the choices.
+    let subject = if for_players.starting_with_controller {
+        format!("Starting with you, {}", lowercase_first(subject))
+    } else {
+        subject.to_string()
+    };
     Some(format!(
         "{subject} may choose {chosen}. Destroy each permanent chosen this way"
     ))
@@ -4329,6 +4399,7 @@ mod random_participant_choice_destroy_tests {
                 starting_with_controller: false,
                 sequential: false,
                 stop_after_first_happened: false,
+                announcement_condition: None,
             },
             destroy,
         )
@@ -6417,13 +6488,16 @@ pub(super) fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String 
         && count_filter == sacrifice.filter
         && let [constraint] = sacrifice.filter.tagged_constraints.as_slice()
         && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-        && sacrifice.filter.zone.is_none()
+        // "Those players sacrifice those permanents" (Vaevictis Asmadi):
+        // a battlefield zone adds nothing to a set of tagged permanents.
+        && matches!(sacrifice.filter.zone, None | Some(Zone::Battlefield))
         && sacrifice.filter.controller.is_none()
     {
         // "sacrifice those tokens": every object an earlier effect tagged,
         // not every object matching the remaining characteristics.
         let mut base = sacrifice.filter.clone();
         base.tagged_constraints.clear();
+        base.zone = None;
         let noun = base.description();
         let noun = strip_leading_article(&noun);
         let created_tokens = constraint.tag.as_str().starts_with("created_");
@@ -6622,8 +6696,13 @@ pub(crate) fn describe_choose_any_number_then_remove_counter_from_each(
     choose: &crate::effects::ChooseObjectsEffect,
     for_each: &crate::effects::ForEachTaggedEffect,
 ) -> Option<String> {
+    // "from each of two creatures you control" (Dyadrine) is the same
+    // choose-then-remove program with an exact count.
+    let exact_many = choose.count.max == Some(choose.count.min)
+        && choose.count.min > 1
+        && !choose.count.dynamic_x;
     if choose.is_search
-        || choose.count != ChoiceCount::any_number()
+        || (choose.count != ChoiceCount::any_number() && !exact_many)
         || choose.count_value.is_some()
         || choose.chooser != PlayerFilter::You
         || for_each.tag != choose.tag
@@ -7512,6 +7591,25 @@ pub(crate) fn describe_milled_graveyard_count_filter(filter: &ObjectFilter) -> O
 }
 
 pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
+    // "put a +1/+1 counter on each of them" (Vrestin, Tamiyo): an untyped
+    // iteration over the triggering batch is that batch, not every
+    // permanent.
+    if let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.tag.as_str() == "triggering"
+        && matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                | crate::filter::TaggedOpbjectRelation::SameObjectId
+        )
+        && (ObjectFilter {
+            tagged_constraints: Vec::new(),
+            zone: None,
+            union_surface: Default::default(),
+            ..filter.clone()
+        }) == ObjectFilter::default()
+    {
+        return "of them".to_string();
+    }
     if filter.prior_effect_action_surface().is_some() && !filter.tagged_constraints.is_empty() {
         return describe_for_each_count_filter(filter);
     }
@@ -7546,7 +7644,17 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
         .take()
         .map(|name| title_case_card_name_fragment(&name));
 
-    let description = base_filter.description();
+    // Objects a hidden-zone action produced ("revealed this way",
+    // "discarded this way") are cards; an untyped zone-unrestricted filter
+    // over them must not take the battlefield noun "permanent".
+    let description = if base_filter.zone.is_none()
+        && describe_tagged_this_way_action(filter)
+            .is_some_and(|action| matches!(action, "revealed" | "discarded" | "drawn" | "milled"))
+    {
+        base_filter.description_with_default_noun("card")
+    } else {
+        base_filter.description()
+    };
     let mut base = strip_indefinite_article(&description).to_string();
     if let Some(name) = explicit_name {
         base = if let Some((noun, zone)) = base.split_once(" in ") {

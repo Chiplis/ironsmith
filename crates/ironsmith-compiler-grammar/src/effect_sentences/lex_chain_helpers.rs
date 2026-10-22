@@ -50,6 +50,24 @@ pub fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedL
     chain_grammar::split_effect_chain_on_and_tokens(tokens, true)
 }
 
+/// "put a +1/+1 counter on that creature and each other creature you control
+/// that shares a creature type with it" (Holy Frazzle-Cannon): a verbless
+/// "each ..." arm after a counter placement's "on <recipient>" is a second
+/// recipient of that placement, not a new quantified clause.
+pub fn is_counter_placement_recipient_arm_lexed(
+    previous: &[OwnedLexToken],
+    segment: &[OwnedLexToken],
+) -> bool {
+    previous.first().is_some_and(|token| token.is_any_word(&["put", "puts"]))
+        && previous
+            .iter()
+            .position(|token| token.is_any_word(&["counter", "counters"]))
+            .is_some_and(|counter| previous[counter + 1..].iter().any(|token| token.is_word("on")))
+        && segment.first().is_some_and(|token| token.is_word("each"))
+        && !segment.get(1).is_some_and(|token| token.is_word("of"))
+        && find_verb_lexed(segment).is_none()
+}
+
 pub fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::has_extended_effect_head_tokens(tokens)
 }
@@ -119,6 +137,7 @@ fn lower_chain_verb(kind: chain_grammar::ChainVerbKind) -> Verb {
         chain_grammar::ChainVerbKind::Sacrifice => Verb::Sacrifice,
         chain_grammar::ChainVerbKind::Create => Verb::Create,
         chain_grammar::ChainVerbKind::Investigate => Verb::Investigate,
+        chain_grammar::ChainVerbKind::Assimilate => Verb::Assimilate,
         chain_grammar::ChainVerbKind::Proliferate => Verb::Proliferate,
         chain_grammar::ChainVerbKind::Tap => Verb::Tap,
         chain_grammar::ChainVerbKind::Unattach => Verb::Unattach,

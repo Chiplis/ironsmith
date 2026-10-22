@@ -183,6 +183,7 @@ pub fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
         PossessivePlayerReference::You => PlayerFilter::You,
         PossessivePlayerReference::Opponent => PlayerFilter::Opponent,
         PossessivePlayerReference::Any => PlayerFilter::Any,
+        PossessivePlayerReference::NotYou => PlayerFilter::NotYou,
         // Unbound inside the trigger; a granting resolution binds it (see
         // `bind_granted_trigger_outer_player` in lowering).
         PossessivePlayerReference::ThatPlayer => PlayerFilter::IteratedPlayer,
@@ -713,6 +714,36 @@ pub fn has_draw_except_first_in_draw_step_pattern(words: &[&str]) -> bool {
     trigger_subject_grammar::parse_draw_turn_surface_facts(words).except_first_in_draw_step
 }
 
+/// "a permanent spell using mana produced by Tecutlan": the typed provenance
+/// requirement on the mana spent to cast the spell (the clause after the
+/// spell noun).
+pub(crate) fn spell_cast_using_mana_source_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(using) = tokens.iter().enumerate().position(|(index, token)| {
+        token.is_word("using")
+            && tokens.get(index + 1).is_some_and(|next| next.is_word("mana"))
+            && tokens.get(index + 2).is_some_and(|next| next.is_word("produced"))
+            && tokens.get(index + 3).is_some_and(|next| next.is_word("by"))
+    }) else {
+        return Ok(None);
+    };
+    let source = trim_commas(&tokens[using + 4..]);
+    let end = source.iter().position(OwnedLexToken::is_comma).unwrap_or(source.len());
+    let source = &source[..end];
+    if source.is_empty() {
+        return Ok(None);
+    }
+    let source_words = crate::lexer::token_word_refs(source);
+    Ok(Some(
+        if let Some(surface) = crate::util::this_source_surface_for_words(&source_words) {
+            ObjectFilter::source_with_surface(surface)
+        } else {
+            crate::object_filters::parse_object_filter_lexed(source, false)?
+        },
+    ))
+}
+
 pub fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
@@ -800,8 +831,14 @@ pub fn parse_spell_activity_trigger(
         if matches!(actor, PlayerFilter::Any) {
             actor = PlayerFilter::Active;
             during_turn = None;
-        } else if during_turn.is_none() {
-            during_turn = Some(actor.clone());
+        } else if during_turn.is_none() || !matches!(actor, PlayerFilter::You) {
+            // "an opponent casts a spell during their turn": the caster's
+            // own turn, not any turn of a player matching the actor filter.
+            during_turn = Some(if matches!(actor, PlayerFilter::You) {
+                actor.clone()
+            } else {
+                PlayerFilter::IteratedPlayer
+            });
         }
     }
     let exact_spells_this_turn = activity_facts.exact_spells_this_turn;
@@ -880,6 +917,7 @@ pub fn parse_spell_activity_trigger(
                         SpellOriginSurface::Graveyard => Zone::Graveyard,
                         SpellOriginSurface::Exile => Zone::Exile,
                         SpellOriginSurface::Hand => Zone::Hand,
+                        SpellOriginSurface::Library => Zone::Library,
                     };
                     if !filter_facts.has_spell_noun {
                         return None;
@@ -911,6 +949,23 @@ pub fn parse_spell_activity_trigger(
                 if filter_facts.chosen_color_qualifier {
                     return Ok(Some(ObjectFilter::spell().of_chosen_color()));
                 }
+                // "your first instant or sorcery spell ...": the possessive
+                // ordinal is the cast-count qualifier (carried by SpellCast and
+                // the filter's ordinal fields), not part of the object noun.
+                // Left in place, the ordinal word splits a type union into
+                // unequal branches (only the last one keeping the spell noun
+                // and the cast-origin zone).
+                let ordinal_word = exact_spells_this_turn.and_then(ironsmith_core::ordinal_word);
+                let filter_tokens = match (filter_tokens, ordinal_word) {
+                    ([possessive, ordinal, rest @ ..], Some(ordinal_word))
+                        if (possessive.is_word("your") || possessive.is_word("their"))
+                            && ordinal.is_word(&ordinal_word)
+                            && rest.iter().any(|token| token.is_word("or")) =>
+                    {
+                        rest
+                    }
+                    _ => filter_tokens,
+                };
                 match parse_object_filter(filter_tokens, false) {
                     Ok(mut filter) => {
                         // A kicked spell records a paid optional cost; merely having
@@ -1053,6 +1108,7 @@ pub fn parse_spell_activity_trigger(
         let suffix_envelope =
             crate::grammar::trigger_subjects::parse_spell_filter_envelope(suffix_tokens);
         let mut filter_tokens = &suffix_tokens[..suffix_envelope.end];
+        let mana_source_filter = spell_cast_using_mana_source_filter(suffix_tokens)?;
         if filter_tokens.is_empty() {
             let prefix_tokens =
                 trigger_subject_grammar::trim_trailing_spell_auxiliary_tokens(&tokens[..cast]);
@@ -1093,7 +1149,7 @@ pub fn parse_spell_activity_trigger(
         }
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
-            mana_source_filter: None,
+            mana_source_filter,
             caster: actor,
             timing,
             during_turn,

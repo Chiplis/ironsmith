@@ -1135,6 +1135,7 @@ impl Effect {
             starting_with_controller: false,
             sequential: false,
             stop_after_first_happened: false,
+            announcement_condition: None,
         })
     }
 
@@ -1148,6 +1149,7 @@ impl Effect {
             starting_with_controller: true,
             sequential: false,
             stop_after_first_happened: false,
+            announcement_condition: None,
         })
     }
 
@@ -1158,6 +1160,7 @@ impl Effect {
             starting_with_controller: false,
             sequential: false,
             stop_after_first_happened: false,
+            announcement_condition: None,
         })
     }
 
@@ -1400,7 +1403,20 @@ impl Effect {
         Self::new(crate::effects::ReturnToHandEffect::with_spec(target.into()))
     }
 
-    pub fn repeat_effects(count: Value, effects: Vec<Effect>) -> Self {
+    pub fn repeat_effects(count: Value, mut effects: Vec<Effect>) -> Self {
+        // "Exile the top card of your library for each present vote. ...
+        // you may play the exiled cards" (Fateful Tempest): a lone repeated
+        // exile's result tag names every card exiled across the repetitions,
+        // not only the last repetition's card.
+        if let [only] = effects.as_mut_slice()
+            && let Some(exile) = only.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+            && !exile.moved_tags.is_empty()
+        {
+            let mut exile = exile.clone();
+            let moved = std::mem::take(&mut exile.moved_tags);
+            exile.accumulated_tags.extend(moved);
+            *only = Self::new(exile);
+        }
         Self::new(crate::effects::RepeatEffectsEffect::new(count, effects))
     }
 
@@ -2508,7 +2524,34 @@ impl Effect {
             alternative_cost,
             caster_land_mana_abilities_only: false,
             control_caster_while_spell_resolves: false,
+            required_zone: None,
+            required_spell: None,
         })
+    }
+
+    /// Restrict a cast-tagged effect to the zone its instruction names
+    /// ("cast it from your graveyard"). Other effects are returned unchanged.
+    /// CR 601.3e: restrict a cast-tagged effect to a spell matching `filter`.
+    pub fn with_cast_tagged_required_spell(self, filter: Option<crate::target::ObjectFilter>) -> Self {
+        let Some(filter) = filter else {
+            return self;
+        };
+        let Some(cast) = self.downcast_ref::<crate::effects::CastTaggedEffect>() else {
+            return self;
+        };
+        let mut cast = cast.clone();
+        cast.required_spell = Some(filter);
+        Self::new(cast)
+    }
+
+    pub fn with_cast_tagged_required_zone(self, zone: Option<crate::zone::Zone>) -> Self {
+        let Some(zone) = zone else {
+            return self;
+        };
+        let Some(cast) = self.downcast_ref::<crate::effects::CastTaggedEffect>() else {
+            return self;
+        };
+        Self::new(cast.clone().from_zone(zone))
     }
 
     /// Attach a resolving instruction's casting riders to a cast-tagged
@@ -3003,7 +3046,7 @@ mod payload_serialization_tests {
             };
             let concrete = crate::effects::ForPlayersEffect {
                 filter, effects: vec![Effect::draw(1)], sequential: false,
-                starting_with_controller: false, stop_after_first_happened: false,
+                starting_with_controller: false, stop_after_first_happened: false, announcement_condition: None,
             };
             let expected = serde_json::to_value(&concrete).unwrap();
             let serialized = serde_json::to_value(Effect::new(concrete)).unwrap();

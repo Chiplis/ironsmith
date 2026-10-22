@@ -75,7 +75,7 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
     use crate::effect::ChoiceCount;
-    use crate::filter::{ObjectFilter, ObjectFilterExt as _, PlayerFilter};
+    use crate::filter::{ObjectFilter, PlayerFilter};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::Object;
     use crate::zone::Zone;

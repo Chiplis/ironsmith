@@ -114,7 +114,11 @@ impl EffectExecutor for CastSourceEffect {
                 EffectOutcome::target_invalid(),
             ));
         }
-        if self.require_exile && source_obj.zone != Zone::Exile {
+        if (self.require_exile && source_obj.zone != Zone::Exile)
+            || self
+                .required_zone
+                .is_some_and(|zone| source_obj.zone != zone)
+        {
             if self.cast_other_face {
                 restore_other_face_after_failed_cast(
                     game,

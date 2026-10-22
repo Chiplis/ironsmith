@@ -312,6 +312,25 @@ fn parse_target_count_selector_modifier_lexed<'a>(input: &mut LexStream<'a>) -> 
             primitives::kw("legendary"),
         )),
         primitives::kw("basic"),
+        // "tap three untapped white creatures you control" (Gaze of
+        // Justice): a color adjective qualifies the counted selector too.
+        alt((
+            primitives::kw("white"),
+            primitives::kw("blue"),
+            primitives::kw("black"),
+            primitives::kw("red"),
+            primitives::kw("green"),
+            primitives::kw("colorless"),
+            primitives::kw("multicolored"),
+            primitives::kw("monocolored"),
+        )),
+        alt((
+            primitives::kw("nonwhite"),
+            primitives::kw("nonblue"),
+            primitives::kw("nonblack"),
+            primitives::kw("nonred"),
+            primitives::kw("nongreen"),
+        )),
     ))
     .void()
     .parse_next(input)

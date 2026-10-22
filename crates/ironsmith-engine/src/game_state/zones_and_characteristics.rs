@@ -293,7 +293,8 @@ impl GameState {
                     );
                 }
                 // Applied with the copiable values as the object entered.
-                ironsmith_core::EnterAsCopyFollowup::RetainOwnColors | ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics => {}
+                ironsmith_core::EnterAsCopyFollowup::RetainOwnColors | ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics
+                | ironsmith_core::EnterAsCopyFollowup::CountersFromCopiedPermanent => {}
                 ironsmith_core::EnterAsCopyFollowup::TapCopiedObjectFrozenWhileYouControlSource => {
                     // "When you do, tap the copied creature and it doesn't
                     // untap during its controller's untap step for as long as
@@ -3749,8 +3750,15 @@ impl GameState {
                             &mut copiable_values.ability_labels,
                         );
                     }
-                    std::sync::Arc::make_mut(&mut copiable_values.abilities)
-                        .extend(result.added_abilities.iter().cloned());
+                    for ability in &result.added_abilities {
+                        crate::static_abilities::add_copy_exception_ability(
+                            &mut copiable_values.abilities,
+                            &mut copiable_values.ability_labels,
+                            &mut copiable_values.compiled_card_text,
+                            ability.clone(),
+                            None,
+                        );
+                    }
                     if let Some((power, toughness)) = result.set_base_power_toughness {
                         copiable_values.power = Some(power);
                         copiable_values.toughness = Some(toughness);
@@ -3881,12 +3889,30 @@ impl GameState {
                     }
                 }
             }
-            for ability in &result.added_abilities {
-                self.install_authored_object_ability(
-                    new_id,
-                    ability.clone(),
-                    AuthoredAbilityDuplicatePolicy::PreserveAll,
-                );
+            if result.enters_as_copy_of.is_some() {
+                // CR 707.9b: "enters as a copy ... except it has X" — the
+                // granted ability is part of the copy's rules text too.
+                if let Some(new_obj) = self.object_mut(new_id) {
+                    let mut text = new_obj.compiled_card_text.to_string();
+                    for ability in &result.added_abilities {
+                        crate::static_abilities::add_copy_exception_ability(
+                            &mut new_obj.abilities,
+                            &mut new_obj.ability_labels,
+                            &mut text,
+                            ability.clone(),
+                            None,
+                        );
+                    }
+                    new_obj.compiled_card_text = text.into();
+                }
+            } else {
+                for ability in &result.added_abilities {
+                    self.install_authored_object_ability(
+                        new_id,
+                        ability.clone(),
+                        AuthoredAbilityDuplicatePolicy::PreserveAll,
+                    );
+                }
             }
             if let Some((power, toughness)) = result.set_base_power_toughness
                 && let Some(new_obj) = self.object_mut(new_id)
@@ -4524,7 +4550,7 @@ impl GameState {
     }
 
     // =========================================================================
-    // Zone Consistency Validation (Debug Only)
+    // Zone Consistency Validation
     // =========================================================================
 
     /// Validate that zone indexes are consistent with the canonical objects HashMap.
@@ -4534,8 +4560,8 @@ impl GameState {
     /// - Every object's zone field matches exactly one denormalized index
     /// - No ID appears in multiple zone indexes
     ///
-    /// Only runs in debug builds or paranoid invariant builds to avoid release performance impact.
-    #[cfg(any(debug_assertions, feature = "paranoid-invariants"))]
+    /// Available in all builds for explicit validation. Automatic invariant checks
+    /// remain limited to debug builds or paranoid invariant builds.
     pub fn validate_zone_consistency(&self) -> Result<(), String> {
         use std::collections::HashSet;
 

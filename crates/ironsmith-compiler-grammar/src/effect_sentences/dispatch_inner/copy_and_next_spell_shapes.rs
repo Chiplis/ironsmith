@@ -200,9 +200,59 @@ fn delayed_that_deals_combat_damage_to_player_trigger_from_core(
     })
 }
 
+/// "When you next cast a spell with {X} in its mana cost or activate an
+/// ability with {X} in its activation cost this turn" (Magus Lucea Kane): one
+/// delayed trigger over either stack object, so "copy that spell or ability"
+/// copies whichever one triggered it.
+fn next_cast_spell_or_x_cost_ability_trigger_from_core(
+    trigger_core_tokens: &[OwnedLexToken],
+) -> Option<TriggerSpec> {
+    let tokens = trim_edge_punctuation(trigger_core_tokens);
+    let [you, next, cast, ..] = tokens.as_slice() else {
+        return None;
+    };
+    if !you.is_word("you") || !next.is_word("next") || !cast.is_word("cast") {
+        return None;
+    }
+    let or_idx = tokens.iter().rposition(|token| token.is_word("or"))?;
+    let tail = &tokens[or_idx + 1..];
+    let tail_words = crate::lexer::token_word_refs(tail);
+    let x_tail = match tail_words.as_slice() {
+        ["activate", "an", "ability", "with", rest @ ..] => rest,
+        _ => return None,
+    };
+    if !matches!(x_tail, ["in", "its", "activation", "cost"] | ["x", "in", "its", "activation", "cost"])
+        || !crate::lexer::render_token_slice(tail).to_ascii_lowercase().contains("{x}")
+    {
+        return None;
+    }
+    let mut spell_tokens = vec![you.clone()];
+    spell_tokens.extend_from_slice(&tokens[2..or_idx]);
+    let spell = parse_trigger_clause_lexed(&spell_tokens).ok()?;
+    if !matches!(spell, TriggerSpec::SpellCast { .. }) {
+        return None;
+    }
+    let mut ability_filter = ObjectFilter::default();
+    ability_filter.has_x_in_cost = true;
+    Some(TriggerSpec::Either(
+        Box::new(spell),
+        Box::new(TriggerSpec::AbilityActivated {
+            activator: PlayerFilter::You,
+            filter: ability_filter,
+            non_mana_only: false,
+            loyalty_only: false,
+            activation_cost_has_tap: None,
+        }),
+    ))
+}
+
 fn next_cast_instant_sorcery_or_loyalty_trigger_from_core(
     trigger_core_tokens: &[OwnedLexToken],
 ) -> Option<TriggerSpec> {
+    if let Some(trigger) = next_cast_spell_or_x_cost_ability_trigger_from_core(trigger_core_tokens)
+    {
+        return Some(trigger);
+    }
     if !delayed_shapes::is_next_cast_spell_or_loyalty_shape(trigger_core_tokens) {
         return None;
     }
@@ -918,6 +968,23 @@ pub fn parse_sentence_delayed_trigger_this_turn(
     }
 
     let one_shot = delayed_trigger_is_one_shot(trigger_clause);
+    // "When that creature deals combat damage to a player this turn, ..."
+    // (Optimus Prime): the stated duration makes the delayed trigger repeat
+    // (CR 603.7c), but its printed intro word is still "When".
+    let trigger = if !one_shot
+        && LexedClause::new(tokens)
+            .trimmed()
+            .tokens()
+            .first()
+            .is_some_and(|token| token.is_word("when"))
+    {
+        TriggerSpec::WithIntro {
+            intro: crate::model::ast::TriggerIntroSurfaceAst::When,
+            trigger: Box::new(trigger),
+        }
+    } else {
+        trigger
+    };
     let delayed = EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger,
         effects: delayed_effects,

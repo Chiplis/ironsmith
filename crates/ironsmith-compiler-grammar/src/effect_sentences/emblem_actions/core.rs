@@ -11,7 +11,7 @@ pub fn parse_emblem_action(
                 tag: crate::tag::CompilerReferenceTag::Damaged0.bind(),
                 effects: vec![EffectAst::subject_verb_create_emblem(
                     PlayerAst::Implicit,
-                    parse_emblem_description_ast(shape),
+                    parse_emblem_description_ast(shape)?,
                 )],
             },
         ));
@@ -25,7 +25,7 @@ pub fn parse_emblem_action(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     Some(EffectAst::subject_verb_create_emblem(
         player,
-        parse_emblem_description_ast(shape),
+        parse_emblem_description_ast(shape)?,
     ))
 }
 
@@ -106,7 +106,7 @@ pub fn parse_unquoted_emblem_action(
         requires_whole_sentence_dispatch: false,
     };
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-    let emblem = EffectAst::subject_verb_create_emblem(player, parse_emblem_description_ast(shape));
+    let emblem = EffectAst::subject_verb_create_emblem(player, parse_emblem_description_ast(shape)?);
     let Some(trailing_tokens) = trailing_tokens else {
         return Some(emblem);
     };

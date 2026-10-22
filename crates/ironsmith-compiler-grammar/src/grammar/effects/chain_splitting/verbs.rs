@@ -110,6 +110,7 @@ fn parse_chain_verb_kind(input: &mut &[&str]) -> WResult<ChainVerbKind> {
         "sacrifices" | "sacrifice" => ChainVerbKind::Sacrifice,
         "creates" | "create" => ChainVerbKind::Create,
         "investigates" | "investigate" => ChainVerbKind::Investigate,
+        "assimilate" | "assimilates" => ChainVerbKind::Assimilate,
         "proliferates" | "proliferate" => ChainVerbKind::Proliferate,
         "taps" | "tap" => ChainVerbKind::Tap,
         "unattaches" | "unattach" => ChainVerbKind::Unattach,

@@ -372,7 +372,11 @@ pub(super) fn compile_exile_top_of_library(
     let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
     let resolved_count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
     let player_filter = subject.clone_player_filter();
-    let exiled_is_plural = !matches!(&resolved_count, crate::effect::Value::Fixed(1));
+    // An exile that also appends to an accumulated collection ("exile it.
+    // If you do, exile the top card ... one of those cards", Flameskull)
+    // leaves a plural collection even when it moves one card.
+    let exiled_is_plural = !matches!(&resolved_count, crate::effect::Value::Fixed(1))
+        || !accumulated_tags.is_empty();
     let mut effect =
         crate::effects::ExileTopOfLibraryEffect::new(resolved_count, player_filter.clone());
     if let Some(surface) = surface {
@@ -391,8 +395,12 @@ pub(super) fn compile_exile_top_of_library(
     }
     if let Some(tag) = tags.first().or_else(|| accumulated_tags.first()) {
         let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-        if is_sentence_helper_exiled_collection_tag(&resolved_tag) {
-            ctx.last_exiled_collection_tag = Some(resolved_tag.clone());
+        let collection_tag = match accumulated_tags.first() {
+            Some(accumulated) => resolve_it_tag_key(accumulated, &current_reference_env(ctx))?,
+            None => resolved_tag.clone(),
+        };
+        if is_sentence_helper_exiled_collection_tag(&collection_tag) {
+            ctx.last_exiled_collection_tag = Some(collection_tag);
         }
         ctx.last_exiled_collection_is_plural = exiled_is_plural;
         // An accumulated tag names a union being built across several
@@ -959,6 +967,9 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // "each Merfolk creature you control explores": every matching
+            // object explores, not one chosen object.
+            let spec = quantified_object_spec_as_all(spec);
             let effect =
                 tag_object_target_effect(Effect::explore(spec.clone()), &spec, ctx, "explored");
             Ok((vec![effect], choices))
@@ -2251,19 +2262,20 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterCounterPlacementReplacement {
                 filter,
+                actor,
                 counter_type,
                 additional,
                 mode,
             },
         ) => {
-            let effect = Effect::new(
-                crate::effects::RegisterCounterPlacementReplacementEffect::new(
+            let mut replacement = crate::effects::RegisterCounterPlacementReplacementEffect::new(
                     filter.clone(),
                     *counter_type,
                     *additional,
                     *mode,
-                ),
-            );
+                );
+            replacement.actor = actor.clone();
+            let effect = Effect::new(replacement);
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission {

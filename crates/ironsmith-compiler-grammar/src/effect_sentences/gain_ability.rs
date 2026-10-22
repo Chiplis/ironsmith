@@ -1619,6 +1619,18 @@ pub fn parse_granted_abilities_for_token_definition(
 
         let (abilities, is_choice) =
             parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
+        if !is_choice && abilities.is_empty() && !mixed_pronoun_list {
+            // "Doctor spells you cast cost {1} less to cast." (The Eleventh
+            // Hour's Human token): a complete static rule of the token whose
+            // subject is not the token itself is still one granted ability.
+            if let Some(ability) =
+                crate::keyword_static::parse_spells_cost_modifier_line(ability_tokens)?
+            {
+                return Ok(vec![GrantedAbilityAst::StaticAbility(Box::new(
+                    StaticAbilityAst::Static(ability),
+                ))]);
+            }
+        }
         Ok(if is_choice { Vec::new() } else { abilities })
     })()
 }
@@ -1792,6 +1804,11 @@ fn subject_verb_grant_abilities_all_with_optional_condition(
 /// "the creature you control", "the artifact an opponent controls": a
 /// definite, singular object description with at most a control qualifier.
 fn is_definite_singular_object_subject(words: &[&str]) -> bool {
+    // "the other creature" (Mammoth Harness): the trigger's other
+    // participant, read by the target grammar as that one reference.
+    if words == ["the", "other", "creature"] {
+        return true;
+    }
     let ["the", noun, tail @ ..] = words else {
         return false;
     };
@@ -2946,6 +2963,17 @@ pub fn parse_pronoun_ability_and_type_pair(
 pub fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "for each {R}{R} spent to cast it, it gets +1/+0 and gains trample and
+    // haste" (Bladecoil Serpent): the multiplier owns the whole grant, which
+    // the dedicated for-each reading repeats.
+    if crate::grammar::effects::for_each_shapes::parse_for_each_mana_symbol_spent_effect_shape(tokens)
+        .is_some()
+    {
+        return Ok(None);
+    }
+    if let Some(effect) = parse_player_no_maximum_hand_size_while_controlled(tokens) {
+        return Ok(Some(vec![effect]));
+    }
     // A mixed ability/type pair: the "it has ... and is ..." form is read here
     // (follow-up sentences reach this reader); the contracted "it's ... and
     // has ..." form is owned by the top-level copular-animation reading.
@@ -2962,6 +2990,38 @@ pub fn parse_gain_ability_sentence(
         return Ok(Some(effects));
     }
     parse_gain_ability_sentence_inner(tokens)
+}
+
+/// "You have no maximum hand size for as long as you control this Saga" (The
+/// Great Synthesis): a rule change for the player lasting while the source
+/// stays under that player's control (CR 611.2b), not an ability granted to
+/// the source, so removing the source's abilities can't end it early.
+fn parse_player_no_maximum_hand_size_while_controlled(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    if tokens.iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    let words = crate::lexer::token_word_refs(tokens);
+    let duration_start = words
+        .windows(6)
+        .position(|window| window == ["for", "as", "long", "as", "you", "control"])?;
+    if words.len() != duration_start + 8 || words[duration_start + 6] != "this" {
+        return None;
+    }
+    let player = crate::grammar::abilities::no_maximum_hand_size_player(&tokens[..duration_start])?;
+    Some(EffectAst::subject_verb_cant_starting(
+        crate::effect::Restriction::NoMaximumHandSize(player),
+        crate::effect::Until::ForAsLongAs(
+            ironsmith_core::ContinuousDurationPredicate::ObjectControlledBy {
+                object: ironsmith_core::ContinuousDurationObject::Source,
+                player: ironsmith_core::ContinuousDurationPlayer::EffectController,
+            },
+        ),
+        crate::effect::RestrictionStart::Immediate,
+        None,
+    ))
 }
 
 pub(crate) fn parse_keyword_loss_with_prohibition(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3073,20 +3133,11 @@ fn parse_complete_simple_source_gain_ability_sentence(
         }
         tagged_subject_target(&subject_tokens)
     };
-    let source_target = matches!(&target, TargetAst::Source(_))
-        || matches!(&target, TargetAst::Object(filter, None, _) if filter.source);
-    if authored_as_quoted_ability && source_target {
-        let restriction_tokens = trim_edge_punctuation_and_quotes(ability_tokens);
-        if let Some(parsed) = crate::activation_and_restrictions::activation_restriction_clauses::
-            parse_negated_object_restriction_clause(&restriction_tokens)?
-        {
-            return Ok(Some(vec![EffectAst::subject_verb_cant(
-                parsed.restriction,
-                shape.duration,
-                None,
-            )]));
-        }
-    }
+    // A quoted restriction ("gains \"This creature can't be blocked.\"",
+    // Surge Engine) is an ability the object gains (CR 113.1a), not a
+    // resolving restriction: it ends if the object later loses its
+    // abilities, so it stays an added ability rather than a CantEffect.
+    let _ = authored_as_quoted_ability;
     let clause_words = crate::lexer::token_word_refs(tokens);
     let (abilities, is_choice) =
         parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, true)?;
@@ -3306,7 +3357,12 @@ pub(crate) fn split_anaphor_pair_subject_sentences(
             &[&["it"], &["that", "creature"], &["that", "permanent"]],
         )
     };
-    if !is_anaphor(left) && !is_anaphor(right) {
+    // "Alandra and Drakes you control each get +X/+X": the source itself is
+    // one of the two recipients, just like an anaphor.
+    let is_source = |conjunct: &[OwnedLexToken]| {
+        crate::util::is_source_reference_words(&crate::lexer::token_word_refs(conjunct))
+    };
+    if !is_anaphor(left) && !is_anaphor(right) && !is_source(left) {
         return None;
     }
     let predicate = &tokens[verb_idx..];

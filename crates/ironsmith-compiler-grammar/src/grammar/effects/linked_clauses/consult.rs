@@ -40,6 +40,8 @@ pub enum ConsultMoveBottomShape {
     MoveMatchAndBottom {
         zone: Zone,
         battlefield_tapped: bool,
+        /// "onto the battlefield tapped and attacking" (Raph & Mikey).
+        battlefield_attacking: bool,
         attached_to_tokens: Option<(usize, usize)>,
         order: LibraryBottomOrderAst,
     },
@@ -281,9 +283,12 @@ pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<Consu
         } else {
             None
         };
+    let battlefield_attacking = battlefield_tapped
+        && contains_sequence_phrase(tokens, &[&["battlefield", "tapped", "and", "attacking"]]);
     Some(ConsultMoveBottomShape::MoveMatchAndBottom {
         zone,
         battlefield_tapped,
+        battlefield_attacking,
         attached_to_tokens,
         order: parse_bottom_order(tokens)?,
     })

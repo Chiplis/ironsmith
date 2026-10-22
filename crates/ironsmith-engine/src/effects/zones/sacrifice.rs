@@ -2,8 +2,8 @@
 
 use crate::effect::{EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{
-    normalize_object_selection, resolve_player_filter, resolve_single_object_for_effect,
-    resolve_value,
+    normalize_object_selection, resolve_objects_for_effect, resolve_player_filter,
+    resolve_single_object_for_effect, resolve_value,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -534,13 +534,26 @@ impl EffectExecutor for SacrificeEffect {
                         EffectOutcome::count(0),
                     ));
                 }
-                sacrifice_selected_objects_with_outputs(
+                // "Sacrifice two Swamps. If you can't, ..." (Infernal
+                // Denizen): sacrificing fewer than the required number is
+                // not doing what the instruction says (CR 608.2c), so a
+                // result gate sees an incomplete sacrifice as not having
+                // happened, though every permanent that could be sacrificed
+                // still was.
+                let incomplete = to_sacrifice.len() < count;
+                let mut outputs = sacrifice_selected_objects_with_outputs(
                     game,
                     ctx,
                     &self.event_object_tags,
                     &self.event_source_tags,
                     to_sacrifice,
-                )
+                )?;
+                if incomplete {
+                    outputs.outcome = outputs
+                        .outcome
+                        .with_execution_fact(ExecutionFact::Impossible);
+                }
+                Ok(outputs)
             },
         )
     }
@@ -1332,6 +1345,25 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
 /// ```
 pub type SacrificeTargetEffect = ironsmith_core::SacrificeTargetEffect;
 
+/// Whether a sacrifice's object spec is a non-target reference naming every
+/// member of an earlier tagged result set ("sacrifice them", "sacrifice those
+/// tokens"), rather than a target or a choice among matching objects.
+fn sacrifice_reference_names_whole_set(spec: &ChooseSpec) -> bool {
+    if spec.is_target() {
+        return false;
+    }
+    match spec.unhinted() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            !filter.source
+                && !filter.has_one_of_tagged_set_surface()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    crate::effects::helpers::tagged_relation_names_members(constraint.relation)
+                })
+        }
+        _ => false,
+    }
+}
+
 impl EffectExecutor for SacrificeTargetEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
@@ -1366,6 +1398,44 @@ impl EffectExecutor for SacrificeTargetEffect {
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
+                // "Sacrifice them" / "sacrifice those tokens": a non-target
+                // reference to a whole earlier result set names every member
+                // of that set, so each one still under the sacrificing
+                // player's control is sacrificed (CR 701.21a), not just the
+                // first. A singular reference names a one-object set.
+                if sacrifice_reference_names_whole_set(&self.target) {
+                    let objects = match resolve_objects_for_effect(game, ctx, &self.target) {
+                        Ok(objects) => objects,
+                        Err(ExecutionError::InvalidTarget) => Vec::new(),
+                        Err(err) => return Err(err),
+                    };
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    let mut objects = objects;
+                    if let Some(player) = &self.player {
+                        let sacrificing_player = resolve_player_filter(game, player, ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        objects.retain(|id| {
+                            game.object(*id).is_some_and(|object| {
+                                game.controller_of(object) == sacrificing_player
+                            })
+                        });
+                    }
+                    objects.dedup();
+                    if objects.is_empty() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    return sacrifice_selected_objects_with_outputs(game, ctx, &[], &[], objects);
+                }
                 // Resolve through ChooseSpec helpers (targets, source, tagged, specific object, etc.).
                 let object_id = match resolve_single_object_for_effect(game, ctx, &self.target) {
                     Ok(id) => id,

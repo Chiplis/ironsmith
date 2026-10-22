@@ -8,6 +8,9 @@ pub enum CantBeRegeneratedSubject {
     /// "Artifacts destroyed this way can't be regenerated." (Corrosion): the
     /// whole destroyed group, named by its type.
     GroupDestroyedThisWay,
+    /// "destroy that creature. The creature can't be regenerated." (Mephitic
+    /// Ooze): the one destroyed object, named by a definite noun.
+    TheCreature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +40,7 @@ fn regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<CantBeRegenera
             primitives::phrase(&["that", "permanent"]),
         ))
         .value(CantBeRegeneratedSubject::It),
+        primitives::phrase(&["the", "creature"]).value(CantBeRegeneratedSubject::TheCreature),
         primitives::kw("they").value(CantBeRegeneratedSubject::They),
         primitives::phrase(&["those", "creatures"]).value(CantBeRegeneratedSubject::They),
         // "Artifacts destroyed this way can't be regenerated." (Corrosion)

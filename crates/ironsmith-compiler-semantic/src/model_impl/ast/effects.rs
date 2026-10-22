@@ -309,6 +309,10 @@ pub enum EffectAst {
         right_option: String,
         /// Every matching object moves, not one chosen object per player.
         all_matching: bool,
+        /// A direction fixed by the text ("the player to their right").
+        fixed_direction: Option<ironsmith_core::SeatingDirection>,
+        /// "of your choice": the controller makes every player's choice.
+        controller_chooses: bool,
     },
     /// Moves every object tagged `tag` to `zone`, preserving each object's
     /// controller. Lowers to `for_each_tagged(tag, [move(Iterated, zone)])`.
@@ -1316,8 +1320,28 @@ impl EffectAst {
                 player,
                 exclude_current_targets,
                 removed_supertypes,
+                target_reference_kind: None,
             }),
         )
+    }
+
+    /// Record the authored stack-object noun on a copy-for-each action.
+    pub fn with_copy_for_each_target_reference_kind(
+        mut self,
+        kind: Option<crate::filter::StackObjectKind>,
+    ) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget {
+                    target_reference_kind,
+                    ..
+                }),
+            ..
+        }) = &mut self
+        {
+            *target_reference_kind = kind;
+        }
+        self
     }
 
     pub fn subject_verb_scale_x_value(target: TargetAst, multiplier: u32) -> Self {
@@ -1463,6 +1487,8 @@ impl EffectAst {
                 alternative_payment: None,
                 caster_land_mana_abilities_only: false,
                 control_caster_while_spell_resolves: false,
+                required_zone: None,
+                required_spell: None,
             }),
         )
     }
@@ -1577,6 +1603,7 @@ impl EffectAst {
                 until_source_exiles_another: false,
                 spell_cost_reduction: None,
                 spell_cost_increase_unless_targets: None,
+                permanents_enter_tapped: false,
                 max_plays: None,
                 surface,
             }),
@@ -1608,6 +1635,7 @@ impl EffectAst {
                 until_source_exiles_another: false,
                 spell_cost_reduction: None,
                 spell_cost_increase_unless_targets: None,
+                permanents_enter_tapped: false,
                 max_plays: None,
                 surface,
             }),
@@ -1638,6 +1666,7 @@ impl EffectAst {
                 until_source_exiles_another: false,
                 spell_cost_reduction: None,
                 spell_cost_increase_unless_targets: None,
+                permanents_enter_tapped: false,
                 max_plays: None,
                 surface: None,
             }),
@@ -1670,6 +1699,7 @@ impl EffectAst {
                 until_source_exiles_another: true,
                 spell_cost_reduction: None,
                 spell_cost_increase_unless_targets: None,
+                permanents_enter_tapped: false,
                 max_plays: None,
                 surface: Some(surface),
             }),
@@ -2192,6 +2222,8 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                entry_type_changes: None,
+                entry_counters: Vec::new(),
             retained_reference_tags: Vec::new(),
                 target,
                 source_top_only: false,
@@ -2232,6 +2264,8 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                entry_type_changes: None,
+                entry_counters: Vec::new(),
             retained_reference_tags: Vec::new(),
                 target,
                 source_top_only: false,
@@ -2385,6 +2419,22 @@ impl EffectAst {
                 }
                 _ => {}
             }
+        }
+        self
+    }
+
+    /// "the bottom card of <ordered zone>": select the bottom matching object.
+    pub fn with_source_bottom_only(mut self, source_bottom_only: bool) -> Self {
+        if !source_bottom_only {
+            return self;
+        }
+        if let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
+                source_bottom_only,
+                ..
+            }) = &mut subject_verb.action
+        {
+            *source_bottom_only = true;
         }
         self
     }
@@ -4241,6 +4291,7 @@ impl EffectAst {
 
     pub fn subject_verb_register_counter_placement_replacement(
         filter: ObjectFilter,
+        actor: Option<ironsmith_core::filter_model::PlayerFilter>,
         counter_type: Option<CounterType>,
         additional: u32,
         mode: crate::effects::ReplacementApplyMode,
@@ -4251,6 +4302,7 @@ impl EffectAst {
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterCounterPlacementReplacement {
                     filter,
+                    actor,
                     counter_type,
                     additional,
                     mode,
@@ -6128,6 +6180,7 @@ impl EffectAst {
                 target,
                 no_regeneration: false,
                 creature_destroyed_this_way_surface: false,
+                definite_noun_rider_surface: false,
             }),
         )
     }
@@ -6140,6 +6193,7 @@ impl EffectAst {
                 target,
                 no_regeneration: true,
                 creature_destroyed_this_way_surface: false,
+                definite_noun_rider_surface: false,
             }),
         )
     }
@@ -6180,6 +6234,7 @@ impl EffectAst {
                 face_down,
                 source_controller_may_look: false,
                 source_top_only: false,
+                source_bottom_only: false,
                 target_plural_surface: false,
             }),
         )
@@ -6194,6 +6249,7 @@ impl EffectAst {
                 face_down: true,
                 source_controller_may_look: true,
                 source_top_only: false,
+                source_bottom_only: false,
                 target_plural_surface: false,
             }),
         )

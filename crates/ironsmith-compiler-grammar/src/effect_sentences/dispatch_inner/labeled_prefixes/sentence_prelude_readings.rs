@@ -794,6 +794,8 @@ fn read_cast_from_among_free(
                     alternative_payment: None,
                     caster_land_mana_abilities_only: false,
                     control_caster_while_spell_resolves: false,
+                    required_zone: None,
+                    required_spell: None,
                 }),
             }),
         ]));
@@ -837,6 +839,8 @@ fn read_cast_hand_free(
                     alternative_payment: None,
                     caster_land_mana_abilities_only: false,
                     control_caster_while_spell_resolves: false,
+                    required_zone: None,
+                    required_spell: None,
                 }),
             }),
         ]));

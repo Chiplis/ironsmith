@@ -637,6 +637,9 @@ struct CommanderTracking {
     commanders: HashSet<ObjectId>,
     /// Number of times each commander has been cast from the command zone.
     commander_casts_from_command_zone: HashMap<ObjectId, u32>,
+    /// Number of times each player has cast any commander (their own or
+    /// another player's) from the command zone.
+    commander_casts_from_command_zone_by_player: HashMap<PlayerId, u32>,
     /// Commanders whose owner declined the current move-to-command-zone choice.
     declined_command_zone_moves: HashSet<ObjectId>,
     /// Component-card identity for battlefield melded permanents.
@@ -670,6 +673,11 @@ struct ExileTracking {
     imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
     /// Cards exiled by a specific source object ID.
     exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Objects whose "cards exiled with <source>" pool is another object's
+    /// (an emblem created by Tibalt, Cosmic Impostor reads "cards exiled with
+    /// Tibalt", CR 607.2a): reader id -> source id whose links it reads. The
+    /// links survive the source leaving the battlefield (CR 406.6).
+    linked_exile_source_aliases: HashMap<ObjectId, ObjectId>,
     /// Exact exiled incarnation -> the player who performed the exile that
     /// linked it to its source ("cards they exiled with this enchantment"),
     /// and the turn number of that exile ("... this turn", Uba Mask).
@@ -729,6 +737,20 @@ pub(crate) struct UncontrolledLandManaPermission {
 }
 
 /// Miscellaneous checkpoint-heavy state grouped behind copy-on-write storage.
+/// Combat roles of every combatant at the moment a simultaneous move began.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SimultaneousCombatLookback {
+    combatants: Vec<(ObjectId, CombatRoleLookback)>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct CombatRoleLookback {
+    pub(crate) attacking: bool,
+    pub(crate) blocking: bool,
+    pub(crate) attacking_alone: bool,
+    pub(crate) blocking_alone: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 struct AuxiliaryTrackingState {
     /// A shared rules procedure proved a CR 104.4b mandatory-action loop.
@@ -863,6 +885,11 @@ struct AuxiliaryTrackingState {
     /// Trigger-source look-back shared by every event of one simultaneous
     /// state-based-action batch (CR 704.3, 603.10a).
     simultaneous_event_lookback: Option<Vec<ObjectSnapshot>>,
+    /// Pre-move combat roles captured when a simultaneous look-back is pinned:
+    /// a combatant leaving in the same simultaneous move as another keeps the
+    /// attacking/blocking(-alone) state it had before the move (CR 603.10a,
+    /// 506.5), even after an earlier-processed departure left combat.
+    simultaneous_combat_lookback: Option<std::sync::Arc<SimultaneousCombatLookback>>,
     /// An open simultaneous action (a pinned look-back, a batch entry onto
     /// the battlefield, several sources dealing damage at once): every
     /// zone-change or damage event produced while it is open is part of one
@@ -1174,6 +1201,11 @@ pub struct TurnStore {
     creature_last_became_blocked_turn: HashMap<StableId, u32>,
     current_upkeep_turn_by_player: HashMap<PlayerId, u32>,
     previous_upkeep_turn_by_player: HashMap<PlayerId, u32>,
+    /// Turn number of each player's most recently completed turn, and of the
+    /// latest turn in which each player was dealt combat damage. Together
+    /// they answer "dealt combat damage since your last turn".
+    last_completed_turn_by_player: HashMap<PlayerId, u32>,
+    player_last_dealt_combat_damage_turn: HashMap<PlayerId, u32>,
     /// Frozen LKI and bounded "last turn" windows for departed players.
     departed_player_history: HashMap<PlayerId, DepartedPlayerHistory>,
     /// True while `leave_game` is running (CR 800.4c exile is deferred to it).
@@ -2272,6 +2304,15 @@ pub struct CantEffectTracker {
     /// ("can't attack Jaces you control").
     pub cant_attack_permanents: HashMap<ObjectId, HashSet<ObjectId>>,
 
+    /// Source-owned object rule modifications (`Restriction::ObjectRule`),
+    /// keyed by the affected object. These are effects of their source, not
+    /// abilities of the object, so ability removal can't erase them.
+    pub object_rules: HashMap<ObjectId, Vec<ironsmith_core::ObjectRule>>,
+
+    /// Face-down object -> players a rule effect lets look at its front face
+    /// any time (CR 708.6; Found Footage, Lumbering Laundry).
+    pub face_down_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+
     /// Players who can't activate any abilities, mana abilities included,
     /// from any zone (City of Solitude during other players' turns).
     pub cant_activate_abilities: HashSet<PlayerId>,
@@ -3202,6 +3243,15 @@ impl CantEffectTracker {
                 .or_default()
                 .extend(permanents);
         }
+        for (object, rules) in other.object_rules {
+            self.object_rules.entry(object).or_default().extend(rules);
+        }
+        for (object, viewers) in other.face_down_viewers {
+            self.face_down_viewers
+                .entry(object)
+                .or_default()
+                .extend(viewers);
+        }
         for (player, limits) in other.cant_cast_more_than {
             for (filter, maximum) in limits {
                 self.add_counted_cast_limit(player, filter, maximum);
@@ -3335,6 +3385,8 @@ impl CantEffectTracker {
         self.draws_from_bottom.clear();
         self.cant_activate_abilities.clear();
         self.cant_attack_permanents.clear();
+        self.object_rules.clear();
+        self.face_down_viewers.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -3451,6 +3503,20 @@ impl CantEffectTracker {
     /// Check if a creature may attack alongside other attackers.
     pub fn can_attack_with_others(&self, creature: ObjectId) -> bool {
         !self.attack_only_alone.contains(&creature)
+    }
+
+    /// Whether a source-owned rule effect applies `rule` to `object`.
+    pub fn object_has_rule(&self, object: ObjectId, rule: &ironsmith_core::ObjectRule) -> bool {
+        self.object_rules
+            .get(&object)
+            .is_some_and(|rules| rules.contains(rule))
+    }
+
+    /// Whether a rule effect lets `viewer` look at face-down `object`.
+    pub fn face_down_viewable_by(&self, object: ObjectId, viewer: PlayerId) -> bool {
+        self.face_down_viewers
+            .get(&object)
+            .is_some_and(|viewers| viewers.contains(&viewer))
     }
 
     /// Check if a creature can attack a particular planeswalker or battle.
@@ -5239,8 +5305,16 @@ impl GameState {
         // Pinning a look-back opens one simultaneous action; the events it
         // queues share one batch identity until the pin is released.
         let pinning = lookback.is_some();
+        let combat_lookback = if !pinning {
+            None
+        } else if self.auxiliary_tracking.simultaneous_event_lookback.is_some() {
+            self.auxiliary_tracking.simultaneous_combat_lookback.clone()
+        } else {
+            self.capture_simultaneous_combat_lookback()
+        };
         let tracking = self.auxiliary_tracking_mut();
         tracking.simultaneous_event_lookback = lookback;
+        tracking.simultaneous_combat_lookback = combat_lookback;
         match (pinning, tracking.simultaneous_action_scope) {
             (true, None) => {
                 tracking.simultaneous_action_scope = Some(SimultaneousActionScope {
@@ -5403,6 +5477,53 @@ impl GameState {
         tracking.simultaneous_action_scope = parent_scope;
         tracking.simultaneous_event_lookback = parent_lookback;
         result
+    }
+
+    fn capture_simultaneous_combat_lookback(
+        &self,
+    ) -> Option<std::sync::Arc<SimultaneousCombatLookback>> {
+        let combat = self.combat.as_ref()?;
+        let mut ids: Vec<ObjectId> = combat
+            .attackers
+            .iter()
+            .map(|attacker| attacker.creature)
+            .chain(combat.blockers.values().flatten().copied())
+            .collect();
+        if ids.is_empty() {
+            return None;
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        let combatants = ids
+            .into_iter()
+            .map(|id| {
+                (
+                    id,
+                    CombatRoleLookback {
+                        attacking: crate::combat_state::is_attacking(combat, id),
+                        blocking: crate::combat_state::is_blocking(combat, id),
+                        attacking_alone: crate::combat_state::is_attacking_alone(self, id),
+                        blocking_alone: crate::combat_state::is_blocking_alone(self, id),
+                    },
+                )
+            })
+            .collect();
+        Some(std::sync::Arc::new(SimultaneousCombatLookback { combatants }))
+    }
+
+    /// The pre-move combat role of `id` while a simultaneous move is pinned,
+    /// if it was a combatant when the move began.
+    pub(crate) fn simultaneous_combat_role_lookback(
+        &self,
+        id: ObjectId,
+    ) -> Option<CombatRoleLookback> {
+        self.auxiliary_tracking.simultaneous_event_lookback.as_ref()?;
+        self.auxiliary_tracking
+            .simultaneous_combat_lookback
+            .as_ref()?
+            .combatants
+            .iter()
+            .find_map(|(combatant, role)| (*combatant == id).then_some(*role))
     }
 
     pub(crate) fn simultaneous_event_lookback(&self) -> Option<&[ObjectSnapshot]> {
@@ -7285,10 +7406,13 @@ impl GameState {
             | crate::effect::Value::LeastManaValue(filter)
             | crate::effect::Value::BasicLandTypesAmong(filter)
             | crate::effect::Value::CreatureTypesAmong(filter)
+            | crate::effect::Value::PlaneswalkerTypesAmong(filter)
+            | crate::effect::Value::PermanentTypesAmong(filter)
             | crate::effect::Value::CardTypesAmong(filter)
             | crate::effect::Value::ColorsAmong(filter)
             | crate::effect::Value::DistinctNames(filter)
             | crate::effect::Value::DistinctManaValues(filter)
+            | crate::effect::Value::DistinctManaCosts(filter)
             | crate::effect::Value::UnlockedDoorsAmong(filter)
             | crate::effect::Value::DistinctPowers(filter)
             | crate::effect::Value::StaticAbilitiesAmong { filter, .. } => {
@@ -7323,6 +7447,7 @@ impl GameState {
             | crate::effect::Value::SpellsCastThisTurnMatching { .. }
             | crate::effect::Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
             | crate::effect::Value::CommanderCastCount(_)
+            | crate::effect::Value::CommandersCastFromCommandZoneBy(_)
             | crate::effect::Value::CommanderColorIdentityColors(_)
             | crate::effect::Value::ThisAbilityResolvedThisTurnCount | crate::effect::Value::ThisAbilityManaProductionCountThisTurn
             | crate::effect::Value::SourceRegeneratedThisTurnCount
@@ -7379,6 +7504,7 @@ impl GameState {
             || filter.blocked_by.is_some()
             || filter.blocked_by_source
             || filter.crewed_by_source_this_turn
+            || filter.tapped_to_pay_for_source_abilities_this_turn
             || filter.blocked_or_was_blocked_by_this_turn.is_some()
             || filter.unblocked
             || filter.is_target_object
@@ -7395,6 +7521,7 @@ impl GameState {
             || filter.entered_graveyard_from_battlefield_this_turn
             || filter.entered_graveyard_from_library_this_turn
             || filter.entered_graveyard_not_from_battlefield_this_turn
+            || filter.not_put_into_graveyard_this_combat
             || filter.milled_into_graveyard_this_turn
             || filter.surveilled_this_turn
             || filter.fought_this_turn

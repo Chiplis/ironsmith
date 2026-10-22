@@ -803,12 +803,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("spec", spec)
                 .finish(),
             Self::Replacements(ReplacementActionAst::RegisterCounterPlacementReplacement {
+                actor,
                 filter,
                 counter_type,
                 additional,
                 mode,
             }) => f
                 .debug_struct("RegisterCounterPlacementReplacement")
+                .field("actor", actor)
                 .field("filter", filter)
                 .field("counter_type", counter_type)
                 .field("additional", additional)
@@ -1235,6 +1237,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 player,
                 exclude_current_targets,
                 removed_supertypes,
+                target_reference_kind,
             }) => f
                 .debug_struct("CopySpellForEachTarget")
                 .field("target", target)
@@ -1243,6 +1246,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("player", player)
                 .field("exclude_current_targets", exclude_current_targets)
                 .field("removed_supertypes", removed_supertypes)
+                .field("target_reference_kind", target_reference_kind)
                 .finish(),
             Self::Stack(StackActionAst::ScaleXValue { target, multiplier }) => f
                 .debug_struct("ScaleXValue")
@@ -1290,6 +1294,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 alternative_payment,
                 caster_land_mana_abilities_only,
                 control_caster_while_spell_resolves,
+                required_zone,
+                required_spell,
             }) => f
                 .debug_struct("CastTagged")
                 .field("tag", tag)
@@ -1309,6 +1315,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     "control_caster_while_spell_resolves",
                     control_caster_while_spell_resolves,
                 )
+                .field("required_zone", required_zone)
+                .field("required_spell", required_spell)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                 spell_filter,
@@ -1325,6 +1333,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 spell_cost_increase_unless_targets,
                 max_plays,
                 surface,
+                permanents_enter_tapped,
             }) => f
                 .debug_struct("GrantPlayTaggedUntilEndOfTurn")
                 .field("spell_filter", spell_filter)
@@ -1344,6 +1353,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("alternative_cost", alternative_cost)
                 .field("max_plays", max_plays)
                 .field("surface", surface)
+                .field("permanents_enter_tapped", permanents_enter_tapped)
                 .finish(),
             Self::Grants(
                 GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
@@ -1523,6 +1533,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("explicit_return_surface", explicit_return_surface)
                 .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                entry_type_changes,
+                entry_counters,
             retained_reference_tags,
                 target,
                 source_top_only,
@@ -1549,6 +1561,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 all,
             }) => f
                 .debug_struct("MoveToZone")
+                .field("entry_type_changes", entry_type_changes)
+                .field("entry_counters", entry_counters)
                 .field("retained_reference_tags", retained_reference_tags)
                 .field("target", target)
                 .field("source_top_only", source_top_only)
@@ -2398,6 +2412,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 no_regeneration,
                 creature_destroyed_this_way_surface,
+                definite_noun_rider_surface,
             }) => f
                 .debug_struct("Destroy")
                 .field("target", target)
@@ -2406,6 +2421,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     "creature_destroyed_this_way_surface",
                     creature_destroyed_this_way_surface,
                 )
+                .field("definite_noun_rider_surface", definite_noun_rider_surface)
                 .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::DestroyAll {
                 filter,
@@ -2453,6 +2469,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 face_down,
                 source_controller_may_look,
                 source_top_only,
+                source_bottom_only,
                 target_plural_surface,
             }) => f
                 .debug_struct("Exile")
@@ -2460,6 +2477,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("face_down", face_down)
                 .field("source_controller_may_look", source_controller_may_look)
                 .field("source_top_only", source_top_only)
+                .field("source_bottom_only", source_bottom_only)
                 .field("target_plural_surface", target_plural_surface)
                 .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, face_down }) => f

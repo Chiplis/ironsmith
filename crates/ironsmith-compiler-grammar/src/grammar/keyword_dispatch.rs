@@ -26,6 +26,7 @@ pub enum KeywordDispatchHint {
     Reconfigure,
     Kicker,
     Flashback,
+    BeamMeUp,
     Harmonize,
     Retrace,
     Multikicker,
@@ -83,6 +84,7 @@ impl KeywordDispatchHint {
             Self::Reconfigure => &["reconfigure"],
             Self::Kicker => &["kicker"],
             Self::Flashback => &["flashback"],
+            Self::BeamMeUp => &["beam", "me", "up"],
             Self::Harmonize => &["harmonize"],
             Self::Retrace => &["retrace"],
             Self::Multikicker => &["multikicker"],
@@ -178,6 +180,7 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<KeywordDispatchHint> {
     alt((
+        primitives::phrase(&["beam", "me", "up"]).value(KeywordDispatchHint::BeamMeUp),
         alt((
             primitives::phrase(&[
                 "as",

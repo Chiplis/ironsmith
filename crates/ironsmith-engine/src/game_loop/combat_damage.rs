@@ -987,7 +987,12 @@ fn plan_unblocked_player_damage(
         }
 
         let controller = characteristics.controller;
-        let combat_stat = if toughness_sources.applies_to(attacker_id, controller) {
+        let combat_stat = if toughness_sources.applies_to(attacker_id, controller)
+            || game.effect_store.cant_effects.object_has_rule(
+                attacker_id,
+                &ironsmith_core::ObjectRule::AssignsCombatDamageUsingToughness,
+            )
+        {
             characteristics.toughness.or_else(|| attacker.toughness())
         } else {
             characteristics
@@ -1150,6 +1155,14 @@ pub(super) fn creature_assigns_combat_damage_using_toughness(
     game: &GameState,
     creature: &crate::object::Object,
 ) -> bool {
+    // A source-owned rule effect (Solid Footing, Tapestry Warden) applies
+    // even if the creature has lost all abilities.
+    if game.effect_store.cant_effects.object_has_rule(
+        creature.id,
+        &ironsmith_core::ObjectRule::AssignsCombatDamageUsingToughness,
+    ) {
+        return true;
+    }
     for &source_id in &game.battlefield {
         let Some(source) = game.object(source_id) else {
             continue;
@@ -2117,10 +2130,13 @@ fn attacker_damage_division(
         Vec::new()
     };
     let unblocked_alternative = (blocked
-        && game.object_has_static_ability_id(
+        && (game.object_has_static_ability_id(
             attacker_id,
             StaticAbilityId::MayAssignDamageAsUnblocked,
-        ))
+        ) || game.effect_store.cant_effects.object_has_rule(
+            attacker_id,
+            &ironsmith_core::ObjectRule::MayAssignCombatDamageAsThoughUnblocked,
+        )))
     .then(|| trample_excess_target(game, &attacker_info.target))
     .flatten();
     // Butcher Orgg: the defending player and every creature they control.

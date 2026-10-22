@@ -181,6 +181,12 @@ const STATEMENT_READINGS: &[Reading] = &[
         read: |input| input.outcome(read_serial_target_pt_modifiers(input)),
     },
     Reading {
+        id: RuleId::new("for-as-long-as-source-remains-attached"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.sentence.first().is_some_and(|token| token.is_word("for")),
+        read: |input| input.outcome(read_for_as_long_as_source_remains_attached(input)),
+    },
+    Reading {
         id: RuleId::new("sentence-delayed-timing-suffix"),
         head: HeadDiscriminator::Any,
         admits: |input| {
@@ -624,6 +630,62 @@ fn read_serial_target_pt_modifiers(
     }
     Ok(None)
 }
+/// "for as long as this Equipment remains attached to it, that creature
+/// becomes a copy of ..." (Assimilation Aegis, Blade of Shared Souls): the
+/// copy effect lasts while the source stays attached to the affected object
+/// (CR 611.2b), not for the rest of the game.
+fn read_for_as_long_as_source_remains_attached(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::{CharacteristicActionAst, SubjectVerbActionAst};
+    let sentence = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let Some(comma) = sentence.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let head = crate::lexer::token_word_refs(&sentence[..comma]);
+    if !matches!(
+        head.as_slice(),
+        ["for", "as", "long", "as", "this", "equipment" | "aura" | "permanent", "remains", "attached", "to", "it"]
+    ) {
+        return Ok(None);
+    }
+    let body = &sentence[comma + 1..];
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let mut effects = super::parse_effect_chain(body)?;
+    let duration = crate::effect::Until::ForAsLongAs(
+        ironsmith_core::ContinuousDurationPredicate::ObjectAttachedTo {
+            attachment: ironsmith_core::ContinuousDurationObject::Source,
+            attached_to: ironsmith_core::ContinuousDurationObject::AffectedObject,
+        },
+    );
+    fn bind(effects: &mut [EffectAst], duration: &crate::effect::Until, bound: &mut usize) {
+        for effect in effects.iter_mut() {
+            if let EffectAst::SubjectVerb(subject_verb) = effect
+                && let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
+                    duration: copy_duration,
+                    ..
+                }) = &mut subject_verb.action
+                && matches!(copy_duration, crate::effect::Until::Forever)
+            {
+                *copy_duration = duration.clone();
+                *bound += 1;
+                continue;
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
+                bind(nested, duration, bound)
+            });
+        }
+    }
+    let mut bound = 0;
+    bind(&mut effects, &duration, &mut bound);
+    if bound != 1 {
+        return Ok(None);
+    }
+    Ok(Some(effects))
+}
+
 fn read_sentence_delayed_timing_suffix(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

@@ -18,6 +18,12 @@ pub enum RemoveCounterDestination<'a> {
     EachOfAnyNumber {
         filter_tokens: &'a [OwnedLexToken],
     },
+    /// "from each of two creatures you control" (Dyadrine): a fixed number of
+    /// untargeted holders chosen as the removal happens.
+    EachOfExactly {
+        count: usize,
+        filter_tokens: &'a [OwnedLexToken],
+    },
     All {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -377,6 +383,19 @@ pub fn parse_remove_clause_shape(
         primitives::phrase(&["each", "of", "any", "number", "of"]).void(),
     ) {
         RemoveCounterDestination::EachOfAnyNumber {
+            filter_tokens: trim_lexed_commas(filter_tokens),
+        }
+    } else if let Some(((), after_each_of)) =
+        primitives::parse_prefix(target_tokens, primitives::phrase(&["each", "of"]).void())
+        && let Some((count, used)) = values::parse_value_prefix_lexed(after_each_of)
+        && let Value::Fixed(count) = count
+        && count > 1
+        && let Some(filter_tokens) = after_each_of.get(used..)
+        && !filter_tokens.is_empty()
+        && !filter_tokens.iter().any(|token| token.is_word("target"))
+    {
+        RemoveCounterDestination::EachOfExactly {
+            count: count as usize,
             filter_tokens: trim_lexed_commas(filter_tokens),
         }
     } else if let Some(((), filter_tokens)) =

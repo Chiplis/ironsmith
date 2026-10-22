@@ -3414,8 +3414,11 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     } else {
         "a"
     };
+    // CR 601.3e: a cast restricted to a spell with these characteristics
+    // names the spell, not the card ("cast an instant or sorcery spell").
+    let noun = if cast.required_spell.is_some() { "spell" } else { "card" };
     Some(format!(
-        "You may cast {article} {card_types} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. {rider}"
+        "You may cast {article} {card_types} {noun}{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. {rider}"
     ))
 }
 
@@ -3573,6 +3576,8 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
+        || grant.while_player_controls.is_some()
+        || grant.permanents_enter_tapped
         || grant.cast_pool_is_plural
         || grant.spell_cost_reduction.is_some()
         || grant.spell_cost_increase.is_some() != grant.spell_cost_increase_unless_targets.is_some()
@@ -4365,6 +4370,99 @@ pub(super) fn describe_for_players_choose_nonland_put_counter(
     Some(format!(
         "Each player chooses a nonland permanent and puts a {} counter on it",
         describe_counter_type(put.counter_type)
+    ))
+}
+
+/// "Each player looks at the top five cards of their library and may reveal
+/// a land card and/or an instant or sorcery card from among them. Each player
+/// puts the cards they revealed this way into their hand and the rest on the
+/// bottom of their library in a random order." One per-player loop: the
+/// iterated player's own look, up-to-one choices per branch over it, the
+/// reveal of the chosen set, its move to hand, and the exact remainder to the
+/// library bottom.
+pub(super) fn describe_for_players_look_reveal_to_hand_rest_bottom(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    if subject == "You" || for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let effects = for_players
+        .effects
+        .iter()
+        .map(structural_unwrap_render_wrappers)
+        .collect::<Vec<_>>();
+    let [look_effect, middle @ .., reveal_effect, move_effect, rest_effect] = effects.as_slice()
+    else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if look.player != PlayerFilter::IteratedPlayer || look.reveal {
+        return None;
+    }
+    let Value::Fixed(count) = look.count else {
+        return None;
+    };
+    if count < 2 || middle.is_empty() {
+        return None;
+    }
+    let choices = middle
+        .iter()
+        .map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .collect::<Option<Vec<_>>>()?;
+    let chosen_tag = &choices[0].tag;
+    let mut branches = Vec::new();
+    for choose in &choices {
+        if choose.tag != *chosen_tag
+            || choose.chooser != PlayerFilter::IteratedPlayer
+            || choose.count.min != 0
+            || choose.count.max != Some(1)
+        {
+            return None;
+        }
+        // The branch is the choice's own card filter: its pool constraints
+        // (the looked-at cards, not already chosen) are the loop's wording.
+        if !choose
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag == look.tag)
+        {
+            return None;
+        }
+        let mut base = choose.filter.clone();
+        base.zone = None;
+        base.tagged_constraints.clear();
+        let description = base.description();
+        let mut branch = strip_leading_article(
+            description.split(" in ").next().unwrap_or(description.as_str()).trim(),
+        )
+        .to_string();
+        if !branch.ends_with("card") {
+            branch.push_str(" card");
+        }
+        branches.push(with_indefinite_article(&branch));
+    }
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if reveal.tag != *chosen_tag || !for_each_moves_tag_to_hand(
+        move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?,
+        chosen_tag.as_str(),
+    ) {
+        return None;
+    }
+    let rest = rest_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if rest.tag != look.tag || rest.keep_tagged.as_ref() != Some(chosen_tag) {
+        return None;
+    }
+    let order = match rest.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => "in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => "in any order",
+    };
+    let count_text = small_number_word(count as u32).unwrap_or_else(|| count.to_string());
+    Some(format!(
+        "{subject} looks at the top {count_text} cards of their library and may reveal {} from among them. {} puts the cards they revealed this way into their hand and the rest on the bottom of their library {order}",
+        branches.join(" and/or "),
+        subject,
     ))
 }
 
@@ -6055,10 +6153,16 @@ pub(super) fn describe_for_players_simple_iterated_action(
             && *offset < 0
         {
             let kept = -*offset;
-            let kept_text = small_number_word(kept as u32).unwrap_or_else(|| kept.to_string());
-            let noun = if kept == 1 { "card" } else { "cards" };
+            // "all but the bottom card" (Jace, Reality Sculptor); "all but the
+            // bottom six cards" (Doomsday Excruciator).
+            let kept_text = if kept == 1 {
+                "card".to_string()
+            } else {
+                let word = small_number_word(kept as u32).unwrap_or_else(|| kept.to_string());
+                format!("{word} cards")
+            };
             return Some(format!(
-                "{subject} {} all but the bottom {kept_text} {noun} of {possessive} library{face_down}",
+                "{subject} {} all but the bottom {kept_text} of {possessive} library{face_down}",
                 verb("exile", "exiles"),
             ));
         }

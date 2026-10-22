@@ -414,6 +414,7 @@ impl StaticAbilityModelInterpreter {
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
             on_use_effects: spec.on_use_effects.clone(),
             requires_linked_exile_pair: spec.requires_linked_exile_pair,
+            land_play_companion: spec.land_play_companion,
             may_look_at_linked_exile: spec.may_look_at_linked_exile,
             cast_mana_spend_mode: spec.cast_mana_spend_mode,
             linked_exile_pair: spec.linked_exile_pair,
@@ -824,6 +825,7 @@ impl StaticAbilityModelInterpreter {
                 runtime.optional_life_additional_cost =
                     reduction.optional_life_additional_cost.clone();
                 runtime.colored_only = reduction.colored_only;
+                runtime.repetitions = reduction.repetitions.clone();
                 if let Some(condition) = reduction.condition.clone() {
                     runtime = runtime.with_condition(condition);
                 }
@@ -1470,7 +1472,16 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep {
                 filter,
                 display,
+                opponents_only: false,
             } => StaticAbility::untap_during_each_other_players_untap_step(
+                filter.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep {
+                filter,
+                display,
+                opponents_only: true,
+            } => StaticAbility::untap_during_each_opponents_untap_step(
                 filter.clone(),
                 display.clone(),
             ),
@@ -2120,40 +2131,24 @@ impl StaticAbilityModelInterpreter {
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
-                actor: Some(actor),
-                includes_permanents: true,
-                halve,
-                display,
-                ..
-            } => StaticAbility::actor_counter_multiplier_replacement(
-                actor.clone(),
-                *halve,
-                display.clone(),
-            ),
-            ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
                 player_filter,
                 counter_type,
+                actor,
+                includes_permanents,
+                halve,
                 effect_only,
                 display,
-                ..
-            } => match player_filter {
-                Some(player_filter) => StaticAbility::double_player_counters_replacement(
-                    player_filter.clone(),
-                    *counter_type,
-                    display.clone(),
-                ),
-                None if *effect_only => StaticAbility::double_effect_counters_replacement(
-                    filter.clone(),
-                    *counter_type,
-                    display.clone(),
-                ),
-                None => StaticAbility::double_counters_replacement(
-                    filter.clone(),
-                    *counter_type,
-                    display.clone(),
-                ),
-            },
+            } => StaticAbility::new(super::DoubleCountersReplacement {
+                filter: filter.clone(),
+                player_filter: player_filter.clone(),
+                counter_type: *counter_type,
+                actor: actor.clone(),
+                includes_permanents: *includes_permanents,
+                halve: *halve,
+                effect_only: *effect_only,
+                display: display.clone(),
+            }),
             ironsmith_core::StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display } =>
                 StaticAbility::actor_counters_addition_replacement(filter.clone(), player_filter.clone(), actor.clone(), *counter_type, *additional, display.clone()),
             ironsmith_core::StaticAbilityPayload::AddCountersPlacementReplacement {
@@ -3137,6 +3132,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .untap_during_each_other_players_untap_step_filter()
     }
 
+    fn untap_during_other_players_untap_step_opponents_only(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(StaticAbility::untap_during_other_players_untap_step_opponents_only)
+    }
+
     fn untap_step_limit(
         &self,
     ) -> Option<(
@@ -3973,6 +3973,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn creature_card_name_and_type_choice_as_becomes_attached(&self) -> bool {
         self.model.id == Some(StaticAbilityId::ChooseCreatureCardNameAndTypeAsBecomesAttached)
+    }
+
+    fn craft_material_choice_as_becomes_attached(&self) -> bool {
+        self.model.id == Some(StaticAbilityId::ChooseCraftMaterialAsBecomesAttached)
     }
 
     fn modifies_costs(&self) -> bool {

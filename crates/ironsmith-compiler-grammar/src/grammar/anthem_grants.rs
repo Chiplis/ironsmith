@@ -846,6 +846,16 @@ pub fn parse_granted_flashback_cost_equals_mana(tokens: &[OwnedLexToken]) -> boo
     )
 }
 
+pub fn parse_granted_mayhem_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
+    token_any_phrase_complete(
+        tokens,
+        &[
+            &["the", "mayhem", "cost", "is", "equal", "to", "its", "mana", "cost"],
+            &["its", "mayhem", "cost", "is", "equal", "to", "its", "mana", "cost"],
+        ],
+    )
+}
+
 pub fn parse_granted_blitz_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
     token_any_phrase_complete(
         tokens,

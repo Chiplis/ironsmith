@@ -132,6 +132,9 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
+        filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
+            token_words.join(" "),
+        ));
         return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
     }
     // Definite player references retain the prior player binding before
@@ -168,6 +171,18 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
                 ironsmith_core::AdditionalCostObjectAction::Sacrificed,
                 kind,
             ),
+        ));
+        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+    }
+    // "a copy of the blighted creature" (Grub, Notorious Auntie): the
+    // creature that received the preceding blight's counters.
+    if crate::word_primitives::parse_any_sequence_complete(
+        &token_words,
+        &[&["the", "blighted", "creature"], &["blighted", "creature"]],
+    ) {
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
+            "the blighted creature".to_string(),
         ));
         return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
     }
@@ -1357,6 +1372,33 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     } else {
         (remaining, false)
     };
+    // "any number of target creatures with equal toughness" (V.A.T.S.):
+    // the chosen set shares one value of the characteristic.
+    let (remaining, target_set_equal_metric) = {
+        let view = TokenWordView::new(remaining);
+        let words = view.to_word_refs();
+        let suffix = match words.as_slice() {
+            [.., "with", "equal", "toughness"] => {
+                Some((3, ironsmith_core::ChoiceAggregateMetric::Toughness))
+            }
+            [.., "with", "equal", "power"] => Some((3, ironsmith_core::ChoiceAggregateMetric::Power)),
+            [.., "with", "equal", "mana", "value"] => {
+                Some((4, ironsmith_core::ChoiceAggregateMetric::ManaValue))
+            }
+            _ => None,
+        };
+        match suffix {
+            Some((len, metric)) if words.len() > len => {
+                let cut = view
+                    .token_start_indices()
+                    .get(words.len() - len)
+                    .copied()
+                    .unwrap_or(remaining.len());
+                (&remaining[..cut], Some(metric))
+            }
+            _ => (remaining, None),
+        }
+    };
     let controller_set = parse_target_controller_set_suffix(remaining);
     let target_set_same_controller = matches!(
         controller_set.constraint,
@@ -1410,8 +1452,19 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         if !explicit_target && token_words == ["the", "blocking", "creature"] {
             // CR608.2k: this complete definite phrase denotes the exact
             // event participant, with no fresh live type qualification.
+            // The pure tagged filter resolves to the plain blocker tag (the
+            // runtime reference is unchanged); its source surface carries the
+            // definite combat-role wording to the renderer as the existing
+            // SourceReference hint, as "that creature" does.
+            let mut participant = ObjectFilter::default().match_tagged(
+                crate::tag::CompilerReferenceTag::Blocking.bind(),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+            participant.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
+                "the blocking creature".to_string(),
+            ));
             return Ok(wrap_target_count(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Blocking.bind(), None),
+                TargetAst::Object(participant, None, None),
                 target_count,
             ));
         }
@@ -1430,6 +1483,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     filter.target_set_same_controller = target_set_same_controller;
     filter.target_set_different_controllers = target_set_different_controllers;
     filter.target_set_shared_creature_type = target_set_shared_creature_type;
+    filter.target_set_equal_metric = target_set_equal_metric;
     if let Some(constraint) = lift_total_mana_value_choice_constraint(remaining, &mut filter) {
         filter.target_set_aggregate_constraint = Some(Box::new(constraint));
     }

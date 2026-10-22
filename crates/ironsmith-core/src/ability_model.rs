@@ -506,7 +506,10 @@ impl PresentationKeyword {
         if let Some(rest) = lower.strip_prefix("devour ") {
             return rest.parse().ok().map(Self::Devour);
         }
-        if let Some(rest) = payload.strip_prefix("recover ") {
+        if let Some(rest) = payload
+            .strip_prefix("recover ")
+            .or_else(|| payload.strip_prefix("recover—"))
+        {
             return Some(Self::Recover(rest.trim().to_string()));
         }
         if let Some(rest) = lower.strip_prefix("casualty ") {
@@ -528,6 +531,9 @@ impl PresentationKeyword {
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::Devour(amount) => format!("Devour {amount}"),
             Self::Suspend => "Suspend".to_string(),
+            // A non-mana recover cost follows an em dash (CR 702.59a).
+            Self::Recover(cost) if cost.is_empty() => "Recover".to_string(),
+            Self::Recover(cost) if !cost.starts_with('{') => format!("Recover—{cost}"),
             Self::Recover(cost) => format!("Recover {cost}"),
             Self::Casualty(power) => format!("Casualty {power}"),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),

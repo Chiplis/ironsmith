@@ -27,6 +27,26 @@ pub fn has_authored_comma_then_surface_tokens(tokens: &[OwnedLexToken]) -> bool 
     false
 }
 
+fn comma_continues_name_epithet(before: &[OwnedLexToken], after: &[OwnedLexToken]) -> bool {
+    let before_words = crate::lexer::token_word_refs(before);
+    let Some(named) = before_words.iter().rposition(|word| *word == "named") else {
+        return false;
+    };
+    let name_words = before_words.len() - named - 1;
+    if !(1..=3).contains(&name_words) {
+        return false;
+    }
+    let after_words = crate::lexer::token_word_refs(after);
+    if after_words.first() != Some(&"the") {
+        return false;
+    }
+    // The epithet is a short noun phrase closed by the next comma.
+    after
+        .iter()
+        .position(|token| token.is_comma())
+        .is_some_and(|comma| (2..=3).contains(&comma))
+}
+
 pub fn split_segments_on_comma_effect_head_tokens(
     segments: Vec<&[OwnedLexToken]>,
 ) -> Vec<&[OwnedLexToken]> {
@@ -63,6 +83,12 @@ pub fn split_segments_on_comma_effect_head_tokens(
             let before = trim_lexed_commas(segment.get(start..idx).unwrap_or_default());
             let after = trim_lexed_commas(segment.get(idx + 1..).unwrap_or_default());
             if before.is_empty() || after.is_empty() {
+                continue;
+            }
+            // "becomes a legendary creature named Mileva, the Stalwart, it
+            // has ..." (Tenth District Hero): the comma belongs to the
+            // printed name's epithet, not to the action list.
+            if comma_continues_name_epithet(before, after) {
                 continue;
             }
             let facts = comma_boundary_facts(before, after);

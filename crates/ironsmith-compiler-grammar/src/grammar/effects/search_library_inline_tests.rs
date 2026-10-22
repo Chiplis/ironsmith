@@ -260,3 +260,13 @@ fn search_filter_keeps_devotion_as_the_dynamic_mana_value_limit() {
             })
     ));
 }
+
+#[test]
+fn named_search_union_scopes_literal_name_to_its_arm() {
+    let tokens = lex_line("a basic land card or a card named starship enterprise", 0).unwrap();
+    let filter = parse_search_library_object_filter_lexed(&tokens, "search probe").unwrap();
+    assert!(filter.name.is_none(), "name must not restrict the entire union: {filter:?}");
+    assert_eq!(filter.any_of.len(), 2, "{filter:?}");
+    assert!(filter.any_of.iter().any(|arm| arm.card_types.contains(&CardType::Land) && arm.name.is_none()));
+    assert!(filter.any_of.iter().any(|arm| arm.name.as_deref() == Some("starship enterprise") && arm.card_types.is_empty()));
+}

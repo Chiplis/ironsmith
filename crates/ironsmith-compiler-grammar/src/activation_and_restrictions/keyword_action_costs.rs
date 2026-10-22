@@ -598,6 +598,22 @@ fn parse_conjoined_payment_clause_as_total_cost(
 #[path = "keyword_action_costs/payment_cost_readings.rs"]
 mod payment_cost_readings;
 
+/// "half your life, rounded up": the comma before a rounding rider belongs
+/// to the amount, not a clause boundary.
+fn without_rounding_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    tokens
+        .iter()
+        .enumerate()
+        .filter(|(idx, token)| {
+            !(token.kind == crate::lexer::TokenKind::Comma
+                && tokens
+                    .get(idx + 1)
+                    .is_some_and(|next| next.is_word("rounded")))
+        })
+        .map(|(_, token)| token.clone())
+        .collect()
+}
+
 pub fn parse_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
@@ -1603,6 +1619,31 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         && let Ok(Some(cost)) = parse_payment_clause_as_total_cost(&phrase_tokens[2..])
     {
         return Some(KeywordAction::UnearthTotalCost(cost));
+    }
+
+    // "Recover—Pay half your life, rounded up" (Garza's Assassin): a
+    // non-mana recover cost after an em dash (CR 702.59a).
+    // The keyword-label rewrite may already have dropped the dash
+    // ("recover pay half your life, rounded up").
+    if keyword_head_is(head, "recover")
+        && let Some(cost_start) = phrase_tokens.get(1).and_then(|token| {
+            if token.as_word().is_some() {
+                Some(1)
+            } else if token.mana_group_inner().is_none() {
+                Some(2)
+            } else {
+                None
+            }
+        })
+        && phrase_tokens
+            .get(cost_start)
+            .is_some_and(|token| token.as_word().is_some())
+        && let Ok(Some(cost)) = parse_payment_clause_as_total_cost(
+            &without_rounding_comma(&phrase_tokens[cost_start..]),
+        )
+        && !cost.is_free()
+    {
+        return Some(KeywordAction::RecoverTotalCost(cost));
     }
 
     // A cost keyword ("unearth {2}{B}"): the heads are exclusive, so the table

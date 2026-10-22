@@ -793,6 +793,7 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::BeTargetedPlayerFrom(player, filter) | R::PlayerHexproofFrom(player, filter)
         | R::PlayLandsMatching(player, filter)
         | R::AttackPlayerOrPlaneswalkersControlledBy { attackers: filter, player }
+        | R::AttackPlayerOrPermanentsControlledBy { attackers: filter, player }
         | R::AttackPlayer { attackers: filter, player }
         | R::MustAttackPlayer { attackers: filter, player } => {
             *player = rewrite_player_filter_words(player, change)?;
@@ -839,6 +840,12 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         R::GainControl(filter, player) => {
             *filter = rewrite_filter_words(filter, change)?;
             *player = rewrite_player_filter_words(player, change)?;
+        }
+        R::ObjectRule { objects, rule } => {
+            *objects = rewrite_filter_words(objects, change)?;
+            if let ironsmith_core::ObjectRule::FaceDownVisibleTo(player) = rule {
+                *player = rewrite_player_filter_words(player, change)?;
+            }
         }
         R::BeSacrificedByCause { filter, cause } | R::BeExiledByCause { filter, cause } => {
             *filter = rewrite_filter_words(filter, change)?;
@@ -896,7 +903,7 @@ fn grantable_words(
             | D::ForetellFromCardManaCostReducedBy { .. } | D::PlotFromCardManaCost => {}
         },
         G::AlternativeCast(method) => match method {
-            A::Blitz { total_cost } | A::Flashback { total_cost, .. } | A::Harmonize { total_cost }
+            A::Blitz { total_cost } | A::Flashback { total_cost, .. } | A::Harmonize { total_cost } | A::BeamMeUp { total_cost }
             | A::Retrace { total_cost } | A::Madness { total_cost } | A::Bestow { total_cost }
             | A::FlashWithAdditionalCost { total_cost, .. } => {
                 *total_cost = rewrite_total_cost_words(total_cost, change)?;

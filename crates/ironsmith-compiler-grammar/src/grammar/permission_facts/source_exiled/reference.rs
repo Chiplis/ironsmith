@@ -223,7 +223,8 @@ pub fn parse_play_source_exiled_inline_mana_tokens(tokens: &[OwnedLexToken])
     let reference = if let Some(reference) = parse_play_lands_and_spells_from_source_exiled_tokens(permission) {
         reference
     } else {
-        let (_, rest) = primitives::parse_prefix(permission, primitives::phrase(&["you", "may", "play"]))?;
+        let (_, rest) = primitives::parse_prefix(permission, primitives::phrase(&["you", "may", "play"]))
+            .or_else(|| primitives::parse_prefix(permission, primitives::phrase(&["you", "may", "cast"])))?;
         let (reference, tail) = parse_cards_from_source_exiled_tokens(rest)?;
         primitives::probe_all(tail, primitives::sentence_end(), "complete source-linked card permission")?;
         reference

@@ -13,6 +13,9 @@ pub(super) enum BattlefieldChangeShape {
     PermanentLeftUnderYourControl {
         surface: crate::PermanentLeftBattlefieldControlSurface,
     },
+    /// "a creature left the battlefield under your control this turn"
+    /// (That's Rough Buddy): only creatures count.
+    CreatureLeftUnderYourControl,
     LandPutIntoGraveyardFromBattlefield,
     NonlandPermanentLeftOrSpellWarped,
 }
@@ -110,6 +113,12 @@ fn parse_permanent_left_under_control(
 ) -> WResult<BattlefieldChangeShape> {
     opt(parse_article).parse_next(input)?;
     alt((
+        (
+            parse_creature_noun,
+            primitives::kw("left"),
+            parse_battlefield_under_your_control_this_turn,
+        )
+            .value(BattlefieldChangeShape::CreatureLeftUnderYourControl),
         (
             parse_permanent_or_creature_noun,
             primitives::kw("left"),

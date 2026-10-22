@@ -242,6 +242,37 @@ fn read_known_spell_cost_fact(
             Fact::CreatureLeftBattlefieldUnderYourControlThisTurn => {
                 ThisSpellCostCondition::CreatureLeftBattlefieldUnderYourControlThisTurn
             }
+            // "If you've cast another white spell this turn" (Patrician's
+            // Scorn): the color restricts which earlier spell counts, and
+            // "another" excludes this spell itself.
+            Fact::CastThisTurn { another, card_types }
+                if words
+                    .iter()
+                    .any(|word| crate::util::parse_color(word).is_some()) =>
+            {
+                let mut filter = ObjectFilter::spell();
+                for word in words.iter() {
+                    if let Some(color) = crate::util::parse_color(word) {
+                        filter.colors = Some(filter.colors.unwrap_or_default().union(color));
+                    }
+                }
+                filter.card_types = card_types;
+                ThisSpellCostCondition::ConditionExpr {
+                    condition: crate::ConditionExpr::ValueComparison {
+                        left: Value::SpellsCastThisTurnMatching {
+                            player: PlayerFilter::You,
+                            filter,
+                            exclude_source: another,
+                        },
+                        operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(1),
+                    },
+                    display: crate::lexer::render_token_slice(tokens)
+                        .trim()
+                        .trim_end_matches(['.', ','])
+                        .to_string(),
+                }
+            }
             Fact::CastThisTurn { card_types, .. } => {
                 ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
                     count: 1,

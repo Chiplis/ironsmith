@@ -23,6 +23,9 @@ pub struct DealsCombatDamageToPlayerTrigger {
     pub per_source_controller: bool,
     pub recipient_passive: bool,
     pub during_your_turn: bool,
+    /// "... to a player or battle" (Zurgo and Ojutai): damaged permanents
+    /// matching this filter are recipients too, each its own group.
+    pub object_recipient: Option<ObjectFilter>,
 }
 
 impl DealsCombatDamageToPlayerTrigger {
@@ -35,6 +38,7 @@ impl DealsCombatDamageToPlayerTrigger {
             per_source_controller: false,
             recipient_passive: false,
             during_your_turn: false,
+            object_recipient: None,
         }
     }
 
@@ -49,6 +53,7 @@ impl DealsCombatDamageToPlayerTrigger {
             per_source_controller: false,
             recipient_passive: false,
             during_your_turn: false,
+            object_recipient: None,
         }
     }
 
@@ -63,12 +68,13 @@ impl DealsCombatDamageToPlayerTrigger {
             per_source_controller: false,
             recipient_passive: false,
             during_your_turn: false,
+            object_recipient: None,
         }
     }
 
     pub fn per_source_controller(filter: ObjectFilter, player: PlayerFilter, each_damaged_player: bool) -> Self {
         Self { filter, player, one_or_more: true, each_damaged_player, per_source_controller: true,
-            recipient_passive: false, during_your_turn: false }
+            recipient_passive: false, during_your_turn: false, object_recipient: None }
     }
 
     pub fn recipient_passive(player: PlayerFilter, during_your_turn: bool) -> Self {
@@ -80,6 +86,7 @@ impl DealsCombatDamageToPlayerTrigger {
             per_source_controller: false,
             recipient_passive: true,
             during_your_turn,
+            object_recipient: None,
         }
     }
 
@@ -140,8 +147,14 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             ModelTrigger::deals_combat_damage_to_player(
                 self.filter.clone(), self.player.clone())
         };
-        if let TriggerKind::DealsCombatDamageToPlayer { during_your_turn, .. } = &mut model.kind {
+        if let TriggerKind::DealsCombatDamageToPlayer {
+            during_your_turn,
+            object_recipient,
+            ..
+        } = &mut model.kind
+        {
             *during_your_turn = self.during_your_turn;
+            *object_recipient = self.object_recipient.clone();
         }
         Some(model)
     }
@@ -161,8 +174,25 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if !e.is_combat || e.amount == 0 {
             return false;
         }
-        let DamageTarget::Player(damaged_player) = e.target else {
-            return false;
+        let damaged_player = match e.target {
+            DamageTarget::Player(player) => player,
+            // "... to a player or battle": a damaged permanent matching the
+            // object recipient filter is its own grouped recipient.
+            DamageTarget::Object(object) => {
+                let Some(recipient) = self.object_recipient.as_ref() else {
+                    return false;
+                };
+                let recipient_matches = ctx.game.object(object).is_some_and(|recipient_obj| {
+                    recipient.matches(recipient_obj, &ctx.filter_ctx, ctx.game)
+                });
+                if !recipient_matches {
+                    return false;
+                }
+                let Some(obj) = ctx.game.object(e.source) else {
+                    return false;
+                };
+                return self.filter.matches(obj, &ctx.filter_ctx, ctx.game);
+            }
         };
         if self.per_source_controller {
             let Some(source) = event.source_snapshot().filter(|snapshot| snapshot.object_id == e.source) else {
@@ -294,12 +324,17 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
                 };
             }
             let subject = subject.strip_prefix("All ").unwrap_or(&subject);
-            let player = match (&self.player, self.each_damaged_player) {
+            let mut player = match (&self.player, self.each_damaged_player) {
                 (PlayerFilter::Opponent, false) => "one or more of your opponents".to_string(),
                 (PlayerFilter::Any, false) => "one or more players".to_string(),
                 (PlayerFilter::Opponent, true) => "an opponent".to_string(),
                 _ => self.player.description(),
             };
+            if let Some(object) = self.object_recipient.as_ref() {
+                let object = object.description();
+                let object = object.strip_prefix("a ").or_else(|| object.strip_prefix("an ")).unwrap_or(&object);
+                player = format!("{player} or {object}");
+            }
             return format!("Whenever one or more {subject} deal combat damage to {player}{}",
                 if self.during_your_turn { " during your turn" } else { "" });
         }
@@ -328,6 +363,12 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             return None;
         }
         let damage = event.downcast::<DamageEvent>()?;
+        if self.object_recipient.is_some()
+            && self.each_damaged_player
+            && matches!(damage.target, DamageTarget::Object(_))
+        {
+            return i32::try_from(damage.amount).ok();
+        }
         let DamageTarget::Player(current_player) = damage.target else {
             return None;
         };

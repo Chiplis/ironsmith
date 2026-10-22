@@ -350,6 +350,17 @@ pub fn classify_statement_line_family_lexed(
     if super::effects::emblem_shapes::parse_emblem_payload_tokens(tokens).is_some() {
         return Some(StatementLineFamily::Emblem);
     }
+    // "As Tibalt enters, you get an emblem with \"...\"" (Tibalt, Cosmic
+    // Impostor): the as-enters program's body is a complete emblem payload.
+    if tokens.first().is_some_and(|token| token.is_word("as"))
+        && tokens.get(1).is_some_and(|token| token.is_word("this"))
+        && let Some(enters_idx) = tokens.iter().position(|token| token.is_word("enters"))
+        && tokens.get(enters_idx + 1).is_some_and(|token| token.is_comma())
+        && super::effects::emblem_shapes::parse_emblem_payload_tokens(&tokens[enters_idx + 2..])
+            .is_some()
+    {
+        return Some(StatementLineFamily::Emblem);
+    }
 
     if (primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["each", "player", "votes"]))

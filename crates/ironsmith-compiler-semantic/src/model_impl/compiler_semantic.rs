@@ -236,6 +236,9 @@ pub enum ConditionalModeSelection {
 pub struct ParsedConditionalModeChange {
     pub condition: crate::cards::builders::PredicateAst,
     pub selection: ConditionalModeSelection,
+    /// "you may choose both instead": the wider range is a permission
+    /// (choosing only one stays legal); without "may" it is mandatory.
+    pub optional: bool,
 }
 
 #[derive(Debug, Clone)]

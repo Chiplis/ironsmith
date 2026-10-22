@@ -7,6 +7,40 @@ use crate::lexer::lex_line;
 const IF_WORD: &str = "if";
 
 #[test]
+fn counter_threshold_accepts_gendered_object_pronouns() {
+    for pronoun in ["him", "her"] {
+        let text = format!("there are three or more promotion counters on {pronoun}");
+        let predicate = parse_predicate(&lex_line(&text, 0).unwrap()).unwrap();
+        assert!(matches!(predicate,
+            PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
+                counter_type: CounterType::Named(name), count: 3, ..
+            }) if name.as_str() == "promotion"));
+    }
+}
+
+#[test]
+fn counter_placement_result_count_preserves_kind_recipient_and_threshold() {
+    let tokens = lex_line("you put two or more +1/+1 counters on creatures this way", 0).unwrap();
+    let predicate = parse_predicate(&tokens).unwrap();
+    let PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(query),
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(2),
+    } = predicate else { panic!("{predicate:?}") };
+    assert_eq!(query.action, Some(ironsmith_core::PriorEffectAction::CountersPut));
+    assert_eq!(query.metric, ironsmith_core::EffectMetric::CountersPut);
+    assert_eq!(query.counter_type, Some(CounterType::PlusOnePlusOne));
+    assert_eq!(query.filter, Some(ObjectFilter::creature()));
+    for text in [
+        "you put two or more +1/+1 counters on creatures this way and draw",
+        "you put two or more +1/+1 counters on creatures this turn",
+        "an opponent put two or more +1/+1 counters on creatures this way",
+    ] {
+        assert!(advanced::parse_counter_placement_result_count(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+    }
+}
+
+#[test]
 fn graveyard_contractions_match_word_view_without_weakening_token_consumption() {
     for head in ["there's", "there’s", "theres"] {
         let tokens = lex_line(&format!("{head} a Lesson card in your graveyard"), 0).unwrap();

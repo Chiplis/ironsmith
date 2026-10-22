@@ -3403,7 +3403,13 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
         !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag == look.tag)
     });
-    let mut filter_text = filter.description();
+    // The looked-at objects are library cards: an untyped filter over them
+    // ("cards of the chosen type") takes the card noun, never "permanent".
+    let mut filter_text = filter.description_with_default_noun(if choose.count.max == Some(1) {
+        "card"
+    } else {
+        "cards"
+    });
     let unfiltered_looked_cards = filter == ObjectFilter::default();
     if unfiltered_looked_cards {
         filter_text = if choose.count.max == Some(1) {
@@ -3448,6 +3454,18 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
                 format!("up to {max_text}")
             }
             _ => describe_choice_count(&choose.count),
+        };
+        let count_text = if count_text == "any number" {
+            "any number of".to_string()
+        } else {
+            count_text
+        };
+        // A multi-card selection names its noun in the plural ("any number
+        // of Rat cards").
+        let filter_text = if filter_text.contains("cards") {
+            filter_text
+        } else {
+            pluralize_noun_phrase(&filter_text)
         };
         format!("{count_text} {filter_text}")
     };

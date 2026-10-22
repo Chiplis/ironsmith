@@ -562,7 +562,7 @@ fn parse_next_turn_attack_ban_sentence(tokens: &[OwnedLexToken]) -> Option<Effec
         "attack",
         "you",
         "or",
-        "permanents" | "planeswalkers",
+        protected @ ("permanents" | "planeswalkers"),
         "you",
         "control",
         "during",
@@ -571,6 +571,8 @@ fn parse_next_turn_attack_ban_sentence(tokens: &[OwnedLexToken]) -> Option<Effec
     else {
         return None;
     };
+    // "permanents you control" also covers battles you control (CR 508.1b).
+    let covers_all_permanents = *protected == "permanents";
     if !matches!(
         tail,
         ["their", "next", "turn"]
@@ -581,11 +583,19 @@ fn parse_next_turn_attack_ban_sentence(tokens: &[OwnedLexToken]) -> Option<Effec
     }
     let mut attackers = ObjectFilter::creature();
     attackers.controller = Some(PlayerFilter::IteratedPlayer);
-    Some(EffectAst::subject_verb_cant_starting(
+    let restriction = if covers_all_permanents {
+        crate::effect::Restriction::attack_player_or_permanents_controlled_by(
+            attackers,
+            PlayerFilter::You,
+        )
+    } else {
         crate::effect::Restriction::attack_player_or_planeswalkers_controlled_by(
             attackers,
             PlayerFilter::You,
-        ),
+        )
+    };
+    Some(EffectAst::subject_verb_cant_starting(
+        restriction,
         crate::effect::Until::EndOfTurn,
         crate::effect::RestrictionStart::NextTurn(PlayerFilter::IteratedPlayer),
         None,

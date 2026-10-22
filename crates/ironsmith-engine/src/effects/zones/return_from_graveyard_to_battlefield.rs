@@ -221,6 +221,15 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                     None
                 };
 
+                // "that creature's controller returns this Aura ... to the
+                // battlefield" (Traveling Plague): the returning player puts
+                // it onto the battlefield and controls it (CR 110.2a).
+                let returning_player = match &self.returning_player {
+                    Some(player) => Some(crate::effects::helpers::resolve_player_filter(
+                        game, player, ctx,
+                    )?),
+                    None => None,
+                };
                 let requests = target_ids
                     .iter()
                     .map(|target_id| {
@@ -233,7 +242,13 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                         .map(|initial_counters| {
                             (
                                 *target_id,
-                                BattlefieldEntryOptions::preserve(self.tapped)
+                                returning_player
+                                    .map_or_else(
+                                        || BattlefieldEntryOptions::preserve(self.tapped),
+                                        |player| {
+                                            BattlefieldEntryOptions::specific(player, self.tapped)
+                                        },
+                                    )
                                     .with_initial_counters(initial_counters)
                                     .with_entry_attachment(
                                         attachment_target.map(AttachmentTarget::Object),

@@ -533,6 +533,17 @@ pub struct ObjectSnapshot {
     pub tapped: bool,
     /// Whether the object was attacking.
     pub attacking: bool,
+    /// Whether the object was blocking.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub blocking: bool,
+    /// Whether the object was attacking while no other creature its
+    /// controller controlled was ("attacking alone", CR 506.5).
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub attacking_alone: bool,
+    /// Whether the object was blocking while no other creature was
+    /// ("blocking alone", CR 506.5).
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub blocking_alone: bool,
     /// Last-known goad designation for a snapshot with calculated state.
     /// Raw snapshots leave this unset rather than recursively calculating layers.
     pub goaded: Option<bool>,
@@ -704,6 +715,9 @@ impl ObjectSnapshot {
             is_token: false,
             tapped: false,
             attacking: false,
+            blocking: false,
+            attacking_alone: false,
+            blocking_alone: false,
             goaded: None,
             suspected: None,
             ring_bearer: None,
@@ -796,6 +810,7 @@ impl ObjectSnapshot {
                         && attachment.subtypes.contains(&Subtype::Aura)
                 })
         });
+        let combat_role_lookback = game.simultaneous_combat_role_lookback(obj.id);
         Self {
             stack_kind: if obj.zone == Zone::Stack {
                 Some(crate::filter::StackObjectKind::Spell)
@@ -868,10 +883,33 @@ impl ObjectSnapshot {
             counters: obj.counters.counts().clone(),
             is_token: obj.kind == ObjectKind::Token,
             tapped: game.is_tapped_for_capture(obj.id),
-            attacking: game
-                .combat
-                .as_ref()
-                .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id)),
+            // While a simultaneous move is pinned, a departing combatant's
+            // LKI uses the combat state from before the move (CR 603.10a):
+            // an earlier departure in the same move can't make it "alone".
+            attacking: combat_role_lookback.map_or_else(
+                || {
+                    game.combat
+                        .as_ref()
+                        .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id))
+                },
+                |role| role.attacking,
+            ),
+            blocking: combat_role_lookback.map_or_else(
+                || {
+                    game.combat
+                        .as_ref()
+                        .is_some_and(|combat| crate::combat_state::is_blocking(combat, obj.id))
+                },
+                |role| role.blocking,
+            ),
+            attacking_alone: combat_role_lookback.map_or_else(
+                || crate::combat_state::is_attacking_alone(game, obj.id),
+                |role| role.attacking_alone,
+            ),
+            blocking_alone: combat_role_lookback.map_or_else(
+                || crate::combat_state::is_blocking_alone(game, obj.id),
+                |role| role.blocking_alone,
+            ),
             goaded: None,
             suspected: Some(obj.zone == Zone::Battlefield && game.is_suspected(obj.id)),
             ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
@@ -1315,6 +1353,9 @@ impl ObjectSnapshot {
             is_token: false,
             tapped: false,
             attacking: false,
+            blocking: false,
+            attacking_alone: false,
+            blocking_alone: false,
             goaded: Some(false),
             suspected: Some(false),
             ring_bearer: Some(false),

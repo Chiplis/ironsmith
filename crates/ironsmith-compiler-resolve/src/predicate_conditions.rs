@@ -596,6 +596,7 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
             player,
             count,
+            ..
         }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasPoisonCountersOrMore {
@@ -823,7 +824,9 @@ pub fn resolve_condition_from_predicate(
         } => Condition::CountComparison {
             count: count.clone(),
             comparison: comparison.clone(),
-            display: display.clone(),
+            display: display
+                .as_ref()
+                .map(|display| capitalize_counted_subtypes(display, count)),
         },
         PredicateAst::Bound(condition) => condition.as_ref().clone(),
         PredicateAst::YouControl(filter) => Condition::YouControl(filter.clone()),
@@ -846,7 +849,7 @@ pub fn resolve_condition_from_predicate(
         }
         PredicateAst::TaggedObjectIsTopOfLibrary { tag, player } => {
             Condition::TaggedObjectIsTopOfLibrary {
-                tag: tag.clone().into(),
+                tag: resolve_it_tag_key(tag, &refs)?,
                 player: resolve_non_target_player_filter(*player, &refs)?,
             }
         }
@@ -962,6 +965,7 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(
             count,
         )) => Condition::ThisAbilityResolvedThisTurnExactly(*count),
+        PredicateAst::ThisSpellCastOrderThisGame(order) => Condition::ThisSpellCastOrderThisGame(*order),
         PredicateAst::TargetSpellCastOrderThisTurn(order) => {
             Condition::TargetSpellCastOrderThisTurn(*order)
         }
@@ -1115,6 +1119,11 @@ pub fn resolve_condition_from_predicate(
             }
             TurnHistoryPredicateAst::PlayerWasDealtNoncombatDamageLastTurn(player) => {
                 ironsmith_core::TurnHistoryCondition::PlayerWasDealtNoncombatDamageLastTurn(
+                    resolve_non_target_player_filter(*player, &refs)?,
+                )
+            }
+            TurnHistoryPredicateAst::PlayerWasDealtCombatDamageSinceTheirLastTurn(player) => {
+                ironsmith_core::TurnHistoryCondition::PlayerWasDealtCombatDamageSinceTheirLastTurn(
                     resolve_non_target_player_filter(*player, &refs)?,
                 )
             }
@@ -1292,4 +1301,61 @@ fn spell_characteristics_for_card(filter: &mut ObjectFilter) {
     {
         filter.excluded_card_types.push(crate::types::CardType::Land);
     }
+}
+
+/// The authored condition display is read from lowercased source words, so
+/// a counted subtype loses its capital ("as long as you control an artifact
+/// creature or a Plan", Doctor Doom). Restore the printed casing for every
+/// subtype the counted filter names.
+fn capitalize_counted_subtypes(
+    display: &str,
+    count: &crate::static_abilities::AnthemCountExpression,
+) -> String {
+    fn collect(filter: &ObjectFilter, names: &mut Vec<String>) {
+        for subtype in filter.subtypes.iter().chain(filter.all_subtypes.iter()) {
+            let name = subtype.to_string();
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        for branch in &filter.any_of {
+            collect(branch, names);
+        }
+    }
+    let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) = count else {
+        return display.to_string();
+    };
+    let mut names = Vec::new();
+    collect(filter, &mut names);
+    let mut out = display.to_string();
+    for name in names {
+        let lower = name.to_ascii_lowercase();
+        if lower == name {
+            continue;
+        }
+        let mut result = String::with_capacity(out.len());
+        let mut rest = out.as_str();
+        let mut previous: Option<char> = None;
+        while let Some(index) = rest.find(&lower) {
+            let before = rest[..index].chars().next_back().or(previous);
+            let after = &rest[index + lower.len()..];
+            let tail = after
+                .strip_prefix("es")
+                .or_else(|| after.strip_prefix('s'))
+                .unwrap_or(after);
+            let boundary_before = before.is_none_or(|c| !c.is_alphanumeric());
+            let boundary_after = tail.chars().next().is_none_or(|c| !c.is_alphanumeric());
+            result.push_str(&rest[..index]);
+            if boundary_before && boundary_after {
+                result.push_str(&name);
+            } else {
+                result.push_str(&lower);
+            }
+            previous = lower.chars().next_back();
+            rest = after;
+        }
+        result.push_str(rest);
+        out = result;
+    }
+    out
 }

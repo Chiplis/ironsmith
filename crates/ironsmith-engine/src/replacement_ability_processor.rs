@@ -47,6 +47,7 @@ pub fn generate_replacement_effects_from_abilities(
             if zone == crate::zone::Zone::Stack && object.cast_alternative_method.as_deref().is_some_and(|method|
                 matches!(method, crate::alternative_cast::AlternativeCastingMethod::Flashback { .. }
                     | crate::alternative_cast::AlternativeCastingMethod::JumpStart { .. }
+                    | crate::alternative_cast::AlternativeCastingMethod::BeamMeUp { .. }
                     | crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. })) {
                 effects.push(crate::replacement::ZoneReplacementSpec::new(
                     crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
@@ -322,7 +323,10 @@ mod tests {
         );
         assert!(matches!(
             effect.replacement,
-            ReplacementAction::ChangeDestination(Zone::Library)
+            ReplacementAction::MoveToZoneThen {
+                zone: Zone::Library,
+                ..
+            }
         ));
     }
 
@@ -519,7 +523,10 @@ mod tests {
                 effect.source == darksteel_id
                     && matches!(
                         effect.replacement,
-                        ReplacementAction::ChangeDestination(Zone::Library)
+                        ReplacementAction::MoveToZoneThen {
+                            zone: Zone::Library,
+                            ..
+                        }
                     )
             }),
             "expected nonbattlefield shuffle replacement to be generated from hand"

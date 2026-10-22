@@ -755,7 +755,18 @@ fn execute_untap_step_inner(
         .flat_map(|player| game.permanents_controlled_by(*player))
         .collect();
     if may_have_untap_static_abilities {
-        for source_id in game.battlefield.clone() {
+        // Emblems carry these rules from the command zone (Teferi, Who
+        // Slows the Sunset's emblem, CR 114.4).
+        let sources: Vec<_> = game
+            .battlefield
+            .iter()
+            .copied()
+            .chain(game.command_zone.iter().copied().filter(|id| {
+                game.object(*id)
+                    .is_some_and(|object| object.kind == crate::object::ObjectKind::Emblem)
+            }))
+            .collect();
+        for source_id in sources {
             let Some(source) = game.object(source_id) else {
                 continue;
             };
@@ -773,6 +784,13 @@ fn execute_untap_step_inner(
                 else {
                     continue;
                 };
+                if static_ability.untap_during_other_players_untap_step_opponents_only()
+                    && !active_players
+                        .iter()
+                        .any(|player| game.are_opponents(*player, source_controller))
+                {
+                    continue;
+                }
                 for &candidate_id in &game.battlefield {
                     if let Some(candidate) = game.object(candidate_id)
                         && filter.matches(candidate, &filter_ctx, game)
@@ -973,7 +991,19 @@ fn apply_untap_step_limits(
 
     let mut limits = Vec::new();
     let mut chosen_type_rules = Vec::new();
-    for &source_id in &game.battlefield {
+    // Emblems in the command zone carry untap-step rules too ("Your
+    // opponents can't untap more than two permanents during their untap
+    // steps", Dovin Baan's emblem, CR 114.4).
+    let sources: Vec<_> = game
+        .battlefield
+        .iter()
+        .copied()
+        .chain(game.command_zone.iter().copied().filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.kind == crate::object::ObjectKind::Emblem)
+        }))
+        .collect();
+    for source_id in sources {
         if game.is_phased_out(source_id) {
             continue;
         }
@@ -1138,6 +1168,10 @@ fn game_may_have_untap_static_abilities(game: &GameState) -> bool {
             .stack
             .iter()
             .any(|entry| object_may_have_untap_static_abilities(game, entry.object_id))
+        || game
+            .command_zone
+            .iter()
+            .any(|id| object_may_have_untap_static_abilities(game, *id))
 }
 
 fn object_may_have_untap_static_abilities(

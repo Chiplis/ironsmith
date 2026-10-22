@@ -28,8 +28,9 @@ use ironsmith_compiler::{
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 11;
+const DB_SCHEMA_VERSION: i64 = 12;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
+const UNRELEASED_MARKER: &str = "ironsmith_unreleased";
 const SUPPORTED_PAPER_FORMATS: &[&str] = &[
     "commander",
     "standard",
@@ -139,7 +140,8 @@ pub struct RegistryCardRecord {
     pub content_hash: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ParseStatus {
     StrictCompiled,
     CompiledWithAllowUnsupported,
@@ -164,7 +166,7 @@ pub struct ParseAttempt {
     pub parse_loss: parse_loss::ParseLossReport,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CompilationSnapshot {
     pub card_name: String,
     pub oracle_text: String,
@@ -1494,6 +1496,51 @@ impl CardStatusDb {
              JOIN card_compilation cc
              ON cc.id = latest.compilation_id;",
         )?;
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS card_face_compilation (
+                compilation_id INTEGER NOT NULL,
+                face_index INTEGER NOT NULL,
+                snapshot TEXT NOT NULL CHECK(json_valid(snapshot)),
+                PRIMARY KEY (compilation_id, face_index)
+             );
+             CREATE TRIGGER IF NOT EXISTS delete_card_compilation_faces
+             AFTER DELETE ON card_compilation BEGIN
+                DELETE FROM card_face_compilation WHERE compilation_id = OLD.id;
+             END;",
+        )?;
+        let face_columns = [
+            "oracle_text",
+            "raw_oracle_text",
+            "parse_status",
+            "parse_error",
+            "normalized_oracle_text",
+            "compiled_text",
+            "compiled_card_definition",
+            "oracle_coverage",
+            "compiled_coverage",
+            "similarity_score",
+            "line_delta",
+            "semantic_mismatch",
+            "has_unimplemented",
+            "parse_lossy",
+            "parse_loss_reasons",
+            "parse_loss_count",
+            "content_hash",
+        ]
+        .iter()
+        .map(|field| format!("json_extract(f.snapshot, '$.{field}') AS {field}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+        self.conn.execute_batch(&format!(
+            "DROP VIEW IF EXISTS latest_card_face_compilation;
+             CREATE VIEW latest_card_face_compilation AS
+             SELECT latest.card_name, f.face_index,
+                    json_extract(f.snapshot, '$.card_name') AS face_name,
+                    f.compilation_id, cc.compiled_at, {face_columns}
+             FROM latest_card_observation latest
+             JOIN card_compilation cc ON cc.id = latest.compilation_id
+             JOIN card_face_compilation f ON f.compilation_id = latest.compilation_id;"
+        ))?;
         self.conn
             .pragma_update(None, "user_version", DB_SCHEMA_VERSION)?;
         Ok(())
@@ -1581,6 +1628,29 @@ impl CardStatusDb {
         &mut self,
         snapshots: &[CompilationSnapshot],
     ) -> Result<usize, Box<dyn Error>> {
+        let snapshots = snapshots
+            .iter()
+            .map(|snapshot| (snapshot, &[][..]))
+            .collect::<Vec<_>>();
+        self.insert_snapshots_with_faces(&snapshots)
+    }
+
+    /// Persist aggregate and independent face observations in the same transaction.
+    pub fn insert_corpus_snapshots_if_changed(
+        &mut self,
+        snapshots: &[(CompilationSnapshot, Vec<CompilationSnapshot>)],
+    ) -> Result<usize, Box<dyn Error>> {
+        let snapshots = snapshots
+            .iter()
+            .map(|(card, faces)| (card, faces.as_slice()))
+            .collect::<Vec<_>>();
+        self.insert_snapshots_with_faces(&snapshots)
+    }
+
+    fn insert_snapshots_with_faces(
+        &mut self,
+        snapshots: &[(&CompilationSnapshot, &[CompilationSnapshot])],
+    ) -> Result<usize, Box<dyn Error>> {
         let tx = self.conn.transaction()?;
         let mut changed_count = 0usize;
 
@@ -1627,7 +1697,11 @@ impl CardStatusDb {
                      compilation_id = excluded.compilation_id",
             )?;
 
-            for snapshot in snapshots {
+            let mut insert_face = tx.prepare(
+                "INSERT OR REPLACE INTO card_face_compilation (compilation_id, face_index, snapshot)
+                 VALUES (?1, ?2, ?3)",
+            )?;
+            for (snapshot, faces) in snapshots {
                 let previous_latest_id = select_previous_latest
                     .query_row([snapshot.card_name.as_str()], |row| row.get::<_, i64>(0))
                     .optional()?;
@@ -1658,6 +1732,13 @@ impl CardStatusDb {
                     |row| row.get(0),
                 )?;
 
+                for (index, face) in faces.iter().enumerate() {
+                    insert_face.execute(params![
+                        compilation_id,
+                        index as i64,
+                        serde_json::to_string(face)?
+                    ])?;
+                }
                 upsert_latest.execute(params![snapshot.card_name.as_str(), compilation_id])?;
 
                 if previous_latest_id != Some(compilation_id) {
@@ -2192,6 +2273,22 @@ impl CardStatusDb {
             .query_map([tag], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(names)
+    }
+
+    /// Use raw records to preserve every face; the legacy parse_input stores only the front.
+    pub fn registry_corpus_cards(&self) -> Result<Vec<crate::corpus::CorpusCard>, Box<dyn Error>> {
+        let payloads = self.registry_card_payloads()?;
+        let mut statement = self
+            .conn
+            .prepare("SELECT raw_card_json FROM registry_card WHERE card_name = ?1")?;
+        payloads
+            .into_iter()
+            .map(|payload| {
+                let raw: String = statement.query_row([&payload.name], |row| row.get(0))?;
+                let card: Value = serde_json::from_str(&raw)?;
+                crate::corpus::CorpusCard::from_record(payload, &card)
+            })
+            .collect()
     }
 
     pub fn registry_card_payloads(&self) -> Result<Vec<CardPayload>, Box<dyn Error>> {
@@ -2764,6 +2861,11 @@ fn build_registry_card_record_with_explicit_includes(
 }
 
 fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
+    // scripts/download_scryfall_cards.py keeps previewed cards that no format
+    // lists yet, so lobbies can opt into them.
+    if card.get(UNRELEASED_MARKER).and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
     let Some(legalities) = card.get("legalities").and_then(Value::as_object) else {
         return true;
     };
@@ -2900,7 +3002,7 @@ fn get_second_face(card: &Value) -> Option<&Value> {
         .and_then(|faces| faces.get(1))
 }
 
-fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPayload> {
+pub(crate) fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPayload> {
     let faces = card.get("card_faces")?.as_array()?;
     let face = faces.get(face_index)?;
     let name = face.get("name")?.as_str()?.trim();

@@ -208,6 +208,55 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         }
     }
 
+    // "the number of creatures that were exiled under your opponents'
+    // control this turn" (Vren, the Relentless): permanents that went from
+    // the battlefield to exile this turn while an opponent controlled them,
+    // judged by their last-known information.
+    for (suffix, controller) in [
+        (
+            &[
+                "that", "were", "exiled", "under", "your", "opponents'", "control", "this",
+                "turn",
+            ][..],
+            PlayerFilter::Opponent,
+        ),
+        (
+            &[
+                "that", "were", "exiled", "under", "your", "opponents", "control", "this",
+                "turn",
+            ][..],
+            PlayerFilter::Opponent,
+        ),
+        (
+            &[
+                "that", "were", "exiled", "under", "an", "opponent's", "control", "this", "turn",
+            ][..],
+            PlayerFilter::Opponent,
+        ),
+        (
+            &[
+                "that", "were", "exiled", "under", "an", "opponents", "control", "this", "turn",
+            ][..],
+            PlayerFilter::Opponent,
+        ),
+        (
+            &["that", "were", "exiled", "under", "your", "control", "this", "turn"][..],
+            PlayerFilter::You,
+        ),
+    ] {
+        if let Some(end) = suffix_start(&words, suffix)
+            && end > 0
+        {
+            let mut filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+            filter.controller = Some(controller);
+            return Some(Value::TurnHistoryCount(TurnHistoryCount::MovedZones {
+                filter,
+                from: Some(crate::zone::Zone::Battlefield),
+                to: Some(crate::zone::Zone::Exile),
+            }));
+        }
+    }
+
     // "for each creature put into your graveyard from the battlefield this
     // turn" (Urborg Justice): your permanents that went from the battlefield
     // to your graveyard, judged by their last-known information.
@@ -284,8 +333,8 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
     }
 
     // "the number of Treasure tokens you created this turn" (Vazi, Keen
-    // Negotiator): typed tokens that entered under your control this turn,
-    // counted from the turn's history even after they leave.
+    // Negotiator): typed tokens you created this turn, read from creation
+    // history rather than battlefield entries under your control.
     if words.len() > 5
         && matches!(words[words.len() - 5], "token" | "tokens")
         && matches!(words[words.len() - 4], "you" | "youve" | "you've")
@@ -295,9 +344,13 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         && (!filter.subtypes.is_empty() || !filter.card_types.is_empty() || filter.colors.is_some())
     {
         filter.token = true;
-        filter.controller = Some(PlayerFilter::You);
+        filter.controller = None;
+        filter.zone = None;
         return Some(Value::TurnHistoryCount(
-            TurnHistoryCount::EnteredBattlefield(filter),
+            TurnHistoryCount::TokensCreatedMatching {
+                player: PlayerFilter::You,
+                filter,
+            },
         ));
     }
 
@@ -489,12 +542,34 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         ));
     }
 
+    // "each creature you controlled that dealt combat damage to a player this
+    // turn" (Excess): a past-tense control relation over damage history, so
+    // creatures that dealt the damage and have since left still count.
+    if let Some(end) = suffix_start(
+        &words,
+        &[
+            "you", "controlled", "that", "dealt", "combat", "damage", "to", "a", "player", "this",
+            "turn",
+        ],
+    ) {
+        let filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::CombatDamageSourcesToPlayers {
+                player: PlayerFilter::You,
+                recipients: PlayerFilter::Any,
+                filter,
+            },
+        ));
+    }
+
     if let Some(end) = suffix_start(&words, &["you", "attacked", "with", "this", "turn"]) {
         let filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
         return Some(Value::TurnHistoryCount(
             TurnHistoryCount::CreaturesAttackedWith {
                 player: PlayerFilter::You,
                 filter,
+                this_combat: false,
+                attacked: None,
             },
         ));
     }

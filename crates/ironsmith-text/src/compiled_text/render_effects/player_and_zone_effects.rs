@@ -1032,6 +1032,10 @@ pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
             "{player} {verb} a card for each card type among {}",
             describe_count_filter_value_subject(filter)
         )),
+        Value::PermanentTypesAmong(filter) => Some(format!(
+            "{player} {verb} a card for each permanent type among {}",
+            describe_count_filter_value_subject(filter)
+        )),
         Value::ColorsAmong(filter) => Some(format!(
             "{player} {verb} a card for each {}",
             describe_colors_among(filter)
@@ -1409,6 +1413,10 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             "card type among {}",
             describe_count_filter_value_subject(filter)
         )),
+        Value::PermanentTypesAmong(filter) => Some(format!(
+            "permanent type among {}",
+            describe_count_filter_value_subject(filter)
+        )),
         // "draw a card for each card type among cards discarded this way"
         // (Kefka, Court Mage).
         Value::EffectMetric {
@@ -1573,9 +1581,39 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
                 strip_leading_article(&describe_for_each_player_filter(player)).to_string();
             Some(format!("{player} who lost life this turn"))
         }
+        // "for each creature you controlled that dealt combat damage to a
+        // player this turn" (Excess): history over the damage-time sources.
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CombatDamageSourcesToPlayers {
+            player,
+            recipients,
+            filter,
+        }) => {
+            let mut subject_filter = filter.clone();
+            subject_filter.zone = None;
+            let subject = describe_for_each_filter(&subject_filter);
+            let recipients = if *recipients == PlayerFilter::Any {
+                "a player".to_string()
+            } else {
+                describe_player_filter(recipients)
+            };
+            Some(format!(
+                "{subject} {} controlled that dealt combat damage to {recipients} this turn",
+                describe_player_filter(player)
+            ))
+        }
         Value::CountPlayers(PlayerFilter::Opponent) => Some("opponent you have".to_string()),
         Value::CountPlayers(PlayerFilter::Any) => Some("player".to_string()),
         Value::CountPlayers(PlayerFilter::NotYou) => Some("player other than you".to_string()),
+        // "for each opponent dealt damage" (Malcolm, Keen-Eyed Navigator):
+        // the players a grouped damage trigger's batch damaged.
+        Value::CountPlayers(PlayerFilter::TaggedPlayer(tag))
+            if tag.as_str() == ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG =>
+        {
+            Some(format!(
+                "{} dealt damage",
+                super::single_effects_early::damage_batch_player_noun()
+            ))
+        }
         Value::CountPlayers(player) => Some(
             strip_leading_article(&describe_for_each_player_filter(player)).to_string(),
         ),
@@ -1596,6 +1634,23 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::CommanderCastCount(player) => Some(format!(
             "time {} has cast their commander from the command zone this game",
             describe_player_filter(player)
+        )),
+        Value::CommandersCastFromCommandZoneBy(PlayerFilter::You) => Some(
+            "time you've cast a commander from the command zone this game".to_string(),
+        ),
+        Value::CommandersCastFromCommandZoneBy(PlayerFilter::IteratedPlayer) => Some(
+            "time they've cast a commander from the command zone this game".to_string(),
+        ),
+        Value::CommandersCastFromCommandZoneBy(player) => Some(format!(
+            "time {} has cast a commander from the command zone this game",
+            describe_player_filter(player)
+        )),
+        Value::CommanderCastCountOf(_) => {
+            Some("time it's been cast from the command zone this game".to_string())
+        }
+        Value::DistinctManaCosts(filter) => Some(format!(
+            "different mana cost among {}",
+            crate::compiled_text::normalize_common::describe_count_filter_value_subject(filter)
         )),
         Value::KickCount => Some("time it was kicked".to_string()),
         // "+3/+3 for each opponent whose life total is less than half their
@@ -2007,6 +2062,16 @@ pub(crate) fn should_render_token_count_with_where_x(value: &Value) -> bool {
     ) {
         return false;
     }
+    // "create twice that many 2/2 black Zombie creature tokens" (Tainted
+    // Adversary): a scaled back-reference reads inline; as a where-X basis
+    // it would define X in terms of itself.
+    if matches!(
+        value.unhinted(),
+        Value::Scaled(inner, _)
+            if matches!(inner.unhinted(), Value::EffectValue(_) | Value::EffectValueOffset(_, _))
+    ) {
+        return false;
+    }
 
     let rendered = describe_value(value);
     rendered.chars().any(char::is_whitespace) || rendered.contains('\'')
@@ -2082,6 +2147,12 @@ pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
         Value::CardTypesAmong(filter) => {
             format!(
                 "a {token_name} token for each card type among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::PermanentTypesAmong(filter) => {
+            format!(
+                "a {token_name} token for each permanent type among {}",
                 describe_count_filter_value_subject(filter)
             )
         }
@@ -2341,6 +2412,18 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             && exact > 1
         {
             let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
+            // "the top three black cards of your graveyard" (Spinning
+            // Darkness): keep the qualified noun the count applies to.
+            let mut ordinary_choice = choose.clone();
+            ordinary_choice.top_only = false;
+            let ordinary_selection = describe_choose_selection(&ordinary_choice);
+            if let Some(noun) = ordinary_selection
+                .strip_prefix(&format!("{count_text} "))
+                .filter(|noun| noun.ends_with("cards") || noun.contains(" cards "))
+                && noun != "cards"
+            {
+                return format!("the top {count_text} {noun}");
+            }
             return format!("the top {count_text} cards");
         }
         let mut ordinary_choice = choose.clone();
@@ -2351,6 +2434,16 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             .or_else(|| ordinary_selection.strip_prefix("an "))
             .unwrap_or(ordinary_selection.as_str());
         return format!("the top {noun}");
+    }
+    if choose.bottom_only && choose.count.is_single() {
+        let mut ordinary_choice = choose.clone();
+        ordinary_choice.bottom_only = false;
+        let ordinary_selection = describe_choose_selection(&ordinary_choice);
+        let noun = ordinary_selection
+            .strip_prefix("a ")
+            .or_else(|| ordinary_selection.strip_prefix("an "))
+            .unwrap_or(ordinary_selection.as_str());
+        return format!("the bottom {noun}");
     }
 
     // A bare choice from an earlier revealed/looked set back-references it
@@ -2786,6 +2879,15 @@ pub(super) fn describe_source_exiled_choose_selection(
         return None;
     }
 
+    if choose.filter.has_craft_material_reference() {
+        // CR 702.167c: one of the craft materials linked to this permanent.
+        let mut selection = "an exiled card used to craft it".to_string();
+        if choose.count.random {
+            selection.push_str(" at random");
+        }
+        return Some(selection);
+    }
+
     let mut selection = "a card".to_string();
     if choose.count.random {
         selection.push_str(" at random");
@@ -2957,7 +3059,7 @@ pub(crate) fn describe_choose_then_exile(
     };
     let primary_zone = choose_primary_zone(choose)?;
     let origin_prefix = match primary_zone {
-        Zone::Library | Zone::Graveyard if choose.top_only => "of",
+        Zone::Library | Zone::Graveyard if choose.top_only || choose.bottom_only => "of",
         Zone::Hand | Zone::Graveyard | Zone::Library => "from",
         _ => return None,
     };
@@ -2990,12 +3092,28 @@ pub(crate) fn describe_choose_then_exile(
             let basis = basis.to_string();
             chosen = noun;
             format!(" equal to {basis}")
+        } else if let Some((noun, basis)) = chosen.split_once(", where X is ")
+            && let Some(noun) = noun.strip_prefix("X ")
+        {
+            // "they exile cards from their hand equal to the difference"
+            // (Isildur's Fateful Strike).
+            let noun = noun.to_string();
+            let basis = basis.to_string();
+            chosen = noun;
+            format!(" equal to {basis}")
         } else {
             String::new()
         }
     } else {
         String::new()
     };
+    // "Exile the bottom card of target player's graveyard" (Phyrexian
+    // Furnace): a fixed edge card the controller exiles reads imperatively.
+    if choose.chooser == PlayerFilter::You && (choose.top_only || choose.bottom_only) {
+        return Some(format!(
+            "exile {chosen} {origin_prefix} {origin_zones}{count_suffix}{face_state_suffix}"
+        ));
+    }
     Some(format!(
         "{chooser} {verb} {chosen} {origin_prefix} {origin_zones}{count_suffix}{face_state_suffix}"
     ))
@@ -3815,6 +3933,13 @@ pub(super) fn describe_move_to_battlefield_with_additional_counters(
                 "{} graveyard",
                 describe_possessive_graveyard_owner_filter(&owner)
             ),
+            None if matches!(
+                move_to_zone.target.base(),
+                ChooseSpec::Object(filter) if filter.single_graveyard
+            ) =>
+            {
+                "a single graveyard".to_string()
+            }
             None if choose_spec_allows_multiple(&move_to_zone.target) => "graveyards".to_string(),
             None => "a graveyard".to_string(),
         };
@@ -4272,6 +4397,23 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
 
     let chooser = describe_player_filter(&choose.chooser);
     let mut chosen = describe_choose_selection(choose);
+    // "the top two cards of that player's library" (Cybership), "the top
+    // creature card of defending player's graveyard" (Bone Dancer): the edge
+    // selection already names the ordered zone's top.
+    let origin = if choose.top_only
+        && chosen.starts_with("the top ")
+        && zones.len() == 1
+        && matches!(primary_zone, Zone::Library | Zone::Graveyard)
+    {
+        let zone_text = if primary_zone == Zone::Library { "library" } else { "graveyard" };
+        match choose.filter.owner.as_ref() {
+            Some(PlayerFilter::IteratedPlayer) => format!("of their {zone_text}"),
+            Some(owner) => format!("of {} {zone_text}", describe_possessive_player_filter(owner)),
+            None => format!("of a {zone_text}"),
+        }
+    } else {
+        origin
+    };
     let where_x_clause = if let Some((head, tail)) = chosen.split_once(", where X is ") {
         let tail = tail.to_string();
         chosen = head.to_string();
@@ -4312,6 +4454,12 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
                 " under your control".to_string()
             }
         }
+    };
+    // "... onto the battlefield blocking that creature" (Aetherplasm,
+    // CR 509.4): the attacker the entering creature blocks.
+    let control_suffix = match move_to_zone.enters_blocking.as_ref() {
+        Some(attacker) => format!("{control_suffix} blocking {}", describe_choose_spec(attacker)),
+        None => control_suffix,
     };
 
     if let Some(actor) = move_to_zone.actor_surface.as_ref()
@@ -4888,11 +5036,35 @@ pub(super) fn describe_exile_top_clause(
             (format!("{word} "), "cards")
         };
         format!("Exile the top {count_text}{noun} of {owner} library{face_down}")
+    } else if let Value::Add(left, right) = exile_top.count.unhinted()
+        && matches!(left.unhinted(), Value::CardsInLibrary(player) if *player == exile_top.player)
+        && let Value::Fixed(offset) = right.unhinted()
+        && *offset < 0
+    {
+        // "Exile all but the bottom card of target player's library" (Nicol
+        // Bolas, the Arisen): the library size minus a fixed bottom remainder.
+        let kept = -*offset;
+        let kept_text = if kept == 1 {
+            "card".to_string()
+        } else {
+            let word = small_number_word(kept as u32).unwrap_or_else(|| kept.to_string());
+            format!("{word} cards")
+        };
+        format!("Exile all but the bottom {kept_text} of {owner} library{face_down}")
     } else if let Some(rounding) = half_library_rounding(&exile_top.count, &exile_top.player) {
         format!("Exile the top half of {owner} library{face_down}, rounded {rounding}")
     } else {
         let value_text = describe_value(&exile_top.count);
-        if value_text == "X"
+        if value_has_surface_hint(&exile_top.count, ValueSurfaceHint::ANumberOf)
+            && value_text != "X"
+        {
+            // "exile a number of cards from the top of your library equal to
+            // the number of differently named tokens you control" (Neriv).
+            format!(
+                "Exile a number of cards from the top of {owner} library{face_down} equal to {}",
+                describe_value(exile_top.count.unhinted())
+            )
+        } else if value_text == "X"
             || (suppress_count_where_clause
                 && value_has_surface_hint(&exile_top.count, ValueSurfaceHint::WhereXIs))
         {
@@ -5144,7 +5316,9 @@ pub(super) fn describe_exile_top_then_play(
     if grant_play.tag != *first_tag {
         return None;
     }
-    if grant_play.spell_filter.is_some() {
+    // A capped pool ("You may play up to two of those cards", March of
+    // Reckless Joy) keeps the permission's own count surface.
+    if grant_play.spell_filter.is_some() || grant_play.max_plays.is_some_and(|max| max >= 2) {
         let (exile_clause, _) = describe_exile_top_clause(exile_top, suppress_count_where_clause)?;
         return Some(format!(
             "{exile_clause}. {}",
@@ -5518,14 +5692,33 @@ pub(super) fn describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_
 
     let player = describe_player_filter(&grant.player);
     let verb = if grant.allow_land { "play" } else { "cast" };
-    let mana_sentence = if grant.allow_any_color_for_cast {
-        ". Mana of any type can be spent to cast them"
-    } else {
+    // "Mana of any type can be spent to cast spells this way" (Black Cat,
+    // Cunning Thief): an authored follow-up sentence names the spells cast
+    // through the permission rather than the exiled cards.
+    let mana_sentence = if !grant.allow_any_color_for_cast {
         ""
+    } else if grant
+        .surface
+        .as_ref()
+        .is_some_and(|surface| surface.mana_spend_followup)
+    {
+        ". Mana of any type can be spent to cast spells this way"
+    } else {
+        ". Mana of any type can be spent to cast them"
+    };
+    // The remainder goes back to the library just named; a declared player
+    // is referred back to with the pronoun.
+    let remainder_owner = if matches!(
+        look_at_top.player,
+        PlayerFilter::Target(_) | PlayerFilter::DamagedPlayer | PlayerFilter::ChosenPlayer
+    ) {
+        "their".to_string()
+    } else {
+        owner.clone()
     };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library, exile {chosen_ref} face down, then put the rest on the bottom of {owner} library in a random order. {player} may {verb} the exiled cards for as long as they remain exiled{mana_sentence}"
+        "Look at the top {count_text} {noun} of {owner} library, exile {chosen_ref} face down, then put the rest on the bottom of {remainder_owner} library in a random order. {player} may {verb} the exiled cards for as long as they remain exiled{mana_sentence}"
     ))
 }
 

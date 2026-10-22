@@ -205,6 +205,12 @@ mod spell_keywords {
             parse: structured_keyword_parser!(registry::parse_flashback),
         },
         KeywordLineRule {
+            cst_kind: super::super::recognized_document::KeywordLineKind::BeamMeUp,
+            hints: &[KeywordDispatchHint::BeamMeUp],
+            id: RuleId::new("parse_beam_me_up"),
+            parse: structured_keyword_parser!(registry::parse_beam_me_up),
+        },
+        KeywordLineRule {
             cst_kind: super::super::recognized_document::KeywordLineKind::Harmonize,
             hints: &[KeywordDispatchHint::Harmonize],
             id: RuleId::new("parse_harmonize"),

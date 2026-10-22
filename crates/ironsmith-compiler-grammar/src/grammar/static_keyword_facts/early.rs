@@ -75,6 +75,7 @@ pub enum TriggerDuplicationEventKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TriggerDuplicationEventShape {
+    PlayerGainingLife(TriggerDuplicationPlayerSubject),
     TurningFaceUp {
         subject_tokens: Range<usize>,
     },
@@ -333,6 +334,11 @@ pub fn parse_trigger_duplication_event_shape_tokens(
     let tokens = trim_punctuation_edges(tokens);
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
+
+    if let Some(subject) = words.strip_suffix(&["gaining", "life"])
+        && let Some(player) = parse_trigger_duplication_player_subject_words(subject) {
+        return Ok(Some(TriggerDuplicationEventShape::PlayerGainingLife(player)));
+    }
 
     if prefix(&words, &["turning"]) && suffix(&words, &["face", "up"]) {
         if words.len() <= 3 {

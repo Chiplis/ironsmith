@@ -1453,6 +1453,40 @@ pub(crate) fn granted_ability_self_subject_for_apply_continuous(
             return "this permanent";
         }
     }
+    // "That permanent gains ... "When this permanent leaves the
+    // battlefield, ..."" (Terminal Velocity): a granted trigger that names its
+    // own object with an authored "this <noun>" surface fixes the self
+    // subject for every granted ability when the grant target is a tagged
+    // back-reference of unknown type.
+    if let Some(spec) = &effect.target_spec
+        && matches!(spec.base(), ChooseSpec::Tagged(tag) if !tag.as_str().contains("copied"))
+        && let Some(surface) = effect
+            .modification
+            .iter()
+            .chain(effect.additional_modifications.iter())
+            .find_map(|modification| {
+                let crate::continuous::Modification::AddAbilityGeneric(ability) = modification
+                else {
+                    return None;
+                };
+                let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+                    return None;
+                };
+                let zone_change = triggered
+                    .trigger
+                    .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+                match zone_change.this_object_surface.as_ref()? {
+                    crate::target::SourceReferenceSurface::ThisPermanentType(text)
+                        if text.starts_with("this ") =>
+                    {
+                        Some(text.as_str())
+                    }
+                    _ => None,
+                }
+            })
+    {
+        return surface;
+    }
     if let Some(spec) = &effect.target_spec {
         return granted_ability_self_subject_for_choose_spec(spec);
     }
@@ -1969,6 +2003,14 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
         }
         crate::continuous::Modification::RemoveAllSubtypesOfFamily(family) => {
             clauses.push(format!("{loses} all {}s", family.type_phrase()));
+        }
+        // "becomes a 6/6 legendary Horror creature named Fenric" (The Curse
+        // of Fenric): the name change is part of the same effect.
+        crate::continuous::Modification::SetName(name) => {
+            clauses.push(format!(
+                "{} named {name}",
+                if plural_target { "are" } else { "is" }
+            ));
         }
         crate::continuous::Modification::AddSupertypes(supertypes) => {
             let names = supertypes
@@ -4487,8 +4529,15 @@ pub(crate) fn describe_apply_continuous_effect(
             PlayerFilter::LowestLifeTied => "the player with the lowest life total".to_string(),
             _ => describe_player_filter(player),
         };
+        // "they gain control" (Emberwilde Djinn): a plural pronoun subject
+        // takes the plain verb.
+        let verb = if matches!(controller_text.as_str(), "they" | "you") {
+            "gain"
+        } else {
+            "gains"
+        };
         let mut text = format!(
-            "{} gains control of {target}",
+            "{} {verb} control of {target}",
             capitalize_first(&controller_text)
         );
         if !matches!(effect.until, Until::Forever) {
@@ -5703,12 +5752,20 @@ fn describe_continuous_duration_predicate(
             };
             format!("{} has {counter} on it", describe_duration_object(object))
         }
+        // "for as long as this Equipment remains attached to it" (Assimilation
+        // Aegis): the source's own attachment persists; another tagged
+        // attachment "is attached" (Eriette).
         Predicate::ObjectAttachedTo {
             attachment,
             attached_to,
         } => format!(
-            "{} is attached to {}",
+            "{} {} attached to {}",
             describe_duration_object(attachment),
+            if matches!(attachment, ironsmith_core::ContinuousDurationObject::Source) {
+                "remains"
+            } else {
+                "is"
+            },
             describe_duration_object(attached_to)
         ),
         Predicate::ObjectIsEnchanted(object) => {
@@ -5929,6 +5986,25 @@ pub(crate) fn describe_untap_restriction_for_subject(
     let mut text = match cant.duration {
         Until::PlayersNextUntapStep { .. } => format!("{} {verb} during that player's next untap step", subject.text),
         Until::YourNextUntapStep => format!("{} {verb} during your next untap step", subject.text),
+        Until::ControllersNextUntapStep
+            if matches!(
+                cant.duration_surface,
+                crate::effect::RestrictionDurationSurface::NextUntapSteps(count) if count > 1
+            ) =>
+        {
+            // "It doesn't untap during its controller's next two untap
+            // steps" (Telekinesis): the restriction covers `count` steps.
+            let count = cant.duration_surface.additional_untap_steps() + 1;
+            let count_text = number_word(count as i32).unwrap_or_else(|| count.to_string());
+            let owner = if subject.controller_is_you {
+                "your".to_string()
+            } else if subject.plural {
+                "their controllers'".to_string()
+            } else {
+                "its controller's".to_string()
+            };
+            format!("{} {verb} during {owner} next {count_text} untap steps", subject.text)
+        }
         Until::ControllersNextUntapStep => {
             format!("{} {verb} during {controller_next_step}", subject.text)
         }
@@ -6103,9 +6179,35 @@ pub(crate) fn describe_prevention_damage_source(filter: &ObjectFilter, chosen: b
         return with_indefinite_article(bare);
     }
 
-    let source = with_indefinite_article(&format!("{bare} source"));
+    // An untyped source filter matches sources in every zone (spells on the
+    // stack included), so it names its head noun "source" rather than the
+    // generic "permanent" fallback ("a black source", not "a black permanent
+    // source").
+    let source_described = filter.description_with_default_noun("source");
+    // "a source of your choice that shares a color with the exiled card"
+    // (Mourner's Shield): the choice marker follows the head noun, before
+    // any relative qualifier.
+    if chosen
+        && source_described != description
+        && let Some(rest) = strip_indefinite_article(&source_described)
+            .trim()
+            .strip_prefix("source ")
+    {
+        return format!("a source of your choice {rest}");
+    }
+    let source = if source_described != description {
+        with_indefinite_article(strip_indefinite_article(&source_described).trim())
+    } else {
+        with_indefinite_article(&format!("{bare} source"))
+    };
     if chosen {
-        format!("{source} of your choice")
+        // "a source of your choice of the chosen color" (Story Circle): the
+        // choice phrase attaches to the head noun, ahead of its qualifiers.
+        if let Some((head, tail)) = source.split_once(" source ") {
+            format!("{head} source of your choice {tail}")
+        } else {
+            format!("{source} of your choice")
+        }
     } else {
         source
     }
@@ -6646,7 +6748,19 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers,
             player,
+        }
+        | crate::effect::Restriction::AttackPlayerOrPermanentsControlledBy {
+            attackers,
+            player,
         } => {
+            let controlled_noun = if matches!(
+                restriction,
+                crate::effect::Restriction::AttackPlayerOrPermanentsControlledBy { .. }
+            ) {
+                "permanents"
+            } else {
+                "planeswalkers"
+            };
             // "That player can't attack you or planeswalkers you control"
             // (Willie Lumpkin): every creature the damaged player controls.
             let damaged_players_creatures = {
@@ -6660,8 +6774,27 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                     && matches!(attackers.zone, None | Some(crate::zone::Zone::Battlefield))
                     && rest == crate::target::ObjectFilter::default()
             };
+            // "they can't attack you ..." (Sandswirl Wanderglyph): every
+            // creature controlled by the player whose spell triggered.
+            let triggering_controllers_creatures = {
+                let mut rest = attackers.clone();
+                rest.zone = None;
+                rest.card_types.clear();
+                rest.controller = None;
+                rest.union_surface = Default::default();
+                attackers.card_types.as_slice() == [crate::types::CardType::Creature]
+                    && matches!(
+                        &attackers.controller,
+                        Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)))
+                            if tag.as_str() == "triggering"
+                    )
+                    && matches!(attackers.zone, None | Some(crate::zone::Zone::Battlefield))
+                    && rest == crate::target::ObjectFilter::default()
+            };
             let attacker_text = if damaged_players_creatures {
                 "that player".to_string()
+            } else if triggering_controllers_creatures {
+                "they".to_string()
             } else if attackers
                 == &crate::target::ObjectFilter::creature()
                     .controlled_by(PlayerFilter::IteratedPlayer)
@@ -6683,7 +6816,7 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 _ => format!("{} controls", describe_player_filter(player)),
             };
             format!(
-                "{} can't attack {} or planeswalkers {}",
+                "{} can't attack {} or {controlled_noun} {}",
                 attacker_text,
                 describe_player_filter(player),
                 planeswalker_controller
@@ -6855,18 +6988,53 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             crate::compiled_text::pluralize_noun_phrase(&filter.description()),
         ),
         crate::effect::Restriction::MustAttackPlayer { attackers, player } => {
-            let subject = restriction_backref_subject(attackers)
-                .unwrap_or_else(|| attackers.description());
+            // A requirement over a live filter binds every matching creature
+            // ("each creature they control attacks ...", The Brothers' War),
+            // not one creature.
+            let subject = restriction_backref_subject(attackers).unwrap_or_else(|| {
+                let description = attackers.description();
+                if attackers.tagged_constraints.is_empty()
+                    && !attackers.source
+                    && attackers.controller.is_some()
+                {
+                    format!("each {}", strip_indefinite_article(&description))
+                } else {
+                    description
+                }
+            });
             format!("{subject} attacks {} if able", describe_player_filter(player))
         }
         crate::effect::Restriction::MustAttackPermanents {
             attackers,
             permanents,
-        } => format!(
-            "{} attack {} if able",
-            pluralize_relative_object_phrase(&attackers.description()),
-            permanents.description()
-        ),
+        } => {
+            // "Up to one target creature an opponent controls attacks Gideon
+            // ... if able" (Gideon, Battle-Forged): a back-reference to the
+            // chosen creature stays singular.
+            let tagged_it = matches!(
+                attackers.tagged_constraints.as_slice(),
+                [constraint] if constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && matches!(constraint.tag.as_str(), "__it__" | "it")
+            );
+            if let Some(subject) = restriction_backref_subject(attackers).or_else(|| {
+                tagged_it.then(|| {
+                    if attackers.card_types.as_slice() == [crate::types::CardType::Creature] {
+                        "That creature".to_string()
+                    } else {
+                        "It".to_string()
+                    }
+                })
+            }) {
+                format!("{subject} attacks {} if able", permanents.description())
+            } else {
+                format!(
+                    "{} attack {} if able",
+                    pluralize_relative_object_phrase(&attackers.description()),
+                    permanents.description()
+                )
+            }
+        }
         crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } => {
             let subject = attacker.description();
             // The equipped-creature filter already names the attachment; the
@@ -6895,6 +7063,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::Untap(filter) => {
             format!("{} can't untap", filter.description())
+        }
+        crate::effect::Restriction::ObjectRule { objects, rule } => {
+            capitalize_first(&rule.describe(objects))
         }
         crate::effect::Restriction::BecomeUntapped(filter) => {
             format!("{} can't become untapped", filter.description())
@@ -7528,6 +7699,27 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
 fn describe_prior_effect_result_surface(
     surface: &crate::effect::PriorEffectResultSurface,
 ) -> String {
+    // The result of a hidden-zone action is a card ("If you reveal a land
+    // card this way"); an untyped object filter over it never takes the
+    // battlefield noun "permanent".
+    if matches!(
+        surface.action,
+        crate::effect::PriorEffectAction::Discarded
+            | crate::effect::PriorEffectAction::Drawn
+            | crate::effect::PriorEffectAction::Milled
+            | crate::effect::PriorEffectAction::Revealed
+            | crate::effect::PriorEffectAction::Searched
+    ) {
+        return ironsmith_core::filter_model::with_untyped_filter_default_noun("card", || {
+            describe_prior_effect_result_surface_inner(surface)
+        });
+    }
+    describe_prior_effect_result_surface_inner(surface)
+}
+
+fn describe_prior_effect_result_surface_inner(
+    surface: &crate::effect::PriorEffectResultSurface,
+) -> String {
     if surface.action == crate::effect::PriorEffectAction::Copied
         && surface.actor == crate::effect::PriorEffectResultActor::You
         && surface.filter == ObjectFilter::default()
@@ -7879,7 +8071,13 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::SearchedLibrary => "you search your library this way".to_string(),
         EffectPredicate::HappenedNotReplaced => "happened and was not replaced".to_string(),
         EffectPredicate::ExcessDamageDealt => "excess damage was dealt this way".to_string(),
+        EffectPredicate::ExcessDamageDealtToCreature => {
+            "excess damage was dealt to a creature this way".to_string()
+        }
         EffectPredicate::DealtDamageToPlayer => "a player is dealt damage this way".to_string(),
+        EffectPredicate::ExcessDamageRedirected => {
+            "excess damage would be dealt to that creature this way".to_string()
+        }
         EffectPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
             let relation = if *negated { "isn't" } else { "is" };
             format!(
@@ -8079,7 +8277,13 @@ pub(crate) fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFi
         return with_indefinite_article(&format!("non{excluded} card"));
     }
 
-    let desc = filter.description();
+    // A revealed/milled/discarded result is a card: an untyped filter over it
+    // ("a card with three or more colored mana symbols") takes the card noun.
+    let desc = if card_context && filter.zone.is_none() {
+        filter.description_with_default_noun("card")
+    } else {
+        filter.description()
+    };
     let stripped = strip_leading_article(&desc).to_ascii_lowercase();
     if card_context && stripped == "land" {
         return "a land card".to_string();
@@ -8222,6 +8426,22 @@ pub(crate) fn describe_player_relative_condition(condition: &Condition) -> Optio
                 return None;
             }
             let action = tag_action_from_name(tag.as_str())?;
+            // "Each player who discarded a card with the greatest mana value
+            // among cards discarded this way" (Scythe Specter): the maximum is
+            // taken over the same tagged set the player's own card belongs to.
+            if let Some(crate::filter::Comparison::EqualExpr(value)) = &filter.mana_value
+                && let Value::GreatestManaValue(among) = value.as_ref()
+                && *among == ObjectFilter::tagged(tag.clone())
+            {
+                let mut rest = filter.clone();
+                rest.mana_value = None;
+                rest.union_surface = Default::default();
+                if rest == ObjectFilter::default() {
+                    return Some(format!(
+                        "{action} a card with the greatest mana value among cards {action} this way"
+                    ));
+                }
+            }
             let object_text = with_indefinite_article(&filter.description());
             Some(format!("{action} {object_text} this way"))
         }

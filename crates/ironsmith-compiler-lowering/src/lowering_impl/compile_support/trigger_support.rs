@@ -255,6 +255,7 @@ fn describe_damage_to_object_and_player_union(
                     source: player_source,
                     player,
                     source_surface: player_source_surface,
+                    ..
                 },
             ) => (
                 source,
@@ -269,6 +270,7 @@ fn describe_damage_to_object_and_player_union(
                     source: player_source,
                     player,
                     source_surface: player_source_surface,
+                    ..
                 },
                 TriggerSpec::DealsDamageTo {
                     source,
@@ -449,6 +451,12 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::AttacksOneOrMoreWithMinTotal {
             filter,
             min_total_attackers,
+            per_attacking_player: true,
+        } => Trigger::player_attacks_with_min_total(filter, min_total_attackers as usize),
+        TriggerSpec::AttacksOneOrMoreWithMinTotal {
+            filter,
+            min_total_attackers,
+            per_attacking_player: false,
         } => Trigger::attacks_one_or_more_with_min_total(filter, min_total_attackers as usize),
         TriggerSpec::AttacksOneOrMoreWithExactTotal {
             filter,
@@ -686,6 +694,13 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             source,
             player,
             source_surface,
+            damaged_player_one_or_more: true,
+        } => Trigger::deals_damage_to_players_one_or_more(source, player, source_surface),
+        TriggerSpec::DealsDamageToPlayer {
+            source,
+            player,
+            source_surface,
+            damaged_player_one_or_more: false,
         } => Trigger::deals_damage_to_player_with_source_surface(source, player, source_surface),
         TriggerSpec::DealsExactDamageToObjectOrPlayer {
             source,
@@ -1400,6 +1415,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         // own static prevention (Phyrexian Vindicator); delayed registrations
         // link to their shield instead.
         TriggerSpec::SpellCastThroughPreviousPermission => Trigger::spell_cast(None, PlayerFilter::You),
+        TriggerSpec::PlayedOrCastThroughPreviousPermission(event) => compile_trigger_spec(*event),
         TriggerSpec::DamagePreventedThisWay { source_filter } => {
             Trigger::damage_prevented_by_source(source_filter.clone())
         }
@@ -1474,6 +1490,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             per_source_controller,
             recipient_passive,
             during_your_turn,
+            object_recipient,
         } => {
             let unrestricted_source = {
                 let mut bare = source.clone();
@@ -1501,9 +1518,11 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             };
             if let crate::triggers::TriggerKind::DealsCombatDamageToPlayer {
                 during_your_turn: turn_restricted,
+                object_recipient: recipient_object,
                 ..
             } = &mut trigger.kind {
                 *turn_restricted = during_your_turn;
+                *recipient_object = object_recipient;
             }
             trigger
         },

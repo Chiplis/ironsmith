@@ -152,6 +152,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_combat_damage_trigger(input)),
     },
     Reading {
+        id: RuleId::new("first-combat-phase-end-trigger"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_first_combat_phase_end_trigger(input)),
+    },
+    Reading {
         id: RuleId::new("source-with-filtered-attack-count-trigger"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -410,7 +416,51 @@ fn read_combat_damage_trigger(
     if let Some(trigger) = try_parse_combat_damage_trigger_lexed(tokens)? {
         return Ok(Some(trigger));
     }
+    // "Whenever an opponent is dealt combat damage by one or more creatures
+    // you control" (Lolth, Spider Queen's emblem): the passive voice of "one
+    // or more creatures you control deal combat damage to an opponent" — the
+    // same event, once for each damaged opponent.
+    let words = crate::lexer::token_word_refs(tokens);
+    if let Some(is_idx) = words
+        .windows(5)
+        .position(|window| window == ["is", "dealt", "combat", "damage", "by"])
+        && matches!(words[..is_idx], ["an", "opponent"] | ["a", "player"])
+        && words.get(is_idx + 5..is_idx + 8) == Some(&["one", "or", "more"][..])
+    {
+        let view = crate::lexer::TokenWordView::new(tokens);
+        let (Some(recipient_end), Some(source_start)) = (
+            view.map_word_to_token_start(is_idx),
+            view.map_word_to_token_start(is_idx + 5),
+        ) else {
+            return Ok(None);
+        };
+        let mut active = tokens[source_start..].to_vec();
+        active.extend(crate::lexer::synthetic_word_tokens(["deal", "combat", "damage", "to"]));
+        active.extend_from_slice(&tokens[..recipient_end]);
+        return try_parse_combat_damage_trigger_lexed(&active);
+    }
     Ok(None)
+}
+/// "At the end of the first combat phase on your turn" (Zariel, Archduke of
+/// Avernus's emblem): end of combat on your turn, only for the turn's first
+/// combat phase.
+fn read_first_combat_phase_end_trigger(
+    input: &TriggerClause<'_>,
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let words = crate::lexer::token_word_refs(input.tokens);
+    if words.as_slice()
+        != ["the", "end", "of", "the", "first", "combat", "phase", "on", "your", "turn"]
+    {
+        return Ok(None);
+    }
+    let end_of_combat =
+        crate::lexer::synthetic_word_tokens(["end", "of", "combat", "on", "your", "turn"]);
+    let trigger = super::parse_trigger_clause_lexed(&end_of_combat)?;
+    Ok(Some(TriggerSpec::ConditionQualified {
+        trigger: Box::new(trigger),
+        condition: crate::cards::builders::PredicateAst::FirstCombatPhaseOfTurn,
+        surface: "of the first combat phase".to_string(),
+    }))
 }
 fn read_source_with_filtered_attack_count_trigger(
     input: &TriggerClause<'_>,

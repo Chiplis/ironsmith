@@ -380,6 +380,56 @@ fn normalize_comma_bearing_leading_trigger(
     Some(rewritten)
 }
 
+/// "Whenever this creature enters or transforms into Sygg, Wanderwine
+/// Wisdom, target creature gains ...": a comma-bearing full name inside the
+/// trigger condition is the source, and its internal comma is not the
+/// trigger/effect boundary. Rewrite the first such occurrence before the
+/// trigger is split on its first comma.
+fn normalize_comma_bearing_trigger_head_name(
+    card: &crate::card::CardBuilder,
+    aliases: &[Alias],
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let intro = tokens.first()?;
+    if !(intro.is_word("when") || intro.is_word("whenever")) {
+        return None;
+    }
+    let full = full_name_alias(card, aliases)?;
+    if full.words.len() < 2 || !full.text.contains(',') {
+        return None;
+    }
+    let first_comma = tokens.iter().position(OwnedLexToken::is_comma)?;
+    for start in 1..first_comma {
+        let candidate = &tokens[start..];
+        let (pieces, piece_tokens) = pieces_with_tokens(candidate);
+        if pieces.len() < full.words.len() {
+            continue;
+        }
+        let matches = pieces[..full.words.len()]
+            .iter()
+            .zip(full.words.iter())
+            .all(|(piece, word)| piece.text == word.as_str());
+        if !matches || pieces[full.words.len() - 1].possessive {
+            continue;
+        }
+        let last_token = piece_tokens[full.words.len() - 1];
+        if piece_tokens.get(full.words.len()) == Some(&last_token)
+            || start + last_token < first_comma
+        {
+            continue;
+        }
+        let name_tokens = &candidate[..=last_token];
+        let mut rewritten = tokens[..start].to_vec();
+        rewritten.extend(subject_tokens(
+            named_source_subject_for_builder(card),
+            span_over(name_tokens),
+        ));
+        rewritten.extend_from_slice(&candidate[last_token + 1..]);
+        return Some(rewritten);
+    }
+    None
+}
+
 /// Token twin of `normalize_named_source_trigger_head_for_builder`.
 fn normalize_trigger_head(
     card: &crate::card::CardBuilder,
@@ -418,7 +468,9 @@ fn normalize_named_source_trigger_tokens_cased(
     let subject = named_source_subject_for_builder(card);
 
     let (tokens, mut changed) =
-        match normalize_comma_bearing_leading_trigger(card, &aliases, tokens) {
+        match normalize_comma_bearing_leading_trigger(card, &aliases, tokens)
+            .or_else(|| normalize_comma_bearing_trigger_head_name(card, &aliases, tokens))
+        {
             Some(rewritten) => (rewritten, true),
             None => (tokens.to_vec(), false),
         };

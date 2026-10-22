@@ -1725,6 +1725,18 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             && let Some(left_subject) = split_lose_all_abilities_clause(lines[idx].trim())
         {
             let right_trimmed = lines[idx + 1].trim().trim_end_matches('.');
+            // "Enchanted creature loses all abilities and can't attack or
+            // block." (Observed Stasis): a restriction on the same subject.
+            if let Some(cant_rest) = right_trimmed.strip_prefix(&format!("{left_subject} can't "))
+                && !cant_rest.contains(". ")
+                && !cant_rest.contains(" as long as ")
+                && !cant_rest.contains(" unless ")
+            {
+                let left_line = lines[idx].trim().trim_end_matches('.');
+                merged.push(format!("{left_line} and can't {cant_rest}"));
+                idx += 2;
+                continue;
+            }
             if let Some(pt) = extract_base_pt_tail_for_subject(right_trimmed, &left_subject) {
                 let subject = normalize_global_subject_number(&left_subject);
                 let plural = subject_is_plural(&subject);

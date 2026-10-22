@@ -9,7 +9,7 @@ use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice};
+use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, render_token_slice};
 use super::super::{filters, leaf, primitives};
 use super::ActivationCostSegmentCst;
 
@@ -411,7 +411,25 @@ pub fn parse_tap_chosen_segment_tokens(
     {
         return Err(unsupported(filter_tokens, "tap chosen random selection"));
     }
+    // "Tap two untapped creatures you control that share a creature type"
+    // (Weight of Conscience): a relation over the whole chosen set.
+    let (filter_tokens, shared_creature_type) = {
+        let view = TokenWordView::new(filter_tokens);
+        let words = view.word_refs();
+        let suffix: &[&str] = &["that", "share", "a", "creature", "type"];
+        match words
+            .ends_with(suffix)
+            .then(|| view.map_word_to_token_start(words.len() - suffix.len()))
+            .flatten()
+        {
+            Some(token_start) if token_start > 0 => (&filter_tokens[..token_start], true),
+            _ => (filter_tokens, false),
+        }
+    };
     let mut filter = tap_state_cost_filter(filter_tokens, shape.other)?;
+    if shared_creature_type {
+        filter.target_set_shared_creature_type = true;
+    }
     filter.target_set_aggregate_constraint =
         crate::grammar::shared_util::aggregate_constraints::lift_total_mana_value_choice_constraint(
             filter_tokens, &mut filter,

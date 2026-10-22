@@ -210,6 +210,11 @@ pub enum TriggerKind {
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
         min_total_attackers: usize,
+        /// "Whenever a player attacks with [N or more] creatures": each
+        /// attacking player's creatures form a separate group (shared-team
+        /// turns declare several players' attackers at once).
+        #[cfg_attr(feature = "serde", serde(default))]
+        per_attacking_player: bool,
     },
     AttacksOneOrMoreWithExactTotal {
         filter: ObjectFilter,
@@ -377,6 +382,10 @@ pub enum TriggerKind {
         source: ObjectFilter,
         player: PlayerFilter,
         source_surface: DamageSourceSurface,
+        /// "deal damage to your opponents": the damaged players form one
+        /// group, so a simultaneous damage batch triggers once in total.
+        #[cfg_attr(feature = "serde", serde(default))]
+        damaged_player_one_or_more: bool,
     },
     DealsExactDamageToObjectOrPlayer {
         source: ObjectFilter,
@@ -416,6 +425,14 @@ pub enum TriggerKind {
         recipient_passive: bool,
         #[cfg_attr(feature = "serde", serde(default))]
         during_your_turn: bool,
+        /// "... deal combat damage to a player or battle" (Zurgo and
+        /// Ojutai): permanents matching this filter are recipients too, each
+        /// grouped as its own damaged recipient like a player.
+        #[cfg_attr(
+            feature = "serde",
+            serde(default, skip_serializing_if = "Option::is_none")
+        )]
+        object_recipient: Option<ObjectFilter>,
     },
     PlayerPlaysLand {
         player: PlayerFilter,
@@ -1117,6 +1134,22 @@ impl Trigger {
             TriggerKind::AttacksOneOrMoreWithMinTotal {
                 filter,
                 min_total_attackers,
+                per_attacking_player: false,
+            },
+        )
+    }
+    /// "Whenever [a player] attacks with [N or more] [creatures]": grouped
+    /// per attacking player.
+    pub fn player_attacks_with_min_total(
+        filter: ObjectFilter,
+        min_total_attackers: usize,
+    ) -> Self {
+        Self::typed(
+            "attacks_one_or_more_with_min_total",
+            TriggerKind::AttacksOneOrMoreWithMinTotal {
+                filter,
+                min_total_attackers,
+                per_attacking_player: true,
             },
         )
     }
@@ -1649,8 +1682,27 @@ impl Trigger {
                 source,
                 player,
                 source_surface,
+                damaged_player_one_or_more: false,
             },
         )
+    }
+    /// "Whenever one or more [sources] deal damage to your opponents": one
+    /// trigger for the whole simultaneous damage batch.
+    pub fn deals_damage_to_players_one_or_more(
+        source: ObjectFilter,
+        player: PlayerFilter,
+        source_surface: DamageSourceSurface,
+    ) -> Self {
+        let mut trigger =
+            Self::deals_damage_to_player_with_source_surface(source, player, source_surface);
+        if let TriggerKind::DealsDamageToPlayer {
+            damaged_player_one_or_more,
+            ..
+        } = &mut trigger.kind
+        {
+            *damaged_player_one_or_more = true;
+        }
+        trigger
     }
     pub fn deals_exact_damage_to_object_or_player_with_source_surface(
         source: ObjectFilter,
@@ -1733,6 +1785,7 @@ impl Trigger {
                 per_source_controller: false,
                 recipient_passive: false,
                 during_your_turn: false,
+                object_recipient: None,
             },
         )
     }
@@ -1750,6 +1803,7 @@ impl Trigger {
                 per_source_controller: false,
                 recipient_passive: false,
                 during_your_turn: false,
+                object_recipient: None,
             },
         )
     }
@@ -1769,6 +1823,7 @@ impl Trigger {
                 per_source_controller: false,
                 recipient_passive: true,
                 during_your_turn,
+                object_recipient: None,
             },
         )
     }
@@ -1788,6 +1843,7 @@ impl Trigger {
                 per_source_controller: false,
                 recipient_passive: false,
                 during_your_turn: false,
+                object_recipient: None,
             },
         )
     }
@@ -1798,7 +1854,7 @@ impl Trigger {
     ) -> Self {
         Self::typed("deals_combat_damage_per_source_controller", TriggerKind::DealsCombatDamageToPlayer {
             source, player, one_or_more: true, each_damaged_player, per_source_controller: true,
-            recipient_passive: false, during_your_turn: false,
+            recipient_passive: false, during_your_turn: false, object_recipient: None,
         })
     }
     pub fn player_plays_land(player: PlayerFilter, filter: ObjectFilter) -> Self {

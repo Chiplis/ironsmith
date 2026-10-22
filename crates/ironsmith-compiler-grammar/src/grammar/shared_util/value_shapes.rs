@@ -11,11 +11,20 @@ use super::super::{leaf, primitives};
 pub enum AggregateValueMetric {
     BasicLandTypes,
     CardTypes,
+    /// "permanent types among cards in your graveyard" (Korvold, Gleeful
+    /// Glutton): the card types of the matching permanent cards.
+    PermanentTypes,
     CreatureTypes,
+    /// "planeswalker types among planeswalkers you control" (Tam, the
+    /// Possibility).
+    PlaneswalkerTypes,
     Colors,
     ColorPairs,
     DistinctNames,
     DistinctManaValues,
+    /// "different mana costs among nonland cards in your graveyard"
+    /// (Embodiment of Agonies).
+    DistinctManaCosts,
     DistinctPowers,
     DistinctCounterTypes,
     Counters,
@@ -123,7 +132,11 @@ fn parse_aggregate_metric(
         (
             alt((
                 primitives::word_slice_exact("card").value(AggregateValueMetric::CardTypes),
+                primitives::word_slice_exact("permanent")
+                    .value(AggregateValueMetric::PermanentTypes),
                 primitives::word_slice_exact("creature").value(AggregateValueMetric::CreatureTypes),
+                primitives::word_slice_exact("planeswalker")
+                    .value(AggregateValueMetric::PlaneswalkerTypes),
             )),
             alt((
                 primitives::word_slice_exact("type"),
@@ -163,6 +176,16 @@ fn parse_aggregate_metric(
                 primitives::word_slice_exact("among"),
             )
                 .value(AggregateValueMetric::DistinctManaValues),
+            (
+                primitives::word_slice_exact("different"),
+                primitives::word_slice_exact("mana"),
+                alt((
+                    primitives::word_slice_exact("cost"),
+                    primitives::word_slice_exact("costs"),
+                )),
+                primitives::word_slice_exact("among"),
+            )
+                .value(AggregateValueMetric::DistinctManaCosts),
             (
                 primitives::word_slice_exact("differently"),
                 primitives::word_slice_exact("named"),

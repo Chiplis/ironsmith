@@ -104,19 +104,22 @@ fn parse_if_clause(
 fn parse_next_time(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::RegisterDamageMultiplierEffect> {
-    fn read<'a>(input: &mut Stream<'a>) -> PResult<(bool, u32)> {
+    fn read<'a>(
+        input: &mut Stream<'a>,
+    ) -> PResult<(bool, u32, Option<ironsmith_core::DemonstrativeAntecedentSurface>)> {
+        use ironsmith_core::DemonstrativeAntecedentSurface as Noun;
         primitives::phrase(&["the", "next", "time"]).parse_next(input)?;
-        alt((
-            primitives::kw("it").void(),
+        let noun = alt((
+            primitives::kw("it").value(None),
             (
                 primitives::kw("that"),
                 alt((
-                    primitives::kw("creature"),
-                    primitives::kw("permanent"),
-                    primitives::kw("source"),
+                    primitives::kw("creature").value(Some(Noun::Creature)),
+                    primitives::kw("permanent").value(Some(Noun::Permanent)),
+                    primitives::kw("source").value(Some(Noun::Source)),
                 )),
             )
-                .void(),
+                .map(|(_, noun)| noun),
         ))
         .parse_next(input)?;
         primitives::phrase(&["would", "deal"]).parse_next(input)?;
@@ -131,11 +134,16 @@ fn parse_next_time(
         .parse_next(input)?;
         primitives::phrase(&["that", "damage", "instead"]).parse_next(input)?;
         primitives::sentence_end().parse_next(input)?;
-        Ok((combat_only, factor))
+        Ok((combat_only, factor, noun))
     }
-    let (combat_only, factor) = primitives::probe_all(tokens, read, "next-time damage multiplier")?;
+    let (combat_only, factor, noun) =
+        primitives::probe_all(tokens, read, "next-time damage multiplier")?;
+    let mut source_filter = referenced_source_filter();
+    // Keep the authored demonstrative noun ("that creature") as surface only;
+    // the replacement follows the referenced object's identity.
+    source_filter.set_demonstrative_antecedent_surface(noun);
     Some(ironsmith_core::RegisterDamageMultiplierEffect {
-        source_filter: referenced_source_filter(),
+        source_filter,
         target_player_filter: Some(PlayerFilter::Any),
         target_object_filter: Some(ObjectFilter::default()),
         factor,

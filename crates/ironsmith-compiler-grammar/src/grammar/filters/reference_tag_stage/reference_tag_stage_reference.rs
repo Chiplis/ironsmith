@@ -793,6 +793,7 @@ pub(in super::super) fn parse_object_filter_inner(
     // A zone-qualified "put there this turn" clause has the same executable
     // graveyard-entry history as the explicit "from anywhere" surface.
     try_apply_put_there_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
+    try_apply_not_put_there_this_combat_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     // "... graveyard from the battlefield this turn" means the card entered a graveyard
     // from the battlefield this turn.
@@ -861,13 +862,19 @@ pub(in super::super) fn parse_object_filter_inner(
         &mut segment_tokens,
     );
 
-    if parse_phrase_choice_anywhere(
-        &non_article_parser_word_refs(&segment_tokens),
-        BLOCKED_BY_TAGGED_OBJECT_PHRASES,
-    )
-    .is_some()
+    let blocked_by_words = non_article_parser_word_refs(&segment_tokens);
+    if parse_phrase_choice_anywhere(&blocked_by_words, BLOCKED_BY_TAGGED_OBJECT_PHRASES).is_some()
     {
-        filter.blocked = true;
+        // "each creature that was blocked by one of those creatures this
+        // turn" (Triton Tactics) is block history: the creature need not
+        // still be blocked once its blocker has left combat.
+        let historical = blocked_by_words
+            .iter()
+            .any(|word| matches!(*word, "was" | "were"))
+            && blocked_by_words
+                .windows(5)
+                .any(|window| window == ["blocked", "by", "one", "of", "those"]);
+        filter.blocked = !historical;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(
             (crate::tag::CompilerReferenceTag::It.bind()).into(),
         ));
@@ -1964,7 +1971,13 @@ pub(in super::super) fn parse_object_filter_inner(
             }
             "blocking" if !is_negated_word => filter.blocking = true,
             "nonblocking" => filter.nonblocking = true,
-            "blocked" if !is_negated_word && !set_has(&blocked_this_turn_word_indices, &idx) => {
+            // A historical "was blocked by <those>" relation (set above) is
+            // not the current blocked state.
+            "blocked"
+                if !is_negated_word
+                    && !set_has(&blocked_this_turn_word_indices, &idx)
+                    && !(filter.blocked_by.is_some() && !filter.blocked) =>
+            {
                 filter.blocked = true;
             }
             "unblocked" if !is_negated_word => filter.unblocked = true,
@@ -2007,6 +2020,7 @@ pub(in super::super) fn parse_object_filter_inner(
             "historic" if !set_has(&negated_historic_indices, &idx) => filter.historic = true,
             "modified" if !is_negated_word => filter.modified = true,
             "suspected" if !is_negated_word => filter.suspected = true,
+            "renowned" if !is_negated_word => filter.renowned = true,
             "transformed" if !is_negated_word => filter.transformed = true,
             "prepared" if !is_negated_word => filter.prepared = true,
             "stickered" if !is_negated_word => {
@@ -2092,6 +2106,10 @@ pub(in super::super) fn parse_object_filter_inner(
     if crate::word_primitives::sequence_occurs(&all_words_with_articles, &["attacking", "alone"]) {
         filter.attacking = true;
         filter.attacking_alone = true;
+    }
+    if crate::word_primitives::sequence_occurs(&all_words_with_articles, &["blocking", "alone"]) {
+        filter.blocking = true;
+        filter.blocking_alone = true;
     }
     // In “shares a creature type with each creature tapped this way”, tapped
     // qualifies the cost objects on the right-hand side, not the candidate
@@ -2720,6 +2738,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.untapped
         || filter.attacking
         || filter.attacking_alone
+        || filter.blocking_alone
         || filter
             .attacking_player_or_planeswalker_controlled_by
             .is_some()
@@ -2799,6 +2818,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.untapped
         || filter.attacking
         || filter.attacking_alone
+        || filter.blocking_alone
         || filter
             .attacking_player_or_planeswalker_controlled_by
             .is_some()

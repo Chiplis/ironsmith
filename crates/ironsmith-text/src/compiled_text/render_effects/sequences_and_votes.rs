@@ -1327,6 +1327,21 @@ pub(super) fn describe_for_players_may_action(
         && choose.common_prefix_effects.is_empty()
     {
         let render = |mode_effects: &[Effect]| -> Option<String> {
+            // "or have this enchantment deal 5 damage to that player" (Worms
+            // of the Earth): the ability's source deals the damage to the
+            // choosing player; the player doesn't deal it.
+            if let [damage_effect] = mode_effects
+                && let Some(damage) = structural_unwrap_render_wrappers(damage_effect)
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
+                && damage.target == ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+                && !damage.source_is_combat
+                && choose.chooser == Some(PlayerFilter::IteratedPlayer)
+            {
+                return Some(format!(
+                    "have this source deal {} damage to that player",
+                    describe_value(&damage.amount)
+                ));
+            }
             let text = describe_effect_list(mode_effects);
             let text = text.trim().trim_end_matches('.');
             let text = text
@@ -1334,7 +1349,20 @@ pub(super) fn describe_for_players_may_action(
                 .or_else(|| text.strip_prefix("you "))
                 .or_else(|| text.strip_prefix("they "))
                 .unwrap_or(text);
-            let text = lowercase_first(&normalize_you_verb_phrase(text));
+            let mut text = lowercase_first(&normalize_you_verb_phrase(text));
+            // "sacrifice two lands of their choice": the choosing player
+            // selects what they sacrifice.
+            if let [selection, action] = mode_effects
+                && selection
+                    .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                    .is_some_and(|selection| selection.chooser == PlayerFilter::IteratedPlayer)
+                && sacrifice_view_unwrapped(action)
+                    .is_some_and(|sacrifice| *sacrifice.player == PlayerFilter::IteratedPlayer)
+                && text.starts_with("sacrifice ")
+                && !text.contains("of their choice")
+            {
+                text.push_str(" of their choice");
+            }
             (!text.is_empty() && !text.contains(". ")).then_some(text)
         };
         if let (Some(first), Some(second)) = (render(first.effects.as_slice()), render(second.effects.as_slice())) {
@@ -4686,8 +4714,16 @@ fn describe_may_causative_pt_change(may: &crate::effects::MayEffect) -> Option<S
     if decider != &PlayerFilter::You && spec.is_target() {
         target.push_str(" of their choice");
     }
+    // "you may have target creature get +X/+X until end of turn, where X is
+    // this creature's power" (Resilient Khenra): the X definition.
+    let where_x = [power, toughness]
+        .into_iter()
+        .find(|value| value.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs))
+        .and_then(describe_where_x_basis)
+        .map(|basis| format!(", where X is {basis}"))
+        .unwrap_or_default();
     Some(format!(
-        "{} {target} get {}/{} {}",
+        "{} {target} get {}/{} {}{where_x}",
         may_causative_prefix(decider),
         describe_signed_value(power),
         describe_toughness_delta_with_power_context(power, toughness),
@@ -7377,6 +7413,7 @@ pub(super) fn hand_choice_from_it_text(
         && filter.mana_value.is_none()
         && filter.subtypes.is_empty()
         && filter.supertypes.is_empty()
+        && filter.excluded_supertypes.is_empty()
         && filter.colors.is_none()
         && filter.any_of.is_empty()
     {

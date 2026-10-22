@@ -4,6 +4,17 @@
 use super::*;
 
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let reference_words = crate::util::non_article_token_word_refs(tokens);
+    if matches!(reference_words.as_slice(),
+        ["that", "card", "is", "still", "on", "top", "of", "your", "library"]
+        | ["that", "card", "is", "on", "top", "of", "your", "library"]
+        | ["that", "card", "is", "top", "card", "of", "your", "library"]
+    ) {
+        return Some(PredicateAst::TaggedObjectIsTopOfLibrary {
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            player: crate::cards::builders::PlayerAst::You,
+        });
+    }
     if tokens.iter().any(|token| token.as_word().is_none()) {
         return None;
     }
@@ -38,6 +49,14 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_card_top_position_is_a_reference_predicate() {
+        let tokens = crate::lexer::lex_line("that card is still on top of your library", 0).unwrap();
+        assert!(matches!(parse(&tokens), Some(PredicateAst::TaggedObjectIsTopOfLibrary { .. })));
+        let tokens = crate::lexer::lex_line("that card is still on top of your library or in your hand", 0).unwrap();
+        assert!(parse(&tokens).is_none());
+    }
 
     #[test]
     fn top_card_qualities_read_completely() {

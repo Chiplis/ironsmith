@@ -315,6 +315,8 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
         ("forestwalk", TokenKeywordShape::Forestwalk),
         ("swampwalk", TokenKeywordShape::Swampwalk),
         ("plainswalk", TokenKeywordShape::Plainswalk),
+        ("flanking", TokenKeywordShape::Flanking),
+        ("training", TokenKeywordShape::Training),
     ] {
         if common::word_present(words, word) {
             keywords.push(keyword);

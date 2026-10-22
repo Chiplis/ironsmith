@@ -412,6 +412,86 @@ fn choose_creature_card_name_and_type_as_becomes_attached(
     }
 }
 
+/// "As this Equipment becomes attached to a creature, choose an exiled
+/// creature card used to craft this Equipment." (Dinosaur Headdress): the
+/// source's controller picks one of the creature cards still linked to this
+/// source as craft materials (CR 702.167c) and still in exile. The choice is
+/// recorded with its copiable values as this source's chosen object, so a
+/// later attachment's choice replaces it ("the last chosen card").
+fn choose_craft_material_as_becomes_attached(
+    game: &mut GameState,
+    ctx: &mut crate::effects::ExecutionContext<'_>,
+    attachment_id: ObjectId,
+    target: AttachmentTarget,
+) {
+    if !matches!(target, AttachmentTarget::Object(_)) {
+        return;
+    }
+    let has_choice_ability = game
+        .calculated_characteristics_arc(attachment_id)
+        .map(|chars| chars.static_abilities.clone())
+        .unwrap_or_else(|| {
+            game.object(attachment_id)
+                .map(|object| crate::ability::extract_static_abilities(&object.abilities))
+                .unwrap_or_default()
+                .into()
+        })
+        .into_iter()
+        .any(|ability| ability.craft_material_choice_as_becomes_attached());
+    if !has_choice_ability {
+        return;
+    }
+    let Some(chooser) = game.controller_of_id(attachment_id) else {
+        return;
+    };
+    let candidates: Vec<ObjectId> = game
+        .get_exiled_with_source_links(attachment_id)
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.zone == crate::zone::Zone::Exile
+                    && object.card_types.contains(&crate::types::CardType::Creature)
+            })
+        })
+        .collect();
+    if candidates.is_empty() {
+        return;
+    }
+    let selectable = candidates
+        .iter()
+        .copied()
+        .map(|id| {
+            let name = game
+                .object(id)
+                .map(|object| object.name.to_string())
+                .unwrap_or_else(|| format!("object {}", id.0));
+            crate::decisions::context::SelectableObject::new(id, name)
+        })
+        .collect::<Vec<_>>();
+    let select_ctx = crate::decisions::context::SelectObjectsContext::new(
+        chooser,
+        Some(attachment_id),
+        "Choose an exiled creature card used to craft this Equipment",
+        selectable,
+        1,
+        Some(1),
+    );
+    let chosen = ctx
+        .decision_maker
+        .decide_objects(game, &select_ctx)
+        .into_iter()
+        .find(|id| candidates.contains(id));
+    if ctx.decision_maker.awaiting_choice() {
+        return;
+    }
+    if let Some(chosen) = chosen.and_then(|id| game.object(id))
+    {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(chosen, game);
+        game.set_chosen_object(attachment_id, snapshot);
+    }
+}
+
 pub(crate) fn choose_color_as_becomes_attached(
     game: &mut GameState,
     ctx: &mut crate::effects::ExecutionContext<'_>,
@@ -419,6 +499,10 @@ pub(crate) fn choose_color_as_becomes_attached(
     target: AttachmentTarget,
 ) {
     choose_creature_card_name_and_type_as_becomes_attached(game, ctx, attachment_id, target);
+    if ctx.decision_maker.awaiting_choice() {
+        return;
+    }
+    choose_craft_material_as_becomes_attached(game, ctx, attachment_id, target);
     if ctx.decision_maker.awaiting_choice() {
         return;
     }

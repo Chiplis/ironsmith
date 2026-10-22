@@ -87,8 +87,65 @@ fn combat_creature_description(filter: &ObjectFilter) -> String {
         .unwrap_or(description)
 }
 
+impl BlocksOrBecomesBlockedTrigger {
+    /// "blocks or becomes blocked by one or more creatures" (Godsend): one
+    /// trigger per block declaration for the subject, regardless of how many
+    /// opposite participants it has.
+    fn aggregate_other(&self) -> Option<&ObjectFilter> {
+        self.other_filter
+            .as_ref()
+            .filter(|other| other.union_is_one_or_more())
+    }
+
+    fn matches_aggregate(
+        &self,
+        other_filter: &ObjectFilter,
+        event: &TriggerEvent,
+        ctx: &TriggerContext,
+    ) -> bool {
+        if let Some(e) = event.downcast::<CreatureBecameBlockedEvent>() {
+            // The subject is the blocked attacker; the event carries every
+            // blocker of the declaration.
+            if !matches_event_object(&self.filter, e.attacker_snapshot.as_ref(), e.attacker, ctx) {
+                return false;
+            }
+            return e.blockers.iter().enumerate().any(|(index, blocker)| {
+                matches_event_object(other_filter, e.blocker_snapshots.get(index), *blocker, ctx)
+            });
+        }
+        let Some(e) = event.downcast::<CreatureBlockedEvent>() else {
+            return false;
+        };
+        // The subject blocks: one trigger for the blocker, from the first
+        // matching attacker it blocks (CR 509.1).
+        if !matches_event_object(&self.filter, e.blocker_snapshot.as_ref(), e.blocker, ctx)
+            || !matches_event_object(other_filter, e.attacker_snapshot.as_ref(), e.attacker, ctx)
+        {
+            return false;
+        }
+        let Some(combat) = ctx.game.combat.as_ref() else {
+            return true;
+        };
+        combat
+            .blockers
+            .iter()
+            .filter(|(_, blockers)| blockers.contains(&e.blocker))
+            .map(|(attacker, _)| *attacker)
+            .filter(|attacker| {
+                ctx.game.object(*attacker).is_some_and(|object| {
+                    other_filter.matches(object, &ctx.filter_ctx, ctx.game)
+                })
+            })
+            .min_by_key(|attacker| attacker.0)
+            .is_none_or(|first| first == e.attacker)
+    }
+}
+
 impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if let Some(other_filter) = self.aggregate_other() {
+            return self.matches_aggregate(other_filter, event, ctx);
+        }
         if let Some(other_filter) = &self.other_filter {
             let Some(e) = event.downcast::<CreatureBlockedEvent>() else {
                 return false;
@@ -141,6 +198,20 @@ impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
     }
 
     fn display(&self) -> String {
+        if let Some(other_filter) = self.aggregate_other() {
+            let mut other = other_filter.clone();
+            other.set_union_one_or_more(false);
+            let other = combat_creature_description(&other);
+            let other = other
+                .strip_prefix("a ")
+                .or_else(|| other.strip_prefix("an "))
+                .unwrap_or(&other);
+            let plural = super::attacks::pluralize_one_or_more_attack_subject(other);
+            return format!(
+                "Whenever {} blocks or becomes blocked by one or more {plural}",
+                combat_creature_description(&self.filter),
+            );
+        }
         if let Some(other_filter) = &self.other_filter {
             return format!(
                 "Whenever {} blocks or becomes blocked by {}",
@@ -155,6 +226,9 @@ impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        if self.aggregate_other().is_some() {
+            return Some(vec![EventKind::CreatureBlocked, EventKind::CreatureBecameBlocked]);
+        }
         self.other_filter
             .as_ref()
             .map(|_| vec![EventKind::CreatureBlocked])

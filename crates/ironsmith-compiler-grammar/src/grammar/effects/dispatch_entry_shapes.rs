@@ -526,7 +526,7 @@ pub fn is_x_cant_be_zero_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(tokens, x_cant_be_zero, "X cannot be zero").is_ok()
 }
 
-fn token_granted_ability<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
+fn token_granted_ability_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
         alt((
             primitives::phrase(&["it", "has"]),
@@ -546,17 +546,37 @@ fn token_granted_ability<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLex
             primitives::phrase(&["the", "tokens", "gain"]),
         )),
     ))
-    .parse_next(input)?;
-    let abilities = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
-        .map(|((), _)| ())
-        .take()
-        .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(trim_lexed_commas(abilities))
+    .void()
+    .parse_next(input)
 }
 
+/// The ability list after "it has" / "they each have" ... up to the end of
+/// the sentence. A quoted rule keeps its own sentence-final period ("They
+/// each have flying and "This token can't be enchanted."", Tetravus), so the
+/// list runs to the last top-level token rather than the first period.
 pub fn parse_token_granted_ability_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    crate::grammar::primitives::probe_all(tokens, token_granted_ability, "token granted ability")
+    let ((), rest) = crate::grammar::primitives::parse_prefix(tokens, token_granted_ability_head)?;
+    let mut end = rest.len();
+    while end > 0 && rest[end - 1].is_period() {
+        end -= 1;
+    }
+    let abilities = &rest[..end];
+    let quotes = abilities.iter().filter(|token| token.is_quote()).count();
+    if quotes % 2 != 0 {
+        return None;
+    }
+    // Outside quotes the list is one sentence: a top-level period would start
+    // another instruction that this follow-up must not swallow.
+    let mut inside_quote = false;
+    for token in abilities {
+        if token.is_quote() {
+            inside_quote = !inside_quote;
+        } else if !inside_quote && token.is_period() {
+            return None;
+        }
+    }
+    let abilities = trim_lexed_commas(abilities);
+    (!abilities.is_empty()).then_some(abilities)
 }
 
 #[cfg(test)]

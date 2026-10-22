@@ -367,7 +367,7 @@ pub fn parse_sentence_sacrifice_one_or_more(
 /// resolution, with no exile rider.
 fn may_cast_target_graveyard_card_lexed<'a>(
     input: &mut crate::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<(bool, &'static str, &'a [OwnedLexToken], bool)> {
+) -> winnow::error::ModalResult<(bool, &'static str, &'a [OwnedLexToken], bool, bool)> {
     use winnow::combinator::{alt, opt, peek, repeat_till};
     use winnow::prelude::*;
     use winnow::token::any;
@@ -399,15 +399,21 @@ fn may_cast_target_graveyard_card_lexed<'a>(
     ]))
     .parse_next(input)?
     .is_some();
+    // "You may play target snow permanent card from your graveyard this
+    // turn." (Kaldring, the Rimestaff): a one-turn permission, not a play
+    // during resolution.
+    let this_turn = opt(crate::grammar::primitives::phrase(&["this", "turn"]))
+        .parse_next(input)?
+        .is_some();
     crate::grammar::primitives::sentence_end().parse_next(input)?;
-    Ok((may, verb, filter_tokens, without_paying))
+    Ok((may, verb, filter_tokens, without_paying, this_turn))
 }
 
 pub fn parse_sentence_may_cast_target_graveyard_card(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = clause.tokens();
-    let Some((may, verb, filter_tokens, without_paying)) = crate::grammar::primitives::probe_all(
+    let Some((may, verb, filter_tokens, without_paying, this_turn)) = crate::grammar::primitives::probe_all(
         tokens,
         may_cast_target_graveyard_card_lexed,
         "may cast target graveyard card",
@@ -432,6 +438,34 @@ pub fn parse_sentence_may_cast_target_graveyard_card(
     filter.zone = Some(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
     let tag = crate::util::helper_tag_for_tokens(tokens, "graveyard_cast_target");
+    if this_turn {
+        if without_paying {
+            return Ok(None);
+        }
+        let surface = ironsmith_core::GrantPlayTaggedSurface::default()
+            .with_object(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard);
+        return Ok(Some(vec![
+            EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_target_only(TargetAst::Object(
+                    filter,
+                    Some(
+                        crate::util::span_from_tokens(tokens)
+                            .unwrap_or_else(crate::TextSpan::synthetic),
+                    ),
+                    None,
+                ))),
+                tag: tag.clone(),
+            },
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_from_current_zone_with_optional_surface(
+                tag,
+                PlayerAst::You,
+                verb == "play",
+                false,
+                false,
+                Some(surface),
+            ),
+        ]));
+    }
     let cast = EffectAst::subject_verb_cast_tagged(
         tag.clone(),
         PlayerAst::You,
@@ -754,6 +788,15 @@ pub fn parse_exile_source_with_counters_sentence(
             effect_grammar::ExileLibraryPlayerShape::EachOpponent => {
                 EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                     effects: vec![exile_for(PlayerAst::That)],
+                })
+            }
+            effect_grammar::ExileLibraryPlayerShape::EachOfThosePlayers => {
+                EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                    tag: crate::tag::TagRef::of(crate::tag::TagKey::from(
+                        ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG,
+                    )),
+                    effects: vec![exile_for(PlayerAst::That)],
+                    require_evidence: false,
                 })
             }
             effect_grammar::ExileLibraryPlayerShape::Player(player) => exile_for(player),

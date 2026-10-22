@@ -80,7 +80,9 @@ pub(crate) fn describe_card_count(value: &Value) -> String {
             }
             format!("{n} cards")
         }
-        Value::CardTypesAmong(_) | Value::CardTypesInGraveyard(_) => {
+        Value::CardTypesAmong(_)
+        | Value::PermanentTypesAmong(_)
+        | Value::CardTypesInGraveyard(_) => {
             format!("X cards, where X is {}", describe_value(value))
         }
         value if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::Difference) => {
@@ -822,6 +824,22 @@ fn describe_spell_cast_history_filter_subject(filter: &ObjectFilter) -> Option<S
 }
 
 pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
+    // "the number of Goblins it devoured" (Voracious Dragon): the devoured
+    // permanents as they last existed, not matching objects in a zone.
+    if filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_DEVOURED_TAG
+    }) {
+        let mut devoured = filter.clone();
+        devoured.zone = None;
+        devoured.tagged_constraints.retain(|constraint| {
+            constraint.tag.as_str() != crate::tag::SOURCE_DEVOURED_TAG
+        });
+        return format!(
+            "{} it devoured",
+            describe_count_filter_value_subject(&devoured)
+        );
+    }
     if filter.zone == Some(Zone::Exile)
         && filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -834,6 +852,21 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
             !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
         });
+        if filter.has_definite_exiled_reference() {
+            source_exiled.set_definite_exiled_reference(false);
+            return format!(
+                "the exiled {}",
+                describe_count_filter_value_subject(&source_exiled)
+            );
+        }
+        if filter.has_craft_material_reference() {
+            // CR 702.167c: the craft materials linked to this permanent.
+            source_exiled.set_craft_material_reference(false);
+            return format!(
+                "the exiled {} used to craft it",
+                describe_count_filter_value_subject(&source_exiled)
+            );
+        }
         return format!(
             "{} exiled with this source",
             describe_count_filter_value_subject(&source_exiled)
@@ -955,6 +988,18 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         && filter.subtypes.is_empty()
         && let Some(owner) = &filter.owner
     {
+        // "the number of white cards in their hand" (Inquisition): any other
+        // qualifier on the counted cards stays on the noun.
+        let mut unscoped = filter.clone();
+        unscoped.zone = None;
+        unscoped.owner = None;
+        unscoped.set_explicit_card_noun(false);
+        if unscoped != ObjectFilter::default() {
+            unscoped.set_explicit_card_noun(true);
+            let subject =
+                pluralize_noun_phrase(strip_indefinite_article(&unscoped.description()).trim());
+            return format!("{subject} in {} hand", describe_possessive_player_filter(owner));
+        }
         return format!("cards in {} hand", describe_possessive_player_filter(owner));
     }
     // "the number of Equipment attached to him" (Whiplash): pluralize the
@@ -1471,6 +1516,13 @@ pub(crate) fn describe_coin_result_for_each_basis(value: &Value) -> Option<&'sta
 }
 
 pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
+    // A count over a prevention result evaluates to the damage the linked
+    // shield prevented (value_eval `count_objects`), so each counted unit is
+    // one point of damage ("for each 1 damage prevented this way", Sacred
+    // Boon), not one object.
+    if filter.prior_effect_action_surface() == Some(crate::effect::PriorEffectAction::Prevented) {
+        return "1 damage prevented this way".to_string();
+    }
     if filter.attacking
         && filter.attacking_player_only
         && let Some(attacked_player) = filter
@@ -1499,6 +1551,23 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     }
     if let Some(subject) = describe_tagged_hand_origin_count_filter(filter) {
         return subject;
+    }
+    // "for each of those cards that are still exiled" (Dragonhawk, Fate's
+    // Tempest): the exiled set, counted only while each card stays in exile.
+    if filter.match_current_state
+        && filter.zone == Some(Zone::Exile)
+        && let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "exiled")
+    {
+        let mut bare = filter.clone();
+        bare.match_current_state = false;
+        bare.zone = None;
+        bare.tagged_constraints.clear();
+        bare.union_surface = Default::default();
+        if bare == ObjectFilter::default() {
+            return "of those cards that are still exiled".to_string();
+        }
     }
 
     // ObjectFilter::description() returns immediately after rendering a named
@@ -1700,6 +1769,14 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
                 Some("they own")
             }
+            // "permanents they control but don't own" (Blim, Comedic
+            // Genius): every owner except the iterated player.
+            Some(PlayerFilter::Excluding { ref base, ref excluded })
+                if matches!(base.as_ref(), PlayerFilter::Any)
+                    && matches!(excluded.as_ref(), PlayerFilter::IteratedPlayer) =>
+            {
+                Some("they don't own")
+            }
             _ => None,
         })
     };
@@ -1710,6 +1787,9 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         }
         (Some("that player controls"), Some("that player owns")) => {
             Some("that player both owns and controls".to_string())
+        }
+        (Some("that player controls"), Some("they don't own")) => {
+            Some("they control but don't own".to_string())
         }
         (Some(controller), Some(owner)) => Some(format!("{owner} but {controller}")),
         (Some(controller), None) => Some(controller.to_string()),
@@ -1917,7 +1997,17 @@ pub(crate) fn describe_demonstrative_tagged_object_filter(
         return Some("it".to_string());
     }
 
-    let base_desc = strip_leading_article(&base.description())
+    // Objects a looked/revealed/discarded helper produced are cards; an
+    // untyped zone-unrestricted remainder names them as cards.
+    let card_result_tag = ["revealed", "looked", "discarded", "milled", "drawn", "searched"]
+        .iter()
+        .any(|action| crate::cards::is_sentence_helper_tag(implicit_tag, action));
+    let base_description = if card_result_tag && base.zone.is_none() {
+        base.description_with_default_noun("card")
+    } else {
+        base.description()
+    };
+    let base_desc = strip_leading_article(&base_description)
         .trim()
         .to_string();
     if base_desc.is_empty() {
@@ -2060,9 +2150,27 @@ pub(crate) fn describe_prior_effect_tagged_filter_surface(
     let action = prior_effect_action_for_filter(filter)?;
     let mut base = filter.clone();
     base.set_prior_effect_action_surface(None);
+    // "each creature not chosen this way" (Thunderwave): the only produced
+    // set is an exclusion, so the provenance reads negated rather than as an
+    // "other" member of that set.
+    let excluded_only = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    }) && !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    });
     base.tagged_constraints.retain(|constraint| {
         constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && (!excluded_only
+                || constraint.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject)
     });
+    if excluded_only {
+        base.zone = None;
+        let described = ensure_indefinite_article(&base.description());
+        return Some(format!(
+            "{described} not {} this way",
+            describe_prior_effect_action_clause(action)
+        ));
+    }
     // The producer action supplies the relevant zone transition. A destination
     // zone attached by the consuming move must not leak into the noun phrase.
     base.zone = None;
@@ -2073,7 +2181,19 @@ pub(crate) fn describe_prior_effect_tagged_filter_surface(
     {
         return Some("the spell countered this way".to_string());
     }
-    let described = ensure_indefinite_article(&base.description());
+    // Results of hidden-zone actions are cards ("a card discarded this
+    // way"): an untyped filter over them never takes the battlefield noun.
+    let described = match action {
+        crate::effect::PriorEffectAction::Discarded
+        | crate::effect::PriorEffectAction::Drawn
+        | crate::effect::PriorEffectAction::Milled
+        | crate::effect::PriorEffectAction::Revealed
+        | crate::effect::PriorEffectAction::Searched
+        | crate::effect::PriorEffectAction::Shuffled => {
+            ensure_indefinite_article(&base.description_with_default_noun("card"))
+        }
+        _ => ensure_indefinite_article(&base.description()),
+    };
     // A permanent is never itself countered: the permanent tied to a
     // countered ability is its source, "that permanent" (Tishana's
     // Tidebinder).
@@ -2404,6 +2524,18 @@ fn describe_object_or_player_union(
     object_text: String,
     player_filter: &PlayerFilter,
 ) -> String {
+    // "that player or planeswalker" (Quenchable Fire): a delayed ability's
+    // reference to the registering ability's player-or-planeswalker target.
+    if let PlayerFilter::TaggedPlayer(player_tag) = player_filter
+        && player_tag.as_str() == crate::tag::DELAYED_TARGET_PLAYERS_TAG
+        && object_filter.card_types == [crate::types::CardType::Planeswalker]
+        && object_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == "targeted_0")
+    {
+        return "that player or planeswalker".to_string();
+    }
     let player_text = describe_player_filter(player_filter);
     let player_text = strip_leading_article(&player_text);
     if object_filter.card_types.len() > 1
@@ -2616,7 +2748,20 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     describe_source_reference_surface_text(source_surface)
                 );
             }
-            if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
+            // A demonstrative reading needs the tagged identity of an earlier
+            // result. "Gain control of target creature with power less than
+            // or equal to the number of +1/+1 counters removed this way"
+            // (Simic Manipulator) only measures a prior result; the target is
+            // a fresh announcement.
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && !filter.tagged_constraints.is_empty()
+                && let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref())
+            {
+                return tagged_text;
+            }
+            if !matches!(inner.as_ref(), ChooseSpec::Object(_))
+                && let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref())
+            {
                 return tagged_text;
             }
             if let ChooseSpec::Object(filter) = inner.as_ref()
@@ -2690,6 +2835,11 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 describe_choose_spec(&ChooseSpec::Object(object_filter.clone())),
                 player_filter,
             )
+        }
+        ChooseSpec::Object(filter) if filter.has_craft_material_reference() => {
+            // "an exiled creature card used to craft it" (The Grim Captain):
+            // one of the craft materials linked to this permanent.
+            ensure_indefinite_article(&filter.description())
         }
         ChooseSpec::Object(filter) => {
             if let Some(surface) = filter.additional_cost_object_surface() {
@@ -2859,6 +3009,23 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
             let desc = describe_object_filter_with_fixed_pt_shorthand(filter);
             let stripped = strip_leading_article(&desc);
+            // "suspect enchanted creature": the attached-object reference
+            // names the one object this source is attached to.
+            if let [constraint] = filter.tagged_constraints.as_slice()
+                && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        | crate::filter::TaggedOpbjectRelation::SameObjectId
+                )
+                && filter.any_of.is_empty()
+                // "each enchanted permanent you control" (Estrid) is a set of
+                // enchanted objects, not this Aura's attached object.
+                && filter.controller.is_none()
+                && (stripped.starts_with("enchanted ") || stripped.starts_with("equipped "))
+            {
+                return stripped.to_string();
+            }
             // "deals 2 damage to each creature": keep the authored
             // distributive quantifier.
             if filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Each)
@@ -2875,6 +3042,19 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::SpecificPlayer(_) => "that player".to_string(),
         ChooseSpec::Iterated => "it".to_string(),
         ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
+            // "choose up to that many target creatures" (Heroic Feast): a
+            // dynamic count bound to the triggering event's amount.
+            let x_word = match spec {
+                ChooseSpec::WithCountValue(_, _, value)
+                    if matches!(
+                        value.unhinted(),
+                        Value::EventValue(EventValueSpec::Amount)
+                    ) =>
+                {
+                    "that many"
+                }
+                _ => "X",
+            };
             let inner_text = describe_choose_spec(inner);
             let controller_suffix = match inner.base() {
                 ChooseSpec::Object(filter) if filter.target_set_same_controller => {
@@ -2883,9 +3063,22 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 ChooseSpec::Object(filter) if filter.target_set_different_controllers => {
                     " controlled by different players"
                 }
-                ChooseSpec::Object(filter) if filter.target_set_shared_creature_type => {
+                ChooseSpec::Object(filter)
+                    if filter.target_set_shared_creature_type
+                        && !inner_text.contains("that share a creature type") =>
+                {
                     " that share a creature type"
                 }
+                ChooseSpec::Object(filter) => match filter.target_set_equal_metric {
+                    Some(ironsmith_core::ChoiceAggregateMetric::Toughness) => {
+                        " with equal toughness"
+                    }
+                    Some(ironsmith_core::ChoiceAggregateMetric::Power) => " with equal power",
+                    Some(ironsmith_core::ChoiceAggregateMetric::ManaValue) => {
+                        " with equal mana value"
+                    }
+                    _ => "",
+                },
                 _ => "",
             };
             let random_suffix = if count.is_random() {
@@ -2981,10 +3174,10 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     .unwrap_or_else(|| format!("target {plural}"));
                 let count_text = |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                 if count.is_up_to_dynamic_x() {
-                    return format!("up to X {plural_target}{controller_suffix}{random_suffix}");
+                    return format!("up to {x_word} {plural_target}{controller_suffix}{random_suffix}");
                 }
                 if count.is_dynamic_x() {
-                    return format!("X {plural_target}{controller_suffix}{random_suffix}");
+                    return format!("{x_word} {plural_target}{controller_suffix}{random_suffix}");
                 }
                 match (count.min, count.max) {
                     (0, None) => {
@@ -3053,7 +3246,7 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 };
                 let count_text = |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                 if count.is_up_to_dynamic_x() {
-                    return format!("up to X {plural}{controller_suffix}{random_suffix}");
+                    return format!("up to {x_word} {plural}{controller_suffix}{random_suffix}");
                 }
                 if count.is_dynamic_x()
                     && let ChooseSpec::WithCountValue(_, _, value) = spec
@@ -3078,7 +3271,7 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     {
                         return format!("{plural}{controller_suffix} equal to the difference");
                     }
-                    return format!("X {plural}{controller_suffix}{random_suffix}");
+                    return format!("{x_word} {plural}{controller_suffix}{random_suffix}");
                 }
                 match (count.min, count.max) {
                     (0, None) => {
@@ -3577,6 +3770,20 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             }
         }
         ChooseSpec::Object(filter) => {
+            if filter.zone == Some(Zone::Graveyard) {
+                // "shuffle it into your library from your graveyard": the
+                // caller emits the origin, so a demonstrative reference
+                // names only the card ("that card"), not its location too.
+                let mut unlocated = filter.clone();
+                unlocated.zone = None;
+                unlocated.owner = None;
+                unlocated.single_graveyard = false;
+                if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(&unlocated)
+                    && !tagged_text.contains("permanent")
+                {
+                    return tagged_text;
+                }
+            }
             if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
                 return tagged_text;
             }
@@ -5443,6 +5650,52 @@ pub(crate) fn describe_counter_type(counter_type: CounterType) -> String {
     counter_type.description().into_owned()
 }
 
+thread_local! {
+    /// The object noun of what the resolving program's exile instructions
+    /// acted on ("For each creature exiled this way", Chaos Mutation). `None`
+    /// keeps the generic card noun.
+    static SOURCE_EXILED_THIS_WAY_NOUN: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Render `render` with `noun` naming the objects the program exiled. A
+/// `None` noun keeps any enclosing program's noun.
+pub(crate) fn with_source_exiled_this_way_noun<T>(
+    noun: Option<String>,
+    render: impl FnOnce() -> T,
+) -> T {
+    let Some(noun) = noun else {
+        return render();
+    };
+    let previous = SOURCE_EXILED_THIS_WAY_NOUN.with(|cell| cell.replace(Some(noun)));
+    let rendered = render();
+    SOURCE_EXILED_THIS_WAY_NOUN.with(|cell| *cell.borrow_mut() = previous);
+    rendered
+}
+
+pub(crate) fn source_exiled_this_way_noun() -> Option<String> {
+    SOURCE_EXILED_THIS_WAY_NOUN.with(|cell| cell.borrow().clone())
+}
+
+thread_local! {
+    /// Set while rendering a card whose most recent damage instruction can
+    /// only hit a creature, so its excess-damage metric names "that creature".
+    pub(crate) static EXCESS_DAMAGE_CREATURE_RECIPIENT: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// Records the recipient kind of a rendered damage instruction for later
+/// "excess damage dealt ... this way" references.
+pub(crate) fn note_damage_recipient(target: &crate::target::ChooseSpec) {
+    let creature_only = match target.inner().unhinted() {
+        crate::target::ChooseSpec::Object(filter) => {
+            filter.card_types.as_slice() == [crate::types::CardType::Creature]
+        }
+        _ => false,
+    };
+    EXCESS_DAMAGE_CREATURE_RECIPIENT.with(|cell| cell.set(creature_only));
+}
+
 pub(crate) fn describe_effect_metric_value(
     metric: crate::effect::EffectMetric,
     offset: Option<i32>,
@@ -5455,8 +5708,14 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::LifeGained => "the life gained this way".to_string(),
         crate::effect::EffectMetric::DamageDealt => "the damage dealt this way".to_string(),
         crate::effect::EffectMetric::DamageDealtCappedByRecipient => "the damage dealt, but not more life than the player's life total before the damage was dealt, the planeswalker's loyalty before the damage was dealt, or the creature's toughness".into(),
+        // The excess-damage recipient can be a creature or a planeswalker
+        // (Violent Echoes); the metric itself does not name it.
         crate::effect::EffectMetric::ExcessDamage => {
-            "the excess damage dealt to that creature this way".to_string()
+            if EXCESS_DAMAGE_CREATURE_RECIPIENT.with(std::cell::Cell::get) {
+                "the excess damage dealt to that creature this way".to_string()
+            } else {
+                "the excess damage dealt this way".to_string()
+            }
         }
         crate::effect::EffectMetric::DamagePrevented => "the damage prevented this way".to_string(),
         crate::effect::EffectMetric::FirstPower => "that creature's power".to_string(),
@@ -5614,7 +5873,7 @@ fn prior_effect_filter_is_source_placeholder(filter: &crate::filter::ObjectFilte
     base == crate::filter::ObjectFilter::source()
 }
 
-fn prior_effect_query_noun(query: &crate::effect::PriorEffectMetricQuery, plural: bool) -> String {
+pub(crate) fn prior_effect_query_noun(query: &crate::effect::PriorEffectMetricQuery, plural: bool) -> String {
     if query.action == Some(crate::effect::PriorEffectAction::Removed)
         && let Some(counter_type) = query.counter_type
     {
@@ -5646,6 +5905,31 @@ fn prior_effect_query_noun(query: &crate::effect::PriorEffectMetricQuery, plural
             return if plural { "cards" } else { "card" }.to_string();
         }
         return prior_effect_default_noun(query, plural).to_string();
+    }
+    // "for each spell and ability countered this way" (Glen Elendra's
+    // Answer): a bare stack-object kind names its own noun.
+    {
+        let mut kindless = unqualified_filter.clone();
+        let kind = kindless.stack_kind.take();
+        if kindless == crate::filter::ObjectFilter::default()
+            && filter.zone.is_none_or(|zone| zone == Zone::Stack)
+            && let Some(kind) = kind
+        {
+            use crate::filter::StackObjectKind;
+            let noun = match (kind, plural) {
+                (StackObjectKind::Spell, false) => "spell",
+                (StackObjectKind::Spell, true) => "spells",
+                (StackObjectKind::Ability, false) => "ability",
+                (StackObjectKind::Ability, true) => "abilities",
+                (StackObjectKind::SpellOrAbility, false) => "spell and ability",
+                (StackObjectKind::SpellOrAbility, true) => "spells and abilities",
+                (StackObjectKind::ActivatedAbility, false) => "activated ability",
+                (StackObjectKind::ActivatedAbility, true) => "activated abilities",
+                (StackObjectKind::TriggeredAbility, false) => "triggered ability",
+                (StackObjectKind::TriggeredAbility, true) => "triggered abilities",
+            };
+            return noun.to_string();
+        }
     }
     // "cards of the chosen color revealed this way": a chosen-color-only
     // filter qualifies the action's own noun.
@@ -5786,6 +6070,12 @@ pub(crate) fn describe_prior_effect_count_basis_for_action(
 pub(crate) fn describe_prior_effect_metric_value(
     query: &crate::effect::PriorEffectMetricQuery,
 ) -> String {
+    if query.metric == crate::effect::EffectMetric::CountersPut {
+        let kind = query.counter_type.map(|kind| format!("{} ", describe_counter_type(kind))).unwrap_or_default();
+        let recipients = query.filter.as_ref().map(|_|
+            format!(" on {}", prior_effect_query_noun(query, true))).unwrap_or_default();
+        return format!("the number of {kind}counters put{recipients} this way");
+    }
     if query.action == Some(crate::effect::PriorEffectAction::Investigated)
         && query.metric == crate::effect::EffectMetric::PlayersWithPositiveCount
     {
@@ -5893,6 +6183,20 @@ pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'stati
         return Some("the number of cards revealed this way");
     }
     if value.has_surface_hint(ValueSurfaceHint::CardsExiledThisWay) {
+        // "the number of creatures exiled this way" (Sunfall): a count
+        // filtered to battlefield objects names them by their type, not as
+        // cards (tokens count too).
+        if let Value::PriorEffectMetric { query, .. } = value.unhinted()
+            && query.metric == crate::effect::EffectMetric::Count
+            && let Some(filter) = query.filter.as_ref()
+            && filter.zone == Some(Zone::Battlefield)
+        {
+            return Some(match filter.card_types.as_slice() {
+                [CardType::Creature] => "the number of creatures exiled this way",
+                [] => "the number of permanents exiled this way",
+                _ => "the number of cards exiled this way",
+            });
+        }
         return Some("the number of cards exiled this way");
     }
     if value.has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay) {
@@ -6346,6 +6650,15 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
+        TurnHistoryCount::TokensCreatedMatching { player, filter } => {
+            let mut subject_filter = filter.clone();
+            subject_filter.zone = None;
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(&subject_filter));
+            format!(
+                "the number of {subject} {} created this turn",
+                describe_player_filter(player)
+            )
+        }
         TurnHistoryCount::PutIntoGraveyard { owner, from } => {
             let origin = match from.as_slice() {
                 [] => "from anywhere".to_string(),
@@ -6381,6 +6694,24 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 "the number of cards put into {} graveyard {origin} this turn",
                 describe_possessive_player_filter(owner)
             )
+        }
+        // "the number of creatures that were exiled under your opponents'
+        // control this turn" (Vren, the Relentless).
+        TurnHistoryCount::MovedZones {
+            filter,
+            from: Some(Zone::Battlefield),
+            to: Some(Zone::Exile),
+        } if filter.controller.is_some() => {
+            let mut base = filter.clone();
+            let controller = base.controller.take().expect("guarded controller");
+            base.zone = None;
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(&base));
+            let controller = match controller {
+                PlayerFilter::You => "your".to_string(),
+                PlayerFilter::Opponent => "your opponents'".to_string(),
+                other => describe_possessive_player_filter(&other),
+            };
+            format!("the number of {subject} that were exiled under {controller} control this turn")
         }
         TurnHistoryCount::MovedZones { filter, from, to } => {
             let subject = pluralize_noun_phrase(&describe_for_each_filter(filter));
@@ -6423,7 +6754,17 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             ),
             pluralize_noun_phrase(&describe_for_each_filter(filter))
         ),
-        TurnHistoryCount::CreaturesAttackedWith { player, filter } => format!(
+        TurnHistoryCount::CombatDamageSourcesToPlayers { player, recipients, filter } => format!(
+            "the number of {} {} controlled that dealt combat damage to {} this turn",
+            pluralize_noun_phrase(&describe_for_each_filter(filter)),
+            describe_player_filter(player),
+            if *recipients == PlayerFilter::Any {
+                "a player".to_string()
+            } else {
+                describe_player_filter(recipients)
+            }
+        ),
+        TurnHistoryCount::CreaturesAttackedWith { player, filter, .. } => format!(
             "the number of {} {} attacked with this turn",
             pluralize_noun_phrase(&describe_for_each_filter(filter)),
             describe_player_filter(player)
@@ -6481,6 +6822,12 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             ),
         },
         TurnHistoryCount::KeywordActionsPerformed { player, actions } => {
+            if actions.as_slice() == [ironsmith_core::KeywordActionKind::FaceDilemma] {
+                return match player {
+                    PlayerFilter::You => "the number of dilemmas you've faced this turn".to_string(),
+                    _ => format!("the number of dilemmas {} faced this turn", describe_player_filter(player)),
+                };
+            }
             let actions = actions
                 .iter()
                 .map(|action| action.infinitive())
@@ -6793,6 +7140,22 @@ pub(crate) fn describe_value(value: &Value) -> String {
                         describe_value(left),
                         right.abs()
                     );
+                }
+            }
+            // "where X is the sacrificed artifact's mana value" (Forge
+            // Armor): the value names the kind of object sacrificed.
+            if let Some(kind) = hints.iter().find_map(|hint| match hint {
+                ironsmith_core::ValueSurfaceHint::SacrificedObject(kind) => Some(*kind),
+                _ => None,
+            }) {
+                let characteristic = match value.unhinted() {
+                    Value::ManaValueOf(_) => Some("mana value"),
+                    Value::PowerOf(_) => Some("power"),
+                    Value::ToughnessOf(_) => Some("toughness"),
+                    _ => None,
+                };
+                if let Some(characteristic) = characteristic {
+                    return format!("the sacrificed {}'s {characteristic}", kind.noun());
                 }
             }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::MasculineSourcePossessive)
@@ -7210,6 +7573,23 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_aggregate_filter_value_subject(filter)
             )
         }
+        // "You gain life equal to their total mana value" (Song of
+        // Inspiration): the aggregate is over the cards an earlier target
+        // declaration already named.
+        Value::TotalManaValue(filter)
+            if matches!(
+                filter.tagged_constraints.as_slice(),
+                [constraint] if constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str().starts_with("targeted_")
+            ) && {
+                let mut rest = filter.clone();
+                rest.tagged_constraints.clear();
+                rest == ObjectFilter::default()
+            } =>
+        {
+            "their total mana value".to_string()
+        }
         Value::TotalManaValue(filter) => {
             format!(
                 "the total mana value of {}",
@@ -7234,13 +7614,15 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::GreatestPower(filter) => {
             format!(
                 "the greatest power among {}",
-                describe_count_filter_value_subject(filter)
+                describe_bare_triggering_group(filter)
+                    .unwrap_or_else(|| describe_count_filter_value_subject(filter))
             )
         }
         Value::GreatestToughness(filter) => {
             format!(
                 "the greatest toughness among {}",
-                describe_count_filter_value_subject(filter)
+                describe_bare_triggering_group(filter)
+                    .unwrap_or_else(|| describe_count_filter_value_subject(filter))
             )
         }
         Value::GreatestManaValue(filter) => {
@@ -7276,8 +7658,16 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of creature types among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::PlaneswalkerTypesAmong(filter) => format!(
+            "the number of planeswalker types among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::CardTypesAmong(filter) => format!(
             "the number of card types among {}",
+            describe_count_filter_value_subject(filter)
+        ),
+        Value::PermanentTypesAmong(filter) => format!(
+            "the number of permanent types among {}",
             describe_count_filter_value_subject(filter)
         ),
         Value::StaticAbilitiesAmong { filter, abilities } => {
@@ -7314,6 +7704,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of different mana values among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::DistinctManaCosts(filter) => format!(
+            "the number of different mana costs among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::DistinctPowers(filter) => format!(
             "the number of different powers among {}",
             describe_count_filter_value_subject(filter)
@@ -7333,6 +7727,14 @@ pub(crate) fn describe_value(value: &Value) -> String {
             // Per-vote player relations set when players finish voting.
             PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "voted_against_you" => {
                 "the number of opponents who voted for a choice you didn't vote for".to_string()
+            }
+            PlayerFilter::TaggedPlayer(tag)
+                if tag.as_str() == ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG =>
+            {
+                format!(
+                    "the number of {}s dealt damage",
+                    crate::compiled_text::render_effects::damage_batch_player_noun()
+                )
             }
             PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "voted_with_you" => {
                 "the number of opponents who voted for a choice you voted for".to_string()
@@ -7479,6 +7881,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
             {
                 "the exiled card's power".to_string()
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str().starts_with("amassed_")
+            {
+                // The amass result is the Army it put counters on
+                // (Grishnákh, Brash Instigator).
+                "the amassed Army's power".to_string()
             } else {
                 format!("{} power", describe_possessive_choose_spec(spec))
             }
@@ -7541,6 +7949,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             // "that card's mana value" over "its mana value".
             if let Some(kind) = spec.sacrificed_object_kind() {
                 format!("the sacrificed {}'s mana value", kind.noun())
+            } else if let Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface)) =
+                spec.source_reference_surface()
+                && surface.ends_with(" used to craft it")
+            {
+                // A postmodified noun phrase takes the "of" genitive.
+                format!("the mana value of {surface}")
             } else if spec.source_reference_surface().is_some() {
                 format!("{} mana value", describe_possessive_choose_spec(spec))
             } else if let ChooseSpec::Tagged(tag) = spec.base()
@@ -7894,6 +8308,31 @@ pub(crate) fn describe_value(value: &Value) -> String {
             _ => format!(
                 "the number of times {} has cast their commander from the command zone this game",
                 describe_player_filter(filter)
+            ),
+        },
+        Value::CommandersCastFromCommandZoneBy(filter) => match filter {
+            PlayerFilter::You => {
+                "the number of times you've cast a commander from the command zone this game"
+                    .to_string()
+            }
+            PlayerFilter::IteratedPlayer => {
+                "the number of times they've cast a commander from the command zone this game"
+                    .to_string()
+            }
+            _ => format!(
+                "the number of times {} has cast a commander from the command zone this game",
+                describe_player_filter(filter)
+            ),
+        },
+        Value::CommanderCastCountOf(spec) => match spec.base() {
+            crate::target::ChooseSpec::Source
+            | crate::target::ChooseSpec::Iterated
+            | crate::target::ChooseSpec::Tagged(_) => {
+                "the number of times it's been cast from the command zone this game".to_string()
+            }
+            _ => format!(
+                "the number of times {} has been cast from the command zone this game",
+                describe_choose_spec(spec)
             ),
         },
         Value::ThisAbilityManaProductionCountThisTurn => "the number of times you have added mana with this ability this turn".to_string(),
@@ -8268,4 +8707,20 @@ mod moved_zone_for_each_rendering_tests {
             assert_eq!(describe_turn_history_for_each_basis(&value).as_deref(), Some(expected));
         }
     }
+}
+
+/// "the greatest power among them" (Aloy): a bare filter whose only
+/// restriction is membership in the triggering object group.
+fn describe_bare_triggering_group(filter: &ObjectFilter) -> Option<String> {
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || constraint.tag.as_str() != "triggering"
+    {
+        return None;
+    }
+    let mut bare = filter.clone();
+    bare.tagged_constraints.clear();
+    (bare == ObjectFilter::default()).then(|| "them".to_string())
 }

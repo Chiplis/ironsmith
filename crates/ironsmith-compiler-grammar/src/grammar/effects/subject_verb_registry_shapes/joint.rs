@@ -63,6 +63,15 @@ fn player_object<'a>(input: &mut LexStream<'a>) -> WResult<(PlayerAst, bool)> {
             alt((primitives::kw("player"), primitives::kw("players"))),
         )
             .value((PlayerAst::That, false)),
+        // "you and the controller of those creatures each draw a card"
+        // (Nelly Borca): the controller of the referenced object(s).
+        alt((
+            primitives::phrase(&["the", "controller", "of", "those", "creatures"]),
+            primitives::phrase(&["the", "controller", "of", "that", "creature"]),
+            primitives::phrase(&["that", "creature's", "controller"]),
+            primitives::phrase(&["its", "controller"]),
+        ))
+        .value((PlayerAst::ItsController, false)),
     ))
     .parse_next(input)
 }

@@ -118,6 +118,47 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             number(amount)?,
         ));
     }
+    // "it has dealt 10 or more damage to that player this turn" (Vessel of
+    // the All-Consuming): one source's accumulated damage to one player.
+    for split in 1..body.len() {
+        let Some(spec) = reference(&body[..split]) else {
+            continue;
+        };
+        let [
+            "has" | "had",
+            "dealt",
+            amount,
+            "or",
+            "more",
+            tail @ ..,
+        ] = &body[split..]
+        else {
+            continue;
+        };
+        let (combat, recipient) = match tail {
+            ["damage", "to", recipient @ ..] => (None, recipient),
+            ["combat", "damage", "to", recipient @ ..] => (Some(true), recipient),
+            ["noncombat", "damage", "to", recipient @ ..] => (Some(false), recipient),
+            _ => continue,
+        };
+        let recipients = match recipient {
+            ["that", "player"] => DamageHistoryRecipients::Players(
+                crate::target::PlayerFilter::IteratedPlayer,
+            ),
+            ["you"] => DamageHistoryRecipients::Players(crate::target::PlayerFilter::You),
+            _ => continue,
+        };
+        return Some(compared(
+            DamageHistoryQuery {
+                sources: DamageHistorySources::Reference(Box::new(spec)),
+                recipients,
+                combat,
+                reduction: DamageHistoryReduction::Total,
+            },
+            ValueComparisonOperator::GreaterThanOrEqual,
+            number(amount)?,
+        ));
+    }
     // "4 or more damage was dealt to it this turn".
     if let [
         amount,

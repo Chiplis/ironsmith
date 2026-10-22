@@ -69,6 +69,7 @@ pub mod compile_support {
 
 pub mod condition_antecedents;
 pub mod effect_ast_normalization;
+pub mod exile_result_unions;
 pub mod predicate_conditions;
 pub mod reference_helpers;
 pub mod reference_resolution;

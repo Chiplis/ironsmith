@@ -26,6 +26,10 @@ pub struct AttacksTrigger {
     /// Optional comparison over one characteristic summed across every
     /// matching attacker in the declaration.
     pub aggregate_constraint: Option<(ChoiceAggregateMetric, Comparison)>,
+    /// "Whenever a player attacks with [N or more] creatures": each attacking
+    /// player's matching attackers form their own group, so a shared-team
+    /// declaration (CR 805.10) never pools two players' creatures.
+    pub per_attacking_player: bool,
 }
 
 /// Trigger that fires once when one or more matching players are attacked.
@@ -295,6 +299,7 @@ impl AttacksTrigger {
             min_total_attackers: 1,
             max_total_attackers: None,
             aggregate_constraint: None,
+            per_attacking_player: false,
         }
     }
 
@@ -306,6 +311,7 @@ impl AttacksTrigger {
             min_total_attackers: 1,
             max_total_attackers: None,
             aggregate_constraint: None,
+            per_attacking_player: false,
         }
     }
 
@@ -321,6 +327,7 @@ impl AttacksTrigger {
             min_total_attackers: min_total_attackers.max(1),
             max_total_attackers: None,
             aggregate_constraint: None,
+            per_attacking_player: false,
         }
     }
 
@@ -337,6 +344,7 @@ impl AttacksTrigger {
             min_total_attackers: total_attackers,
             max_total_attackers: Some(total_attackers),
             aggregate_constraint: None,
+            per_attacking_player: false,
         }
     }
 
@@ -351,7 +359,29 @@ impl AttacksTrigger {
             min_total_attackers: 1,
             max_total_attackers: None,
             aggregate_constraint: Some((metric, comparison)),
+            per_attacking_player: false,
         }
+    }
+
+    /// "Whenever [a player] attacks with [N or more] [filter]": fires once
+    /// per attacking player whose own matching attackers reach the minimum.
+    pub fn per_attacking_player(filter: ObjectFilter, min_total_attackers: usize) -> Self {
+        Self {
+            per_attacking_player: true,
+            ..Self::one_or_more_with_min_total_attackers(filter, min_total_attackers)
+        }
+    }
+
+    /// The player an attacking creature attacks for, when grouping by
+    /// attacking player.
+    fn attacking_player_of(
+        &self,
+        creature: ObjectId,
+        ctx: &TriggerContext,
+    ) -> Option<crate::ids::PlayerId> {
+        ctx.game
+            .object(creature)
+            .map(|object| ctx.game.controller_of(object))
     }
 
     /// Create an attacks trigger for any creature.
@@ -376,7 +406,16 @@ impl AttacksTrigger {
         let current_defending_player = match_per_defending_player
             .then(|| defending_player_for_attack_target(attack_target, ctx.game))
             .flatten();
+        let current_attacking_player = self
+            .per_attacking_player
+            .then(|| self.attacking_player_of(attacker, ctx))
+            .flatten();
         for info in attackers {
+            if self.per_attacking_player
+                && self.attacking_player_of(info.creature, ctx) != current_attacking_player
+            {
+                continue;
+            }
             if match_per_defending_player
                 && defending_player_for_attack_target(&info.target, ctx.game)
                     != current_defending_player
@@ -408,11 +447,19 @@ impl AttacksTrigger {
                     ctx.game,
                 )
             });
+        let current_attacking_player = self
+            .per_attacking_player
+            .then(|| self.attacking_player_of(event.attacker, ctx));
         let count = attack_declaration(event, ctx)?
             .iter()
             .filter(|info| {
                 current_defending_player.is_none_or(|defender| {
                     defending_player_for_attack_target(&info.target, ctx.game) == defender
+                })
+            })
+            .filter(|info| {
+                current_attacking_player.is_none_or(|attacking_player| {
+                    self.attacking_player_of(info.creature, ctx) == attacking_player
                 })
             })
             .filter(|info| self.matches_attacker_info(info, ctx))
@@ -605,6 +652,8 @@ impl TriggerMatcher for AttacksTrigger {
         let attacked_target_must_be_player =
             std::mem::take(&mut display_filter.attacking_player_only)
                 | display_filter.targets_only_player.take().is_some();
+        // "Whenever this creature attacks a battle" (Thrashing Frontliner).
+        let attacks_battle = std::mem::take(&mut display_filter.attacking_battle);
         let described_subject = display_filter.description();
         let articleless_attachment_subject =
             display_filter.tagged_constraints.iter().any(|constraint| {
@@ -682,8 +731,40 @@ impl TriggerMatcher for AttacksTrigger {
             (Some(PlayerFilter::MostLifeTied), true) => {
                 " the player with the most life or tied for most life".to_string()
             }
+            (None, false) if attacks_battle => " a battle".to_string(),
             _ => String::new(),
         };
+
+        if self.per_attacking_player
+            && self.aggregate_constraint.is_none()
+            && self.max_total_attackers.is_none()
+            && !display_filter.source
+            && let Some(player) = display_filter.controller.clone()
+        {
+            let player_subject = match &player {
+                PlayerFilter::Any => "a player".to_string(),
+                PlayerFilter::Opponent => "an opponent".to_string(),
+                PlayerFilter::NotYou => "another player".to_string(),
+                PlayerFilter::You => "you".to_string(),
+                other => crate::triggers::describe_player_filter_subject(other),
+            };
+            let verb = if player == PlayerFilter::You {
+                "attack"
+            } else {
+                "attacks"
+            };
+            let mut group_filter = display_filter.clone();
+            group_filter.controller = None;
+            let group = pluralize_one_or_more_attack_subject(&group_filter.description());
+            let count = if self.min_total_attackers > 1 {
+                let min_total = ironsmith_core::cardinal_word(self.min_total_attackers as u32)
+                    .unwrap_or_else(|| self.min_total_attackers.to_string());
+                format!("{min_total} or more")
+            } else {
+                "one or more".to_string()
+            };
+            return format!("Whenever {player_subject} {verb}{target_tail} with {count} {group}");
+        }
 
         if let Some((metric, comparison)) = &self.aggregate_constraint {
             let metric = match metric {

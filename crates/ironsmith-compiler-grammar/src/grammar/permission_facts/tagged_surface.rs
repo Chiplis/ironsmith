@@ -448,11 +448,20 @@ pub fn parse_spells_from_tagged_tokens(
         ))
     })?;
     let subject_tokens = trim_lexed_commas(&tokens[..scope_start]);
+    // "You may play lands from among those cards" (The Omenkeel): the
+    // land-play half of a filtered pool names the bare card type.
+    let lands_subject = primitives::probe_all(
+        subject_tokens,
+        (primitives::kw("lands"), primitives::sentence_end()),
+        "lands-from-among-tagged-subject",
+    )
+    .is_some();
     if subject_tokens.is_empty()
-        || primitives::find_prefix(subject_tokens, || {
-            alt((primitives::kw("spell"), primitives::kw("spells"))).void()
-        })
-        .is_none()
+        || (!lands_subject
+            && primitives::find_prefix(subject_tokens, || {
+                alt((primitives::kw("spell"), primitives::kw("spells"))).void()
+            })
+            .is_none())
     {
         return None;
     }

@@ -210,7 +210,12 @@ fn split_collection_cast_mana_value(
         trim_lexed_commas(bound_tokens),
         mana_value_bound,
         "tagged collection cast mana value",
-    )?;
+    ).or_else(|| {
+        let tokens = trim_lexed_commas(bound_tokens);
+        let (operator, rhs) = crate::grammar::values::parse_value_comparison_tokens(tokens)?;
+        let (value, used) = crate::grammar::shared_util::value_semantics::parse_value_prefix_lexed(rhs)?;
+        (used == rhs.len()).then(|| crate::permission_helpers::mana_value_filter_comparison(tokens, operator, value))
+    })?;
     Some((subject_tokens, Some(mana_value)))
 }
 

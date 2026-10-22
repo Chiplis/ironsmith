@@ -11,17 +11,16 @@ use crate::zone::Zone;
 pub type DirectionalAdjacentPlayerControlEffect =
     ironsmith_core::DirectionalAdjacentPlayerControlEffect;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SeatingDirection {
-    Left,
-    Right,
-}
+use ironsmith_core::SeatingDirection;
 
 fn chosen_direction(
     game: &GameState,
     source: ObjectId,
     effect: &DirectionalAdjacentPlayerControlEffect,
 ) -> Result<SeatingDirection, ExecutionError> {
+    if let Some(direction) = effect.fixed_direction {
+        return Ok(direction);
+    }
     let option = game.chosen_named_option(source).ok_or_else(|| {
         ExecutionError::UnresolvableValue("directional choice was not made".to_string())
     })?;
@@ -123,10 +122,13 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
                         CapturedChoicePolicy, ObjectAnswerPolicy, ObjectChoiceTransport,
                         choose_captured_object,
                     };
+                    // "of your choice" (Inniaz): the controller picks the
+                    // object each player gains.
+                    let decider = if self.controller_chooses { ctx.controller } else { chooser };
                     let selected = choose_captured_object(
                         game,
                         ctx,
-                        chooser,
+                        decider,
                         &candidates,
                         "Choose a controlled object in the chosen direction",
                         CapturedChoicePolicy {

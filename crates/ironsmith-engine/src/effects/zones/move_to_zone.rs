@@ -559,13 +559,21 @@ fn move_entry_options(
         .with_entry_attachment(attachment)
         .transformed(effect.enters_transformed)
         .face_down(effect.enters_face_down);
-    if effect.enters_as_non_aura {
-        // "as a non-Aura enchantment": the type change is part of how the
-        // object enters, so it never chooses what to enchant (CR 303.4f).
-        options = options.with_entry_modifications(vec![
-            crate::continuous::Modification::RemoveSubtypes(vec![crate::types::Subtype::Aura]),
-        ]);
+    let mut modifications = Vec::new();
+    if let Some(changes) = &effect.entry_type_changes {
+        modifications.extend(changes.removed_subtype_families.iter().copied()
+            .map(crate::continuous::Modification::RemoveAllSubtypesOfFamily));
+        if !changes.added_card_types.is_empty() {
+            modifications.push(crate::continuous::Modification::AddCardTypes(changes.added_card_types.clone()));
+        }
+        if !changes.added_subtypes.is_empty() {
+            modifications.push(crate::continuous::Modification::AddSubtypes(changes.added_subtypes.clone()));
+        }
     }
+    if effect.enters_as_non_aura {
+        modifications.push(crate::continuous::Modification::RemoveSubtypes(vec![crate::types::Subtype::Aura]));
+    }
+    options = options.with_entry_modifications(modifications);
     if effect.transfer_exiled_with_source_links {
         let captured = ctx.get_tagged_all(crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG);
         let candidates = captured.cloned().unwrap_or_else(|| {

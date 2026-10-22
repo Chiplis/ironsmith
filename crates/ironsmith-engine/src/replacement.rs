@@ -225,6 +225,16 @@ pub enum ReplacementAction {
         counters: Vec<(CounterType, u32)>,
     },
 
+    /// Move the object to a replacement zone (keeping the replaced event's
+    /// provenance, e.g. a discard stays a discard), then execute follow-up
+    /// effects from the replacement source. The moved object is tagged under
+    /// [`crate::tag::ZONE_REPLACEMENT_OBJECT_TAG`] for the follow-ups ("reveal
+    /// it and shuffle it into its owner's library instead").
+    MoveToZoneThen {
+        zone: Zone,
+        effects: Vec<Effect>,
+    },
+
     /// Exile the object and record it as exiled with the replacement source.
     ExileWithSourceLink,
 

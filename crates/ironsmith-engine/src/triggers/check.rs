@@ -4086,6 +4086,20 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                 {
                     continue;
                 }
+                // A "prevented this way" ability registered without a shield
+                // identity (a next-time replacement, New Way Forward) sees only
+                // the prevention events its own source's effect produced.
+                if delayed.prevention_shield.is_none()
+                    && delayed
+                        .trigger
+                        .downcast_ref::<crate::triggers::DamagePreventedThisWayTrigger>()
+                        .is_some()
+                    && let Some(prevented) =
+                        trigger_event.downcast::<crate::events::DamagePreventedEvent>()
+                    && Some(prevented.prevention_source) != delayed.ability_source
+                {
+                    continue;
+                }
                 let range_source = delayed.ability_source.unwrap_or(source);
                 if !trigger_event_is_in_range(
                     game,

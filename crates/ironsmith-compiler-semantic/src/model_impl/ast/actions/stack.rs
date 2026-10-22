@@ -48,6 +48,9 @@ pub enum StackActionAst {
         player: PlayerAst,
         exclude_current_targets: bool,
         removed_supertypes: Vec<crate::types::Supertype>,
+        /// Authored kind of the copied stack-object reference ("that
+        /// ability", "that spell or ability").
+        target_reference_kind: Option<crate::filter::StackObjectKind>,
     },
     ScaleXValue {
         target: TargetAst,
@@ -72,6 +75,11 @@ pub enum StackActionAst {
         /// "If the chosen card is cast as a spell, you control the player
         /// while that spell is resolving." (CR 722).
         control_caster_while_spell_resolves: bool,
+        /// "you may cast it from your graveyard" (Oskar, Rubbish Reclaimer):
+        /// the cast happens only while the card is still in that zone.
+        required_zone: Option<crate::zone::Zone>,
+        /// CR 601.3e: the proposed spell must have these characteristics.
+        required_spell: Option<ObjectFilter>,
     },
     RetargetStackObject {
         target: TargetAst,

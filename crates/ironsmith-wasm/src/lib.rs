@@ -1593,8 +1593,7 @@ pub(crate) fn hidden_object_viewable_by_player(
         Zone::Hand => viewer == object.owner || viewer == game.controlling_player_for(object.owner),
         Zone::Library => false,
         Zone::Battlefield if game.is_face_down(id) => {
-            let controller = game.controller_of(object);
-            viewer == controller || viewer == game.controlling_player_for(controller)
+            game.can_player_look_at_face_down_permanent(id, viewer)
         }
         Zone::Exile if game.is_face_down(id) => {
             game.can_player_look_at_face_down_exiled_card(id, viewer)

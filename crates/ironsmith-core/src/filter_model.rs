@@ -770,6 +770,16 @@ pub struct ObjectFilterUnionSurface {
     /// `targets_only_player` remain the executable semantics.
     #[cfg_attr(feature = "serde", serde(default))]
     single_target_if_that_target_surface: bool,
+    /// Oracle named source-linked exiled cards as "the exiled card(s) used
+    /// to craft it" (CR 702.167c). The `SourceExiled` tagged constraint stays
+    /// the executable identity; this keeps only the authored craft wording.
+    #[cfg_attr(feature = "serde", serde(default))]
+    craft_material_reference: bool,
+    /// Oracle named the source-linked exiled set definitely, as "the exiled
+    /// cards" (Sutured Ghoul). The `SourceExiled` constraint stays the
+    /// executable identity; this keeps only the authored noun phrase.
+    #[cfg_attr(feature = "serde", serde(default))]
+    definite_exiled_reference: bool,
 }
 
 impl ObjectFilterUnionSurface {
@@ -827,6 +837,8 @@ impl ObjectFilterUnionSurface {
             continuous_control_exception: false,
             continuous_control_ignore_effect: false,
             single_target_if_that_target_surface: false,
+            craft_material_reference: false,
+            definite_exiled_reference: false,
         }
     }
 
@@ -1219,6 +1231,24 @@ impl ObjectFilterUnionSurface {
 
     pub const fn single_target_if_that_target(self) -> bool {
         self.single_target_if_that_target_surface
+    }
+
+    pub const fn with_craft_material_reference(mut self, authored: bool) -> Self {
+        self.craft_material_reference = authored;
+        self
+    }
+
+    pub const fn craft_material_reference(self) -> bool {
+        self.craft_material_reference
+    }
+
+    pub const fn with_definite_exiled_reference(mut self, authored: bool) -> Self {
+        self.definite_exiled_reference = authored;
+        self
+    }
+
+    pub const fn definite_exiled_reference(self) -> bool {
+        self.definite_exiled_reference
     }
 
     pub const fn with_demonstrative_antecedent(
@@ -1830,6 +1860,11 @@ pub enum PlayerTurnHistoryFilter {
     /// Was dealt damage this turn ("any target that was dealt damage this
     /// turn", Needle Drop). Appended to preserve serialized ordinals.
     WasDealtDamage,
+    /// Attacked you or a planeswalker you control with one or more creatures
+    /// this turn ("each opponent who attacked you or a planeswalker you
+    /// control this turn", Sandswirl Wanderglyph). "You" is the filter
+    /// context's controller. Appended to preserve serialized ordinals.
+    AttackedYouOrYourPlaneswalker,
 }
 
 impl PlayerTurnHistoryFilter {
@@ -1838,6 +1873,9 @@ impl PlayerTurnHistoryFilter {
             Self::CastSpell => "who cast a spell this turn",
             Self::AttackedWithCreature => "who attacked with a creature this turn",
             Self::WasDealtDamage => "that was dealt damage this turn",
+            Self::AttackedYouOrYourPlaneswalker => {
+                "who attacked you or a planeswalker you control this turn"
+            }
         }
     }
 }
@@ -2173,6 +2211,17 @@ impl PlayerFilter {
                 "an opponent who controls more {} than you do as you activate this ability",
                 pluralize_count_terminal_word(&filter.description())
             ),
+            // "a player who controls more lands than you" (Cartographer's
+            // Hawk): only an opponent can, so name the comparison with you.
+            Self::OpponentWithMoreControlledObjectsThan { player, filter, .. }
+                if matches!(player.as_ref(), Self::You)
+                    && filter.zone.is_none_or(|zone| zone == Zone::Battlefield) =>
+            {
+                format!(
+                    "an opponent who controls more {} than you",
+                    pluralize_count_terminal_word(&filter.description())
+                )
+            }
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => format!(
                 "an opponent of {} who controls more {} than they do",
                 player.description(),
@@ -2557,6 +2606,10 @@ pub struct ObjectFilter {
     /// target shares at least one creature type with the others.
     #[cfg_attr(feature = "serde", serde(default))]
     pub target_set_shared_creature_type: bool,
+    /// "any number of target creatures with equal toughness" (V.A.T.S.):
+    /// every selected target has the same value of this characteristic.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub target_set_equal_metric: Option<crate::effect::ChoiceAggregateMetric>,
     /// Constraint on the selected target set rather than on each candidate.
     ///
     /// This is boxed because an aggregate maximum may itself contain a
@@ -2677,6 +2730,10 @@ pub struct ObjectFilter {
     /// Requires this creature to be its controller's only declared attacker
     /// in the current combat.
     pub attacking_alone: bool,
+    /// Requires this creature to be blocking while no other creature is
+    /// blocking ("blocking alone", CR 506.5).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub blocking_alone: bool,
     pub attacked_this_turn: bool,
     /// "that attacked you this turn" (Jabari's Influence): the creature was
     /// declared as an attacker this turn attacking a player matching this
@@ -2742,6 +2799,11 @@ pub struct ObjectFilter {
     /// by this creature this turn"). Read from the turn's crew history.
     #[cfg_attr(feature = "serde", serde(default))]
     pub crewed_by_source_this_turn: bool,
+    /// The candidate was tapped this turn to pay a cost of one of the current
+    /// source's abilities ("Merfolk tapped this turn to pay for its
+    /// abilities", Vodalian War Machine). Read from the turn's tap history.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tapped_to_pay_for_source_abilities_this_turn: bool,
     /// "that hasn't been phased out with this Attraction" (Ferris Wheel):
     /// the candidate never phased out because of the current source.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2815,6 +2877,11 @@ pub struct ObjectFilter {
     /// from anywhere other than the battlefield this turn", Banon). Appended.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub entered_graveyard_not_from_battlefield_this_turn: bool,
+    /// This graveyard incarnation was not put there during the current
+    /// combat phase ("that wasn't put there this combat", Storrev, Devkarin
+    /// Lich). Appended.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub not_put_into_graveyard_this_combat: bool,
     /// This exact graveyard incarnation resulted from a mill instruction this turn.
     pub milled_into_graveyard_this_turn: bool,
     pub surveilled_this_turn: bool,
@@ -2962,11 +3029,25 @@ pub struct ObjectFilter {
     /// ("Whenever a player casts a card", CR 108.2 / CR 707.12).
     #[cfg_attr(feature = "serde", serde(default))]
     pub physical_card: bool,
+    /// A stack spell that wasn't cast: a copy, or a card put onto the stack
+    /// without being cast ("copy target spell you control that wasn't cast",
+    /// Errant, Street Artist; CR 601.1, 707.10).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub not_cast: bool,
     /// Match a producer's exact destination incarnation in its
     /// original public zone. An unspecified zone searches public zones;
     /// an explicit zone remains an additional constraint.
     #[cfg_attr(feature = "serde", serde(default))]
     pub match_captured_public_destination: bool,
+    /// CR 601.3e: a card matches when it, or any face it could be cast as
+    /// (a split half, an Adventure, a modal DFC's back face), matches. Used
+    /// for "cast an instant or sorcery spell ... from a graveyard" choices.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub castable_face_match: bool,
+    /// Internal action eligibility: the current object must not be subject
+    /// to any of these source-owned rule modifications.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub excluded_rules: Vec<crate::value_model::ObjectRule>,
 }
 
 impl ObjectFilter {
@@ -3459,6 +3540,26 @@ impl ObjectFilter {
         self.union_surface.single_target_if_that_target()
     }
 
+    /// Preserve the authored "exiled card(s) used to craft it" wording of a
+    /// source-linked exile reference (CR 702.167c).
+    pub fn set_craft_material_reference(&mut self, authored: bool) {
+        self.union_surface = self.union_surface.with_craft_material_reference(authored);
+    }
+
+    pub const fn has_craft_material_reference(&self) -> bool {
+        self.union_surface.craft_material_reference()
+    }
+
+    /// Preserve the authored definite "the exiled cards" wording of a
+    /// source-linked exile reference.
+    pub fn set_definite_exiled_reference(&mut self, authored: bool) {
+        self.union_surface = self.union_surface.with_definite_exiled_reference(authored);
+    }
+
+    pub const fn has_definite_exiled_reference(&self) -> bool {
+        self.union_surface.definite_exiled_reference()
+    }
+
     /// Preserve the authored noun of an explicit demonstrative condition
     /// subject without changing filter matching.
     pub fn set_demonstrative_antecedent_surface(
@@ -3661,6 +3762,7 @@ impl ObjectFilter {
             || self.mana_symbol_count.is_some()
             || self.colored_mana_symbol_count.is_some()
             || self.physical_card
+            || self.not_cast
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
@@ -3974,7 +4076,13 @@ impl ObjectFilter {
             (None, Some(count)) => ("colored".to_string(), count),
             (None, None) => return None,
         };
-        let number = |n: usize| if n == 1 { "one".to_string() } else { n.to_string() };
+        let number = |n: usize| {
+            const WORDS: [&str; 11] = [
+                "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+                "ten",
+            ];
+            WORDS.get(n).map_or_else(|| n.to_string(), |word| (*word).to_string())
+        };
         let quantity = match count.max {
             None => format!("{} or more", number(count.min)),
             Some(max) if max == count.min => number(max),
@@ -4632,7 +4740,46 @@ impl ObjectFilter {
         (rest == ObjectFilter::default()).then_some(adjective)
     }
 
+    /// Describe this filter with `noun` standing in for the generic
+    /// "permanent" head noun an untyped, zone-unrestricted filter would
+    /// otherwise get. A zone-unrestricted filter matches objects in every
+    /// zone ("a black source", "a card revealed this way"), so callers that
+    /// know the object class of their context name it instead of narrowing
+    /// the surface to permanents.
+    pub fn description_with_default_noun(&self, noun: &'static str) -> String {
+        with_untyped_filter_default_noun(noun, || self.description())
+    }
+
     pub fn description(&self) -> String {
+        if let Some(text) = describe_controlled_permanent_or_owned_zone_card_union(self) {
+            return text;
+        }
+        if let Some(text) = describe_suspended_card(self) {
+            return text;
+        }
+        // "card in a graveyard that was discarded or put there from a
+        // library this turn" (Ghost of Ramirez DePietro): one graveyard card
+        // with either recent history.
+        if let [left, right] = self.any_of.as_slice()
+            && *left
+                == (ObjectFilter {
+                    discarded_or_cycled_this_turn_by: Some(PlayerFilter::Any),
+                    ..ObjectFilter::default()
+                })
+            && *right
+                == (ObjectFilter {
+                    entered_graveyard_this_turn: true,
+                    entered_graveyard_from_library_this_turn: true,
+                    ..ObjectFilter::default()
+                })
+        {
+            let mut base = self.clone();
+            base.any_of.clear();
+            return format!(
+                "{} that was discarded or put there from a library this turn",
+                base.description()
+            );
+        }
         // "each creature except for tokens you control" (Ajani Unrelenting):
         // the survivors are the base objects that you don't control or that
         // are nontoken.
@@ -4804,6 +4951,32 @@ impl ObjectFilter {
                 );
             }
         }
+        // "creature card in your graveyard that's an artifact or that has mana
+        // value 3 or less" (Desdemona, Freedom's Edge): a required head noun
+        // narrowed by two alternative relative clauses.
+        if any_of_keyword_clause.is_none()
+            && !self.card_types.is_empty()
+            && let [type_branch, quality_branch] = self.any_of.as_slice()
+            && !type_branch.card_types.is_empty()
+            && quality_branch.card_types.is_empty()
+            && quality_branch.mana_value.is_some()
+        {
+            let mut base = self.clone();
+            base.any_of.clear();
+            let mut type_only = type_branch.clone();
+            type_only.zone = None;
+            let mut mana_only = quality_branch.clone();
+            mana_only.zone = None;
+            let quality = mana_only.description();
+            if let Some((_, quality)) = quality.split_once(" with ") {
+                return format!(
+                    "{} that's {} or that has {}",
+                    base.description(),
+                    ensure_indefinite_article(type_only.description()),
+                    quality
+                );
+            }
+        }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let explicit_branch_articles = self.has_explicit_union_branch_articles();
             let shared_colors = self.colors.filter(|colors| {
@@ -4823,6 +4996,26 @@ impl ObjectFilter {
                         && let [card_type] = branch.card_types.as_slice()
                     {
                         return format!("those {}s", card_type.name().to_ascii_lowercase());
+                    }
+                    // Zone-only arms ("creature card you own in exile and in
+                    // your graveyard") share every other predicate with the
+                    // outer filter; describe each arm as that full selector
+                    // so the shared characteristics are not dropped.
+                    if self.zone.is_none()
+                        && shared_colors.is_none()
+                        && branch.zone.is_some()
+                        && (ObjectFilter {
+                            zone: None,
+                            union_surface: Default::default(),
+                            ..branch.clone()
+                        }) == ObjectFilter::default()
+                        && (!self.card_types.is_empty() || !self.subtypes.is_empty())
+                        && self.tagged_constraints.is_empty()
+                    {
+                        let mut merged = self.clone();
+                        merged.any_of.clear();
+                        merged.zone = branch.zone;
+                        return merged.description();
                     }
                     let mut described_branch = branch.clone();
                     if shared_colors.is_some() {
@@ -4848,6 +5041,30 @@ impl ObjectFilter {
                     }
                 })
                 .collect::<Vec<String>>();
+            // "activated or triggered ability from a noncreature source"
+            // (Dissonant Wave): two stack-ability branches that differ only
+            // in the ability kind share one noun phrase.
+            if let [left_branch, right_branch] = merged_branches.as_slice()
+                && let [left, right] = branch_descriptions.as_slice()
+                && shared_colors.is_none()
+                && !self.has_conjunctive_set_surface()
+                && self.union_connective() == ObjectFilterUnionConnective::Or
+                && self.attached_to_object.is_none()
+                && self.attached_to_player.is_none()
+                && left_branch.stack_kind == Some(StackObjectKind::ActivatedAbility)
+                && right_branch.stack_kind == Some(StackObjectKind::TriggeredAbility)
+                && {
+                    let mut left_base = left_branch.clone();
+                    let mut right_base = right_branch.clone();
+                    left_base.stack_kind = None;
+                    right_base.stack_kind = None;
+                    left_base == right_base
+                }
+                && left.matches("activated ability").count() == 1
+                && left.replacen("activated ability", "triggered ability", 1) == *right
+            {
+                return left.replacen("activated ability", "activated or triggered ability", 1);
+            }
             // "creature with power or toughness 1 or less" (Tetsuko Umezawa,
             // Sword of the Squeak): two branches that differ only in the
             // compared stat share one noun phrase.
@@ -4895,6 +5112,17 @@ impl ObjectFilter {
                     attached_to_player.description()
                 ));
             }
+            // "up to two basic land cards and/or Town cards with different
+            // names" (Reach the Horizon): set-wide qualifiers on the union.
+            if self.distinct_names {
+                description.push_str(" with different names");
+            }
+            if self.distinct_mana_values {
+                description.push_str(" with different mana values");
+            }
+            if self.distinct_powers {
+                description.push_str(" with different powers");
+            }
             return description;
         }
 
@@ -4917,7 +5145,16 @@ impl ObjectFilter {
         } else {
             None
         };
-        if self.other {
+        // "a permanent other than that creature or this Equipment" (Saw): a
+        // two-object exclusion of the triggering object and this source.
+        let excluded_triggering_and_source = (self.other
+            && self.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+                    && constraint.tag.as_str() == "triggering"
+            }))
+        .then(|| self.source_surface.as_ref().map(source_reference_surface_text))
+        .flatten();
+        if self.other && excluded_triggering_and_source.is_none() {
             // `other` is semantically an exclusion of the source, but Oracle
             // expresses that relation adjectivally as "another".  The source
             // surface still matters when `source` itself is described; it
@@ -4935,9 +5172,13 @@ impl ObjectFilter {
         if has_target_tag {
             parts.push("target".to_string());
         }
+        // "sacrifice the chosen creature" (Tyrannical Pitlord): an exact
+        // identity link to the as-enters choice reads the same as membership.
         let has_chosen_tag = self.tagged_constraints.iter().any(|constraint| {
-            matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-                && constraint.tag.as_str() == "__chosen_objects__"
+            matches!(
+                constraint.relation,
+                TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::SameObjectId
+            ) && constraint.tag.as_str() == "__chosen_objects__"
         });
         if has_chosen_tag {
             parts.push("the chosen".to_string());
@@ -5198,7 +5439,14 @@ impl ObjectFilter {
             }
         }
 
-        if let Some(cast_by) = &self.cast_by {
+        // "target creature you cast this turn" (Cycle of Life): a permanent
+        // whose spell its controller cast this turn.
+        let you_cast_this_turn = self.cast_this_turn
+            && self.cast_by == Some(PlayerFilter::You)
+            && self.zone != Some(Zone::Stack);
+        if you_cast_this_turn {
+            post_noun_qualifiers.push("you cast this turn".to_string());
+        } else if let Some(cast_by) = &self.cast_by {
             post_noun_qualifiers.push(format!("cast by {}", describe_player_filter(cast_by)));
         }
         if let Some(zone) = self.excluded_cast_origin_zone {
@@ -5215,7 +5463,10 @@ impl ObjectFilter {
             };
             post_noun_qualifiers.push(format!("that wasn't cast from {origin}"));
         }
-        if self.cast_this_turn {
+        if self.not_cast {
+            post_noun_qualifiers.push("that wasn't cast".to_string());
+        }
+        if self.cast_this_turn && !you_cast_this_turn {
             post_noun_qualifiers.push("cast this turn".to_string());
         }
         if self.first_spell_cast_each_turn {
@@ -5565,6 +5816,25 @@ impl ObjectFilter {
                         "saddled_it_this_turn" => {
                             post_noun_qualifiers.push("that saddled it this turn".to_string());
                         }
+                        // "choose up to that many creatures tapped this way"
+                        // (Suppression Ray): the record of what a "tap all"
+                        // actually tapped.
+                        "__tapped_this_way_result__" => {
+                            post_noun_qualifiers.push("tapped this way".to_string());
+                        }
+                        // "the number of Goblins it devoured" (Voracious
+                        // Dragon): the permanents its devour sacrificed.
+                        tag if tag == crate::tag::SOURCE_DEVOURED_TAG => {
+                            post_noun_qualifiers.push("it devoured".to_string());
+                        }
+                        tag if tag == crate::SOURCE_EXILED_TAG
+                            && self.has_craft_material_reference() =>
+                        {
+                            // CR 702.167c: the craft materials stay linked
+                            // to the permanent the craft returned.
+                            parts.push("exiled".to_string());
+                            post_noun_qualifiers.push("used to craft it".to_string());
+                        }
                         tag if tag == crate::SOURCE_EXILED_TAG => {
                             post_noun_qualifiers.push("exiled with this permanent".to_string());
                         }
@@ -5597,6 +5867,26 @@ impl ObjectFilter {
                     // except that ..." clause spells that exclusion, and the
                     // first round chooses "a card", not "another card".
                 }
+                TaggedOpbjectRelation::IsNotTaggedObject
+                    if !self.other
+                        && matches!(constraint.tag.as_str(), "enchanted" | "equipped") =>
+                {
+                    // "a creature of their choice other than enchanted
+                    // creature" (Sporogenic Infection): the excluded object
+                    // is the source's attachment, not the source itself, so
+                    // "another" would name the wrong exclusion.
+                    post_noun_qualifiers.push(format!(
+                        "other than {} creature",
+                        constraint.tag.as_str()
+                    ));
+                }
+                TaggedOpbjectRelation::IsNotTaggedObject
+                    if constraint.tag.as_str() == "triggering"
+                        && excluded_triggering_and_source.is_some() =>
+                {
+                    let source = excluded_triggering_and_source.as_deref().unwrap_or_default();
+                    post_noun_qualifiers.push(format!("other than that creature or {source}"));
+                }
                 TaggedOpbjectRelation::IsNotTaggedObject => {
                     // `other` already spells this exclusion adjectivally. The
                     // tagged form carries the executable identity, so naming
@@ -5610,6 +5900,13 @@ impl ObjectFilter {
                         post_noun_qualifiers.push(
                             "with the same name as a card exiled with this permanent".to_string(),
                         );
+                    } else if constraint.tag.as_str() == "__chosen_name__"
+                        && self.same_name_antecedent_surface().is_none()
+                    {
+                        // "Choose a card name ... all cards with the chosen
+                        // name" (Tamiyo, Collector of Tales): the antecedent
+                        // is the chosen name, not an object.
+                        post_noun_qualifiers.push("with the chosen name".to_string());
                     } else {
                         let antecedent = self
                             .same_name_antecedent_surface()
@@ -5666,6 +5963,14 @@ impl ObjectFilter {
                         post_noun_qualifiers.push(
                             "with the same mana value as the sacrificed creature".to_string(),
                         );
+                    } else if constraint.tag.as_str() == "triggering"
+                        && self.zone != Some(Zone::Battlefield)
+                    {
+                        // "spells with the same mana value as that spell"
+                        // (Living Breakthrough): as with a same-name
+                        // relation, a triggering spell is "that spell".
+                        post_noun_qualifiers
+                            .push("with the same mana value as that spell".to_string());
                     } else {
                         post_noun_qualifiers.push("with the same mana value as it".to_string());
                     }
@@ -5823,7 +6128,33 @@ impl ObjectFilter {
                 parts.push(supertype.name().to_string());
             }
         }
-        if !self.excluded_card_types.is_empty() {
+        // "ability from a noncreature source" (Dissonant Wave): a stack
+        // ability's type exclusion qualifies its source, as card types do.
+        let excluded_type_qualifies_ability_source = !self.excluded_card_types.is_empty()
+            && self.card_types.is_empty()
+            && matches!(self.zone, Some(Zone::Stack))
+            && matches!(
+                self.stack_kind,
+                Some(
+                    StackObjectKind::Ability
+                        | StackObjectKind::ActivatedAbility
+                        | StackObjectKind::TriggeredAbility
+                )
+            );
+        if excluded_type_qualifies_ability_source {
+            let mut excluded_card_types: Vec<CardType> = Vec::new();
+            for card_type in &self.excluded_card_types {
+                if !excluded_card_types.contains(card_type) {
+                    excluded_card_types.push(*card_type);
+                }
+            }
+            let excluded = excluded_card_types
+                .iter()
+                .map(|card_type| format!("non{}", describe_card_type_word(*card_type)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            post_noun_qualifiers.push(format!("from a {excluded} source"));
+        } else if !self.excluded_card_types.is_empty() {
             // A repeated exclusion ("nonland, nonland") is one restriction.
             let mut excluded_card_types: Vec<CardType> = Vec::new();
             for card_type in &self.excluded_card_types {
@@ -5862,7 +6193,7 @@ impl ObjectFilter {
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
             for subtype in &remaining {
-                parts.push(format!("non-{}", subtype.to_string().to_ascii_lowercase()));
+                parts.push(format!("non-{subtype}"));
             }
         }
         if !self.excluded_colors.is_empty() {
@@ -5882,7 +6213,22 @@ impl ObjectFilter {
                 parts.push("nongreen".to_string());
             }
         }
-        if self.colorless {
+        // "ability ... from a colorless source" (Abstruse Archaic): stack
+        // abilities are matched through their source object, so the color
+        // quality names the source, not the (always colorless) ability.
+        let colorless_qualifies_ability_source = self.colorless
+            && matches!(self.zone, Some(Zone::Stack))
+            && matches!(
+                self.stack_kind,
+                Some(
+                    StackObjectKind::Ability
+                        | StackObjectKind::ActivatedAbility
+                        | StackObjectKind::TriggeredAbility
+                )
+            );
+        if colorless_qualifies_ability_source {
+            post_noun_qualifiers.push("from a colorless source".to_string());
+        } else if self.colorless {
             parts.push("colorless".to_string());
         }
         if self.multicolored {
@@ -5973,6 +6319,9 @@ impl ObjectFilter {
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());
         }
+        if self.tapped_to_pay_for_source_abilities_this_turn {
+            post_noun_qualifiers.push("tapped this turn to pay for its abilities".to_string());
+        }
         if self.not_phased_out_with_source {
             post_noun_qualifiers.push("that hasn't been phased out with this permanent".to_string());
         }
@@ -6039,6 +6388,9 @@ impl ObjectFilter {
         }
         if self.attacking_alone {
             post_noun_qualifiers.push("that's attacking alone".to_string());
+        }
+        if self.blocking_alone {
+            post_noun_qualifiers.push("that's blocking alone".to_string());
         }
         if let Some(player_filter) = &self.attacked_player_this_turn {
             post_noun_qualifiers.push(format!(
@@ -6247,7 +6599,10 @@ impl ObjectFilter {
                 match self.zone {
                     Some(Zone::Battlefield) | None if self.ring_bearer => "Ring-bearer",
                     Some(Zone::Battlefield) | None if self.is_commander => "commander",
-                    Some(Zone::Battlefield) | None => "permanent",
+                    None => UNTYPED_DEFAULT_NOUN
+                        .with(std::cell::Cell::get)
+                        .unwrap_or("permanent"),
+                    Some(Zone::Battlefield) => "permanent",
                     Some(Zone::Stack) => {
                         let kind = self.stack_kind.unwrap_or({
                             if self.has_mana_cost {
@@ -6552,6 +6907,14 @@ impl ObjectFilter {
             {
                 parts.push("you own but don't control".to_string());
             }
+            // "permanents they control but don't own" (Blim, Comedic Genius):
+            // the iterated player controls them while every other player
+            // owns them.
+            (Some(controller), Some(owner))
+                if controller == "that player controls" && owner == "they don't own" =>
+            {
+                parts.push("they control but don't own".to_string());
+            }
             (Some(controller), Some(owner)) => {
                 parts.push(format!("{owner} but {controller}"));
             }
@@ -6598,6 +6961,9 @@ impl ObjectFilter {
         if self.shares_card_type {
             parts.push("that share a card type".to_string());
         }
+        if self.target_set_shared_creature_type {
+            parts.push("that share a creature type".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }
@@ -6637,6 +7003,18 @@ impl ObjectFilter {
         }
         if let Some(ref name) = self.excluded_name {
             let name = self.excluded_name_surface().unwrap_or(name);
+            // "Dragon cards not named Tiamat that each have different names":
+            // the set qualifier follows the name exclusion.
+            if self.distinct_names
+                && let Some(index) = parts.iter().position(|part| part == "with different names")
+            {
+                parts.remove(index);
+                return format!(
+                    "{} not named {} with different names",
+                    parts.join(" "),
+                    name
+                );
+            }
             return format!("{} not named {}", parts.join(" "), name);
         }
 
@@ -7112,6 +7490,9 @@ impl ObjectFilter {
             };
             parts.push(clause.to_string());
         }
+        if self.not_put_into_graveyard_this_combat {
+            parts.push("that wasn't put there this combat".to_string());
+        }
         if self.surveilled_this_turn {
             parts.push("you've surveilled this turn".to_string());
         }
@@ -7157,7 +7538,11 @@ impl ObjectFilter {
                 } else {
                     ""
                 },
-                describe_player_filter(player)
+                if *player == PlayerFilter::Any {
+                    "a player".to_string()
+                } else {
+                    describe_player_filter(player)
+                }
             ));
         }
         if self.drawn_this_turn {
@@ -7462,6 +7847,65 @@ fn source_reference_surface_text(surface: &SourceReferenceSurface) -> String {
     surface.display_text()
 }
 
+/// "a permanent you control or a card from your hand or graveyard" (Lich's
+/// Mastery): one plain controlled-permanent arm plus plain owned-card arms
+/// in your hand, graveyard, or library.
+fn describe_controlled_permanent_or_owned_zone_card_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2 {
+        return None;
+    }
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.union_surface = ObjectFilterUnionSurface::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+    let plain = |branch: &ObjectFilter| {
+        let mut rest = branch.clone();
+        rest.zone = None;
+        rest.controller = None;
+        rest.owner = None;
+        rest.union_surface = ObjectFilterUnionSurface::default();
+        rest == ObjectFilter::default()
+    };
+    let mut battlefield = false;
+    let mut zones = Vec::new();
+    for branch in &filter.any_of {
+        if !plain(branch) {
+            return None;
+        }
+        match (branch.zone, branch.controller.as_ref(), branch.owner.as_ref()) {
+            (Some(Zone::Battlefield), Some(PlayerFilter::You), None) if !battlefield => {
+                battlefield = true;
+            }
+            (Some(zone @ (Zone::Hand | Zone::Graveyard | Zone::Library)), None, Some(PlayerFilter::You))
+                if !zones.contains(&zone) =>
+            {
+                zones.push(zone);
+            }
+            _ => return None,
+        }
+    }
+    if !battlefield || zones.is_empty() {
+        return None;
+    }
+    let zone_names = zones
+        .iter()
+        .map(|zone| match zone {
+            Zone::Hand => "hand",
+            Zone::Graveyard => "graveyard",
+            _ => "library",
+        })
+        .collect::<Vec<_>>();
+    let zone_text = match zone_names.as_slice() {
+        [one] => one.to_string(),
+        [first, second] => format!("{first} or {second}"),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+        [] => return None,
+    };
+    Some(format!("permanent you control or a card from your {zone_text}"))
+}
+
 /// Compact a controlled battlefield set coordinated with the same class of
 /// owned cards in every nonbattlefield zone.
 pub fn describe_controlled_battlefield_and_owned_nonbattlefield_card_union(
@@ -7742,6 +8186,7 @@ fn describe_possessive_commander_subject(filter: &ObjectFilter) -> Option<String
         || filter.colors.is_some()
         || filter.attacking
         || filter.attacking_alone
+        || filter.blocking_alone
         || filter.blocking
         || filter.tapped
         || filter.untapped
@@ -8643,6 +9088,29 @@ fn describe_counter_constraint(constraint: CounterConstraint, plural: bool) -> S
     }
 }
 
+/// CR 702.62b: a card in exile with suspend and a time counter on it is a
+/// "suspended card" ("a suspended card you own", Amy Pond).
+fn describe_suspended_card(filter: &ObjectFilter) -> Option<String> {
+    if filter.zone != Some(Zone::Exile)
+        || filter.alternative_cast != Some(AlternativeCastKind::Suspend)
+        || filter.with_counter != Some(CounterConstraint::Typed(CounterType::Time))
+    {
+        return None;
+    }
+    let owner = match &filter.owner {
+        None => "",
+        Some(PlayerFilter::You) => " you own",
+        Some(_) => return None,
+    };
+    let mut rest = filter.clone();
+    rest.zone = None;
+    rest.alternative_cast = None;
+    rest.with_counter = None;
+    rest.owner = None;
+    rest.union_surface = Default::default();
+    (rest == ObjectFilter::default()).then(|| format!("suspended card{owner}"))
+}
+
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
         AlternativeCastKind::Blitz => "blitz",
@@ -8744,8 +9212,40 @@ fn pluralize_count_terminal_word(phrase: &str) -> String {
     }
 }
 
+/// "sacrificed", "destroyed", ... for "<objects> <participle> this way".
+fn prior_effect_action_participle(action: PriorEffectAction) -> Option<&'static str> {
+    Some(match action {
+        PriorEffectAction::Sacrificed => "sacrificed",
+        PriorEffectAction::Destroyed => "destroyed",
+        PriorEffectAction::Exiled => "exiled",
+        PriorEffectAction::Discarded => "discarded",
+        PriorEffectAction::Milled => "milled",
+        PriorEffectAction::Revealed => "revealed",
+        PriorEffectAction::Returned => "returned",
+        PriorEffectAction::Tapped => "tapped",
+        PriorEffectAction::Drawn => "drawn",
+        PriorEffectAction::Died => "that died",
+        _ => return None,
+    })
+}
+
 fn describe_count_filter_subject(filter: &ObjectFilter) -> String {
-    let description = filter.description();
+    // A set produced by a hidden-zone action ("cards discarded this way",
+    // Scythe Specter) is a set of cards, not permanents.
+    let card_result = filter.zone.is_none()
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && ["discarded", "revealed", "milled", "drawn"].iter().any(|action| {
+                    let tag = constraint.tag.as_str();
+                    tag.starts_with(&format!("{action}_"))
+                        || tag.starts_with(&format!("__sentence_helper_{action}_"))
+                })
+        });
+    let description = if card_result {
+        filter.description_with_default_noun("card")
+    } else {
+        filter.description()
+    };
     let bare = description
         .strip_prefix("a ")
         .or_else(|| description.strip_prefix("an "))
@@ -8897,7 +9397,10 @@ fn describe_counter_holder(spec: &ChooseSpec) -> String {
     match spec.base() {
         ChooseSpec::Source => "this creature".to_string(),
         ChooseSpec::Target(_) => "that creature".to_string(),
-        ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" => "that spell".to_string(),
+        // A triggering object that carries counters is a permanent event
+        // subject ("the number of counters on that creature", Puca's
+        // Covenant), never a spell.
+        ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" => "that creature".to_string(),
         ChooseSpec::Tagged(_) | ChooseSpec::Iterated => "it".to_string(),
         ChooseSpec::All(filter) => describe_count_filter_subject(filter),
         _ => "that object".to_string(),
@@ -9009,6 +9512,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CardTypesAmong(filter) => {
                 format!("the number of card types among {}", filter.description())
             }
+            Value::PermanentTypesAmong(filter) => {
+                format!("the number of permanent types among {}", filter.description())
+            }
             Value::GreatestPower(filter) => {
                 format!(
                     "the greatest power among {}",
@@ -9053,6 +9559,21 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     "the number of creature types among {}",
                     filter.description()
                 )
+            }
+            Value::PlaneswalkerTypesAmong(filter) => format!(
+                "the number of planeswalker types among {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::DistinctManaCosts(filter) => format!(
+                "the number of different mana costs among {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::CommandersCastFromCommandZoneBy(player) => format!(
+                "the number of times {} cast a commander from the command zone this game",
+                player.description()
+            ),
+            Value::CommanderCastCountOf(_) => {
+                "the number of times it's been cast from the command zone this game".to_string()
             }
             Value::DamageHistory(query) => query.describe_with_reference(|spec| {
                 if let Some(surface) = spec.source_reference_surface() {
@@ -9160,6 +9681,14 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::SourcePower => "this creature's power".to_string(),
             Value::SourceToughness => "this creature's toughness".to_string(),
+            // "with power less than or equal to the amassed Army's power"
+            // (Grishnákh, Brash Instigator): the amass result is the Army.
+            Value::PowerOf(spec)
+                if matches!(spec.base(), crate::ChooseSpec::Tagged(tag)
+                    if tag.as_str().starts_with("amassed_")) =>
+            {
+                "the amassed Army's power".to_string()
+            }
             Value::PowerOf(spec) => {
                 format!("{} power", describe_value_choose_spec_possessive(spec))
             }
@@ -9266,6 +9795,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 metric: EffectMetric::OtherNumber,
                 ..
             } => "the other result".to_string(),
+            // "with mana value less than or equal to that amount of excess
+            // damage" (Unleash the Inferno).
+            Value::EffectMetric {
+                metric: EffectMetric::ExcessDamage,
+                ..
+            } => "that amount of excess damage".to_string(),
             Value::BasicLandTypesAmong(filter) => {
                 let among = if filter.card_types == [crate::types::CardType::Land]
                     && filter.controller == Some(PlayerFilter::You)
@@ -9292,14 +9827,16 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 if query.metric == EffectMetric::Count
                     && query.action == Some(PriorEffectAction::Removed)
                     && query.filter.is_none()
-                    && query.player.is_none()
-                    && query.counter_type.is_some() =>
+                    && query.player.is_none() =>
             {
-                let counter = query
-                    .counter_type
-                    .map(|counter_type| counter_type.description().into_owned())
-                    .unwrap_or_default();
-                format!("the number of {counter} counters")
+                // An untyped removal ("remove all of them", Sarulf) counts
+                // counters of every kind removed.
+                match query.counter_type {
+                    Some(counter_type) => {
+                        format!("the number of {} counters", counter_type.description())
+                    }
+                    None => "the number of counters".to_string(),
+                }
             }
             // "less than the revealed card's mana value": the one card an
             // exact prior action produced.
@@ -9318,6 +9855,31 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     _ => "that card",
                 };
                 format!("{card}'s mana value")
+            }
+            // "mana value less than or equal to the number of creatures
+            // sacrificed this way" (The Hunger Tide Rises): the count of the
+            // objects an exact prior action affected.
+            Value::PriorEffectMetric { query, .. }
+                if query.metric == EffectMetric::Count
+                    && query.player.is_none()
+                    && query.counter_type.is_none()
+                    && query.action.is_some_and(|action| {
+                        prior_effect_action_participle(action).is_some()
+                    }) =>
+            {
+                let participle = query
+                    .action
+                    .and_then(prior_effect_action_participle)
+                    .unwrap_or_default();
+                let noun = query.filter.as_ref().map_or_else(
+                    || "cards".to_string(),
+                    |filter| {
+                        let mut filter = filter.clone();
+                        filter.zone = None;
+                        describe_count_filter_subject(&filter)
+                    },
+                );
+                format!("the number of {noun} {participle} this way")
             }
             _ => "a dynamic value".to_string(),
         }
@@ -10438,4 +11000,21 @@ mod nonbattlefield_union_rendering_tests {
         };
         assert_eq!(filter.description(), "blue creature or spell");
     }
+}
+
+std::thread_local! {
+    /// Head-noun override for untyped zone-unrestricted filters; see
+    /// [`ObjectFilter::description_with_default_noun`].
+    static UNTYPED_DEFAULT_NOUN: std::cell::Cell<Option<&'static str>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Run `render` with `noun` as the head noun of every untyped,
+/// zone-unrestricted filter it describes (see
+/// [`ObjectFilter::description_with_default_noun`]).
+pub fn with_untyped_filter_default_noun<R>(noun: &'static str, render: impl FnOnce() -> R) -> R {
+    let previous = UNTYPED_DEFAULT_NOUN.with(|cell| cell.replace(Some(noun)));
+    let rendered = render();
+    UNTYPED_DEFAULT_NOUN.with(|cell| cell.set(previous));
+    rendered
 }

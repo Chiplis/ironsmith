@@ -467,6 +467,34 @@ alternative_method_parser!(parse_retrace, parse_retrace_line_lexed);
 alternative_method_parser!(parse_madness, parse_madness_line_lexed);
 alternative_method_parser!(parse_warp, parse_warp_line_lexed);
 
+pub(super) fn parse_beam_me_up(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+    _full_tokens: &[OwnedLexToken],
+) -> KeywordParseResult {
+    use winnow::prelude::*;
+    use crate::grammar::{leaf, primitives};
+    let Some(cost) = primitives::probe_all(tokens, (
+        primitives::phrase(&["beam", "me", "up"]),
+        leaf::parse_leaf_mana_cost_prefix_lexed,
+        primitives::sentence_end(),
+    ).map(|(_, mana, _)| mana.cost), "beam-me-up") else {
+        return Ok(None);
+    };
+    let mut returned = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    returned.excluded_rules.push(ironsmith_core::ObjectRule::CantBeBeamedUp);
+    let total_cost = ironsmith_core::TotalCost::from_costs(vec![
+        crate::model::CompilerCost::Mana(cost),
+        crate::model::CompilerCost::ReturnChosenToHand {
+            count: 1,
+            filter: returned,
+        },
+    ]);
+    Ok(ast(LineAst::AlternativeCastingMethod(
+        crate::model::CompilerAlternativeCastingMethod::BeamMeUp { total_cost },
+    )))
+}
+
 pub(super) fn parse_flashback(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],

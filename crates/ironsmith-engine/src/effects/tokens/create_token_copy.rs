@@ -187,6 +187,10 @@ fn build_token_copy_object(
     if let Some(colors) = effect.set_colors {
         token.color_override = Some(colors);
     }
+    // CR 707.9b: "in addition to its other colors" keeps the copied colors.
+    if !effect.added_colors.is_empty() {
+        token.color_override = Some(token.colors().union(effect.added_colors));
+    }
     if effect.clear_mana_cost {
         token.mana_cost = None;
     }
@@ -228,21 +232,23 @@ fn build_token_copy_object(
             .retain(|ability| !ability_is_soulbond_pairing(ability));
     }
     for static_ability in static_abilities_to_grant {
-        token
-            .abilities_mut()
-            .push(Ability::static_ability(static_ability.clone()));
+        push_copy_exception_ability(&mut token, Ability::static_ability(static_ability.clone()), None);
     }
     // "except it has haste and 'At the beginning of the end step, sacrifice
     // this token.'" (Kindle the Inner Flame): the copy exception grants a
     // real, copiable triggered ability that fires at every end step, not a
     // one-shot cleanup.
     if grants_end_step_sacrifice_ability(effect) {
-        token.abilities_mut().push(Ability::triggered(
-            crate::triggers::Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
-            vec![crate::effect::Effect::new(
-                crate::effects::SacrificeTargetEffect::new(crate::target::ChooseSpec::Source),
-            )],
-        ));
+        push_copy_exception_ability(
+            &mut token,
+            Ability::triggered(
+                crate::triggers::Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
+                vec![crate::effect::Effect::new(
+                    crate::effects::SacrificeTargetEffect::new(crate::target::ChooseSpec::Source),
+                )],
+            ),
+            effect.sacrifice_at_next_end_step_ability_text.as_deref(),
+        );
     }
 
     // Copy exceptions apply to each copiable face, not just the face initially
@@ -264,6 +270,18 @@ fn build_token_copy_object(
         token.copied_face_values = Some(Box::new(crate::snapshot::CopiableValues::from_object(&token)));
     }
     Ok(token)
+}
+
+fn push_copy_exception_ability(token: &mut Object, ability: Ability, printed: Option<&str>) {
+    let mut text = token.compiled_card_text.to_string();
+    crate::static_abilities::add_copy_exception_ability(
+        &mut token.abilities,
+        &mut token.ability_labels,
+        &mut text,
+        ability,
+        printed,
+    );
+    token.compiled_card_text = text.into();
 }
 
 fn grants_end_step_sacrifice_ability(effect: &CreateTokenCopyEffect) -> bool {
@@ -748,6 +766,14 @@ fn commit_token_copy_original(
             initial_counters.push((counter.counter_type, amount));
         }
     }
+    // CR 509.4: "a token that's blocking <that creature>" names the attacker
+    // every copy enters blocking; resolve it once.
+    let blocking_attacker = match &effect.enters_blocking {
+        Some(spec) => crate::effects::helpers::resolve_objects_for_effect(game, ctx, spec)
+            .ok()
+            .and_then(|ids| ids.first().copied()),
+        None => None,
+    };
     // Attack choices were retained during preparation, so entry cannot prompt
     // again or use a different destination after a sibling's original mutation.
     let entry_options = TokenEntryOptions::default();
@@ -824,6 +850,9 @@ fn commit_token_copy_original(
             {
                 game.add_entering_attacker(entered_id, target.clone());
             }
+            if let Some(attacker) = blocking_attacker {
+                crate::effects::combat::put_onto_battlefield_blocking(game, entered_id, attacker);
+            }
         }
     }
 
@@ -842,6 +871,7 @@ fn commit_token_copy_original(
             prepared_attack_targets: (effect.enters_attacking
                 || proposal.configured_attack_player.is_some())
             .then_some(proposal.additional_attack_targets),
+            blocking_attacker,
             ..Default::default()
         },
         &mut events,
@@ -1190,6 +1220,31 @@ mod tests {
             game.object(ids[0]).expect("token exists").name,
             "Battlefield Form"
         );
+    }
+
+    #[test]
+    fn copy_exception_keyword_reaches_the_token_rules_text() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Flying original")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .with_ability(Ability::static_ability(StaticAbility::flying()))
+            .build();
+        let original = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let effect = CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(original))
+            .grant_static_ability(StaticAbility::menace());
+        let mut ctx = ExecutionContext::new_default(original, alice);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        let token = game.object(ids[0]).unwrap();
+        let lines: Vec<&str> = token.compiled_card_text.lines().collect();
+        assert_eq!(lines.last(), Some(&"Menace"), "{lines:?}");
+        assert_eq!(lines.len(), 2, "the copied line stays: {lines:?}");
+        assert_eq!(token.ability_labels.len(), token.abilities.len());
+        assert_eq!(token.ability_labels.last().map(String::as_str), Some("Menace"));
     }
 
     #[test]

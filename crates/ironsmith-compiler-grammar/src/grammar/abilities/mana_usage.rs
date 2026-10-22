@@ -414,9 +414,13 @@ fn parse_commander_cast_count_counter_bonus(
         enters_with_counters: Vec::new(),
         granted_abilities: Vec::new(),
         granted_keywords: Vec::new(),
+        // The bonus is installed on the commander spell itself, so "it" is
+        // that commander as it enters (CR 903.8).
         enters_with_counter_values: vec![(
             counter_type,
-            crate::effect::Value::CommanderCastCount(crate::target::PlayerFilter::You),
+            crate::effect::Value::CommanderCastCountOf(Box::new(
+                crate::target::ChooseSpec::Source,
+            )),
         )],
     })
 }
@@ -548,6 +552,10 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         let mut filter = ObjectFilter::default().with_colors(crate::color::ColorSet::RED);
         filter.card_types = vec![CardType::Instant, CardType::Sorcery];
         (filter, None)
+    } else if let Some(filter) = parse_mana_spent_cast_spell_filter(tokens) {
+        // "When that mana is spent to cast an instant or sorcery spell"
+        // (Primal Wellspring): the typed spell noun phrase before the comma.
+        (filter, None)
     } else {
         return None;
     };
@@ -569,8 +577,13 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
+            // "scry X, where X is the number of times it's been cast from
+            // the command zone this game" (Study Hall): "it" is the
+            // commander spell this mana was spent on.
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry {
-                count: Value::CommanderCastCount(PlayerFilter::You),
+                count: Value::CommanderCastCountOf(Box::new(crate::target::ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::ManaPaidObject.bind().into(),
+                ))),
             }),
         )
     } else if crate::word_primitives::sequence_occurs(
@@ -611,6 +624,11 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
             false,
             Vec::new(),
         )
+    } else if let Some(effect) = parse_mana_spend_followup_effect(tokens) {
+        // "When you spend this mana to cast a spell with mana value 6 or
+        // greater, draw a card" (Gilanra): a self-contained instruction that
+        // does not refer back to the paid spell.
+        effect
     } else {
         return None;
     };
@@ -623,6 +641,46 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
             choices: Vec::new(),
         }],
     })
+}
+
+/// The instruction after the spent-to-cast spell phrase, when it is a
+/// self-contained effect with no back-reference to the paid spell.
+fn parse_mana_spend_followup_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let cast = tokens.iter().position(|token| token.is_word("cast"))?;
+    let comma = cast + 1 + tokens[cast + 1..].iter().position(OwnedLexToken::is_comma)?;
+    let effect_tokens = trim_lexed_commas(&tokens[comma + 1..]);
+    if effect_tokens.is_empty()
+        || effect_tokens.iter().any(|token| {
+            token.is_any_word(&[
+                "it", "its", "that", "those", "them", "they", "their", "spell", "ability",
+            ])
+        })
+    {
+        return None;
+    }
+    let mut effects = crate::clause_support::parse_effect_sentences_lexed(effect_tokens).ok()?;
+    match effects.len() {
+        0 => None,
+        1 => effects.pop(),
+        _ => Some(EffectAst::Sequence { effects }),
+    }
+}
+
+/// The spell noun phrase of "when that mana is spent to cast <spell>, ...":
+/// the tokens after `cast` up to the first comma, ending in `spell`.
+fn parse_mana_spent_cast_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let cast = tokens.iter().position(|token| token.is_word("cast"))?;
+    let tail = &tokens[cast + 1..];
+    let end = tail.iter().position(OwnedLexToken::is_comma)?;
+    let spell_tokens = &tail[..end];
+    // "a spell with mana value 6 or greater" (Gilanra): the spell noun may be
+    // followed by its qualifiers.
+    if !spell_tokens.iter().any(|token| token.is_word("spell")) {
+        return None;
+    }
+    let mut filter = parse_spell_filter_with_grammar_entrypoint(spell_tokens);
+    filter.zone = None;
+    (filter != ObjectFilter::default()).then_some(filter)
 }
 
 pub fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {

@@ -3,6 +3,7 @@ pub(crate) mod collection_casts;
 pub(crate) mod effect_cast_prices;
 #[path = "permission_helpers/filtered_zone_permissions.rs"]
 mod filtered_zone_permissions;
+mod shared_zone_permissions;
 #[path = "permission_helpers/graveyard_turn_permissions.rs"]
 mod graveyard_turn_permissions;
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
@@ -130,6 +131,7 @@ struct PlayFromZoneRest<'a> {
     filter_tokens: &'a [OwnedLexToken],
     zone: Zone,
     top_of_graveyard: bool,
+    any_graveyard: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -402,6 +404,7 @@ fn parse_play_from_zone_rest_tokens<'a>(
         filter_tokens: fact.filter_tokens,
         zone: fact.zone,
         top_of_graveyard: fact.top_of_graveyard,
+        any_graveyard: fact.any_graveyard,
     })
 }
 
@@ -461,17 +464,40 @@ fn parse_filtered_spells_from_among_tagged_tokens(
     let Some(fact) = permission_tagged_facts::parse_spells_from_tagged_tokens(tokens) else {
         return Ok(None);
     };
+    // "You may play lands from among those cards" (The Omenkeel): only the
+    // land cards of the tagged pool may be played.
+    if token_word_refs(fact.subject_tokens) == ["lands"] {
+        return Ok(Some((
+            TaggedPermissionTarget {
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                as_copy: false,
+                max_plays: None,
+                surface: None,
+            },
+            fact.tail_tokens,
+            ObjectFilter {
+                card_types: vec![CardType::Land],
+                ..ObjectFilter::default()
+            },
+        )));
+    }
     let Some(mut filter) =
         permission_subject_facts::parse_cast_permission_filter_tokens(fact.subject_tokens)?
     else {
         return Ok(None);
     };
     mark_generic_spell_filter_nonland(&mut filter, fact.subject_tokens);
+    // "you may cast an instant or sorcery spell from among those exiled
+    // cards" (Chandra, Hope's Beacon): one spell in all, not one per card.
+    let singular = fact
+        .subject_tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["a", "an"]));
     Ok(Some((
         TaggedPermissionTarget {
             tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             as_copy: false,
-            max_plays: None,
+            max_plays: singular.then_some(1),
             surface: tagged_permission_object_surface(fact.surface),
         },
         fact.tail_tokens,
@@ -1358,6 +1384,14 @@ pub fn parse_permission_clause_spec_lexed(
     if let Some(spec) = filtered_zone_permissions::parse_permission_with_token_follow_up(tokens)? {
         return Ok(Some(spec));
     }
+    if let Some(spec) =
+        filtered_zone_permissions::parse_permission_with_cast_this_way_recipient_rider(tokens)?
+    {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) = shared_zone_permissions::parse(tokens)? {
+        return Ok(Some(spec));
+    }
     if let Some(spec) = filtered_zone_permissions::parse_shared_hand_top_free_cast(tokens)? {
         return Ok(Some(spec));
     }
@@ -1603,6 +1637,11 @@ pub fn parse_permission_clause_spec_lexed(
         let Some((mut lifetime, without_paying_mana_cost)) =
             parse_permission_tail_tokens(tail_tokens, default_lifetime)
         else {
+            // "..., you may play them if you control a Wizard" (Flameshape):
+            // a trailing condition is the conditional-permission reading's.
+            if tail_tokens.first().is_some_and(|token| token.is_word("if")) {
+                return Ok(None);
+            }
             if let Some(prefixed) = prefixed_lifetime {
                 let label = match prefixed {
                     PermissionLifetime::UntilEndOfTurn => "until-end-of-turn",
@@ -1958,6 +1997,13 @@ pub fn parse_permission_clause_spec_lexed(
                 return Ok(None);
             };
             exclude_lands_from_spell_filter(&mut filter);
+            // "from any graveyard" (The Great Work) names every graveyard;
+            // "from your graveyard" names only the permission player's own.
+            if parsed.any_graveyard {
+                filter.owner = Some(PlayerFilter::Any);
+            } else if parsed.zone == Zone::Graveyard && filter.owner.is_none() {
+                filter.owner = Some(PlayerFilter::You);
+            }
             let mut spec = crate::model::CompilerGrantSpecCore::new(
                 crate::model::CompilerGrantableCore::play_from(),
                 filter,
@@ -1965,6 +2011,18 @@ pub fn parse_permission_clause_spec_lexed(
             );
             if parsed.top_of_graveyard {
                 spec = spec.with_top_card_only();
+            }
+            // "You may cast a creature spell from your graveyard this turn"
+            // (Chainer, Nightmare Adept; The Tomb of Aclazotz): a one-turn
+            // permission for a single spell is one use, not one per card.
+            if parsed.zone == Zone::Graveyard
+                && matches!(
+                    zone_grant_lifetime,
+                    Some(PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn)
+                )
+                && free_cast_filter_mentions_singular_spell(subject_tokens)
+            {
+                spec = spec.with_max_plays(1);
             }
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
@@ -2300,7 +2358,7 @@ fn parse_any_number_free_cast_from_hand_clause(
     })))
 }
 
-fn mana_value_filter_comparison(
+pub(crate) fn mana_value_filter_comparison(
     comparison_tokens: &[OwnedLexToken],
     operator: ValueComparisonOperator,
     mut rhs_value: Value,
@@ -2381,6 +2439,24 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     if words
         .windows(3)
         .any(|window| window == ["total", "mana", "value"])
+    {
+        return Ok(None);
+    }
+    // "cast target noncreature card with mana value 3 or less from your
+    // graveyard" (Vadrok) announces a target card; the target-cast reading
+    // owns it, not an untargeted matching-spell permission.
+    // Only a fixed mana-value bound is owned by the target-cast reading; a
+    // dynamic bound ("equal to the number of coin counters on ...") still
+    // lowers through this permission.
+    if words
+        .windows(2)
+        .any(|window| matches!(window[0], "cast" | "play") && window[1] == "target")
+        && words.windows(4).any(|window| {
+            window[0] == "value"
+                && crate::util::parse_number_word_u32(window[1]).is_some()
+                && window[2] == "or"
+                && matches!(window[3], "less" | "greater")
+        })
     {
         return Ok(None);
     }
@@ -2681,9 +2757,64 @@ fn parse_mandatory_tagged_free_cast(tokens: &[OwnedLexToken]) -> Option<EffectAs
     ))
 }
 
+/// [`parse_cast_or_play_tagged_clause`] for a standalone "you may cast/play
+/// <tagged card> ..." instruction whose caller does not itself wrap the
+/// authored option ("You may cast that exiled card without paying its mana
+/// cost", Synthesis Pod; "If you do, you may cast it ...", Thunderblade
+/// Charge). An immediate cast read from that clause is a choice made as the
+/// instruction resolves (CR 608.2c), so it keeps its "may"; the bare
+/// imperative "cast it ..." stays mandatory.
+pub fn parse_cast_or_play_tagged_clause_keeping_may(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? else {
+        return Ok(None);
+    };
+    let trimmed = trim_commas(tokens);
+    let authored_you_may = parse_permission_lead_tokens(&trimmed)
+        .is_some_and(|(lead, _)| lead.player == PlayerAst::You);
+    let bare_immediate_cast = matches!(
+        &effect,
+        EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Stack(crate::cards::builders::StackActionAst::CastTagged {
+                ..
+            }),
+            ..
+        })
+    );
+    if authored_you_may && bare_immediate_cast {
+        return Ok(Some(EffectAst::Permissions(PermissionEffectAst::May {
+            effects: vec![effect],
+        })));
+    }
+    Ok(Some(effect))
+}
+
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // "For as long as they remain exiled, you may play them if you control a
+    // Wizard." (Flameshape): a lasting permission over the exiled cards
+    // gated on a trailing control condition.
+    if let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if"))
+        && if_idx > 0
+        && tokens.get(if_idx + 1).is_some_and(|token| token.is_word("you"))
+        && tokens.get(if_idx + 2).is_some_and(|token| token.is_any_word(&["control", "controls"]))
+        && let Some(EffectAst::SubjectVerb(permission)) =
+            parse_cast_or_play_tagged_clause(trim_lexed_commas(&tokens[..if_idx]))?
+        && matches!(
+            permission.action,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. })
+        )
+        && let Ok(predicate) =
+            crate::grammar::filters::parse_condition_predicate_lexed(&tokens[if_idx + 1..])
+    {
+        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: vec![EffectAst::SubjectVerb(permission)],
+            if_false: Vec::new(),
+        })));
+    }
     // "You may play lands and cast spells from among cards exiled this way
     // without paying their mana costs" (Gix, Yawgmoth Praetor): during
     // resolution, each exiled card may be played for free, in any number.
@@ -2782,6 +2913,31 @@ pub fn parse_cast_or_play_tagged_clause(
                 spec.zone,
             ),
         ));
+    }
+
+    // A condition naming the proposed spell belongs to casting legality,
+    // rather than a pre-cast comparison against the card's current face.
+    if let Some((lead, rest)) = parse_permission_lead_tokens(&trimmed)
+        && !lead.allow_land
+        && let Some((target, tail)) = parse_tagged_cast_or_play_target_tokens(rest)
+        && let Some(tail) = parse_conditional_tagged_free_cast_tail_tokens(tail)
+        && tail.lifetime == PermissionLifetime::Immediate
+        && token_word_refs(tail.condition_tokens).windows(2)
+            .any(|words| matches!(words, ["that" | "the", "spell's" | "spells"]))
+        && let Some((operator, right)) = parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)
+    {
+        let mut required = ObjectFilter::nonland();
+        required.mana_value = Some(mana_value_filter_comparison(tail.condition_tokens, operator, right));
+        let mut effect = EffectAst::subject_verb_cast_tagged(
+            crate::tag::TagRef::of(target.tag), lead.player, false, target.as_copy, true, None);
+        if let EffectAst::SubjectVerb(effect) = &mut effect
+            && let crate::cards::builders::SubjectVerbActionAst::Stack(
+                crate::cards::builders::StackActionAst::CastTagged { required_spell, .. }
+            ) = &mut effect.action
+        {
+            *required_spell = Some(required);
+        }
+        return Ok(Some(effect));
     }
 
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)

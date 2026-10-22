@@ -204,8 +204,19 @@ pub(super) fn read_cant_gain_life_replacement(
     // Blood Hand). Intercept before leading-if splitting since the would-gain
     // predicate isn't a state condition.
     if sentence_shapes::parses_cant_gain_life_replacement_tokens(tokens) {
+        // "that player or that planeswalker's controller": the damaged target
+        // player, or the controller of the damaged target planeswalker.
+        let words = crate::lexer::token_word_refs(tokens);
+        let player = if matches!(
+            words.get(..7),
+            Some(["if", "that", "player", "or", "that", "planeswalker's" | "planeswalkers", "controller"])
+        ) {
+            crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+        } else {
+            crate::target::PlayerFilter::DamagedPlayer
+        };
         return Ok(Some(vec![EffectAst::subject_verb_cant(
-            crate::effect::Restriction::gain_life(crate::target::PlayerFilter::DamagedPlayer),
+            crate::effect::Restriction::gain_life(player),
             crate::effect::Until::EndOfTurn,
             None,
         )]));

@@ -52,6 +52,9 @@ pub enum DelayedSentenceShape<'a> {
     NextCombat,
     EndOfCombat {
         remainder_tokens: &'a [OwnedLexToken],
+        /// "At this turn's next end of combat": the delayed trigger expires
+        /// at end of turn instead of waiting for a later turn's combat.
+        this_turn: bool,
     },
 }
 
@@ -662,7 +665,10 @@ pub fn parse_delayed_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<Delayed
         parse_end_combat_delayed_lexed,
         "delayed end of combat sentence",
     )
-    .map(|remainder_tokens| DelayedSentenceShape::EndOfCombat { remainder_tokens })
+    .map(|remainder_tokens| DelayedSentenceShape::EndOfCombat {
+        remainder_tokens,
+        this_turn: primitives::parse_prefix(tokens, primitives::phrase(&["at", "this"])).is_some(),
+    })
 }
 
 fn quote_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {

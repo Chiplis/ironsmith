@@ -419,6 +419,10 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
         let other_prefix = if filter.other && plural { "other " } else { "" };
         return if plural {
             format!("{other_prefix}{noun} you control")
+        } else if filter.other {
+            // "Remove a counter from another creature you control" (Hexavus):
+            // the source itself is excluded.
+            format!("another {noun} you control")
         } else {
             format!("a {noun} you control")
         };
@@ -451,11 +455,25 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
             }
         }
     }
-    let mut noun = if filter.card_types.is_empty() {
-        if plural {
-            "permanents".to_string()
-        } else {
-            "a permanent".to_string()
+    // The full permanent-type union is the authored noun "permanent"
+    // ("another permanent you control", Xavier Sal).
+    let every_permanent_type = filter.card_types.len() == 6
+        && [
+            crate::types::CardType::Artifact,
+            crate::types::CardType::Creature,
+            crate::types::CardType::Enchantment,
+            crate::types::CardType::Land,
+            crate::types::CardType::Planeswalker,
+            crate::types::CardType::Battle,
+        ]
+        .iter()
+        .all(|card_type| filter.card_types.contains(card_type));
+    let mut noun = if filter.card_types.is_empty() || every_permanent_type {
+        match (plural, filter.other) {
+            (true, true) => "other permanents".to_string(),
+            (true, false) => "permanents".to_string(),
+            (false, true) => "another permanent".to_string(),
+            (false, false) => "a permanent".to_string(),
         }
     } else {
         let type_names = filter
@@ -477,7 +495,11 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
                 joined
             }
         } else {
-            let article = if joined.chars().next().is_some_and(|letter| {
+            let article = if filter.other {
+                // "another creature you control" (Hexavus): the cost's own
+                // source is excluded.
+                "another"
+            } else if joined.chars().next().is_some_and(|letter| {
                 matches!(letter.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u')
             }) {
                 "an"

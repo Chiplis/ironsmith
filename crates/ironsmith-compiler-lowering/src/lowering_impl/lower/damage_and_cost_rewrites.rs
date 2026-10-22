@@ -25,8 +25,17 @@ fn static_ability_uses_persistent_chosen_player(
 
 fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuilder) {
     let has_persistent_reference = builder.abilities.iter().any(|ability| match &ability.kind {
+        // "The chosen player reveals each card they draw" (Booby Trap): a
+        // static player effect reads the source's remembered choice.
         AbilityKind::Static(static_ability) => {
             static_ability_uses_persistent_chosen_player(static_ability)
+                || matches!(
+                    &static_ability.payload,
+                    crate::static_abilities::StaticAbilityPayload::RevealCardsDrawn {
+                        player: crate::target::PlayerFilter::ChosenPlayer,
+                        ..
+                    }
+                )
         }
         // "When this creature enters, secretly choose an opponent. / Reveal
         // the player you chose: ... controlled by the chosen player."
@@ -35,7 +44,11 @@ fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuild
         AbilityKind::Activated(activated) => {
             format!("{:?}", activated.effects).contains("ChosenPlayer")
         }
-        AbilityKind::Triggered(_) => false,
+        // "When the chosen player draws a card ..." (Booby Trap): another
+        // ability's event subject is the remembered player.
+        AbilityKind::Triggered(triggered) => {
+            format!("{:?}", triggered.trigger).contains("ChosenPlayer")
+        }
     });
     if !has_persistent_reference {
         return;

@@ -367,7 +367,16 @@ pub enum EffectPredicate {
     SearchedLibrary,
     HappenedNotReplaced,
     ExcessDamageDealt,
+    /// "If excess damage was dealt to a creature this way" (Vikya,
+    /// Scorching Stalwart): excess damage dealt to a recipient that was a
+    /// creature, not to a planeswalker or battle (CR 120.4a). Appended.
+    ExcessDamageDealtToCreature,
     DealtDamageToPlayer,
+    /// The antecedent damage instruction's CR 120.4a excess-to-controller
+    /// replacement applied ("If excess damage would be dealt ..., instead
+    /// ... and you convert Megatron"): it assigned damage to a player,
+    /// whether or not that damage was then prevented.
+    ExcessDamageRedirected,
     AffectedObjectMatchesCardType {
         card_type: CardType,
         negated: bool,
@@ -693,6 +702,20 @@ pub enum RedirectNextTimeDamageDestination {
 pub enum RetargetMode {
     All,
     OneToFixed(crate::target_model::ChooseSpec),
+    /// "The copy targets that creature" (Feather, Radiant Arbiter): every
+    /// target instance that can legally become the fixed object changes to
+    /// it. Appended to preserve serialized ordinals.
+    AllToFixed(crate::target_model::ChooseSpec),
+}
+
+impl RetargetMode {
+    /// The fixed new target of a fixed-target mode.
+    pub fn fixed_target(&self) -> Option<&crate::target_model::ChooseSpec> {
+        match self {
+            Self::OneToFixed(spec) | Self::AllToFixed(spec) => Some(spec),
+            Self::All => None,
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -876,6 +899,11 @@ pub enum DelayedTriggerSpec {
         source_filter: Option<ObjectFilter>,
         during_your_turn: bool,
     },
+    /// Append-only. "Whenever you play a land or cast a spell this way"
+    /// (Apple of Eden, Isu Relic): a delayed watcher linked to the exact play
+    /// grants made by the preceding instruction, observing both land plays
+    /// and spell casts made through them.
+    PlayedOrCastThroughPreviousPermission,
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -963,6 +991,12 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     /// player `DELAYED_DURATION_PLAYER_TAG`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub duration_player: Option<PlayerFilter>,
+    /// Authored intro word of the delayed trigger when it differs from the
+    /// one implied by `one_shot`: "When that creature deals combat damage to
+    /// a player this turn, ..." (Optimus Prime) triggers each time during
+    /// its stated duration (CR 603.7c) yet is printed with "When".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub intro_surface: Option<crate::trigger_model::TriggerIntroSurface>,
 }
 
 /// Tagged-player key under which a delayed trigger exposes its resolved
@@ -997,11 +1031,20 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             prepayment: None,
             event_value_from_prior_prevention: false,
             duration_player: None,
+            intro_surface: None,
         }
     }
 
     pub fn with_duration_player(mut self, player: PlayerFilter) -> Self {
         self.duration_player = Some(player);
+        self
+    }
+
+    pub fn with_intro_surface(
+        mut self,
+        intro: crate::trigger_model::TriggerIntroSurface,
+    ) -> Self {
+        self.intro_surface = Some(intro);
         self
     }
 
@@ -2058,6 +2101,10 @@ pub struct ConditionalEffect<E> {
     /// before its effects run, independently of their success or state changes.
     #[cfg_attr(feature = "serde", serde(default))]
     pub capture_condition_result: bool,
+    /// Authored ability word on the conditional instruction ("Fateful hour —
+    /// If you have 5 or less life, ..."). Presentation only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub presentation_label: Option<crate::PresentationLabel>,
 }
 
 impl<E> ConditionalEffect<E> {
@@ -2072,6 +2119,7 @@ impl<E> ConditionalEffect<E> {
             if_false,
             surface: ConditionalSurface::LeadingIf,
             capture_condition_result: false,
+            presentation_label: None,
         }
     }
 
@@ -2089,6 +2137,7 @@ impl<E> ConditionalEffect<E> {
             if_false: vec![],
             surface: ConditionalSurface::TrailingUnless,
             capture_condition_result: false,
+            presentation_label: None,
         }
     }
 
@@ -2101,6 +2150,7 @@ impl<E> ConditionalEffect<E> {
             if_false: vec![],
             surface: ConditionalSurface::TrailingIf,
             capture_condition_result: false,
+            presentation_label: None,
         }
     }
 
@@ -2111,6 +2161,11 @@ impl<E> ConditionalEffect<E> {
 
     pub fn with_surface(mut self, surface: ConditionalSurface) -> Self {
         self.surface = surface;
+        self
+    }
+
+    pub fn with_presentation_label(mut self, label: Option<crate::PresentationLabel>) -> Self {
+        self.presentation_label = label;
         self
     }
 }
@@ -2255,6 +2310,9 @@ impl<E> EffectMode<E> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ChooseModeEffect<E> {
+    /// Authored modal choice (CR 700.2), excluding implementation choices such as fabricate.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub faces_dilemma: bool,
     pub modes: Vec<EffectMode<E>>,
     /// Typed effects authored once in the modal header after the choice
     /// instruction. They resolve exactly once after modes are chosen and
@@ -2326,6 +2384,7 @@ impl<E> ChooseModeEffect<E> {
         let min_choose_count = min.clone();
         let mode_point_costs = vec![1; modes.len()];
         Self {
+            faces_dilemma: false,
             modes,
             common_prefix_effects: Vec::new(),
             chooser: None,
@@ -3358,6 +3417,23 @@ pub struct DirectionalAdjacentPlayerControlEffect {
     /// instead of one object chosen by each player.
     #[cfg_attr(feature = "serde", serde(default))]
     pub all_matching: bool,
+    /// "controlled by the player to their right" (Inniaz, the Gale Force):
+    /// the direction is fixed by the text rather than read from a prior
+    /// left/right choice.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub fixed_direction: Option<SeatingDirection>,
+    /// "a nonland permanent of your choice": the effect's controller makes
+    /// every player's choice instead of each player choosing their own.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub controller_chooses: bool,
+}
+
+/// A seating direction around the table (CR 101.4a).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum SeatingDirection {
+    Left,
+    Right,
 }
 
 impl DirectionalAdjacentPlayerControlEffect {
@@ -3371,6 +3447,8 @@ impl DirectionalAdjacentPlayerControlEffect {
             left_option: left_option.into(),
             right_option: right_option.into(),
             all_matching: false,
+            fixed_direction: None,
+            controller_chooses: false,
         }
     }
 }
@@ -3489,6 +3567,16 @@ pub enum LibraryPlacementOrder {
     Owners,
 }
 
+/// Type changes that apply while a permanent enters, before other entry
+/// replacements inspect its characteristics. They persist for that incarnation.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Default, PartialEq, TagKeyWalk)]
+pub struct BattlefieldEntryTypeChanges {
+    pub added_card_types: Vec<crate::types::CardType>,
+    pub removed_subtype_families: Vec<crate::types::SubtypeFamily>,
+    pub added_subtypes: Vec<crate::types::Subtype>,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct MoveToZoneEffect {
@@ -3571,6 +3659,8 @@ pub struct MoveToZoneEffect {
     /// `NoteCountersEffect` capture). Appended with a serde default.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub enters_with_noted_counters: Option<TagKey>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub entry_type_changes: Option<BattlefieldEntryTypeChanges>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3585,6 +3675,7 @@ pub enum MoveToZoneAttackTargetMode {
 impl MoveToZoneEffect {
     pub fn new(target: ChooseSpec, zone: crate::zone::Zone, to_top: bool) -> Self {
         Self {
+            entry_type_changes: None,
             retained_reference_tags: Vec::new(),
             target,
             zone,
@@ -5812,6 +5903,13 @@ pub struct CreateTokenEffect<D> {
         serde(default, skip_serializing_if = "Vec::is_empty")
     )]
     pub entry_counters: Vec<BattlefieldEntryCounterSpec>,
+    /// "tokens ... that attack that opponent this turn if able" (CR
+    /// 508.1d): each created token must attack this player this turn.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub must_attack_player_this_turn: Option<PlayerFilter>,
 }
 
 impl<D: std::fmt::Debug> std::fmt::Debug for CreateTokenEffect<D> {
@@ -5864,6 +5962,12 @@ impl<D: std::fmt::Debug> std::fmt::Debug for CreateTokenEffect<D> {
         if !self.entry_counters.is_empty() {
             debug.field("entry_counters", &self.entry_counters);
         }
+        if self.must_attack_player_this_turn.is_some() {
+            debug.field(
+                "must_attack_player_this_turn",
+                &self.must_attack_player_this_turn,
+            );
+        }
         debug.finish()
     }
 }
@@ -5900,6 +6004,7 @@ impl<D> CreateTokenEffect<D> {
             next_end_step_player: PlayerFilter::Any,
             link_source_exiled_this_resolution: false,
             entry_counters: Vec::new(),
+            must_attack_player_this_turn: None,
         }
     }
 
@@ -6145,6 +6250,13 @@ pub struct CreateTokenCopyEffect<A> {
     /// counters on the created token.
     pub starting_loyalty: Option<u32>,
     pub set_colors: Option<ColorSet>,
+    /// CR 707.9b: "... black Zombie in addition to its other colors and
+    /// types": colors added to the copied colors (not replacing them).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "color_set_is_empty")
+    )]
+    pub added_colors: ColorSet,
     pub set_card_types: Option<Vec<CardType>>,
     pub set_subtypes: Option<Vec<Subtype>>,
     pub granted_static_abilities: Vec<A>,
@@ -6156,11 +6268,20 @@ pub struct CreateTokenCopyEffect<A> {
         serde(default, skip_serializing_if = "Vec::is_empty")
     )]
     pub entry_counters: Vec<BattlefieldEntryCounterSpec>,
+    /// CR 509.4: the attacking creature each copy enters blocking ("a token
+    /// that's a copy of that creature and that's blocking that creature").
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub enters_blocking: Option<ChooseSpec>,
     /// "a token that's a copy of that Aura attached to that creature": a
     /// following attach instruction places the copy, so an Aura copy's
     /// controller doesn't choose what it enchants as it enters.
     #[cfg_attr(feature = "serde", serde(default))]
     pub suppress_aura_attachment_choice: bool,
+}
+
+#[cfg(feature = "serde")]
+fn color_set_is_empty(colors: &ColorSet) -> bool {
+    colors.is_empty()
 }
 
 impl<A> CreateTokenCopyEffect<A> {
@@ -6202,10 +6323,12 @@ impl<A> CreateTokenCopyEffect<A> {
             set_base_power_toughness_value: None,
             starting_loyalty: None,
             set_colors: None,
+            added_colors: ColorSet::new(),
             set_card_types: None,
             set_subtypes: None,
             granted_static_abilities: Vec::new(),
             entry_counters: Vec::new(),
+            enters_blocking: None,
             suppress_aura_attachment_choice: false,
         }
     }
@@ -6387,6 +6510,11 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn set_colors(mut self, colors: ColorSet) -> Self {
         self.set_colors = Some(colors);
+        self
+    }
+
+    pub fn added_colors(mut self, colors: ColorSet) -> Self {
+        self.added_colors = self.added_colors.union(colors);
         self
     }
 
@@ -7071,6 +7199,11 @@ pub struct CopySpellForEachTargetEffect {
     pub copier: PlayerFilter,
     pub exclude_current_targets: bool,
     pub removed_supertypes: Vec<Supertype>,
+    /// Authored kind of the copied stack-object back-reference ("copy that
+    /// ability", "copy that spell or ability"). Runtime identity comes from
+    /// `target`; this keeps the printed noun.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub target_reference_kind: Option<crate::filter_model::StackObjectKind>,
 }
 
 impl CopySpellForEachTargetEffect {
@@ -7082,7 +7215,16 @@ impl CopySpellForEachTargetEffect {
             copier: PlayerFilter::You,
             exclude_current_targets: false,
             removed_supertypes: Vec::new(),
+            target_reference_kind: None,
         }
+    }
+
+    pub fn with_target_reference_kind(
+        mut self,
+        kind: Option<crate::filter_model::StackObjectKind>,
+    ) -> Self {
+        self.target_reference_kind = kind;
+        self
     }
 
     pub fn with_object_filter(mut self, filter: ObjectFilter) -> Self {

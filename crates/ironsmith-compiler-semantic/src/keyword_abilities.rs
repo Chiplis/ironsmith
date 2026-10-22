@@ -166,11 +166,11 @@ pub fn attack_keyword_granted_ability(action: &crate::cards::builders::KeywordAc
                     loses_soulbond: false, sacrifice_at_next_end_step: false,
                     sacrifice_at_next_end_step_reference_surface: None, sacrifice_at_next_end_step_ability_surface: None,
                     exile_at_next_end_step: false, exile_at_next_end_step_reference_surface: None,
-                    next_end_step_player: PlayerFilter::Any, set_colors: None, set_card_types: None, set_subtypes: None,
+                    next_end_step_player: PlayerFilter::Any, set_colors: None, added_colors: crate::color::ColorSet::new(), set_card_types: None, set_subtypes: None,
                     added_card_types: Vec::new(), added_subtypes: Vec::new(), removed_supertypes: Vec::new(),
                     set_base_power_toughness: None, set_base_power_toughness_to_source_totals: false,
                     starting_loyalty: None, granted_abilities: Vec::new(),
-                    set_name: None, added_supertypes: Vec::new(), attached_to: None,
+                    set_name: None, added_supertypes: Vec::new(), attached_to: None, blocking: None,
                 }));
             (TriggerSpec::ThisAttacks, vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 sequential: false, filter: PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending),

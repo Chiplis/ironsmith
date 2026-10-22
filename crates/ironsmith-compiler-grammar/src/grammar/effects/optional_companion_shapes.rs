@@ -63,7 +63,15 @@ pub fn parse_shared_subject_optional_companion_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SharedSubjectOptionalCompanionShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
-    let separator = optional_companion_separator(tokens)?;
+    // "This creature and another target creature each get +1/+0" (Deadly
+    // Dancer): a required companion target coordinates the same way.
+    let separator = optional_companion_separator(tokens).or_else(|| {
+        crate::slice_primitives::find_window_by(tokens, 3, |window| {
+            word(&window[0]) == Some("and")
+                && word(&window[1]) == Some("another")
+                && word(&window[2]) == Some("target")
+        })
+    })?;
     let first_subject_tokens = trim_lexed_commas(&tokens[..separator]);
     if first_subject_tokens.is_empty() {
         return None;

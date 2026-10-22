@@ -531,6 +531,7 @@ fn parse_exile_top_library_then_play_bundle(
                     spell_cost_increase_unless_targets,
                     max_plays,
                     surface,
+                    permanents_enter_tapped,
                 }),
             ..
         }) => EffectAst::subject_verb(
@@ -551,6 +552,7 @@ fn parse_exile_top_library_then_play_bundle(
                 spell_cost_increase_unless_targets,
                 max_plays,
                 surface,
+                permanents_enter_tapped,
             }),
         ),
         EffectAst::SubjectVerb(mut subject)
@@ -646,7 +648,30 @@ fn parse_exile_top_library_then_play_bundle(
         _ => return Ok(None),
     };
 
-    leading_effects.push(exile_effect);
+    // "you may exile the top card of your library. Until end of turn, you may
+    // play that card." (Harnesser of Storms): the optional exile keeps its
+    // choice; declining leaves the permission with nothing to grant.
+    let optional_exile = verb_idx > 0
+        && exile_sentence[..verb_idx]
+            .iter()
+            .any(|token| token.is_word("may"));
+    if optional_exile {
+        let mut exile_effect = exile_effect;
+        // The chooser ("you may") now carries the actor; the inner exile is
+        // the plain instruction, as in an unbundled "you may exile ...".
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { surface, .. }),
+            ..
+        }) = &mut exile_effect
+        {
+            *surface = None;
+        }
+        leading_effects.push(EffectAst::Permissions(PermissionEffectAst::May {
+            effects: vec![exile_effect],
+        }));
+    } else {
+        leading_effects.push(exile_effect);
+    }
     if let Some(look_effect) = look_effect {
         leading_effects.push(look_effect);
     }

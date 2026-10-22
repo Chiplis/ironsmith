@@ -1220,6 +1220,28 @@ impl TurnHistory {
         })
     }
 
+    /// Whether this exact graveyard incarnation entered its graveyard since
+    /// the current combat phase began (the latest beginning-of-combat event
+    /// of this turn). False outside a combat that has begun this turn.
+    pub fn graveyard_incarnation_entered_this_combat(&self, object_id: ObjectId) -> bool {
+        let mut entered_since = false;
+        for record in self.projected_records().rev() {
+            if record
+                .event
+                .downcast::<crate::events::BeginningOfCombatEvent>()
+                .is_some()
+            {
+                return entered_since;
+            }
+            if record.event.downcast::<ZoneChangeEvent>().is_some_and(|event| {
+                event.to == Zone::Graveyard && event.destination_objects().contains(&object_id)
+            }) {
+                entered_since = true;
+            }
+        }
+        false
+    }
+
     /// Mill is a keyword action, not every library-to-graveyard movement.
     /// Destination IDs reject a later incarnation that returned to the graveyard.
     pub fn graveyard_incarnation_was_milled_this_turn(&self, object_id: ObjectId) -> bool {
@@ -1990,6 +2012,17 @@ impl TurnHistory {
         None
     }
 
+    /// The player who cast `spell` this turn, if it was cast this turn.
+    pub fn spell_caster_this_turn(&self, spell: ObjectId) -> Option<PlayerId> {
+        self.projected_records().find_map(|record| {
+            record
+                .event
+                .downcast::<SpellCastEvent>()
+                .filter(|event| event.spell == spell)
+                .map(|event| event.caster)
+        })
+    }
+
     pub fn spell_cast_order_for_player(&self, spell: ObjectId, player: PlayerId) -> Option<u32> {
         let mut order = 0u32;
         for record in self.projected_records() {
@@ -2337,6 +2370,27 @@ pub(crate) fn resolve_turn_history_count(
                     .expect("published token groups passed checked creation preflight")
             })
             .sum::<u32>() as i32,
+        TurnHistoryCount::TokensCreatedMatching {
+            player: player_filter,
+            filter,
+        } => {
+            let mut historical_filter = filter.clone();
+            historical_filter.zone = None;
+            history
+                .projected_records()
+                .filter_map(|record| record.event.downcast::<CreateTokensEvent>())
+                .filter(|event| player_filter.matches_player(event.controller, filter_ctx))
+                .map(|event| {
+                    let count = event.matching_count(|key| {
+                        event.group_object(key).is_some_and(|token| {
+                            historical_filter.matches(&token, filter_ctx, game)
+                        })
+                    });
+                    u32::try_from(count)
+                        .expect("published token groups passed checked creation preflight")
+                })
+                .sum::<u32>() as i32
+        }
         TurnHistoryCount::PutIntoGraveyard { owner, from } => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
@@ -2441,12 +2495,82 @@ pub(crate) fn resolve_turn_history_count(
                 .then_some(event.amount)
             })
             .sum::<u32>() as i32,
-        TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
+        TurnHistoryCount::CombatDamageSourcesToPlayers { player, recipients, filter } => {
             let mut seen = HashSet::new();
             for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<DamageEvent>() else {
+                    continue;
+                };
+                if !event.is_combat || event.amount == 0 {
+                    continue;
+                }
+                let DamageTarget::Player(target) = event.target else {
+                    continue;
+                };
+                // The source as it existed when it dealt the damage (LKI), so
+                // a creature that died afterwards still counts.
+                let Some(source) = record
+                    .source_snapshot
+                    .as_ref()
+                    .filter(|snapshot| snapshot.object_id == event.source)
+                    .or_else(|| {
+                        record
+                            .object_snapshot
+                            .as_ref()
+                            .filter(|snapshot| snapshot.object_id == event.source)
+                    })
+                else {
+                    continue;
+                };
+                if !recipients.matches_player(target, filter_ctx)
+                    || !player.matches_player(source.controller, filter_ctx)
+                    || !filter.matches_snapshot(source, filter_ctx, game)
+                {
+                    continue;
+                }
+                // One incarnation counts once however many players it hit.
+                seen.insert(event.source);
+            }
+            seen.len() as i32
+        }
+        TurnHistoryCount::CreaturesAttackedWith {
+            player,
+            filter,
+            this_combat,
+            attacked,
+        } => {
+            let mut seen = HashSet::new();
+            let current_combat = game.turn_store.combat_phases_started_this_turn;
+            for record in history.projected_records().rev() {
+                // "attacked this combat": only the current combat phase's
+                // declarations (CR 506.1, CR 508.1).
+                if *this_combat
+                    && record
+                        .event
+                        .downcast::<crate::events::BeginningOfCombatEvent>()
+                        .is_some()
+                {
+                    break;
+                }
                 let Some(event) = record.event.downcast::<CreatureAttackedEvent>() else {
                     continue;
                 };
+                if *this_combat
+                    && event
+                        .combat_phase
+                        .is_some_and(|combat_phase| combat_phase != current_combat)
+                {
+                    continue;
+                }
+                if let Some(attacked) = attacked {
+                    let crate::triggers::event::AttackEventTarget::Player(defender) = event.target
+                    else {
+                        continue;
+                    };
+                    if !attacked.matches_player(defender, filter_ctx) {
+                        continue;
+                    }
+                }
                 let Some(snapshot) = record.object_snapshot.as_ref() else {
                     continue;
                 };

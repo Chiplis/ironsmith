@@ -1029,6 +1029,44 @@ fn bind_event_object_demonstrative_conditions(
     });
 }
 
+/// "Whenever you cast a creature spell, put two +1/+1 counters on this
+/// creature. If that spell has mana value 5 or greater, ..." (Herald of
+/// Ilharg): a body condition on "that spell" tests the cast spell the trigger
+/// reports, not the object the previous instruction acted on.
+fn bind_stack_event_spell_demonstrative_conditions(effect: &mut EffectAst) {
+    fn bind_predicate(predicate: &mut PredicateAst) {
+        match predicate {
+            PredicateAst::Not(inner) => bind_predicate(inner),
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                bind_predicate(left);
+                bind_predicate(right);
+            }
+            PredicateAst::ItMatches(filter)
+            | PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
+                if filter.demonstrative_antecedent_surface()
+                    == Some(ironsmith_core::DemonstrativeAntecedentSurface::Spell)
+                    && !filter.source =>
+            {
+                *predicate = PredicateAst::TaggedMatches(
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    filter.clone(),
+                );
+            }
+            _ => {}
+        }
+    }
+    match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
+        | EffectAst::SelfReplacement { predicate, .. } => bind_predicate(predicate),
+        _ => {}
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            bind_stack_event_spell_demonstrative_conditions(effect);
+        }
+    });
+}
+
 fn replace_exile_top_event_count_with_triggering_counter_count(effect: &mut EffectAst) {
     fn replace_in_effects(effects: &mut [EffectAst]) {
         for effect in effects {
@@ -2678,6 +2716,19 @@ fn stage_effects_from_normalized(
     {
         imports.last_object_tag = Some(tag.clone());
     }
+    if include_trigger_prelude
+        && let Some(tag) = default_last_object_tag.as_ref()
+    {
+        let alias =
+            ironsmith_compiler_resolve::exile_result_unions::trigger_event_antecedent_alias();
+        if !imports
+            .snapshot_tag_aliases
+            .iter()
+            .any(|(existing, _)| existing == &alias)
+        {
+            imports.snapshot_tag_aliases.push((alias, tag.clone()));
+        }
+    }
 
     let mut initial_env = ReferenceEnv::from_imports(
         &imports,
@@ -3622,6 +3673,49 @@ fn bind_other_damage_each_to_damaged_object(trigger: &TriggerSpec, effects: &mut
     walk(effects, damaged, &tag);
 }
 
+/// "Whenever equipped creature dies, return that card ... if it's a Samurai
+/// card" (Oathkeeper, Takeno's Daisho): after a dies event, a card predicate
+/// about the event object names the card that went to the graveyard (CR
+/// 400.7), so it reads that graveyard card rather than the creature's
+/// last-known battlefield characteristics.
+fn bind_dies_card_predicates_to_graveyard_card(effects: &mut [EffectAst], trigger: &TriggerSpec) {
+    fn is_dies_trigger(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => is_dies_trigger(trigger),
+            TriggerSpec::Dies(_) | TriggerSpec::DiesDuringTurn { .. } => true,
+            TriggerSpec::PutIntoGraveyardFromZone { from, .. } => *from == Zone::Battlefield,
+            _ => false,
+        }
+    }
+    fn bind_predicate(predicate: &mut PredicateAst) {
+        match predicate {
+            PredicateAst::ItMatches(filter)
+                if filter.zone.is_none() && filter.union_surface.explicit_card_noun() =>
+            {
+                filter.zone = Some(Zone::Graveyard);
+            }
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+                bind_predicate(left);
+                bind_predicate(right);
+            }
+            PredicateAst::Not(inner) => bind_predicate(inner),
+            _ => {}
+        }
+    }
+    if !is_dies_trigger(trigger) {
+        return;
+    }
+    for effect in effects {
+        match effect {
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) => {
+                bind_predicate(predicate);
+            }
+            _ => {}
+        }
+    }
+}
+
 pub fn stage_triggered_effects_for_lowering(
     trigger: TriggerSpec,
     effects: &[EffectAst],
@@ -3972,6 +4066,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     bind_cast_trigger_entry_grants_to_source(&mut normalized, &trigger);
     bind_self_attach_destination_to_trigger_object(&mut normalized, &trigger);
     bind_phase_step_trigger_untap_after_incompatible_discard(&mut normalized, &trigger);
+    bind_dies_card_predicates_to_graveyard_card(&mut normalized, &trigger);
     // "You may choose new targets for that spell" after a body sentence about
     // the source must still bind the TRIGGERING stack object (Speedball).
     if trigger_provides_stack_object(&trigger) {
@@ -4076,6 +4171,11 @@ pub fn stage_owned_triggered_effects_for_lowering(
     if let Some(event_types) = trigger_event_object_card_types(&trigger) {
         for effect in &mut body_effects {
             bind_event_object_demonstrative_conditions(effect, &event_types);
+        }
+    }
+    if trigger_provides_stack_object(&trigger) {
+        for effect in &mut body_effects {
+            bind_stack_event_spell_demonstrative_conditions(effect);
         }
     }
     if intervening_if
@@ -4553,6 +4653,25 @@ pub fn lower_prepared_ability(
     lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
 }
 
+/// The tag of an ability's last instruction when that single instruction
+/// announces an object target.
+fn instead_followup_target_antecedent(ability: &Ability) -> Option<TagKey> {
+    let program = match &ability.kind {
+        AbilityKind::Triggered(triggered) => &triggered.effects,
+        AbilityKind::Activated(activated) => &activated.effects,
+        _ => return None,
+    };
+    let segment = program.segments.last()?;
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let spec = tagged.effect.target_spec()?;
+    (spec.is_target()
+        && ironsmith_compiler_resolve::reference_helpers::choose_spec_targets_object(spec))
+    .then(|| tagged.tag.clone())
+}
+
 pub fn apply_instead_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,
@@ -4577,9 +4696,22 @@ pub fn apply_instead_followup_statement_to_last_ability(
         return Ok(false);
     }
 
+    // "Create a token that's a copy of target token you control. If that
+    // token is a Squirrel, instead create two tokens that are copies of it."
+    // (Hazel of the Rootbloom): the replacement's "that token"/"it" is the
+    // instruction's announced target. Resolution binds the replaced
+    // instruction's tag to its declared targets while the branch is chosen
+    // and run, so the follow-up imports that tag as its antecedent.
+    let imports = if effects_reference_it_tag(effects) {
+        instead_followup_target_antecedent(&builder.abilities[index])
+            .map(ReferenceImports::with_last_object_tag)
+            .unwrap_or_default()
+    } else {
+        ReferenceImports::default()
+    };
     let compiled = lower_prepared_statement_effects(&stage_effects_for_lowering(
         effects,
-        ReferenceImports::default(),
+        imports,
     )?)?;
     if compiled.effects.len() != 1 {
         return Ok(false);
@@ -5806,6 +5938,83 @@ pub(crate) fn lower_compiler_static_ability_core(
 ) -> Result<StaticAbility, CardTextError> {
     let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
     match payload {
+        // A granted triggered/activated ability that announces its own
+        // choices ("When this Equipment enters, attach it to target creature
+        // you control", Galea's cast-this-way rider) cannot lower its effects
+        // child by child. Keep the ordinary child lowering for everything it
+        // accepts and lower only the rejected grant as a complete ability.
+        crate::model::CompilerStaticAbilityPayloadCore::GrantObjectAbilityForFilter(grant) => {
+            let generic = crate::model::CompilerStaticAbilityCore {
+                id: id.clone(),
+                label: label.clone(),
+                payload: crate::model::CompilerStaticAbilityPayloadCore::GrantObjectAbilityForFilter(
+                    grant.clone(),
+                ),
+            }
+            .try_map(
+                |trigger| Ok(compile_trigger_spec(trigger)),
+                lower_compiler_child_effect,
+                lower_compiler_cost_component,
+                |predicate| resolve_intervening_if_without_trigger(&predicate),
+            );
+            let Err(error) = generic else {
+                return generic;
+            };
+            let grant = *grant;
+            let lowered = (|| -> Result<StaticAbility, CardTextError> {
+                Ok(StaticAbility {
+                    id,
+                    label,
+                    payload: crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(
+                        Box::new(crate::static_abilities::GrantObjectAbilityForFilter {
+                            filter: grant.filter,
+                            ability: lower_compiler_ability_core_in_own_trigger_context(
+                                grant.ability,
+                            )?,
+                            additional_abilities: grant
+                                .additional_abilities
+                                .into_iter()
+                                .map(lower_compiler_ability_core_in_own_trigger_context)
+                                .collect::<Result<Vec<_>, _>>()?,
+                            display: grant.display,
+                            condition: grant
+                                .condition
+                                .map(|predicate| resolve_intervening_if_without_trigger(&predicate))
+                                .transpose()?,
+                            set_quantifier_surface: grant.set_quantifier_surface,
+                            derived_ability_display: grant.derived_ability_display,
+                        }),
+                    ),
+                })
+            })();
+            lowered.map_err(|_| error)
+        }
+        // A permission's recipient riders are static abilities of their own;
+        // lower them through this function (above) rather than the generic
+        // child-by-child map when that map rejects one of them.
+        crate::model::CompilerStaticAbilityPayloadCore::Grants(spec) => {
+            let generic = crate::model::CompilerStaticAbilityCore {
+                id: id.clone(),
+                label: label.clone(),
+                payload: crate::model::CompilerStaticAbilityPayloadCore::Grants(spec.clone()),
+            }
+            .try_map(
+                |trigger| Ok(compile_trigger_spec(trigger)),
+                lower_compiler_child_effect,
+                lower_compiler_cost_component,
+                |predicate| resolve_intervening_if_without_trigger(&predicate),
+            );
+            let Err(error) = generic else {
+                return generic;
+            };
+            lower_compiler_grant_spec(*spec)
+                .map(|spec| StaticAbility {
+                    id,
+                    label,
+                    payload: crate::static_abilities::StaticAbilityPayload::Grants(Box::new(spec)),
+                })
+                .map_err(|_| error)
+        }
         crate::model::CompilerStaticAbilityPayloadCore::AddSubtypesAndGrantAbilities {
             filter, subtypes, abilities, display,
         } => Ok(StaticAbility {

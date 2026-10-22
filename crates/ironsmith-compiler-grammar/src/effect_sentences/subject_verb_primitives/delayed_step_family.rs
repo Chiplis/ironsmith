@@ -1103,10 +1103,23 @@ pub fn try_build_unless(
         )));
     }
 
+    // "unless they sacrifice that many permanents" (Archfiend of Spite): a
+    // dynamic count is the sacrifice action's own "that many" reading, not a
+    // fixed one-object sacrifice cost.
+    // "unless they sacrifice that artifact" (Curse Artifact) names the
+    // referenced object, not any matching permanent.
+    let dynamic_sacrifice_count = action_words
+        .windows(2)
+        .any(|window| window == ["that", "many"])
+        || matches!(
+            action_words.as_slice(),
+            ["sacrifice" | "sacrifices", "that", "artifact" | "creature" | "land" | "enchantment" | "permanent"]
+        );
     if matches!(
         action_words.first().copied(),
         Some("sacrifice" | "sacrifices")
-    ) && let Some(cost) = parse_unless_payment_clause_as_cost(action_clause)?
+    ) && !dynamic_sacrifice_count
+        && let Some(cost) = parse_unless_payment_clause_as_cost(action_clause)?
     {
         return Ok(Some(EffectAst::Conditionals(
             ConditionalEffectAst::UnlessPays {

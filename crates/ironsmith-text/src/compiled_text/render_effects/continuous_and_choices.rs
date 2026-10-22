@@ -97,6 +97,19 @@ pub(super) fn describe_card_type_looked_card_disjunction(filter: &ObjectFilter) 
     if filter.distinct_powers || all_branches_distinct_powers {
         desc.push_str(" with different powers");
     }
+    // "an instant or sorcery spell with mana value less than or equal to
+    // Velomachus Lorehold's power" (Velomachus Lorehold): the type
+    // disjunction keeps the filter's mana value bound.
+    if filter.mana_value.is_some() {
+        let mut bound = ObjectFilter::default();
+        bound.mana_value = filter.mana_value.clone();
+        bound.set_explicit_card_noun(true);
+        let bound = bound.description();
+        if let Some((_, rest)) = bound.split_once(" with ") {
+            desc.push_str(" with ");
+            desc.push_str(rest);
+        }
+    }
     Some(desc)
 }
 
@@ -2142,6 +2155,13 @@ pub(crate) fn describe_look_count_and_noun(count: &Value) -> (String, &'static s
         };
         return (text, "cards", false);
     }
+    // "Pay any amount of mana. Look at that many cards from the top of your
+    // library" (Karn, Living Legacy): the count is the earlier effect's
+    // result, not an announced X. The "the top that many cards of" template
+    // is turned into Oracle order in `normalize_common_semantic_phrasing`.
+    if matches!(count.unhinted(), Value::EffectValue(_)) {
+        return ("that many".to_string(), "cards", false);
+    }
     (describe_value(count), "cards", false)
 }
 
@@ -2833,15 +2853,33 @@ pub(super) fn describe_target_opponent_create_tokens_with_count(
     let Value::Count(filter) = value.unhinted() else {
         return None;
     };
-    if filter.controller != Some(PlayerFilter::target_opponent()) {
-        return None;
-    }
+    // "Choose any number of target opponents. ... the number of creatures
+    // those opponents control" (Call the Coppercoats): an aliased reference
+    // to every chosen target opponent reads with the chosen set's number.
+    let plural_targets = target_only
+        .target
+        .count()
+        .max
+        .is_none_or(|max| max > 1);
+    let (choose_text, controller_text) = match filter.controller.as_ref() {
+        Some(PlayerFilter::Target(inner)) if **inner == PlayerFilter::Opponent && !plural_targets => {
+            ("Choose target opponent".to_string(), "that player controls")
+        }
+        Some(PlayerFilter::AliasedTarget(inner)) if **inner == PlayerFilter::Opponent => {
+            let chosen = describe_choose_spec(&target_only.target);
+            (
+                format!("Choose {chosen}"),
+                if plural_targets { "those opponents control" } else { "that player controls" },
+            )
+        }
+        _ => return None,
+    };
 
     let token_blueprint = describe_create_token_blueprint(create);
     let token_phrase = pluralize_token_phrase(&token_blueprint);
     let (token_main, token_ability) = split_token_ability_sentence(&token_phrase);
     let mut text = format!(
-        "Choose target opponent. {}",
+        "{choose_text}. {}",
         describe_create_token_action(
             &format!("X {token_main}"),
             &create.controller,
@@ -2861,8 +2899,13 @@ pub(super) fn describe_target_opponent_create_tokens_with_count(
 
     let mut count_filter = filter.clone();
     count_filter.controller = None;
+    // A controlled object is on the battlefield; the controller clause
+    // already names that domain.
+    if count_filter.zone == Some(Zone::Battlefield) {
+        count_filter.zone = None;
+    }
     text.push_str(&format!(
-        ", where X is the number of {} that player controls",
+        ", where X is the number of {} {controller_text}",
         pluralize_noun_phrase(&describe_for_each_count_filter(&count_filter))
     ));
     Some(append_token_ability_sentence(text, token_ability))
@@ -3068,12 +3111,20 @@ fn describe_put_milled_cards_clause(
     move_chosen: &crate::effects::ForEachTaggedEffect,
 ) -> Option<String> {
     let first = *choices.first()?;
+    // "put up to two land cards from among them": a single bounded choice of
+    // more than one milled card.
+    let up_to_many = (choices.len() == 1
+        && first.count.min == 0
+        && first.count.max.is_some_and(|max| max > 1))
+    .then(|| first.count.max)
+    .flatten();
     if choices.iter().any(|choose| {
         choose.chooser != mill.player
             || choose.tag != first.tag
             || choose.count.min > 1
             || (choose.count.max != Some(1)
-                && !(choices.len() == 1 && choose_count_is_any_number(choose)))
+                && !(choices.len() == 1 && choose_count_is_any_number(choose))
+                && up_to_many.is_none())
             || choose.count.dynamic_x
             || choose.count.random
     }) {
@@ -3121,6 +3172,17 @@ fn describe_put_milled_cards_clause(
                     ))
             });
             normalized.filter.set_prior_effect_action_surface(None);
+            if let Some(max) = up_to_many {
+                normalized.count.max = Some(1);
+                let single = describe_choose_filter_from_tagged_cards(&normalized, source_tag)?;
+                let plural = pluralize_noun_phrase(
+                    strip_leading_article(&single),
+                );
+                return Some(format!(
+                    "up to {} {plural}",
+                    small_number_word(max as u32).unwrap_or_else(|| max.to_string())
+                ));
+            }
             describe_choose_filter_from_tagged_cards(&normalized, source_tag)
         })
         .collect::<Option<Vec<_>>>()?;
@@ -3129,7 +3191,7 @@ fn describe_put_milled_cards_clause(
     } else {
         chosen.join(" and/or ")
     };
-    let may = choices.iter().all(|choose| choose.count.min == 0);
+    let may = up_to_many.is_none() && choices.iter().all(|choose| choose.count.min == 0);
     Some(format!(
         "You{} {} {chosen} from among {} {destination}",
         if may { " may" } else { "" },
@@ -3151,6 +3213,46 @@ pub(crate) fn describe_mill_then_put_milled_cards(
     let put_clause = describe_put_milled_cards_clause(source_tag, mill, choices, move_chosen)?;
     let mill_clause = describe_tagged_mill_clause(mill);
     Some(format!("{mill_clause}. {put_clause}"))
+}
+
+/// "Each player mills four cards. Put a creature card with an even mana
+/// value from among the milled cards onto the battlefield under your
+/// control." (Gyruda, Doom of Depths): the per-player mill accumulates one
+/// milled group, and the selection over it belongs to the chooser.
+pub(crate) fn describe_each_player_mill_then_put_milled_cards(
+    for_players_effect: &Effect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_chosen: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if for_players.filter != PlayerFilter::Any {
+        return None;
+    }
+    let [milled_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let (source_tag, mill) = mill_with_collection_tag(milled_effect)?;
+    if mill.player != PlayerFilter::IteratedPlayer {
+        return None;
+    }
+    let mut chooser_mill = mill.clone();
+    chooser_mill.player = choose.chooser.clone();
+    let mut put_clause =
+        describe_put_milled_cards_clause(source_tag.as_str(), &chooser_mill, &[choose], move_chosen)?;
+    let under_your_control = move_chosen.effects.len() == 1
+        && unwrap_tag_wrapped_effect(&move_chosen.effects[0])
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|move_to_zone| {
+                move_to_zone.battlefield_controller == ironsmith_core::BattlefieldController::You
+            });
+    if under_your_control && put_clause.ends_with("onto the battlefield") {
+        put_clause.push_str(" under your control");
+    }
+    let mill_clause = describe_effect(for_players_effect);
+    Some(format!(
+        "{}. {put_clause}",
+        mill_clause.trim().trim_end_matches('.')
+    ))
 }
 
 pub(crate) fn describe_tagged_mill_then_put_all_matching_milled_cards(
@@ -3197,13 +3299,33 @@ pub(crate) fn describe_tagged_mill_then_put_all_matching_milled_cards(
         return None;
     }
 
-    let matching_cards = pluralize_noun_phrase(&describe_revealed_selection_with_cards(
-        &filter.description(),
-    ));
+    // "all cards that have an Adventure": the Adventure subtype names a
+    // linked face, so it reads as a relative clause rather than an adjective.
+    let explicit_milled_reference =
+        filter.prior_effect_action_surface() == Some(crate::effect::PriorEffectAction::Milled);
+    filter.set_prior_effect_action_surface(None);
+    let has_adventure = filter.subtypes.as_slice() == [Subtype::Adventure];
+    if has_adventure {
+        filter.subtypes.clear();
+    }
+    let base_description = filter.description();
+    let mut matching_cards = if has_adventure && base_description.trim() == "card" {
+        "cards".to_string()
+    } else {
+        pluralize_noun_phrase(&describe_revealed_selection_with_cards(&base_description))
+    };
+    if has_adventure {
+        matching_cards.push_str(" that have an Adventure");
+    }
     let mill_clause = describe_tagged_mill_clause(mill);
     let hand = describe_possessive_player_filter(&mill.player);
+    let pool = if explicit_milled_reference {
+        "the cards milled this way"
+    } else {
+        "them"
+    };
     Some(format!(
-        "{mill_clause}. Put all {matching_cards} from among them into {hand} hand"
+        "{mill_clause}. Put all {matching_cards} from among {pool} into {hand} hand"
     ))
 }
 

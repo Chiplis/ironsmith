@@ -2114,6 +2114,7 @@ pub use attached_object_static_lines_permission_programs::parse_enchanted_has_ac
 mod attached_object_static_lines_object_action_programs;
 pub use attached_object_static_lines_object_action_programs::{
     parse_attached_gets_and_has_ability_line,
+    parse_attached_quoted_grant_then_type_sentence_line,
     parse_attached_is_legendary_gets_and_has_keywords_line,
     parse_equipped_gets_and_has_activated_ability_line,
 };

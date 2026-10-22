@@ -1043,12 +1043,13 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
 
 /// The counter-placement addition ("if you would put ..., put that many
 /// plus N ... instead") as a replacement effect a resolving ability
-/// registers for a duration. "You would put" limits it to counters put by
-/// the effect's controller.
+/// registers for a duration. An optional actor limits who places the counters;
+/// passive wording leaves that scope unrestricted.
 pub(crate) fn counter_placement_addition_replacement(
     source: ObjectId,
     controller: PlayerId,
     filter: ObjectFilter,
+    actor: Option<PlayerFilter>,
     counter_type: Option<CounterType>,
     additional: i64,
 ) -> ReplacementEffect {
@@ -1061,7 +1062,7 @@ pub(crate) fn counter_placement_addition_replacement(
             filter,
             player_filter: None,
             counter_type,
-            actor: Some(PlayerFilter::You),
+            actor,
             includes_permanents: false,
             effect_only: false,
             cause_filter: None,

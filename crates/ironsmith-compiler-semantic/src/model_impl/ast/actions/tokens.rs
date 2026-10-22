@@ -12,6 +12,9 @@ pub struct TokenCombatEntryAst {
     /// controller chooses among `attack_target_player` and the planeswalkers
     /// that player controls (CR 508.4).
     pub attack_target_includes_planeswalkers: bool,
+    /// "tokens ... that attack that opponent this turn if able" (CR
+    /// 508.1d): the player each created token must attack this turn.
+    pub must_attack_player_this_turn: Option<PlayerAst>,
 }
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
@@ -39,6 +42,8 @@ pub enum TokenActionAst {
         exile_at_next_end_step_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         next_end_step_player: PlayerFilter,
         set_colors: Option<ColorSet>,
+        /// CR 707.9b: "in addition to its other colors and types".
+        added_colors: ColorSet,
         set_card_types: Option<Vec<CardType>>,
         set_subtypes: Option<Vec<Subtype>>,
         added_card_types: Vec<CardType>,
@@ -76,6 +81,8 @@ pub enum TokenActionAst {
         exile_at_next_end_step_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         next_end_step_player: PlayerFilter,
         set_colors: Option<ColorSet>,
+        /// CR 707.9b: "in addition to its other colors and types".
+        added_colors: ColorSet,
         set_card_types: Option<Vec<CardType>>,
         set_subtypes: Option<Vec<Subtype>>,
         added_card_types: Vec<CardType>,
@@ -91,6 +98,9 @@ pub enum TokenActionAst {
         added_supertypes: Vec<Supertype>,
         /// "a token that's a copy of that Aura attached to <object>".
         attached_to: Option<TargetAst>,
+        /// CR 509.4: "a token that's a copy of that creature and that's
+        /// blocking that creature" (Mirror Match).
+        blocking: Option<TargetAst>,
     },
     CreateTokenWithMods {
         name: String,

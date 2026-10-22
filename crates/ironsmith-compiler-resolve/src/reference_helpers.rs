@@ -649,12 +649,15 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::PlaneswalkerTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
+        | Value::DistinctManaCosts(filter)
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
@@ -676,7 +679,8 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
             | TurnHistoryCount::Sacrificed { filter, .. }
             | TurnHistoryCount::SacrificedCardTypes { filter, .. }
             | TurnHistoryCount::CountersPutOn { filter, .. }
-            | TurnHistoryCount::CreaturesAttackedWith { filter, .. },
+            | TurnHistoryCount::CreaturesAttackedWith { filter, .. }
+            | TurnHistoryCount::CombatDamageSourcesToPlayers { filter, .. },
         ) => replace_it_tag_in_filter(filter, tag),
         Value::SpellsCastThisTurnMatching { filter, .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { filter, .. } => {
@@ -1750,6 +1754,12 @@ pub fn resolve_restriction_it_tag(
                 resolve_contextual_player_filter(player, refs)?,
             )
         }
+        Restriction::AttackPlayerOrPermanentsControlledBy { attackers, player } => {
+            Restriction::attack_player_or_permanents_controlled_by(
+                resolve_combat_actor_it_tag(attackers, refs)?,
+                resolve_contextual_player_filter(player, refs)?,
+            )
+        }
         Restriction::AttackPlayer { attackers, player } => Restriction::attack_player(
             resolve_combat_actor_it_tag(attackers, refs)?,
             resolve_contextual_player_filter(player, refs)?,
@@ -2260,14 +2270,31 @@ fn resolve_choose_spec_it_tag_preserving_selection(
         });
     }
     match spec {
-        ChooseSpec::SurfaceHinted { spec, hints } => Ok(ChooseSpec::SurfaceHinted {
-            spec: Box::new(resolve_choose_spec_it_tag_preserving_selection(
-                spec,
-                refs,
-                preserve_selection,
-            )?),
-            hints: hints.clone(),
-        }),
+        ChooseSpec::SurfaceHinted { spec, hints } => {
+            let mut resolved =
+                resolve_choose_spec_it_tag_preserving_selection(spec, refs, preserve_selection)?;
+            // "the exiled creature's power" (Yannik): the authored noun names
+            // the object as it was before this resolution exiled it, so its
+            // characteristics are its departure LKI (CR 608.2h), not the
+            // card now in exile ("the exiled card").
+            if hints.iter().any(|hint| {
+                matches!(
+                    hint,
+                    crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        SourceReferenceSurface::ThisPermanentType(surface)
+                    ) if surface == "the exiled creature" || surface == "the exiled permanent"
+                )
+            }) && let ChooseSpec::Tagged(tag) = &resolved
+                && tag.as_str() != ironsmith_core::tag::SOURCE_EXILED_TAG
+                && ironsmith_core::tag::pre_move_history_base_tag(tag).is_none()
+            {
+                resolved = ChooseSpec::Tagged(ironsmith_core::tag::pre_move_history_tag(tag));
+            }
+            Ok(ChooseSpec::SurfaceHinted {
+                spec: Box::new(resolved),
+                hints: hints.clone(),
+            })
+        }
         ChooseSpec::Tagged(tag)
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
         {
@@ -2450,6 +2477,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::CardsInHand(player) => Ok(Value::CardsInHand(resolve_contextual_player_filter(
             player, refs,
         )?)),
+        Value::CommandersCastFromCommandZoneBy(player) => Ok(
+            Value::CommandersCastFromCommandZoneBy(resolve_contextual_player_filter(player, refs)?),
+        ),
         Value::CardsInLibrary(player) => Ok(Value::CardsInLibrary(
             resolve_contextual_player_filter(player, refs)?,
         )),
@@ -2583,7 +2613,13 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::CreatureTypesAmong(filter) => {
             Ok(Value::CreatureTypesAmong(resolve_it_tag(filter, refs)?))
         }
+        Value::PlaneswalkerTypesAmong(filter) => {
+            Ok(Value::PlaneswalkerTypesAmong(resolve_it_tag(filter, refs)?))
+        }
         Value::CardTypesAmong(filter) => Ok(Value::CardTypesAmong(resolve_it_tag(filter, refs)?)),
+        Value::PermanentTypesAmong(filter) => {
+            Ok(Value::PermanentTypesAmong(resolve_it_tag(filter, refs)?))
+        }
         Value::StaticAbilitiesAmong { filter, abilities } => Ok(Value::StaticAbilitiesAmong {
             filter: resolve_it_tag(filter, refs)?,
             abilities: abilities.clone(),
@@ -2596,6 +2632,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
         Value::DistinctManaValues(filter) => {
             Ok(Value::DistinctManaValues(resolve_it_tag(filter, refs)?))
+        }
+        Value::DistinctManaCosts(filter) => {
+            Ok(Value::DistinctManaCosts(resolve_it_tag(filter, refs)?))
         }
         Value::UnlockedDoorsAmong(filter) => {
             Ok(Value::UnlockedDoorsAmong(resolve_it_tag(filter, refs)?))
@@ -2623,6 +2662,12 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 }
                 TurnHistoryCount::TokensCreated(player) => {
                     TurnHistoryCount::TokensCreated(resolve_contextual_player_filter(player, refs)?)
+                }
+                TurnHistoryCount::TokensCreatedMatching { player, filter } => {
+                    TurnHistoryCount::TokensCreatedMatching {
+                        player: resolve_contextual_player_filter(player, refs)?,
+                        filter: resolve_it_tag(filter, refs)?,
+                    }
                 }
                 TurnHistoryCount::PutIntoGraveyard { owner, from } => {
                     TurnHistoryCount::PutIntoGraveyard {
@@ -2657,9 +2702,24 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                     counter_type: *counter_type,
                     filter: resolve_it_tag(filter, refs)?,
                 },
-                TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
-                    TurnHistoryCount::CreaturesAttackedWith {
+                TurnHistoryCount::CreaturesAttackedWith {
+                    player,
+                    filter,
+                    this_combat,
+                    attacked,
+                } => TurnHistoryCount::CreaturesAttackedWith {
+                    player: resolve_contextual_player_filter(player, refs)?,
+                    filter: resolve_it_tag(filter, refs)?,
+                    this_combat: *this_combat,
+                    attacked: attacked
+                        .as_ref()
+                        .map(|attacked| resolve_contextual_player_filter(attacked, refs))
+                        .transpose()?,
+                },
+                TurnHistoryCount::CombatDamageSourcesToPlayers { player, recipients, filter } => {
+                    TurnHistoryCount::CombatDamageSourcesToPlayers {
                         player: resolve_contextual_player_filter(player, refs)?,
+                        recipients: resolve_contextual_player_filter(recipients, refs)?,
                         filter: resolve_it_tag(filter, refs)?,
                     }
                 }
@@ -2845,6 +2905,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ManaValueOf(spec) => Ok(Value::ManaValueOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::CommanderCastCountOf(spec) => Ok(Value::CommanderCastCountOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::CountersOn(spec, counter_type) => Ok(Value::CountersOn(
             Box::new(resolve_choose_spec_it_tag(spec, refs)?),
             *counter_type,

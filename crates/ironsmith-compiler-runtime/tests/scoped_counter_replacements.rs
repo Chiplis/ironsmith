@@ -1,4 +1,4 @@
-//! Source-authored only; no scenarios have been compiled or executed.
+//! Counter-replacement scope checks through direct compilation and artifact restoration.
 use ironsmith::ability::Ability;
 use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::PowerToughness;
@@ -38,6 +38,37 @@ fn placed(game: &mut GameState, source: ObjectId, actor: PlayerId, target: Objec
     ctx.cause = if cost {EventCause::from_cost(source, actor)} else {EventCause::from_effect(source, actor)};
     PutCountersEffect::new(CounterType::Charge, amount, ChooseSpec::SpecificObject(target)).execute(game, &mut ctx).unwrap();
     game.object(target).unwrap().counters.get(&CounterType::Charge).copied().unwrap_or(0) - before
+}
+#[test]
+fn scoped_actor_doubling_applies_only_to_matching_placements() {
+    for (text, covered_kind) in [
+        ("If you would put one or more counters on a creature you control, put twice that many of each of those kinds of counters on that creature instead.", CardType::Creature),
+        ("If you would put one or more charge counters on an artifact you control, put twice that many charge counters on that artifact instead.", CardType::Artifact),
+    ] {
+        let (artifact, direct) = compile_to_artifact("Scoped multiplier", format!("Type: Enchantment\n{text}"), false).unwrap();
+        let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
+        for definition in [direct, materialize_artifact(&restored).unwrap()] {
+            let mut game = game();
+            let host = game.create_object_from_definition(&definition, a(), Zone::Battlefield);
+            for kind in [CardType::Creature, CardType::Artifact, CardType::Land] {
+                for owner in [a(), b()] {
+                    let target = object(&mut game, owner, kind, None);
+                    for actor in [a(), b()] {
+                        for cost in [false, true] {
+                            let expected = if kind == covered_kind && owner == a() && actor == a() { 4 } else { 2 };
+                            assert_eq!(placed(&mut game, host, actor, target, cost, 2), expected);
+                        }
+                    }
+                }
+            }
+            let target = object(&mut game, a(), covered_kind, None);
+            PutCountersEffect::new(CounterType::Shield, 1, ChooseSpec::SpecificObject(target))
+                .execute(&mut game, &mut EffectContext::new_default(host, a())).unwrap();
+            assert_eq!(game.object(target).unwrap().counters.get(&CounterType::Shield), Some(&if covered_kind == CardType::Creature { 2 } else { 1 }));
+            game.move_object_by_effect(host, Zone::Exile).unwrap();
+            assert_eq!(placed(&mut game, host, a(), target, false, 2), 2);
+        }
+    }
 }
 #[test]
 fn all_three_whole_cards_preserve_secondary_abilities_and_round_trip() {

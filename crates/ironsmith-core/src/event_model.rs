@@ -117,6 +117,8 @@ pub enum KeywordActionKind {
     /// A player foretold a card (CR 702.143a special action): "Whenever you
     /// foretell a card" (Dream Devourer). Appended for wire stability.
     Foretell,
+    /// A player chose one or more modes for a modal spell or ability.
+    FaceDilemma,
 }
 
 impl KeywordActionKind {
@@ -285,6 +287,7 @@ impl KeywordActionKind {
             Self::GroupIntoPiles => "group cards or permanents into piles",
             Self::SolveCase => "solve a Case",
             Self::Foretell => "foretell a card",
+            Self::FaceDilemma => "face a dilemma",
         }
     }
 
@@ -370,6 +373,7 @@ impl KeywordActionKind {
             Self::GroupIntoPiles => "groups cards or permanents into piles",
             Self::SolveCase => "solves a Case",
             Self::Foretell => "foretells a card",
+            Self::FaceDilemma => "faces a dilemma",
         }
     }
 }

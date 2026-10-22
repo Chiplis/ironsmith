@@ -164,6 +164,22 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.attacking,
         }
     }
+    /// "attacking alone" (CR 506.5), from last-known information for a
+    /// creature that has left combat.
+    pub(crate) fn attacking_alone(self, game: &GameState) -> bool {
+        match self {
+            Self::Live(object) => crate::combat_state::is_attacking_alone(game, object.id),
+            Self::Snapshot(snapshot) => snapshot.attacking_alone,
+        }
+    }
+    /// "blocking alone" (CR 506.5), from last-known information for a
+    /// creature that has left combat.
+    pub(crate) fn blocking_alone(self, game: &GameState) -> bool {
+        match self {
+            Self::Live(object) => crate::combat_state::is_blocking_alone(game, object.id),
+            Self::Snapshot(snapshot) => snapshot.blocking_alone,
+        }
+    }
     pub(crate) fn can_attack(self, game: &GameState) -> bool {
         match self {
             Self::Live(object) => crate::rules::combat::can_attack(object, game),

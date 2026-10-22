@@ -29,6 +29,7 @@ fn ordered_type_sacrifice_choice(types: [CardType; 3]) -> ironsmith_core::Choose
                 sequential: false,
                 starting_with_controller: false,
                 stop_after_first_happened: false,
+                announcement_condition: None,
             })
         }).collect();
         ironsmith_core::EffectMode::new("untrusted mode label", effects)

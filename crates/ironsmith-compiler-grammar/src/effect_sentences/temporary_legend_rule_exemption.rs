@@ -2,12 +2,10 @@
 //! (Hall of Echoes): a resolving rule-modifying effect (CR 704.5j exemption)
 //! for the rest of the turn. It is a rule change, not a characteristic one,
 //! so permanents you begin controlling later in the turn are covered too; it
-//! is modeled as the controller-scoped exemption carried by every permanent
-//! you control until end of turn (the affected set stays live).
-use crate::cards::builders::{EffectAst, GrantedAbilityAst, StaticAbilityAst};
+//! is modeled as a live `ObjectRule::LegendRuleDoesntApply` rule effect.
+use crate::cards::builders::EffectAst;
 use crate::effect::Until;
 use crate::lexer::OwnedLexToken;
-use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
@@ -33,19 +31,22 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         ["this", "turn"] | ["until", "end", "of", "turn"] => Until::EndOfTurn,
         _ => return None,
     };
-    let exempt = if scope == "creatures" {
+    let mut exempt = if scope == "creatures" {
         ObjectFilter::creature()
     } else {
         ObjectFilter::permanent()
     };
-    let holders = ObjectFilter::permanent()
-        .in_zone(Zone::Battlefield)
-        .controlled_by(PlayerFilter::You);
-    Some(EffectAst::subject_verb_grant_abilities_all_dynamically(
-        holders,
-        vec![GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(
-            StaticAbility::legend_rule_doesnt_apply_to_controller_matching(exempt),
-        )))],
+    exempt = exempt.in_zone(Zone::Battlefield).controlled_by(PlayerFilter::You);
+    exempt.set_plural_object_noun_surface(true);
+    // A rule modification owned by this resolved effect (CR 611.3a-style
+    // rule change): it covers permanents you begin controlling later this
+    // turn and can't be removed by taking abilities away from them.
+    Some(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::object_rule(
+            exempt,
+            ironsmith_core::ObjectRule::LegendRuleDoesntApply,
+        ),
         duration,
+        None,
     ))
 }

@@ -161,6 +161,17 @@ impl TriggerMatcher for BeginningOfMainPhaseTrigger {
                 ) => {
                     return "At the beginning of each postcombat main phase".to_string();
                 }
+                (
+                    player,
+                    ironsmith_core::trigger_model::PostcombatMainPhaseSurface::EachOfPostcombatMains,
+                ) if !matches!(player, PlayerFilter::Opponent) => {
+                    // "At the beginning of each of enchanted player's
+                    // postcombat main phases" (Shadow of the Second Sun).
+                    return format!(
+                        "At the beginning of each of {} postcombat main phases",
+                        describe_player_filter_possessive(player)
+                    );
+                }
                 _ => {}
             }
         }

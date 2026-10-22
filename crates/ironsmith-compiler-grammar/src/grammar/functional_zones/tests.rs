@@ -242,3 +242,14 @@ fn rule_113_6m_granted_abilities_have_their_own_source() {
         vec![Zone::Battlefield]
     );
 }
+
+#[test]
+fn granted_ability_zone_restrictions_do_not_escape_their_quote() {
+    let outer = lex_line("When this creature enters, target card gains \"Exile a card from your hand: Draw a card. Activate only during your turn and only if this card is exiled.\"", 0).unwrap();
+    assert_eq!(parse_trigger_functional_zone_facts_tokens(&outer).explicit_zone, None);
+    let cost = lex_line("Exile a card from your hand", 0).unwrap();
+    let restriction = lex_line("Activate only during your turn and only if this card is exiled.", 0).unwrap();
+    assert_eq!(parse_activated_functional_zones_tokens(&cost, &[&restriction]), vec![Zone::Exile]);
+    let own = lex_line("At the beginning of your upkeep, if this card is exiled, draw a card.", 0).unwrap();
+    assert_eq!(parse_trigger_functional_zone_facts_tokens(&own).explicit_zone, Some(Zone::Exile));
+}

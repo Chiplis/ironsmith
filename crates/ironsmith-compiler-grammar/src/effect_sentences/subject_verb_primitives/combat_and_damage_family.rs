@@ -649,7 +649,32 @@ pub fn parse_distribute_counters_sentence(
     }
     // "distribute up to that many +1/+1 counters" (Lathiel): the counted
     // prefixes of "put ... counters" ("up to N", "that many") read the same.
-    let (count, used) = match parse_value(amount_clause.tokens()) {
+    // "distribute a number of +1/+1 counters equal to the number of +1/+1
+    // counters on this creature among ..." (Vastwood Hydra): the article
+    // is not the amount; the "equal to" value is.
+    let amount_words = amount_clause.trimmed_word_refs();
+    let equal_to_amount = if amount_words.starts_with(&["a", "number", "of"]) {
+        let tokens = amount_clause.tokens();
+        let equal_idx = tokens
+            .windows(2)
+            .position(|pair| pair[0].is_word("equal") && pair[1].is_word("to"));
+        let among_idx = tokens.iter().position(|token| token.is_word("among"));
+        match (equal_idx, among_idx) {
+            (Some(equal_idx), Some(among_idx)) if equal_idx + 2 < among_idx => {
+                let value_tokens = &tokens[equal_idx + 2..among_idx];
+                parse_value(value_tokens)
+                    .filter(|(_, used)| *used == value_tokens.len())
+                    .map(|(value, _)| value)
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let (count, used) = match equal_to_amount
+        .map(|value| (value, 3))
+        .or_else(|| parse_value(amount_clause.tokens()))
+    {
         Some(parsed) => parsed,
         None => crate::effect_sentences::zone_counter_helpers::parse_put_counter_count_value(
             amount_clause.tokens(),

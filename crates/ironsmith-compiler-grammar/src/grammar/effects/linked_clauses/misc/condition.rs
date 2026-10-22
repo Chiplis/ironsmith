@@ -56,9 +56,11 @@ pub fn parse_graveyard_cast_permission_shape(
         (false, Some(rest)) => (rest, true, true),
         _ => (cast, until_end_of_turn, false),
     };
+    let each_opponent_spell = starts_sequence(cast, CAST_A_SPELL_FROM_EACH_OPPONENT_GRAVEYARD);
     if !starts_sequence(cast, CAST_PREFIX)
         || !contains_sequence_phrase(cast, CAST_FROM_GRAVEYARD)
-        || !(contains_sequence_word(cast, "instant")
+        || !(each_opponent_spell
+            || contains_sequence_word(cast, "instant")
             || contains_sequence_word(cast, "sorcery")
             || contains_sequence_phrase(cast, OF_THE_OTHER_TYPE))
         || !(contains_sequence_word(cast, "card") || contains_sequence_word(cast, "spell"))

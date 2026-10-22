@@ -970,6 +970,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 starting_with_controller: true,
                 sequential: false,
                 stop_after_first_happened: true,
+                announcement_condition: None,
             });
             (vec![effect], inner_choices)
         }
@@ -1296,15 +1297,37 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             effects,
             sequential,
         }) => {
-            let (inner_effects, inner_choices) =
+            let (mut inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
-            let effect = if *sequential {
+            // "For each opponent who has three or more poison counters as you
+            // cast this spell, ..." (Geth's Summons): the participant gate is
+            // fixed on casting; it selects which iterations announce targets
+            // and is not rechecked on resolution (CR 601.2c).
+            let announcement_condition = if matches!(
+                effects.as_slice(),
+                [EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: crate::cards::builders::PredicateAst::Player(
+                        crate::cards::builders::PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
+                            as_you_cast: true,
+                            ..
+                        },
+                    ),
+                    if_false,
+                    ..
+                })] if if_false.is_empty()
+            ) {
+                take_cast_time_participant_gate(&mut inner_effects)
+            } else {
+                None
+            };
+            let effect = if *sequential || announcement_condition.is_some() {
                 Effect::new(crate::effects::ForPlayersEffect {
                     filter: filter.clone(),
                     effects: inner_effects,
-                    sequential: true,
+                    sequential: *sequential,
                     starting_with_controller: false,
                     stop_after_first_happened: false,
+                    announcement_condition,
                 })
             } else {
                 try_compile_simultaneous_each_player_scry(filter.clone(), &inner_effects)
@@ -1439,6 +1462,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             left_option,
             right_option,
             all_matching,
+            fixed_direction,
+            controller_chooses,
         } => {
             let mut directional = crate::effects::DirectionalAdjacentPlayerControlEffect::new(
                 filter.clone(),
@@ -1446,6 +1471,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 right_option.clone(),
             );
             directional.all_matching = *all_matching;
+            directional.fixed_direction = *fixed_direction;
+            directional.controller_chooses = *controller_chooses;
             let effect = Effect::new(directional);
             (vec![effect], Vec::new())
         }
@@ -1972,4 +1999,20 @@ mod sole_announced_object_target_tests {
             target.with_count_value(ChoiceCount::exactly(1), Value::Fixed(1))
         ]).is_none());
     }
+}
+
+/// Unwrap the single participant gate of a cast-time "for each opponent
+/// who ..." body, keeping its target declarations in place.
+fn take_cast_time_participant_gate(effects: &mut Vec<Effect>) -> Option<crate::effect::Condition> {
+    let index = effects
+        .iter()
+        .position(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>().is_some())?;
+    let conditional = effects[index].downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let condition = conditional.condition.clone();
+    let body = conditional.if_true.clone();
+    effects.splice(index..=index, body);
+    Some(condition)
 }

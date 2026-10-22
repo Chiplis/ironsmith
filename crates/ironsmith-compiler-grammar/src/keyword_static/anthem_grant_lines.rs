@@ -1732,6 +1732,26 @@ fn parse_granted_keyword_static_line_inner(
                     ),
                 )?
             }
+            // Mayhem whose cost is the card's own mana cost (CR 702.187a):
+            // casting a card discarded this turn from the graveyard while
+            // paying exactly its mana cost is a play-from-graveyard
+            // permission over the cards discarded this turn.
+            Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Mayhem) => {
+                if !anthem_grant_grammar::parse_granted_mayhem_cost_equals_mana(trailing_tokens) {
+                    return Ok(None);
+                }
+                extract_grant_spec_from_subject(
+                    subject_tokens,
+                    crate::model::CompilerGrantableCore::PlayFrom,
+                )?
+                .filter(|spec| spec.zone == Zone::Graveyard)
+                .map(|mut spec| {
+                    spec.filter = spec
+                        .filter
+                        .discarded_or_cycled_this_turn_by(crate::target::PlayerFilter::You);
+                    spec
+                })
+            }
             Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Escape) => {
                 let Some(exile_count) = parse_granted_escape_cost_tail(trailing_tokens)? else {
                     return Ok(None);
@@ -2536,7 +2556,10 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
         )));
     }
 
-    if !creature_subtypes.is_empty() {
+    // A creature type alone sets only subtypes (CR 205.1a): "Enchanted
+    // creature ... is a Citizen" keeps its other card types, such as
+    // artifact. Only a noncreature subject needs the implied creature type.
+    if !creature_subtypes.is_empty() && filter.card_types.as_slice() != [CardType::Creature] {
         crate::slice_primitives::push_unique(&mut set_card_types, CardType::Creature);
     }
 
@@ -4874,6 +4897,7 @@ pub fn parse_anthem_clause(
                                 value.unhinted(),
                                 Value::ColorsAmong(_)
                                     | Value::ColorPairsAmong(_)
+                                    | Value::PermanentTypesAmong(_)
                                     | Value::CardTypesAmong(_)
                                     | Value::DistinctNames(_)
                                     | Value::DistinctManaValues(_)

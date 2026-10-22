@@ -31,6 +31,7 @@ pub(crate) fn hand_special_action(
         | AlternativeCastingMethod::Awaken { .. }
         | AlternativeCastingMethod::Flashback { .. }
         | AlternativeCastingMethod::Harmonize { .. }
+        | AlternativeCastingMethod::BeamMeUp { .. }
         | AlternativeCastingMethod::Retrace { .. }
         | AlternativeCastingMethod::JumpStart { .. }
         | AlternativeCastingMethod::Escape { .. }

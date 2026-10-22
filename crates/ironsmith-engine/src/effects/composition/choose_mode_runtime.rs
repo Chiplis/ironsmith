@@ -286,6 +286,7 @@ fn completed_modal_outputs(
 pub(super) enum SelectedModeProgram {
     NoAction,
     Actions {
+        dilemma_player: Option<PlayerId>,
         chosen_indices: Vec<usize>,
         include_common_prefix: bool,
         use_target_scopes: bool,
@@ -336,6 +337,7 @@ pub(super) fn select_mode_program(
     // the choice.
     if let Some(token_mode) = endure_token_mode_when_permanent_is_gone(effect, game, ctx) {
         return Ok(Some(SelectedModeProgram::Actions {
+            dilemma_player: None,
             chosen_indices: vec![token_mode],
             include_common_prefix: false,
             use_target_scopes: false,
@@ -363,6 +365,7 @@ pub(super) fn select_mode_program(
 
     if effect.modes.is_empty() || max_modes == 0 {
         return Ok(Some(SelectedModeProgram::Actions {
+            dilemma_player: None,
             chosen_indices: Vec::new(),
             include_common_prefix: true,
             use_target_scopes: false,
@@ -540,6 +543,8 @@ pub(super) fn select_mode_program(
     }
 
     Ok(Some(SelectedModeProgram::Actions {
+        dilemma_player: (effect.faces_dilemma && !modes_were_announced
+            && !valid_chosen_indices.is_empty()).then_some(chooser),
         chosen_indices: valid_chosen_indices,
         include_common_prefix: true,
         use_target_scopes: true,
@@ -617,10 +622,28 @@ pub(super) fn selected_mode_cursor(
     let (chosen_indices, no_action, use_target_scopes) = match program {
         SelectedModeProgram::NoAction => (Vec::new(), true, false),
         SelectedModeProgram::Actions {
+            dilemma_player,
             chosen_indices,
             include_common_prefix,
             use_target_scopes,
         } => {
+            if let Some(player) = dilemma_player {
+                children.push(ModalProgramChild {
+                    group: 0,
+                    effect: crate::effect::Effect::new(
+                        super::emit_keyword_action::PublishKeywordActionCompletion(
+                            crate::triggers::TriggerEvent::new_with_provenance(
+                                crate::events::KeywordActionEvent::new(
+                                    crate::events::KeywordActionKind::FaceDilemma,
+                                    player, ctx.source, 1,
+                                ), ctx.provenance,
+                            ),
+                        ),
+                    ),
+                    label: None,
+                    identity: vec![2],
+                });
+            }
             if include_common_prefix {
                 for (index, child) in effect.common_prefix_effects.iter().enumerate() {
                     children.push(ModalProgramChild {

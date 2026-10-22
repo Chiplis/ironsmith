@@ -60,6 +60,7 @@ pub(crate) fn read(
             predicate: PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
                 player: PlayerAst::That,
                 count,
+                as_you_cast: false,
             }),
             if_true: vec![again],
             if_false: Vec::new(),

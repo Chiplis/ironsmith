@@ -102,6 +102,11 @@ pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourc
                 unmarked,
                 SourceReferenceSurface::ShortName(unmarked.to_string()),
             );
+        } else if let Some(short_name) = parse_titled_personal_name(full_name) {
+            push_leaf_source_reference_alias(
+                &mut aliases, &short_name,
+                SourceReferenceSurface::ShortName(short_name.clone()),
+            );
         } else if let Some(short_name) = parse_name_prefix(full_name, parse_first_name_word) {
             let short_name = short_name.trim();
             if short_name_is_distinct_name(short_name) {
@@ -116,6 +121,17 @@ pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourc
 
     sort_leaf_source_reference_aliases(&mut aliases);
     aliases
+}
+
+/// Shorten a titled personal name without treating its title alone as a name.
+pub fn parse_titled_personal_name(name: &str) -> Option<String> {
+    let parts: Vec<_> = name.split_whitespace().collect();
+    if parts.len() < 2 || name.contains(',')
+        || !matches!(parts[0].to_ascii_lowercase().as_str(), "dr." | "doctor" | "captain")
+        || parts.iter().any(|part| matches!(part.to_ascii_lowercase().as_str(), "of" | "the" | "and" | "&")) {
+        return None;
+    }
+    Some(format!("{} {}", parts[0], parts[parts.len() - 1]))
 }
 
 /// A multiword personal name can precede an epithet introduced by "of".

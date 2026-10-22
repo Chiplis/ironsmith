@@ -609,6 +609,22 @@ pub fn parse_sacrifice(
     if other {
         filter.other = true;
     }
+    // "Sacrifice those tokens" (Force of Rage): keep the plural token noun of
+    // the referenced set.
+    if all_of_referenced_set
+        && crate::lexer::token_word_refs(filter_tokens).as_slice() == ["those", "tokens"]
+    {
+        filter.token = true;
+        filter.set_plural_object_noun_surface(true);
+    }
+    // "Sacrifice them" (Push the Limit): the plural pronoun names the whole
+    // antecedent set; keep that surface for the referenced sacrifice.
+    if object_shape.tagged_reference.is_none()
+        && crate::lexer::token_word_refs(filter_tokens).as_slice() == ["them"]
+        && !filter.tagged_constraints.is_empty()
+    {
+        filter.set_plural_pronoun_reference_surface(true);
+    }
     if let Some(among_filter) = greatest_mana_value_reference_filter {
         filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
             Value::GreatestManaValue(among_filter),

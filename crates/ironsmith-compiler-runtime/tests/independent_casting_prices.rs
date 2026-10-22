@@ -1233,3 +1233,89 @@ fn private_effect_price_also_selects_prototype_before_eligibility() {
     assert_eq!(g.controller_of_id(stack), Some(A));
     assert_eq!(g.object(stack).unwrap().owner, B);
 }
+
+#[test]
+fn beam_me_up_pays_creature_return_before_resolution_and_exiles_on_departure() {
+    let text = "Mana cost: {U}\nType: Sorcery\nDraw a card.\nBeam me up {2}{U} (You may cast this card from your graveyard for {2}{U} if you also return a creature you control to its owner's hand. Then exile this spell.)";
+    for definition in pair("Open Communications", text) {
+        for destination in [None, Some(Zone::Graveyard), Some(Zone::Hand)] {
+            let mut g = game();
+            let id = g.create_object_from_definition(&definition, A, Zone::Graveyard);
+            let stable = g.object(id).unwrap().stable_id;
+            g.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
+            g.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+            assert!(casts(&g, A, id).is_empty(), "a creature is required to pay the cost");
+            spell(&mut g, B, Zone::Battlefield, "{0}");
+            assert!(casts(&g, A, id).is_empty(), "an opponent's creature cannot pay the cost");
+            let creature = spell(&mut g, A, Zone::Battlefield, "{0}");
+            let creature_stable = g.object(creature).unwrap().stable_id;
+            let drawn = spell(&mut g, A, Zone::Library, "{0}");
+            let drawn_stable = g.object(drawn).unwrap().stable_id;
+            let options = casts(&g, A, id);
+            assert_eq!(options.len(), 1);
+            let on_stack = announce(&mut g, options[0].clone(), &mut Choices { objects: vec![creature], ..Choices::default() });
+            assert_eq!(g.object(g.find_object_by_stable_id(creature_stable).unwrap()).unwrap().zone, Zone::Hand);
+            assert_eq!(g.player(A).unwrap().mana_pool.total(), 0);
+            assert_eq!(g.object(g.find_object_by_stable_id(drawn_stable).unwrap()).unwrap().zone, Zone::Library);
+            assert!(matches!(g.object(on_stack).unwrap().cast_alternative_method.as_deref(),
+                Some(ironsmith::alternative_cast::AlternativeCastingMethod::BeamMeUp { .. })));
+            if let Some(destination) = destination {
+                // Propose the move through the effect executor so stack-departure
+                // replacements run; the low-level zone mutator commits moves.
+                let effect = ironsmith::effect::Effect::move_to_zone(
+                    ironsmith::target::ChooseSpec::SpecificObject(on_stack), destination, false);
+                let mut dm = SelectFirstDecisionMaker;
+                let mut ctx = ironsmith::effects::EffectContext::new(on_stack, A, &mut dm);
+                ironsmith::effects::execute_effect(&mut g, &effect, &mut ctx).unwrap();
+            } else {
+                resolve_stack_entry(&mut g).unwrap();
+                assert_eq!(g.object(g.find_object_by_stable_id(drawn_stable).unwrap()).unwrap().zone, Zone::Hand);
+            }
+            assert_eq!(g.object(g.find_object_by_stable_id(stable).unwrap()).unwrap().zone, Zone::Exile,
+                "departure destination: {destination:?}");
+        }
+    }
+}
+
+#[test]
+fn beam_me_up_keeps_normal_casting_and_sorcery_timing() {
+    for definition in pair("Beam timing probe", "Mana cost: {U}\nType: Sorcery\nDraw a card.\nBeam me up {2}{U}") {
+        let mut normal = game();
+        normal.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
+        let normal_spell = normal.create_object_from_definition(&definition, A, Zone::Hand);
+        let normal_stable = normal.object(normal_spell).unwrap().stable_id;
+        spell(&mut normal, A, Zone::Library, "{0}");
+        let normal_action = casts(&normal, A, normal_spell).into_iter().next().unwrap();
+        announce(&mut normal, normal_action, &mut Choices::default());
+        resolve_stack_entry(&mut normal).unwrap();
+        assert_eq!(normal.object(normal.find_object_by_stable_id(normal_stable).unwrap()).unwrap().zone, Zone::Graveyard);
+        let mut g = game();
+        g.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
+        let hand = g.create_object_from_definition(&definition, A, Zone::Hand);
+        assert_eq!(casts(&g, A, hand).len(), 1, "normal casting does not require a creature");
+        let grave = g.create_object_from_definition(&definition, A, Zone::Graveyard);
+        spell(&mut g, A, Zone::Battlefield, "{0}");
+        assert!(casts(&g, A, grave).is_empty(), "printed mana cost cannot replace beam cost");
+        g.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+        assert_eq!(casts(&g, A, grave).len(), 1);
+        g.turn.active_player = B;
+        assert!(casts(&g, A, grave).is_empty(), "beam me up does not grant flash");
+    }
+}
+
+#[test]
+fn beam_me_up_whole_card_bodies_compile_and_round_trip() {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/beam_me_up.json.fixture")).unwrap();
+    assert_eq!(rows.len(), 4);
+    for row in rows {
+        let name = row["name"].as_str().unwrap();
+        let text = format!("Mana cost: {}\nType: {}\n{}", row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap(), row["oracle_text"].as_str().unwrap());
+        for definition in pair(name, &text) {
+            let methods: Vec<_> = definition.alternative_casts.iter().filter(|method| matches!(method, ironsmith::alternative_cast::AlternativeCastingMethod::BeamMeUp { .. })).collect();
+            assert_eq!(methods.len(), 1, "{name}");
+            assert_eq!(methods[0].cast_from_zone(), Zone::Graveyard);
+            assert!(methods[0].exiles_after_resolution());
+            assert!(!methods[0].non_mana_costs().is_empty(), "{name}: missing return cost");
+        }
+    }
+}

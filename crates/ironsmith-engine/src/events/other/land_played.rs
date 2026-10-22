@@ -24,6 +24,8 @@ pub struct LandPlayedEvent {
     /// Actual original destination, including redirected entry outcomes.
     /// Legacy actor-only notices carry no completed characteristic frame.
     pub completed_destination: Option<Zone>,
+    /// Exact play permission selected for this land play, if any.
+    pub play_permission: Option<crate::grant_registry::GrantPermissionIdentity>,
 }
 
 impl LandPlayedEvent {
@@ -35,6 +37,7 @@ impl LandPlayedEvent {
             from_zone,
             snapshot: None,
             completed_destination: None,
+            play_permission: None,
         }
     }
 
@@ -82,7 +85,15 @@ impl LandPlayedEvent {
         let chars = game.try_current_characteristics(land)
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?.ok_or_else(unavailable)?;
         let snapshot = ObjectSnapshot::try_from_object_with_known_characteristics(object, game, Some(&chars))?;
-        Ok(Self { land, player, from_zone, snapshot: Some(snapshot), completed_destination: Some(completed_destination) })
+        Ok(Self { land, player, from_zone, snapshot: Some(snapshot), completed_destination: Some(completed_destination), play_permission: None })
+    }
+
+    pub fn with_play_permission(
+        mut self,
+        permission: Option<crate::grant_registry::GrantPermissionIdentity>,
+    ) -> Self {
+        self.play_permission = permission;
+        self
     }
 
     pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {

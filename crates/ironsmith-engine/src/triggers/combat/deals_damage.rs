@@ -198,6 +198,20 @@ impl TriggerMatcher for DealsDamageTrigger {
                 generic_source_description(&surface_filter)
             } else if surface_filter == ObjectFilter::default() {
                 "a source".to_string()
+            } else if surface_filter.zone.is_none() {
+                // A zone-unrestricted damage source includes spells; an
+                // untyped one names its head noun "source", not "permanent"
+                // ("a source of the chosen color", Circle of Affliction).
+                let described = surface_filter.description_with_default_noun("source");
+                if described != surface_filter.description()
+                    && !["a ", "an ", "another ", "each ", "one "]
+                        .iter()
+                        .any(|article| described.starts_with(article))
+                {
+                    format!("a {described}")
+                } else {
+                    described
+                }
             } else {
                 surface_filter.description()
             };
@@ -285,12 +299,19 @@ impl TriggerMatcher for DealsDamageTrigger {
                     player_description
                 );
             }
+            // "Whenever one or more Pirates you control deal damage to your
+            // opponents": both sides grouped into one batch event.
+            let recipient = if grouped_sources
+                && self.damaged_player_one_or_more
+                && *player == PlayerFilter::Opponent
+            {
+                "your opponents".to_string()
+            } else {
+                player_description(player)
+            };
             format!(
                 "Whenever {} {} damage to {}{}",
-                source_description,
-                verb,
-                player_description(player),
-                during_turn,
+                source_description, verb, recipient, during_turn,
             )
         } else {
             format!("Whenever {source_description} {verb} damage{during_turn}")

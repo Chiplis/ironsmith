@@ -2294,10 +2294,12 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_bottom(
             format!("those {}", pluralize_noun_phrase(&selection))
         }
     };
-    let tapped_suffix = if move_to_zone.enters_tapped {
-        " tapped"
-    } else {
-        ""
+    // "onto the battlefield tapped and attacking" (Raph & Mikey).
+    let tapped_suffix = match (move_to_zone.enters_tapped, move_to_zone.enters_attacking) {
+        (true, true) => " tapped and attacking",
+        (false, true) => " attacking",
+        (true, false) => " tapped",
+        (false, false) => "",
     };
     let order_text = match bottom.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => {
@@ -2542,6 +2544,14 @@ pub(crate) fn describe_return_attachment_target(target: &ChooseSpec) -> String {
                 || tag.as_str().starts_with("targeted_") =>
         {
             "that creature".to_string()
+        }
+        // "return it to the battlefield ... attached to target opponent"
+        // (Accursed Witch): an announced attachment host keeps its target
+        // wording; only back-references to earlier objects read anaphorically.
+        ChooseSpec::Target(inner)
+            if matches!(inner.unhinted(), ChooseSpec::Object(_) | ChooseSpec::Player(_)) =>
+        {
+            describe_choose_spec(target)
         }
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             describe_return_attachment_target(inner)
@@ -5470,7 +5480,18 @@ pub(crate) fn render_choose_name_search_same_name_exile_shuffle(
     }
 
     let choose_line = describe_choose_card_name_filter(choose_name.filter.as_ref());
-    let search_origin = describe_search_origin_zones(choose)?;
+    // The leading player declaration is announced by the search itself
+    // ("Search target opponent's graveyard, hand, and library"); the search
+    // filter only carries the anaphoric alias of that declaration.
+    let search_origin = if target_only.target.is_target()
+        && matches!(search_owner, PlayerFilter::AliasedTarget(_))
+    {
+        let mut declared = choose.clone();
+        declared.filter.owner = Some(searched_player.clone());
+        describe_search_origin_zones(&declared)?
+    } else {
+        describe_search_origin_zones(choose)?
+    };
     let count_text = same_name_extraction_selection(choose)?;
     if let Some(draw_effect) = draw_effect {
         if !same_name_extraction_hand_draw_matches(draw_effect, exiled_tag, search_owner) {
@@ -5939,8 +5960,22 @@ pub(crate) fn describe_choose_then_put_sticker(
     Some(format!(
         "Put {} on {}",
         sticker_phrase(put_sticker.action),
-        describe_choose_selection(choose)
+        sticker_choice_selection(choose)
     ))
+}
+
+/// "put a sticker on a creature card in your graveyard" (Scampire): the
+/// choice's own graveyard zone is part of what may be stickered.
+pub(crate) fn sticker_choice_selection(choose: &crate::effects::ChooseObjectsEffect) -> String {
+    let mut selection = describe_choose_selection(choose);
+    if choose.filter.zone.or(choose.zone) == Some(Zone::Graveyard)
+        && choose.additional_zones.is_empty()
+        && choose.filter.owner == Some(PlayerFilter::You)
+        && !selection.contains("graveyard")
+    {
+        selection.push_str(" in your graveyard");
+    }
+    selection
 }
 
 pub(crate) fn describe_target_only_then_create_token_count(

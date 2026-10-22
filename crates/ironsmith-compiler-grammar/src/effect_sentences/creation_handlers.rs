@@ -477,18 +477,23 @@ fn quoted_rule_creates_a_nested_token(tokens: &[OwnedLexToken]) -> bool {
 /// parsing the complete list lets the ordinary grant grammar preserve all
 /// three typed abilities and their source order.
 pub fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let start = tokens.iter().enumerate().find_map(|(index, token)| {
-        ((token.is_word("it")
-            && tokens
-                .get(index + 1)
-                .is_some_and(|next| next.is_word("has")))
-            || (token.is_word("they")
-                && tokens
-                    .get(index + 1)
-                    .is_some_and(|next| next.is_word("have"))))
-        .then_some(index)
+    // "They each have flying and "This token can't be enchanted."" (Tetravus)
+    // distributes the same list over every created token.
+    let (start, head_len) = tokens.iter().enumerate().find_map(|(index, token)| {
+        if token.is_word("it") && tokens.get(index + 1).is_some_and(|next| next.is_word("has")) {
+            return Some((index, 2));
+        }
+        if !token.is_word("they") {
+            return None;
+        }
+        if tokens.get(index + 1).is_some_and(|next| next.is_word("have")) {
+            return Some((index, 2));
+        }
+        (tokens.get(index + 1).is_some_and(|next| next.is_word("each"))
+            && tokens.get(index + 2).is_some_and(|next| next.is_word("have")))
+        .then_some((index, 3))
     })?;
-    let rules = tokens.get(start + 2..)?;
+    let rules = tokens.get(start + head_len..)?;
     let open =
         crate::slice_primitives::select_position(rules, |token| token.kind == TokenKind::Quote)?;
     let close = rules
@@ -498,7 +503,11 @@ pub fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[Owned
         .find_map(|(index, token)| (token.kind == TokenKind::Quote).then_some(index))?;
     let prefix = trim_commas(rules.get(..open)?);
     let suffix = trim_commas(rules.get(close + 1..)?);
-    (!prefix.is_empty() && !suffix.is_empty()).then_some(rules)
+    // A keyword list ending in one quoted rule ("flying and "...."") is
+    // equally a mixed list; only the bare quoted rule keeps its own path.
+    let suffix_is_end = suffix.iter().all(|token| token.is_period());
+    (!prefix.is_empty() && (!suffix.is_empty() || (suffix_is_end && head_len == 3)))
+        .then_some(rules)
 }
 
 fn parse_inline_token_granted_abilities(
@@ -1449,9 +1458,64 @@ fn with_token_entry_counter(
     }
 }
 
+/// "Create a token that's a copy of target creature you control, except it
+/// enters with an additional +1/+1 counter on it" (Littjara Mirrorlake): the
+/// copy exception is an entry counter (CR 122.6, 707.9), folded into the
+/// creation instruction like an inline `with ... counter on it`.
+fn split_token_copy_entry_counter_exception(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, crate::object::CounterType, Value)> {
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    if trimmed.iter().any(|token| token.kind == TokenKind::Quote) {
+        return None;
+    }
+    let except_idx = trimmed.iter().rposition(|token| token.is_word("except"))?;
+    let mut prefix = &trimmed[..except_idx];
+    if !token_word_refs(prefix).contains(&"copy") {
+        return None;
+    }
+    let tail = &trimmed[except_idx + 1..];
+    if tail.iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    let words = token_word_refs(tail);
+    let rest = words.strip_prefix(&["it", "enters", "with"][..])?;
+    let (amount, rest) = match rest {
+        ["an" | "a", "additional", rest @ ..] => (Value::Fixed(1), rest),
+        [count, "additional", rest @ ..] => {
+            (Value::Fixed(crate::util::parse_number_word_u32(count)? as i32), rest)
+        }
+        _ => return None,
+    };
+    let counter_word = match rest {
+        [counter, "counter" | "counters", "on", "it"] => *counter,
+        _ => return None,
+    };
+    let counter_type =
+        crate::grammar::filters::parse_counter_type_words(&[counter_word, "counter"])?;
+    while prefix.last().is_some_and(|token| token.is_comma()) {
+        prefix = &prefix[..prefix.len() - 1];
+    }
+    if prefix.is_empty() {
+        return None;
+    }
+    // `additional` marks the copy-exception surface of the entry counter.
+    Some((
+        prefix.to_vec(),
+        counter_type,
+        amount
+            .with_surface_hint(ValueSurfaceHint::InlineBattlefieldEntryCounter)
+            .with_surface_hint(ValueSurfaceHint::AdditionalCards),
+    ))
+}
+
 pub fn lower_complete_simple_create_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    if let Some((prefix, counter_type, amount)) = split_token_copy_entry_counter_exception(tokens) {
+        let create = lower_complete_simple_create_shape(&prefix)?;
+        return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
+    }
     if let Some((prefix, counter_type, amount)) = split_token_entry_counters(tokens) {
         let create = lower_complete_simple_create_shape(&prefix)?;
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
@@ -1516,6 +1580,10 @@ pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if let Some((prefix, counter_type, amount)) = split_token_copy_entry_counter_exception(tokens) {
+        let create = parse_create(&prefix, subject)?;
+        return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
+    }
     if let Some((prefix, counter_type, amount)) = split_token_entry_counters(tokens) {
         let create = parse_create(&prefix, subject)?;
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
@@ -1693,6 +1761,14 @@ pub fn parse_create(
         {
             blocking_target = Some(target);
             tail_tokens.truncate(modifier_start);
+            // "a copy of that creature and that's blocking that creature"
+            // (Mirror Match): the conjunction joins the two relative clauses.
+            while tail_tokens
+                .last()
+                .is_some_and(|token| token.is_word("and") || token.is_comma())
+            {
+                tail_tokens.pop();
+            }
         }
     }
     let tail_words = token_word_refs(&tail_tokens);
@@ -1742,6 +1818,14 @@ pub fn parse_create(
     }
     let resolve_create_count = |references_iterated_object: bool| {
         if let Some(dynamic) = for_each_dynamic_count.clone() {
+            // "Create two ... tokens for each card ..." (Fertile
+            // Imagination): the printed count multiplies the per-item count.
+            if let Value::Fixed(per_item) = count_value.unhinted()
+                && *per_item > 1
+            {
+                return Value::Scaled(Box::new(dynamic), *per_item)
+                    .with_surface_hint(ValueSurfaceHint::ForEach);
+            }
             return dynamic;
         }
         if let Some(filter) = for_each_object_filter.clone() {
@@ -1998,6 +2082,7 @@ pub fn parse_create(
                             exile_at_next_end_step_reference_surface: None,
                             next_end_step_player: next_end_step_player.clone(),
                             set_colors,
+                            added_colors: copy_identity.added_colors,
                             set_card_types,
                             set_subtypes,
                             added_card_types,
@@ -2010,6 +2095,7 @@ pub fn parse_create(
                             set_name: copy_name,
                             added_supertypes,
                             attached_to: attached_to_target.clone(),
+                            blocking: blocking_target.clone(),
                         }),
                     );
                     return Ok(wrap_for_each_player_condition(wrap_delayed_create(
@@ -2048,6 +2134,7 @@ pub fn parse_create(
                     exile_at_next_end_step_reference_surface: None,
                     next_end_step_player,
                     set_colors,
+                    added_colors: copy_identity.added_colors,
                     set_card_types,
                     set_subtypes,
                     added_card_types,
@@ -2272,8 +2359,16 @@ pub fn parse_create(
             [.., "that", "is" | "are", "all", "colors"] => Some(4),
             _ => None,
         };
+        // The keyword list before the suffix may hold commas ("with
+        // flying, vigilance, ..., and haste that's all colors", Mechtitan
+        // Core); only the suffix tokens themselves must be plain words.
         suffix_words
-            .filter(|len| words.len() > *len && words.len() == tail_tokens.len())
+            .filter(|len| {
+                words.len() > *len
+                    && tail_tokens.len() >= *len
+                    && crate::lexer::token_word_refs(&tail_tokens[tail_tokens.len() - len..])
+                        == words[words.len() - len..]
+            })
             .map(|len| tail_tokens[tail_tokens.len() - len..].to_vec())
     };
     if let Some((postnominal_colors, color_role)) =
@@ -2406,6 +2501,23 @@ pub fn parse_create(
     if attack_target_player.is_some() && matches!(player, PlayerAst::That) {
         player = PlayerAst::You;
     }
+    // CR 508.1d: "tokens ... that attack that opponent this turn if able"
+    // (Furygale Flocking): a this-turn attack requirement on each token.
+    let must_attack_player_this_turn = modifier_tail_words
+        .windows(7)
+        .find_map(|window| match window {
+            ["that", "attack", "that", "opponent", "this", "turn", "if"] => {
+                Some(PlayerAst::Defending)
+            }
+            ["that", "attack", "that", "player", "this", "turn", "if"] => Some(PlayerAst::That),
+            ["that", "attack", "you", "this", "turn", "if", "able"] => Some(PlayerAst::You),
+            _ => None,
+        })
+        .filter(|_| {
+            modifier_tail_words
+                .windows(2)
+                .any(|pair| pair == ["if", "able"])
+        });
     let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
     let mut granted_abilities = inline_granted_abilities;
@@ -2442,6 +2554,7 @@ pub fn parse_create(
                 // their planeswalkers (CR 508.4).
                 attack_target_includes_planeswalkers: attack_target_player.is_some()
                     && modifier_surface.has_phrase(CreatePhrase::AttackTarget),
+                must_attack_player_this_turn,
             },
             exile_at_end_of_combat: false,
             sacrifice_at_end_of_combat: false,

@@ -147,6 +147,22 @@ impl SacrificeCostTag {
     }
 }
 
+/// Departure history of a tagged instruction's selected objects: each as it
+/// last existed in the zone it left during that instruction (CR 608.2h).
+/// "the exiled creature's power" (Yannik) reads this battlefield LKI rather
+/// than the card now in exile.
+pub const PRE_MOVE_HISTORY_TAG_PREFIX: &str = "__pre_move_history__";
+
+pub fn pre_move_history_tag(tag: &TagKey) -> TagKey {
+    TagKey::new(format!("{PRE_MOVE_HISTORY_TAG_PREFIX}{}", tag.as_str()))
+}
+
+pub fn pre_move_history_base_tag(tag: &TagKey) -> Option<TagKey> {
+    tag.as_str()
+        .strip_prefix(PRE_MOVE_HISTORY_TAG_PREFIX)
+        .map(TagKey::new)
+}
+
 /// Runtime player tag for the opponent a resolving clash was performed with
 /// (CR 701.30a). "Clash with an opponent. ... Otherwise, that player ..."
 /// refers back to this player.
@@ -181,6 +197,11 @@ pub const LINKED_TRIGGER_PLAYER_TAG: &str = "__linked_trigger_player__";
 /// resolves.
 pub const TRIGGERING_EVENT_CONTROLLER_TAG: &str = "__triggering_event_controller__";
 pub const TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG: &str = "__triggering_event_cause_controller__";
+/// Every player dealt damage in the simultaneous damage batch that triggered
+/// a grouped "deal damage to your opponents" ability ("each of those
+/// opponents", "for each opponent dealt damage"). Collected as the batch's
+/// matching damage events are coalesced into one triggered ability.
+pub const DAMAGE_BATCH_PLAYERS_TAG: &str = "__damage_batch_players__";
 
 /// The object selected by an authored "the chosen object" choice.
 ///

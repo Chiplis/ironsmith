@@ -588,6 +588,22 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
     if let Some(surface) = describe_explicit_where_x_surface(value) {
         return Some(surface.to_string());
     }
+    // "where X is the sacrificed artifact's mana value" (Forge Armor): the
+    // value's own sacrificed-object surface names the sacrificed kind.
+    if let Some(kind) = value.surface_hints().iter().find_map(|hint| match hint {
+        ValueSurfaceHint::SacrificedObject(kind) => Some(*kind),
+        _ => None,
+    }) {
+        let attribute = match value.unhinted() {
+            Value::ManaValueOf(_) => Some("mana value"),
+            Value::PowerOf(_) => Some("power"),
+            Value::ToughnessOf(_) => Some("toughness"),
+            _ => None,
+        };
+        if let Some(attribute) = attribute {
+            return Some(format!("the sacrificed {}'s {attribute}", kind.noun()));
+        }
+    }
     match value.unhinted() {
         Value::Count(filter) => {
             // "the number of Equipment attached to him" (Whiplash): the
@@ -635,6 +651,10 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
         )),
         Value::CardTypesAmong(filter) => Some(format!(
             "the number of card types among {}",
+            describe_count_filter_value_subject(filter)
+        )),
+        Value::PermanentTypesAmong(filter) => Some(format!(
+            "the number of permanent types among {}",
             describe_count_filter_value_subject(filter)
         )),
         Value::ColorsAmong(filter) => {
@@ -1111,6 +1131,39 @@ fn describe_linked_action_result_condition(
     {
         return Some("If you don't or can't make an exchange".to_string());
     }
+    // "If you do, create a token that's a copy of that creature. If you
+    // didn't create a token this way, ..." (Springheart Nantuko): a negated
+    // result of a gated token creation names that creation.
+    if let Some(gate) = effect.downcast_ref::<crate::effects::IfEffect>()
+        && matches!(predicate, EffectPredicate::DidNotHappen)
+        && gate.else_.is_empty()
+        && let [created] = gate.then.as_slice()
+    {
+        let created = structural_unwrap_render_wrappers(created);
+        let creates_token = created
+            .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+            .is_some()
+            || created
+                .downcast_ref::<crate::effects::CreateTokenEffect>()
+                .is_some();
+        if creates_token {
+            return Some("If you didn't create a token this way".to_string());
+        }
+    }
+    // "that creature's controller chooses a creature ... If the player
+    // does, ... If they don't, ..." (Takklemaggot): a choice made by another
+    // player reports that player's result.
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && choose.chooser != PlayerFilter::You
+    {
+        return match predicate {
+            EffectPredicate::Happened | EffectPredicate::Chosen => {
+                Some("If the player does".to_string())
+            }
+            EffectPredicate::DidNotHappen => Some("If they don't".to_string()),
+            _ => None,
+        };
+    }
     let actor = linked_result_actor(effect)?;
     let who = linked_result_player_pronoun(&actor);
     if effect
@@ -1213,6 +1266,18 @@ pub(crate) fn describe_explicit_alternative_result_condition(
         return match predicate {
             EffectPredicate::Happened => Some("If you lose the flip".to_string()),
             EffectPredicate::DidNotHappen => Some("If you win the flip".to_string()),
+            _ => None,
+        };
+    }
+    if let Some(choose) = linked_result_setup_effect(effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && choose.chooser != PlayerFilter::You
+    {
+        return match predicate {
+            EffectPredicate::Happened | EffectPredicate::Chosen => {
+                Some("If they don't".to_string())
+            }
+            EffectPredicate::DidNotHappen => Some("If the player does".to_string()),
             _ => None,
         };
     }
@@ -1553,9 +1618,22 @@ pub(crate) fn describe_with_id_if_clause(
         .downcast_ref::<crate::effects::ForPlayersEffect>()
     {
         if for_players.starting_with_controller && for_players.stop_after_first_happened {
+            // "If a player does either" (Worms of the Earth): each player's
+            // optional action is a pick between two alternatives.
+            let either = matches!(for_players.effects.as_slice(), [only]
+                if only
+                    .downcast_ref::<crate::effects::MayEffect>()
+                    .is_some_and(|may| matches!(may.effects.as_slice(), [choice]
+                        if choice
+                            .downcast_ref::<crate::effects::ChooseModeEffect>()
+                            .is_some_and(|choose| choose.modes.len() == 2
+                                && choose.max == Value::Fixed(1)))));
             match if_effect.predicate {
                 EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined => {
                     "If no one does".to_string()
+                }
+                EffectPredicate::Happened | EffectPredicate::Chosen if either => {
+                    "If a player does either".to_string()
                 }
                 EffectPredicate::Happened | EffectPredicate::Chosen => {
                     "If a player does".to_string()
@@ -2710,7 +2788,7 @@ pub(super) fn describe_may_copy_then_assign_fixed_source_target(
         .effect
         .downcast_ref::<crate::effects::CopySpellEffect>()?;
     let retarget = retarget_effect.downcast_ref::<crate::effects::RetargetStackObjectEffect>()?;
-    let crate::effects::RetargetMode::OneToFixed(fixed) = &retarget.mode else {
+    let Some(fixed) = retarget.mode.fixed_target() else {
         return None;
     };
     if copy.target_reference_kind != Some(crate::filter::StackObjectKind::Spell)
@@ -3151,6 +3229,21 @@ pub(super) fn describe_inline_action_choice(
                 return None;
             };
             branch_targets.push(rendered_action_target(effect).cloned());
+            // "sacrifice two lands of their choice or have this enchantment
+            // deal 5 damage to them" (Worms of the Earth): the source deals
+            // the damage to the choosing player, who doesn't deal it.
+            if let Some(damage) = structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                && let ChooseSpec::Player(damaged) = &damage.target
+                && choose.chooser.as_ref() == Some(damaged)
+                && *damaged != PlayerFilter::You
+                && !damage.source_is_combat
+            {
+                return Some(format!(
+                    "have it deal {} damage to them",
+                    describe_value(&damage.amount)
+                ));
+            }
             let text = describe_effect(effect);
             (!text.contains(['\n', '.'])).then_some(text)
         })
@@ -3609,6 +3702,20 @@ pub(super) fn describe_pay_mana_cost(pay_mana: &crate::effects::PayManaEffect) -
         } else {
             format!("{} plus {owner} mana cost", pay_mana.cost.to_oracle())
         };
+    }
+    // "pay {G}, {W}, or {U}" (Isu the Abominable): one pip with three or
+    // more single-symbol alternatives is a disjunctive payment, not a
+    // printable hybrid symbol.
+    if let [pip] = pay_mana.cost.pips()
+        && pip.len() > 2
+    {
+        let symbols = pip
+            .iter()
+            .map(|symbol| crate::mana::ManaCost::from_pips(vec![vec![*symbol]]).to_oracle())
+            .collect::<Vec<_>>();
+        if let Some((last, rest)) = symbols.split_last() {
+            return format!("{}, or {last}", rest.join(", "));
+        }
     }
     let cost = pay_mana.cost.to_oracle();
     if pay_mana.independent_x_choice && cost == "{X}"
@@ -4113,7 +4220,10 @@ pub(crate) fn describe_with_id_then_reflexive_trigger(
     let triggered = lowercase_first(&rebind_reflexive_matching_count_surface(
         reflexive, &triggered,
     ));
-    let condition = if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
+    let condition = if let Some(opening) =
+        reflexive_source_power_gate_opening(reflexive) {
+        opening
+    } else if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
         let who = may
             .decider
             .as_ref()
@@ -6232,6 +6342,57 @@ pub(crate) fn describe_search_sequence(
         return None;
     }
     let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let text = describe_search_sequence_imperative(sequence, choose)?;
+    Some(search_text_with_declared_player_actor(choose, text))
+}
+
+/// "Target player searches their library for a basic land card, puts it onto
+/// the battlefield tapped, then shuffles" (Fertilid): a search whose chooser
+/// is a declared player searching their own zones names that player as the
+/// actor instead of reading as the controller's imperative search.
+fn search_text_with_declared_player_actor(
+    choose: &crate::effects::ChooseObjectsEffect,
+    text: String,
+) -> String {
+    let inner = match &choose.chooser {
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => inner,
+        _ => return text,
+    };
+    let owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+    if !same_search_player_filter(owner, &choose.chooser) {
+        return text;
+    }
+    let Some(origin) = describe_search_origin_zones(choose) else {
+        return text;
+    };
+    let mut own_zones = choose.clone();
+    own_zones.filter.owner = Some(PlayerFilter::AliasedTarget(inner.clone()));
+    let Some(own_origin) = describe_search_origin_zones(&own_zones) else {
+        return text;
+    };
+    let Some(rest) = text.strip_prefix(&format!("Search {origin}")) else {
+        return text;
+    };
+    let rest = match rest.strip_suffix(". Then that player shuffles") {
+        Some(head) => format!("{head}, then shuffles"),
+        None => rest.to_string(),
+    };
+    if rest.contains(". ") {
+        return text;
+    }
+    let rest = rest
+        .replace(", put ", ", puts ")
+        .replace(" and put ", " and puts ");
+    format!(
+        "{} searches {own_origin}{rest}",
+        capitalize_first(&describe_player_filter(&choose.chooser))
+    )
+}
+
+fn describe_search_sequence_imperative(
+    sequence: &crate::effects::SequenceEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<String> {
     if let Some(put) = sequence.effects[1].downcast_ref::<crate::effects::PutOntoBattlefieldEffect>() {
         let shuffle = if sequence.effects.len() == 3 {
             Some(sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?)
@@ -6538,7 +6699,7 @@ pub(super) fn describe_source_card_from_qualified_zone_target(spec: &ChooseSpec)
         return None;
     };
     if !filter.source { return None; }
-    if filter.zone == Some(Zone::Graveyard) {
+    if matches!(filter.zone, Some(Zone::Graveyard | Zone::Hand)) {
         let mut remainder = filter.clone();
         remainder.zone = None;
         remainder.owner = None;
@@ -6546,6 +6707,9 @@ pub(super) fn describe_source_card_from_qualified_zone_target(spec: &ChooseSpec)
     }
     match (filter.zone, &filter.owner) {
         (Some(Zone::Exile), _) => Some("this card from exile"),
+        // "{4}: Put this card from your hand onto the battlefield" (Talon
+        // Gates of Madara): an ability that functions from the hand.
+        (Some(Zone::Hand), Some(PlayerFilter::You)) => Some("this card from your hand"),
         (Some(Zone::Graveyard), Some(PlayerFilter::You)) => Some("this card from your graveyard"),
         (Some(Zone::Graveyard), None) =>
             Some("this card from its owner's graveyard"),
@@ -6653,6 +6817,23 @@ pub(super) fn describe_correlated_created_token_fight(
 }
 
 pub(crate) fn describe_effect(effect: &Effect) -> String {
+    // An authored ability word on a conditional instruction ("Fateful hour —
+    // If you have 5 or less life, ...") prefixes the rendered instruction.
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>()
+        && let Some(crate::ability::PresentationLabel::AbilityWord(label)) =
+            conditional.presentation_label.as_ref()
+    {
+        let unlabeled = Effect::new(conditional.clone().with_presentation_label(None));
+        let rendered = describe_effect(&unlabeled);
+        // A structural renderer may already print the same ability word.
+        if rendered.trim_start().starts_with(&format!("{label} —")) {
+            return rendered;
+        }
+        return format!("{label} — {}", capitalize_first(&rendered));
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+        note_damage_recipient(&damage.target);
+    }
     // This tag records the selected card's original identity before a
     // characteristic-changing move. Render the authored name instruction,
     // rather than its synthetic target-only implementation.
@@ -7356,6 +7537,29 @@ pub(crate) fn describe_add_mana_choice_mode(
     {
         return None;
     }
+    // "Add X {G} or X {W}, where X is ..." (Brigid, Doun's Mind): each
+    // alternative adds the same dynamic amount of one symbol.
+    let scaled = choose_mode
+        .modes
+        .iter()
+        .map(|mode| match mode.effects.as_slice() {
+            [effect] => unwrap_basic_tag_wrappers(effect)
+                .downcast_ref::<crate::effects::AddScaledManaEffect>()
+                .filter(|add| add.player == PlayerFilter::You && add.mana.len() == 1),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>();
+    if let Some(scaled) = scaled
+        && let Some(first) = scaled.first()
+        && scaled.iter().all(|add| add.amount == first.amount)
+        && let Some(where_x) = describe_where_x_basis(&first.amount)
+    {
+        let options = scaled
+            .iter()
+            .map(|add| format!("X {}", describe_mana_symbol(add.mana[0])))
+            .collect::<Vec<_>>();
+        return Some(format!("Add {}, where X is {where_x}", join_with_or(&options)));
+    }
     let mut options = Vec::with_capacity(choose_mode.modes.len());
     let mut groups: Vec<&[crate::mana::ManaSymbol]> = Vec::with_capacity(choose_mode.modes.len());
     for mode in &choose_mode.modes {
@@ -7827,7 +8031,9 @@ pub(crate) fn describe_conditional_choose_both_instead(
     }
 
     let selection = match (&choose_true.min_choose_count, &choose_true.choose_count) {
-        (Value::Fixed(1), Value::Fixed(2)) if choose_true.modes.len() == 2 => "both".to_string(),
+        (Value::Fixed(1 | 2), Value::Fixed(2)) if choose_true.modes.len() == 2 => {
+            "both".to_string()
+        }
         (Value::Fixed(0), Value::Fixed(max))
             if usize::try_from(*max).ok() == Some(choose_true.modes.len()) =>
         {
@@ -7838,28 +8044,27 @@ pub(crate) fn describe_conditional_choose_both_instead(
         {
             "one or more".to_string()
         }
-        (Value::Fixed(1), Value::Fixed(2)) => "two".to_string(),
+        (Value::Fixed(1 | 2), Value::Fixed(2)) => "two".to_string(),
         (Value::Fixed(1), Value::Fixed(1)) => "one".to_string(),
         _ => return None,
     };
 
     let condition = describe_condition(&conditional.condition);
-    let timing = if choose_both_condition_is_cast_time(&conditional.condition) {
+    // CR 603.3c: a triggered ability's modes are chosen as it is put on the
+    // stack, so the cast-time qualifier only belongs to spells.
+    let timing = if choose_both_condition_is_cast_time(&conditional.condition)
+        && !RENDERING_TRIGGERED_RESOLUTION.with(std::cell::Cell::get)
+    {
         " as you cast this spell"
     } else {
         ""
     };
-    let permission = if matches!(
-        &conditional.condition,
-        crate::effect::Condition::YouControlCommander
-            | crate::effect::Condition::PlayerControls { .. }
-            | crate::effect::Condition::PlayerDescendedThisTurn { .. }
-            | crate::effect::Condition::LifeTotalOrLess(_)
-            | crate::effect::Condition::LifeTotalOrGreater(_)
-    ) {
-        "you may "
-    } else {
-        ""
+    // "you may choose both/two instead" widens the range to one-or-two
+    // (min below max); a bare "choose both instead" fixes min == max.
+    // "any number" / "one or more" are already ranges.
+    let permission = match (&choose_true.min_choose_count, &choose_true.choose_count) {
+        (Value::Fixed(1), Value::Fixed(2)) => "you may ",
+        _ => "",
     };
     let base = if choose_false.random {
         "Choose one at random"
@@ -7879,6 +8084,27 @@ pub(crate) fn describe_conditional_choose_both_instead(
         out.push_str(description.trim());
     }
     Some(out)
+}
+
+thread_local! {
+    /// Set while a triggered ability's resolution text renders.
+    pub(crate) static RENDERING_TRIGGERED_RESOLUTION: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+    /// Set while an ability that functions only while its source is exiled
+    /// renders: "return it to the battlefield" moves the source from exile.
+    pub(crate) static RENDERING_EXILE_FUNCTIONAL_ABILITY: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+    /// Noun for the players a grouped damage trigger's batch damaged
+    /// (`DAMAGE_BATCH_PLAYERS_TAG`), from the rendering trigger's damaged
+    /// player filter: "deal damage to your opponents" -> "opponent".
+    pub(crate) static DAMAGE_BATCH_PLAYER_NOUN: std::cell::Cell<&'static str> =
+        const { std::cell::Cell::new("player") };
+}
+
+/// Singular noun naming the players of a damage batch while a triggered
+/// ability renders ("player" outside an opponent-restricted trigger).
+pub(crate) fn damage_batch_player_noun() -> &'static str {
+    DAMAGE_BATCH_PLAYER_NOUN.with(std::cell::Cell::get)
 }
 
 pub(super) fn choose_both_condition_is_cast_time(condition: &crate::effect::Condition) -> bool {
@@ -8900,4 +9126,29 @@ pub(crate) fn describe_binary_pile_opponent_partition(effects: &[Effect]) -> Opt
         }
     }
     Some(text)
+}
+
+/// "When its power becomes 20 this way" (Inferno of the Star Mounts): a
+/// reflexive trigger-time gate on the source's resulting power, with no
+/// mirrored resolution check in the body.
+pub(crate) fn reflexive_source_power_gate_opening(
+    reflexive: &crate::effects::ReflexiveTriggerEffect,
+) -> Option<String> {
+    if reflexive.predicate != EffectPredicate::Happened
+        || reflexive
+            .effects
+            .iter()
+            .any(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>().is_some())
+    {
+        return None;
+    }
+    let Some(crate::effect::Condition::ValueComparison {
+        left: crate::effect::Value::SourcePower,
+        operator: ironsmith_core::ValueComparisonOperator::Equal,
+        right: crate::effect::Value::Fixed(power),
+    }) = &reflexive.intervening_if
+    else {
+        return None;
+    };
+    Some(format!("When its power becomes {power} this way"))
 }

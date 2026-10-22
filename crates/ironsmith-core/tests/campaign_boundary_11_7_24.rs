@@ -285,6 +285,7 @@ fn combat_damage_controller_group_defaults_false_in_direct_and_delayed_named_mod
             per_source_controller,
             recipient_passive: false,
             during_your_turn: false,
+            object_recipient: None,
         };
         assert_defaulted_controller_group(
             direct(false), direct(true), "DealsCombatDamageToPlayer",

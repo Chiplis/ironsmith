@@ -3430,6 +3430,7 @@ fn serial_keyword_filters_survive_trigger_and_effect_comma_boundaries() {
                 crate::triggers::TriggerKind::AttacksOneOrMoreWithMinTotal {
                     filter,
                     min_total_attackers,
+                    ..
                 } => Some((filter, *min_total_attackers)),
                 _ => None,
             },

@@ -1,6 +1,15 @@
 use super::*;
 
 #[test]
+fn titled_personal_names_keep_title_and_surname_in_short_references() {
+    assert_eq!(parse_short_self_reference_name("Dr. Ada Example"), "Dr. Example");
+    assert_eq!(parse_short_self_reference_name("Captain Ada B. Example"), "Captain Example");
+    assert_eq!(parse_short_self_reference_name("Doctor Example"), "Doctor Example");
+    assert_eq!(parse_short_self_reference_name("Captain Example the Bold"), "Captain Example");
+    assert_ne!(parse_short_self_reference_name("Captain of the Watch"), "Captain Watch");
+}
+
+#[test]
 fn parses_keyword_and_short_name_surfaces() {
     assert!(parse_single_keyword_verb("Mill").is_some());
     assert!(parse_keyword_ability_name("double strike").is_some());

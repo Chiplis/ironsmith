@@ -212,6 +212,12 @@ pub fn parse_become_copy_exception_shape(
     if permission_shapes::exact_tokens(tokens, &["it", "isn't", "legendary"])
         || permission_shapes::exact_tokens(tokens, &["it", "isnt", "legendary"])
         || permission_shapes::exact_tokens(tokens, &["it", "is", "not", "legendary"])
+        // "except those creatures aren't legendary" (Echoing Equation): the
+        // plural subject of a mass copy effect.
+        || permission_shapes::exact_tokens(tokens, &["those", "creatures", "aren't", "legendary"])
+        || permission_shapes::exact_tokens(tokens, &["those", "creatures", "arent", "legendary"])
+        || permission_shapes::exact_tokens(tokens, &["they", "aren't", "legendary"])
+        || permission_shapes::exact_tokens(tokens, &["they", "arent", "legendary"])
     {
         return Some(BecomeCopyExceptionShape {
             remove_supertypes: vec![Supertype::Legendary],

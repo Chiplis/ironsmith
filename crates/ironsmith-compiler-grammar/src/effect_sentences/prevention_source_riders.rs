@@ -46,6 +46,10 @@ pub(super) fn parse(sentence: &[OwnedLexToken]) -> Result<Option<PreventionRider
     };
     let opening = &clean[..opening_end];
     let triggered = opening.first().is_some_and(|token| token.is_word("whenever"));
+    // "When damage is prevented this way, ..." (New Way Forward): a
+    // reflexive-style delayed ability linked to the one-shot shield, put on
+    // the stack once when the damage is prevented (CR 603.12).
+    let triggered_once = opening.first().is_some_and(|token| token.is_word("when"));
     let Some(quality) = parse_opening(opening) else {
         return Ok(None);
     };
@@ -58,7 +62,7 @@ pub(super) fn parse(sentence: &[OwnedLexToken]) -> Result<Option<PreventionRider
     let Some(body) = parse_body(body)? else {
         return Ok(None);
     };
-    if triggered {
+    if triggered || triggered_once {
         // The source quality is part of the trigger event, not a resolution
         // check (CR 603.4 does not apply; this is no intervening "if").
         return Ok(Some(PreventionRider::Delayed(EffectAst::Delayed(
@@ -67,7 +71,7 @@ pub(super) fn parse(sentence: &[OwnedLexToken]) -> Result<Option<PreventionRider
                     source_filter: quality,
                 },
                 effects: vec![body],
-                one_shot: false,
+                one_shot: triggered_once,
                 until_end_of_combat: false,
                 attach_to_previous_ability: false,
             },
@@ -92,7 +96,7 @@ fn parse_opening(tokens: &[OwnedLexToken]) -> Option<Option<ObjectFilter>> {
     let ((), rest) = primitives::parse_prefix(
         tokens,
         (
-            alt((primitives::kw("if"), primitives::kw("whenever"))),
+            alt((primitives::kw("if"), primitives::kw("whenever"), primitives::kw("when"))),
             primitives::kw("damage"),
         )
             .void(),
@@ -176,6 +180,28 @@ fn parse_body(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextErr
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     if tokens.is_empty() {
         return Ok(None);
+    }
+    // "~ deals that much damage to that source's controller and you draw
+    // that many cards" (New Way Forward): both parts read the prevented
+    // amount.
+    if let Some((and_idx, (), _)) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&["and", "you", "draw", "that", "many", "cards"])
+    }) && and_idx > 0
+        && and_idx + 6 == tokens.len()
+        && let Some(first) = parse_body(&tokens[..and_idx])?
+    {
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                first,
+                EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                        count: prevented_amount(),
+                    }),
+                ),
+            ],
+        }));
     }
     // "you gain that much life"
     if primitives::parse_all(

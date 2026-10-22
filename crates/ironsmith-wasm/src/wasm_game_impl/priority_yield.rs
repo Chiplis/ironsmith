@@ -176,12 +176,32 @@ impl WasmGame {
         result
     }
 
+    // End turn grants phase passing with no stops. Only that attacker's own
+    // consent may answer combat, and mandatory attacks still require a choice.
+    fn pass_intent_skips_attackers(&self) -> bool {
+        let Some(DecisionContext::Attackers(attackers)) = self.pending_decision.as_ref() else {
+            return false;
+        };
+        self.pass_intents
+            .get(&attackers.player.0)
+            .is_some_and(|intent| {
+                intent.mode == PassMode::Phases
+                    && intent.stops.is_empty()
+                    && intent.turn == self.game.turn.turn_number
+                    && !attackers
+                        .attacker_options
+                        .iter()
+                        .any(|option| option.must_attack)
+            })
+    }
+
     fn pass_intents_reached_stop(&mut self) -> bool {
         let (phase, step) = self.pass_window();
         let stack = self.pass_stack_ids();
         let turn = self.game.turn.turn_number;
         let mut stop = self.game_over.is_some()
-            || !matches!(self.pending_decision, Some(DecisionContext::Priority(_)));
+            || (!matches!(self.pending_decision, Some(DecisionContext::Priority(_)))
+                && !self.pass_intent_skips_attackers());
         for intent in self.pass_intents.values_mut() {
             let new_combat =
                 phase == "Combat" && step == "BeginCombat" && intent.previous_step != "BeginCombat";
@@ -213,27 +233,33 @@ impl WasmGame {
             if self.pass_intents_reached_stop() {
                 return Ok(());
             }
-            let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref() else {
-                unreachable!()
-            };
-            if !self.pass_intents.contains_key(&priority.player.0) {
-                return Ok(());
-            }
-            if !priority
-                .actions
-                .iter()
-                .any(|a| matches!(a, LegalAction::PassPriority))
-            {
-                self.pass_intents.clear();
-                return Ok(());
-            }
-            self.dispatch_routed_command(
+            let command = if self.pass_intent_skips_attackers() {
+                UiCommand::DeclareAttackers {
+                    declarations: vec![],
+                    bands: vec![],
+                }
+            } else {
+                let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref()
+                else {
+                    unreachable!()
+                };
+                if !self.pass_intents.contains_key(&priority.player.0) {
+                    return Ok(());
+                }
+                if !priority
+                    .actions
+                    .iter()
+                    .any(|a| matches!(a, LegalAction::PassPriority))
+                {
+                    self.pass_intents.clear();
+                    return Ok(());
+                }
                 UiCommand::PriorityAction {
                     action_index: None,
                     action_ref: Some(PriorityActionRef::PassPriority),
-                },
-                0.0,
-            )?;
+                }
+            };
+            self.dispatch_routed_command(command, 0.0)?;
             if !self.last_crypto_requirements.is_empty()
                 || self.active_viewed_cards.is_some()
                 || !self.active_audit_viewed_cards.is_empty()
@@ -330,6 +356,66 @@ mod priority_yield_tests {
             wasm.pending_decision,
             Some(DecisionContext::Priority(_))
         ));
+    }
+
+    #[test]
+    fn end_turn_declares_no_attackers_unless_an_attack_is_required() {
+        let _ids = crate::test_id_counter_guard();
+        for (has_creature, mandatory, selected_stop) in [
+            (false, false, false),
+            (true, false, false),
+            (true, true, false),
+            (true, false, true),
+        ] {
+            let mut wasm = fixture(0);
+            if has_creature {
+                let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+                    CardId::new(),
+                    "Attack consent probe",
+                )
+                .card_types(vec![CardType::Creature])
+                .power_toughness(ironsmith::PowerToughness::fixed(2, 2))
+                .build();
+                let id = wasm.game.create_object_from_definition(
+                    &definition,
+                    PlayerId(0),
+                    Zone::Battlefield,
+                );
+                wasm.game.remove_summoning_sickness(id);
+                if mandatory {
+                    wasm.game.object_mut(id).unwrap().abilities =
+                        std::sync::Arc::new(vec![ironsmith::ability::Ability::static_ability(
+                            ironsmith::static_abilities::StaticAbility::must_attack(),
+                            "This creature attacks each combat if able".into(),
+                        )]);
+                }
+            }
+            authorize(
+                &mut wasm,
+                PassMode::Phases,
+                if selected_stop {
+                    &["step:DeclareAttackers"]
+                } else {
+                    &[]
+                },
+            );
+            authorize(&mut wasm, PassMode::Phases, &["phase:Main2"]);
+            assert!(wasm.pass_intents.is_empty());
+            if mandatory || selected_stop {
+                assert_eq!(wasm.game.turn.step, Some(Step::DeclareAttackers));
+                assert!(matches!(
+                    wasm.pending_decision,
+                    Some(DecisionContext::Attackers(_))
+                ));
+            } else {
+                assert_eq!(wasm.game.turn.phase, Phase::NextMain);
+                assert!(matches!(
+                    wasm.pending_decision,
+                    Some(DecisionContext::Priority(_))
+                ));
+                assert_eq!(wasm.game.player(PlayerId(1)).unwrap().life, 20);
+            }
+        }
     }
 
     #[test]

@@ -2535,6 +2535,28 @@ impl GameState {
             .insert(viewer);
     }
 
+    /// Whether `viewer` may look at the front face of face-down permanent
+    /// `id`: its controller always may (CR 708.5), and a rule effect may let
+    /// other players look at it any time (CR 708.6; Found Footage).
+    pub fn can_player_look_at_face_down_permanent(&self, id: ObjectId, viewer: PlayerId) -> bool {
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        let controller = self.controller_of(object);
+        viewer == controller
+            || viewer == self.controlling_player_for(controller)
+            || self
+                .effect_store
+                .cant_effects
+                .face_down_viewers
+                .get(&id)
+                .is_some_and(|viewers| {
+                    viewers.iter().any(|entitled| {
+                        *entitled == viewer || self.controlling_player_for(*entitled) == viewer
+                    })
+                })
+    }
+
     /// Check whether a player may inspect a face-down exiled card.
     pub fn can_player_look_at_face_down_exiled_card(&self, id: ObjectId, viewer: PlayerId) -> bool {
         self.exile_tracking
@@ -3461,6 +3483,12 @@ impl GameState {
     }
 
     pub fn get_exiled_with_source_links(&self, source_id: ObjectId) -> &[ObjectId] {
+        let source_id = self
+            .exile_tracking
+            .linked_exile_source_aliases
+            .get(&source_id)
+            .copied()
+            .unwrap_or(source_id);
         self.exile_tracking
             .exiled_with_source
             .get(&source_id)
@@ -3623,6 +3651,16 @@ impl GameState {
         self.exile_tracking_mut().return_exiled_when_source_leaves = sources;
     }
 
+    /// `reader` reads the cards exiled with `source` as its own linked pool
+    /// (an emblem's "cards exiled with Tibalt").
+    pub fn alias_exiled_with_source_links(&mut self, reader: ObjectId, source: ObjectId) {
+        if reader != source {
+            self.exile_tracking_mut()
+                .linked_exile_source_aliases
+                .insert(reader, source);
+        }
+    }
+
     pub fn transfer_exiled_with_source_links(
         &mut self,
         old_source_id: ObjectId,
@@ -3630,6 +3668,20 @@ impl GameState {
     ) {
         if old_source_id == new_source_id {
             return;
+        }
+        // A reader aliased to the entering incarnation keeps reading the
+        // links that incarnation's own as-enters transfer carries forward.
+        if self
+            .exile_tracking
+            .linked_exile_source_aliases
+            .values()
+            .any(|source| *source == old_source_id)
+        {
+            for source in self.exile_tracking_mut().linked_exile_source_aliases.values_mut() {
+                if *source == old_source_id {
+                    *source = new_source_id;
+                }
+            }
         }
 
         let linked = self
@@ -4327,6 +4379,15 @@ impl GameState {
             self.turn_store
                 .creature_last_attacked_turn
                 .insert(stable_id, self.turn.turn_number);
+        }
+        if let Some(damage) = event.downcast::<crate::events::DamageEvent>()
+            && damage.is_combat
+            && damage.amount > 0
+            && let crate::events::DamageTarget::Player(player) = damage.target
+        {
+            self.turn_store
+                .player_last_dealt_combat_damage_turn
+                .insert(player, self.turn.turn_number);
         }
         if let Some(blocked) = event.downcast::<crate::events::combat::CreatureBlockedEvent>()
             && let Some(stable_id) = self.object(blocked.blocker).map(|object| object.stable_id)

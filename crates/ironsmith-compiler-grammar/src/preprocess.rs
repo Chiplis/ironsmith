@@ -419,6 +419,22 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
                 first_tokens,
                 &second_tokens,
             );
+        // "sacrifice this creature unless you pay {10}. This cost is reduced
+        // by {2} for each ..." (Draco) and "Disguise {5}{R}. This cost is
+        // reduced by {1} for each ..." (Fugitive Codebreaker): the reduction
+        // modifies the cost printed in the first sentence, not this spell's
+        // casting cost, so the sentences stay one line.
+        let second_words = crate::lexer::TokenWordView::new(&second_tokens).word_refs();
+        let first_words = crate::lexer::TokenWordView::new(first_tokens).word_refs();
+        if split.kind == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
+            && second_words.starts_with(&["this", "cost", "is", "reduced", "by"])
+            && (first_words.windows(2).any(|window| window == ["unless", "you"])
+                || first_words
+                    .first()
+                    .is_some_and(|word| matches!(*word, "disguise" | "morph" | "megamorph")))
+        {
+            return vec![line.to_string()];
+        }
         if is_flashback_scoped_cost_adjustment {
             // The flashback parser binds "this way" to the alternative cast.
             // Splitting these sentences first silently broadens the reduction
@@ -1627,15 +1643,8 @@ fn rewrite_commander_cost_subject_line(text: &str) -> String {
     let Some(rest) = text.strip_prefix("your commander costs ") else {
         return text.to_string();
     };
-    let rest = rest
-        .replace(
-            "for each time it's been cast from the command zone this game",
-            "for each time you've cast your commander from the command zone this game",
-        )
-        .replace(
-            "for each time its been cast from the command zone this game",
-            "for each time you've cast your commander from the command zone this game",
-        );
+    // "it" stays the commander spell being cast: its own command-zone cast
+    // count, not the sum over every commander you own (partners).
     format!("commander spells you cast cost {rest}")
 }
 
@@ -1651,7 +1660,7 @@ fn rewrite_static_cast_the_exiled_card_line(text: &str) -> String {
     }
     text.replacen(
         PERMISSION,
-        "you may play cards exiled with this creature, and mana of any type can be spent to cast those spells",
+        "you may cast cards exiled with this creature, and mana of any type can be spent to cast those spells",
         1,
     )
 }
@@ -2524,7 +2533,10 @@ pub fn preprocess_document_with_provenance(
     fn normalize_card_name_for_self_reference(name: &str) -> String {
         let lower = name.to_ascii_lowercase();
         let bytes = lower.as_bytes();
-        if bytes.len() > 2 && bytes[1] == b'-' && bytes[0].is_ascii_alphabetic() {
+        // Only the Alchemy rebalance marker ("A-Name") is a printed-name
+        // prefix the rules text omits. Other single-letter hyphenated names
+        // ("O-Kagachi Made Manifest", "X-23, Deadly Weapon") are the name.
+        if bytes.len() > 2 && bytes[1] == b'-' && bytes[0] == b'a' {
             lower[2..].to_string()
         } else {
             lower

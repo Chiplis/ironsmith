@@ -145,6 +145,36 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         ],
                     })
                 }
+                shapes::RemoveCounterDestination::EachOfExactly {
+                    count,
+                    filter_tokens,
+                } => {
+                    let filter = parse_object_filter(filter_tokens, false)?;
+                    let selected_tag = helper_tag_for_tokens(tokens, "counter_removal_subset");
+                    Ok(EffectAst::Sequence {
+                        effects: vec![
+                            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                                filter,
+                                count: ChoiceCount::exactly(count),
+                                count_value: None,
+                                player: PlayerAst::You,
+                                tag: crate::tag::TagRef::of(selected_tag.clone()),
+                            }),
+                            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                                tag: crate::tag::TagRef::of(selected_tag),
+                                effects: vec![EffectAst::subject_verb_remove_up_to_any_counters(
+                                    amount,
+                                    TargetAst::Tagged(
+                                        crate::tag::CompilerReferenceTag::It.bind(),
+                                        span_from_tokens(tokens),
+                                    ),
+                                    counter_type,
+                                    up_to,
+                                )],
+                            }),
+                        ],
+                    })
+                }
                 shapes::RemoveCounterDestination::All { filter_tokens } => {
                     let filter = parse_object_filter(filter_tokens, false)?;
                     Ok(EffectAst::subject_verb_remove_counters_all(
@@ -744,17 +774,26 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             // "Destroy target creature of an opponent's choice" delegates the
             // target choice to an opponent: declare the target with that
             // chooser, then destroy the declared object.
+            // "destroy target nonland permanent of that player's choice ..."
+            // (Bladegriff Prototype): the referenced player announces it.
             if let Some(choice_shape) =
                 crate::grammar::choices::parse_possessive_object_choice_tokens(target_tokens)
-                && choice_shape.actor
-                    == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
+                && let Some(chooser) = match choice_shape.actor {
+                    crate::grammar::choices::PossessiveObjectChoiceActor::Opponent => {
+                        Some(PlayerAst::Opponent)
+                    }
+                    crate::grammar::choices::PossessiveObjectChoiceActor::ThatPlayer => {
+                        Some(PlayerAst::That)
+                    }
+                    _ => None,
+                }
             {
                 let target = parse_target_phrase(&choice_shape.object_tokens)?;
                 EffectAst::Sequence {
                     effects: vec![
                         EffectAst::subject_verb_explicit_target_only_for_chooser(
                             target,
-                            PlayerAst::Opponent,
+                            chooser,
                         ),
                         EffectAst::subject_verb_destroy(TargetAst::Tagged(
                             crate::tag::CompilerReferenceTag::It.bind(),

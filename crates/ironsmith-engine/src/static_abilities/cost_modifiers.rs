@@ -212,6 +212,10 @@ fn describe_player_filter_for_spell_target(filter: &PlayerFilter) -> String {
             format!("target {}", describe_player_filter_for_spell_target(inner))
         }
         PlayerFilter::AliasedTarget(_) => "that player".to_string(),
+        // "Spells you cast that target enchanted player" (Infectious Curse).
+        PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+            "enchanted player".to_string()
+        }
         _ => "a player".to_string(),
     }
 }
@@ -681,11 +685,12 @@ fn describe_for_each_cost_modifier_amount(amount: &Value) -> Option<(String, Opt
         ));
     }
     if amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
-        && amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference)
-        && matches!(
+        && (matches!(
             amount.unhinted(),
-            Value::CommanderCastCount(PlayerFilter::You)
-        )
+            Value::CommandersCastFromCommandZoneBy(PlayerFilter::You)
+        ) || (amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference)
+            && matches!(amount.unhinted(), Value::CommanderCastCount(PlayerFilter::You))))
     {
         return Some((
             "{1}".to_string(),
@@ -859,6 +864,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{1}".to_string(),
             Some(format!(
                 "for each card type among {}",
+                describe_types_among_scope(filter)
+            )),
+        ),
+        Value::PermanentTypesAmong(filter) => (
+            "{1}".to_string(),
+            Some(format!(
+                "for each permanent type among {}",
                 describe_types_among_scope(filter)
             )),
         ),
@@ -1344,6 +1356,17 @@ fn is_anywhere_other_than_hand_filter(filter: &ObjectFilter) -> bool {
         })
 }
 
+/// The singular subject of "The first <spell> you cast each turn": a union
+/// of card types reads "instant or sorcery spell" once it names one spell.
+fn describe_single_spell_filter(filter: &ObjectFilter) -> String {
+    let subject = describe_spell_filter(filter).replacen("spells", "spell", 1);
+    if filter.card_types.len() >= 2 {
+        subject.replacen(" and ", " or ", 1)
+    } else {
+        subject
+    }
+}
+
 pub(super) fn describe_spell_filter(filter: &ObjectFilter) -> String {
     // A disjunction of otherwise-unqualified spell origins shares the outer
     // spell characteristics and caster. Render those facts once.
@@ -1405,8 +1428,18 @@ pub(super) fn describe_spell_filter(filter: &ObjectFilter) -> String {
     let authored_permanent_with_adventure = is_permanent_card_type_set(&filter.card_types)
         && filter.subtypes.as_slice() == [Subtype::Adventure];
     let mut qualifiers = Vec::<String>::new();
+    // "Face-down creature spells you cast cost {1} less" (Dream Chisel).
+    if filter.face_down == Some(true) {
+        qualifiers.push("face-down".to_string());
+    }
     for supertype in &filter.supertypes {
         qualifiers.push(supertype.to_string());
+    }
+    if filter.historic {
+        qualifiers.push("historic".to_string());
+    }
+    if filter.nonhistoric {
+        qualifiers.push("nonhistoric".to_string());
     }
     if filter.multicolored {
         qualifiers.push("multicolored".to_string());
@@ -1481,6 +1514,9 @@ pub(super) fn describe_spell_filter(filter: &ObjectFilter) -> String {
     match filter.cast_by.as_ref() {
         Some(PlayerFilter::You) => description.push_str(" you cast"),
         Some(PlayerFilter::Opponent) => description.push_str(" your opponents cast"),
+        Some(PlayerFilter::TaggedPlayer(tag)) if tag.as_str() == "enchanted" => {
+            description.push_str(" enchanted player casts")
+        }
         _ => {}
     }
     if authored_permanent_with_adventure {
@@ -1844,7 +1880,7 @@ impl StaticAbilityKind for CostReduction {
         {
             let mut base = self.filter.clone();
             base.first_spell_cast_each_turn = false;
-            let subject = describe_spell_filter(&base).replacen("spells", "spell", 1);
+            let subject = describe_single_spell_filter(&base);
             let turn_window = if self.condition.is_some() {
                 "during each of your turns"
             } else {
@@ -2625,10 +2661,23 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
                 format!("This ability costs an additional {} to activate", increase)
             }
         } else {
-            let (subject, _) = super::continuous::grant_subject_with_set_quantifier(
-                &self.filter,
-                self.filter.set_quantifier_surface(),
-            );
+            // A zone-unrestricted subject taxes sources in every zone
+            // ("sources with the chosen name"), not only permanents.
+            let describe_subject = || {
+                super::continuous::grant_subject_with_set_quantifier(
+                    &self.filter,
+                    self.filter.set_quantifier_surface(),
+                )
+                .0
+            };
+            let subject = if self.filter.zone.is_none() {
+                ironsmith_core::filter_model::with_untyped_filter_default_noun(
+                    "source",
+                    describe_subject,
+                )
+            } else {
+                describe_subject()
+            };
             let subject = subject.strip_prefix("All ").unwrap_or(&subject);
             if mana_only {
                 format!("Activated abilities of {} cost {} more to activate", subject, increase)
@@ -3735,6 +3784,9 @@ pub struct CostReductionManaCost {
     /// false, colored mana the cost doesn't require reduces generic mana
     /// instead (CR 118.7b-c).
     pub colored_only: bool,
+    /// Apply the reduction once per unit of this count ("{U} less to cast
+    /// for each land you control with a flood counter on it").
+    pub repetitions: Option<Value>,
 }
 
 impl CostReductionManaCost {
@@ -3746,7 +3798,13 @@ impl CostReductionManaCost {
             per_target: false,
             optional_life_additional_cost: None,
             colored_only: false,
+            repetitions: None,
         }
+    }
+
+    pub fn with_repetitions(mut self, count: Value) -> Self {
+        self.repetitions = Some(count);
+        self
     }
 
     pub fn with_colored_only(mut self, colored_only: bool) -> Self {
@@ -3808,11 +3866,30 @@ impl StaticAbilityKind for CostReductionManaCost {
             }
             return describe_cost_modifier_with_condition(line, &self.condition);
         }
-        let mut line = format!(
-            "{} cost {} less to cast",
-            describe_spell_filter(&self.filter),
-            describe_cost_modifier_mana_cost(&self.reduction)
-        );
+        let mut line = if self.filter.first_spell_cast_each_turn
+            && !self.per_target
+            && self.condition.is_none()
+        {
+            let mut base = self.filter.clone();
+            base.first_spell_cast_each_turn = false;
+            format!(
+                "The first {} each turn costs {} less to cast",
+                describe_single_spell_filter(&base),
+                describe_cost_modifier_mana_cost(&self.reduction)
+            )
+        } else {
+            format!(
+                "{} cost {} less to cast",
+                describe_spell_filter(&self.filter),
+                describe_cost_modifier_mana_cost(&self.reduction)
+            )
+        };
+        if let Some((_, Some(tail))) =
+            self.repetitions.as_ref().map(describe_cost_modifier_amount)
+        {
+            line.push(' ');
+            line.push_str(&tail);
+        }
         if self.per_target {
             line.push_str(" for each target");
         }

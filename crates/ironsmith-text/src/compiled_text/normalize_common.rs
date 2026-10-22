@@ -225,6 +225,13 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "that player or that planeswalker's controller".to_string()
         }
         PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "opponent attacking that player".into(),
+        // "Target opponent whose turn it is" (The Beamtown Bullies): the
+        // active player, restricted to your opponents.
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Active) && excluded.is_your_team() =>
+        {
+            "opponent whose turn it is".to_string()
+        }
         PlayerFilter::Excluding { base, excluded }
             if matches!(base.as_ref(), PlayerFilter::Opponent)
                 && !matches!(excluded.as_ref(), PlayerFilter::You) =>
@@ -242,6 +249,14 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 unreachable!("guarded above")
             };
             format!("you and {}", describe_player_filter(other))
+        }
+        // "attacks the other chosen player" (The Brothers' War): the declared
+        // target set minus the player currently being iterated.
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::AliasedTarget(_))
+                && matches!(excluded.as_ref(), PlayerFilter::IteratedPlayer) =>
+        {
+            "the other chosen player".to_string()
         }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
@@ -527,7 +542,11 @@ pub(super) fn pluralize_cast_spell_description(description: &str) -> String {
             let after = start + "spell".len();
             let after_is_boundary = after == bytes.len()
                 || (!bytes[after].is_ascii_alphanumeric() && bytes[after] != b'\'');
-            (before_is_boundary && after_is_boundary).then_some(start)
+            // A demonstrative back-reference names one object: "spells with
+            // the same mana value as that spell" (Living Breakthrough).
+            let demonstrative = description[..start].ends_with("that ")
+                || description[..start].ends_with("this ");
+            (before_is_boundary && after_is_boundary && !demonstrative).then_some(start)
         })
         .collect::<Vec<_>>();
     if noun_starts.is_empty() {
@@ -1103,6 +1122,24 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
     let mut blueprint =
         describe_token_blueprint_with_name_role(&create.token, ability_presentation,
             create.text_roles.as_ref());
+    if let Some((power, toughness)) = &create.dynamic_power_toughness {
+        let mut token = create.token.clone();
+        token.card.power_toughness = None;
+        blueprint = describe_token_blueprint_with_name_role(&token, ability_presentation, create.text_roles.as_ref());
+        let size = match (power.unhinted(), toughness.unhinted()) {
+            (Value::X, Value::X) => Some("X/X".to_string()),
+            (Value::X, Value::Fixed(n)) => Some(format!("X/{n}")),
+            (Value::Fixed(n), Value::X) => Some(format!("{n}/X")),
+            _ => None,
+        };
+        if let Some(size) = size {
+            blueprint = format!("{size} {blueprint}");
+        } else {
+            blueprint.push_str(&format!(" with power equal to {} and toughness equal to {}", describe_value(power), describe_value(toughness)));
+        }
+    }
+    // The chosen-characteristic surface applies to the final blueprint,
+    // including a dynamic-size one (Riptide Replicator).
     if create.use_source_chosen_color {
         blueprint = blueprint.replacen("colorless ", "", 1);
     }
@@ -1119,22 +1156,6 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
         && let Some(token_end) = blueprint.find_lit(" token").map(|idx| idx + " token".len())
     {
         blueprint.insert_str(token_end, &format!(" of {characteristic}"));
-    }
-    if let Some((power, toughness)) = &create.dynamic_power_toughness {
-        let mut token = create.token.clone();
-        token.card.power_toughness = None;
-        blueprint = describe_token_blueprint_with_name_role(&token, ability_presentation, create.text_roles.as_ref());
-        let size = match (power.unhinted(), toughness.unhinted()) {
-            (Value::X, Value::X) => Some("X/X".to_string()),
-            (Value::X, Value::Fixed(n)) => Some(format!("X/{n}")),
-            (Value::Fixed(n), Value::X) => Some(format!("{n}/X")),
-            _ => None,
-        };
-        if let Some(size) = size {
-            blueprint = format!("{size} {blueprint}");
-        } else {
-            blueprint.push_str(&format!(" with power equal to {} and toughness equal to {}", describe_value(power), describe_value(toughness)));
-        }
     }
     // "a 2/2 green Wolf creature token with two +1/+1 counters on it".
     for counter in &create.entry_counters {
@@ -1274,16 +1295,22 @@ fn describe_token_blueprint_with_name_role(
             .iter()
             .any(|subtype| subtype.to_string().eq_ignore_ascii_case(&card.name));
 
-    if !card.supertypes.is_empty() {
-        let supertypes = card
-            .supertypes
+    // Legendary leads the descriptor ("a legendary 2/2 black ..."); other
+    // supertypes sit with the type words after the colors ("a colorless
+    // snow artifact token").
+    let (leading_supertypes, trailing_supertypes): (Vec<_>, Vec<_>) = card
+        .supertypes
+        .iter()
+        .partition(|supertype| **supertype == crate::types::Supertype::Legendary);
+    let supertype_words = |supertypes: &[&crate::types::Supertype]| {
+        supertypes
             .iter()
             .map(|supertype| supertype.name().to_string())
             .collect::<Vec<_>>()
-            .join(" ");
-        if !supertypes.is_empty() {
-            parts.push(supertypes);
-        }
+            .join(" ")
+    };
+    if !leading_supertypes.is_empty() {
+        parts.push(supertype_words(&leading_supertypes));
     }
 
     if let Some(pt) = card.power_toughness
@@ -1313,6 +1340,9 @@ fn describe_token_blueprint_with_name_role(
     );
     if !colors.is_empty() && !all_colors {
         parts.push(colors);
+    }
+    if !trailing_supertypes.is_empty() {
+        parts.push(supertype_words(&trailing_supertypes));
     }
 
     if name_role.is_none() && card.subtypes.is_empty()
@@ -1528,6 +1558,13 @@ fn describe_token_blueprint_with_name_role(
             AbilityKind::Triggered(triggered) => {
                 if let Some(keyword) = describe_structural_prowess_keyword(triggered) {
                     keyword_texts.push(keyword.to_ascii_lowercase());
+                    continue;
+                }
+                // CR 702.149a: the expanded training trigger prints as its
+                // keyword on a token ("... Soldier creature token with
+                // training").
+                if super::ast_render::describe_structural_training_keyword(ability).is_some() {
+                    keyword_texts.push("training".to_string());
                     continue;
                 }
                 if has_decayed_marker && is_decayed_sacrifice_trigger(triggered) {
@@ -2375,6 +2412,8 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("shuffles ", "shuffle "),
         ("surveils ", "surveil "),
         ("adds ", "add "),
+        ("casts ", "cast "),
+        ("plays ", "play "),
         ("Behold ", "behold "),
     ];
     for (from, to) in replacements {

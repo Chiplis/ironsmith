@@ -91,6 +91,9 @@ pub(super) fn parse_counter_ability_target_lexed<'a>(
             for card_type in &source.card_types {
                 *filter = filter.clone().with_type(*card_type);
             }
+            for card_type in &source.excluded_card_types {
+                *filter = filter.clone().without_type(*card_type);
+            }
             if source.colorless {
                 filter.colorless = true;
             }

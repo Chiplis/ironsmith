@@ -1,5 +1,24 @@
 use super::*;
 
+#[test]
+fn inclusive_equal_first_comparison_preserves_the_complete_operator() {
+    for (text, expected) in [
+        ("is equal to or less than 2", ValueComparisonOperator::LessThanOrEqual),
+        ("equal to or less than 2", ValueComparisonOperator::LessThanOrEqual),
+        ("is equal to or greater than 2", ValueComparisonOperator::GreaterThanOrEqual),
+        ("equal to or greater than 2", ValueComparisonOperator::GreaterThanOrEqual),
+    ] {
+        let tokens = lex(text);
+        let (operator, remaining) = parse_value_comparison_tokens(&tokens).unwrap();
+        assert_eq!(operator, expected);
+        assert_eq!(crate::lexer::token_word_refs(remaining), ["2"]);
+        let words = text.split_whitespace().collect::<Vec<_>>();
+        let (operator, remaining, _) = parse_value_comparison_words(&words).unwrap();
+        assert_eq!(operator, expected);
+        assert_eq!(remaining, ["2"]);
+    }
+}
+
 fn lex(raw: &str) -> Vec<OwnedLexToken> {
     lex_line(raw, 0).unwrap()
 }

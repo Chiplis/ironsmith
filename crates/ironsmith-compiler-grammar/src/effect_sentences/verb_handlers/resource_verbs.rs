@@ -148,6 +148,7 @@ pub fn parse_effect_with_verb(
         Verb::Sacrifice => parse_sacrifice(tokens, subject, None),
         Verb::Create => parse_create(tokens, subject),
         Verb::Investigate => parse_investigate(tokens, subject),
+        Verb::Assimilate => parse_assimilate(tokens, subject),
         Verb::Incubate => parse_incubate(tokens, subject),
         Verb::Proliferate => parse_proliferate(tokens),
         Verb::Tap => {
@@ -667,14 +668,23 @@ pub fn parse_look(
             && (surface_matches
                 || crate::grammar::abilities::is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(&line))
         {
-            return Ok(EffectAst::subject_verb_grant_abilities_to_target(
-                TargetAst::Source(span_from_tokens(tokens)),
-                vec![crate::cards::builders::GrantedAbilityAst::StaticAbility(Box::new(
-                    crate::cards::builders::StaticAbilityAst::Static(
-                        crate::model::CompilerStaticAbilityCore::look_at_face_down_creatures_you_dont_control(),
-                    ),
-                ))],
+            // The permission belongs to the player for the duration, not to
+            // this permanent: it survives the source leaving the battlefield
+            // or losing its abilities (CR 708.6, 611.2).
+            let mut canonical = crate::lexer::synthetic_word_tokens(&["you", "may", "look"]);
+            canonical.extend(crate::lexer::synthetic_word_tokens(&[
+                "at", "face-down", "creatures", "you", "don't", "control", "any", "time",
+            ]));
+            let objects = crate::grammar::abilities::face_down_look_permission_objects_lexed(&line)
+                .or_else(|| crate::grammar::abilities::face_down_look_permission_objects_lexed(&canonical))
+                .expect("canonical face-down look permission");
+            return Ok(EffectAst::subject_verb_cant(
+                crate::effect::Restriction::object_rule(
+                    objects,
+                    ironsmith_core::ObjectRule::FaceDownVisibleTo(PlayerFilter::You),
+                ),
                 duration,
+                None,
             ));
         }
     }
@@ -1011,6 +1021,11 @@ pub fn parse_shuffle(
             // owner's library": an authored player subject performs the
             // shuffle; "its owner's" only names each destination library.
             let explicit_actor = !matches!(player, PlayerAst::Implicit | PlayerAst::You);
+            // "each nonland permanent they control" (Teferi, Temporal
+            // Pilgrim) names every matching object, not one chosen object.
+            let quantified_all = target_tokens
+                .first()
+                .is_some_and(|token| token.is_word("each") || token.is_word("all"));
             let shuffle_into_owner_library = |target: TargetAst| {
                 EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
@@ -1021,7 +1036,7 @@ pub fn parse_shuffle(
                     },
                     SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
                         target,
-                        all: false,
+                        all: quantified_all,
                         owner_library_destination: true,
                         possessive_owner_subject: !explicit_actor,
                         shuffle_subject_library: false,
@@ -1061,7 +1076,18 @@ pub fn parse_shuffle(
             player,
             all,
         } => {
-            let mut target = parse_target_phrase(&trim_commas(&tokens[..target_len]))?;
+            // "Shuffle this card into your library from your graveyard"
+            // (Kogla and Yidaro): the trailing origin restricts the object to
+            // that zone, exactly as "this card from your graveyard" does; a
+            // card a replacement put elsewhere isn't shuffled.
+            let mut target = match graveyard_origin_tail(tokens, target_len) {
+                Some(tail) => {
+                    let mut with_origin = trim_commas(&tokens[..target_len]).to_vec();
+                    with_origin.extend(tail.iter().cloned());
+                    parse_target_phrase(&with_origin)?
+                }
+                None => parse_target_phrase(&trim_commas(&tokens[..target_len]))?,
+            };
             super::zone_counter_helpers::apply_shuffle_subject_graveyard_owner_context(
                 &mut target,
                 SubjectAst::Player(player),
@@ -1089,6 +1115,37 @@ pub fn parse_shuffle(
                     None,
                     None,
                 ),
+            ))
+        }
+        ResourceShuffleShape::TaggedIntoLibrary {
+            player: destination_player,
+            to_bottom,
+        } if !to_bottom
+            && tokens
+                .iter()
+                .position(|token| token.is_word("into"))
+                .and_then(|into| graveyard_origin_tail(tokens, into))
+                .is_some() =>
+        {
+            // "shuffle it into your library from your graveyard" (Yidaro,
+            // Wandering Monster): only the card still in that graveyard is
+            // shuffled, exactly as "shuffle it from your graveyard into your
+            // library"; a card a replacement put elsewhere stays there.
+            let into = tokens
+                .iter()
+                .position(|token| token.is_word("into"))
+                .expect("guarded above");
+            let tail = graveyard_origin_tail(tokens, into).expect("guarded above");
+            let mut with_origin = trim_commas(&tokens[..into]).to_vec();
+            with_origin.extend(tail.iter().cloned());
+            let mut target = parse_target_phrase(&with_origin)?;
+            super::zone_counter_helpers::apply_shuffle_subject_graveyard_owner_context(
+                &mut target,
+                SubjectAst::Player(destination_player),
+            );
+            Ok(EffectAst::subject_verb_shuffle_objects_into_library(
+                destination_player,
+                target,
             ))
         }
         ResourceShuffleShape::TaggedIntoLibrary {
@@ -1128,6 +1185,21 @@ pub fn parse_shuffle(
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         )),
     }
+}
+
+/// The trailing "from <player's> graveyard" origin after a shuffle's
+/// destination ("shuffle it into your library from your graveyard"), as the
+/// tokens to append to the shuffled object's phrase.
+fn graveyard_origin_tail(tokens: &[OwnedLexToken], target_len: usize) -> Option<&[OwnedLexToken]> {
+    let rest = tokens.get(target_len..)?;
+    let from = rest.iter().position(|token| token.is_word("from"))?;
+    let tail = crate::util::trim_edge_punctuation_tokens(&rest[from..]);
+    let words = crate::lexer::token_word_refs(tail);
+    (words.len() <= 5
+        && words
+            .last()
+            .is_some_and(|word| matches!(*word, "graveyard" | "graveyards")))
+    .then_some(tail)
 }
 
 pub fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -1378,4 +1450,40 @@ fn may_assign_as_unblocked_body(tokens: &[crate::lexer::OwnedLexToken]) -> Optio
         ]
     )
     .then_some(duration)
+}
+
+/// A keyword action lowered onto ordinary control, counter, type and entry operations.
+fn parse_assimilate(tokens: &[OwnedLexToken], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+    if extract_subject_player(subject).is_some_and(|player| !matches!(player, PlayerAst::You | PlayerAst::Implicit)) {
+        return Err(CardTextError::ParseError("unsupported explicit assimilation actor".into()));
+    }
+    let target = parse_target_phrase(tokens)?;
+    let is_card = crate::lexer::token_word_refs(tokens).iter().any(|word| matches!(*word, "card" | "cards"));
+    if is_card {
+        let mut movement = EffectAst::subject_verb_move_to_zone(target, Zone::Battlefield, false, ReturnControllerAst::You, false, None);
+        if let EffectAst::SubjectVerb(effect) = &mut movement
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { entry_type_changes, entry_counters, .. }) = &mut effect.action
+        {
+            *entry_type_changes = Some(ironsmith_core::effect::BattlefieldEntryTypeChanges {
+                added_card_types: vec![CardType::Artifact, CardType::Creature],
+                removed_subtype_families: vec![crate::types::SubtypeFamily::Creature],
+                added_subtypes: vec![Subtype::Borg],
+            });
+            entry_counters.push(ironsmith_core::BattlefieldEntryCounterSpec::new(
+                crate::object::CounterType::PlusOnePlusOne, 1, ironsmith_core::BattlefieldEntryCounterSurface::Inline));
+        }
+        return Ok(movement);
+    }
+    let tag = crate::util::helper_tag_for_tokens(tokens, "assimilated_permanent");
+    let referenced = TargetAst::Tagged(tag.clone().into(), None);
+    Ok(EffectAst::Coordinated {
+        effects: vec![
+            EffectAst::TagReferenced { effect: Box::new(EffectAst::subject_verb_gain_control(PlayerAst::You, target, Until::Forever)), tag: tag.into() },
+            EffectAst::subject_verb_put_counters(crate::object::CounterType::PlusOnePlusOne, Value::Fixed(1), referenced.clone(), None, false),
+            EffectAst::subject_verb_add_card_types(referenced.clone(), vec![CardType::Artifact, CardType::Creature], Until::Forever),
+            EffectAst::subject_verb_set_creature_subtypes(referenced, vec![Subtype::Borg], Until::Forever),
+        ],
+        leading_duration: false,
+        result_conjunction: false,
+    })
 }

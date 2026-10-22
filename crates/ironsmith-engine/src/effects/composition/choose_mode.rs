@@ -88,6 +88,7 @@ impl EffectExecutor for ChooseModeEffect {
             return None;
         }
         Some(ModalSpec {
+            faces_dilemma: self.faces_dilemma,
             mode_descriptions: self.modes.iter().map(|m| m.source_text.clone()).collect(),
             max_modes: self.choose_count.clone(),
             min_modes: self.min_choose_count.clone(),

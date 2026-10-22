@@ -688,6 +688,11 @@ fn build_enter_as_copy_effects_for_spec(
                         } else {
                             Vec::new()
                         };
+                        if spec.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::CountersFromCopiedPermanent)
+                            && let Some(copied) = game.object(candidate)
+                        {
+                            counters.extend(copied.counters.iter().map(|(kind, count)| (*kind, *count)));
+                        }
                         for conditional in &spec.conditional_additional_counters {
                             if copy_condition_matches(
                                 candidate,
@@ -5433,6 +5438,7 @@ fn prepare_typed_replacement_move(
         ReplacementAction::MoveToZoneWithCounters { zone, counters } => {
             (*zone, counters.as_slice(), false)
         }
+        ReplacementAction::MoveToZoneThen { zone, .. } => (*zone, &[][..], false),
         ReplacementAction::ExileWithSourceLink | ReplacementAction::ExileWithSourceLinkThen(_) => {
             (Zone::Exile, &[][..], true)
         }
@@ -6548,6 +6554,7 @@ fn replacement_moves_object(replacement: &crate::replacement::ReplacementAction)
     matches!(
         replacement,
         crate::replacement::ReplacementAction::MoveToZoneWithCounters { .. }
+            | crate::replacement::ReplacementAction::MoveToZoneThen { .. }
             | crate::replacement::ReplacementAction::ExileWithSourceLink
             | crate::replacement::ReplacementAction::ExileWithSourceLinkThen(_)
             | crate::replacement::ReplacementAction::ExileWithSourceLinkCountersThen { .. }

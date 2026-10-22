@@ -1944,6 +1944,14 @@ fn check_legend_rule_with_view(
         let Some(chars) = view.calculated_characteristics(obj_id) else {
             continue;
         };
+        // A resolved rule modification ("The \"legend rule\" doesn't apply
+        // to permanents you control this turn", Hall of Echoes).
+        if game.effect_store.cant_effects.object_has_rule(
+            obj_id,
+            &ironsmith_core::ObjectRule::LegendRuleDoesntApply,
+        ) {
+            continue;
+        }
         if controller_exemptions
             .iter()
             .any(|(controller, source, filter)| {

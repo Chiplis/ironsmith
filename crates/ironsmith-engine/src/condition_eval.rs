@@ -2533,6 +2533,22 @@ fn triggering_event_object_matches_at_resolution(
     filter: &crate::target::ObjectFilter,
     filter_ctx: &crate::filter::FilterContext,
 ) -> Result<bool, ExecutionError> {
+    // "Whenever equipped creature dies, return that card ... if it's a
+    // Samurai card" (Oathkeeper): a predicate naming the event's destination
+    // zone reads the new object the moved card became there (CR 400.7), not
+    // its last-known battlefield characteristics.
+    if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
+        && change.from != change.to
+        && change.to != Zone::Battlefield
+        && filter.zone == Some(change.to)
+    {
+        return Ok(change
+            .destination_objects()
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .find(|object| object.zone == change.to)
+            .is_some_and(|object| filter.matches(object, filter_ctx, game)));
+    }
     match triggering_object_evidence_at_resolution(game, event)? {
         TriggeringObjectEvidence::Current(object) => {
             if filter.uses_non_pt_battlefield_characteristics()
@@ -3374,6 +3390,11 @@ fn evaluate_turn_history_condition(
                 .previous_turn_history
                 .total_noncombat_damage_to_players(&players)
                 > 0
+        }
+        TurnHistoryCondition::PlayerWasDealtCombatDamageSinceTheirLastTurn(player) => {
+            matching_players(player)
+                .iter()
+                .any(|player| game.player_was_dealt_combat_damage_since_their_last_turn(*player))
         }
         TurnHistoryCondition::TriggeringPlayersTurn { .. } => ctx
             .triggering_event
@@ -4989,6 +5010,14 @@ fn evaluate_condition_in_context(
             }
         }
         Condition::YouHaveFullParty => Ok(player_has_full_party(game, shared.controller)),
+        Condition::ThisSpellCastOrderThisGame(order) => {
+            let Some(index) = order.checked_sub(1) else { return Ok(false); };
+            Ok(game.action_history_for_player(shared.controller)
+                .filter_map(|record| record.event.downcast::<crate::events::SpellCastEvent>())
+                .filter(|cast| cast.caster == shared.controller)
+                .nth(index as usize)
+                .is_some_and(|cast| cast.spell == shared.source))
+        }
         Condition::TargetSpellCastOrderThisTurn(order) => {
             let Some(ctx) = ctx.execution() else {
                 return Ok(false);

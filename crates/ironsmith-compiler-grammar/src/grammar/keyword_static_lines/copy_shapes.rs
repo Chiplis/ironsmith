@@ -72,6 +72,7 @@ pub struct ConditionalCopyCounterEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CopyExceptionShape<'a> {
+    NonLegendary,
     OwnOtherAbilities {subject: &'a [OwnedLexToken]},
     EntryCounters {counter_type: CounterType, count: Option<u32>, controlled_copy: bool},
     /// Spark Double: conditional extra counters keyed on the copied source's
@@ -131,6 +132,12 @@ fn enter_as_copy_followup_sentence<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ironsmith_core::EnterAsCopyFollowup> {
     alt((
+        (
+            primitives::phrase(&["if", "you", "do"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["it", "enters", "with", "additional", "counters", "on", "it", "equal", "to", "the", "same", "number", "and", "kinds", "of", "counters", "the", "copied", "permanent", "has", "on", "it"]),
+            primitives::sentence_end(),
+        ).value(ironsmith_core::EnterAsCopyFollowup::CountersFromCopiedPermanent),
         (
             primitives::phrase(&["when", "you", "do"]),
             opt(primitives::comma()),
@@ -239,6 +246,11 @@ pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExcep
     crate::grammar::primitives::probe_all(
         tokens,
         alt((
+            (alt((
+                primitives::phrase(&["it", "isn't", "legendary"]),
+                primitives::phrase(&["it", "isnt", "legendary"]),
+                primitives::phrase(&["it", "is", "not", "legendary"]),
+            )), primitives::sentence_end()).value(CopyExceptionShape::NonLegendary),
             parse_copy_entry_counters_exception_lexed,
             parse_copy_own_other_abilities_lexed,
             parse_copy_conditional_counters_exception_lexed,

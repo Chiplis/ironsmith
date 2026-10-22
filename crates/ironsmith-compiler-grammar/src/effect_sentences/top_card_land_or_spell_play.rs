@@ -47,6 +47,71 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     if free {
         rewritten.extend(words_at_source(&["without", "paying", "its", "mana", "cost"]));
     }
-    let effects = crate::clause_support::parse_effect_sentences_lexed(&rewritten)?;
-    Ok((!effects.is_empty()).then_some(effects))
+    let gated = crate::clause_support::parse_effect_sentences_lexed(&rewritten)?;
+    // CR 601.3e: the qualifier constrains the spell being cast (the face put
+    // on the stack: an Adventure, a split half, a modal back face), not the
+    // card. Read the qualifier through the gated sentence, then offer the one
+    // optional play directly with that spell requirement: a land is played
+    // (CR 305.1), anything else is cast only as a matching spell.
+    let Some(spell_requirement) = gated.iter().find_map(nonland_spell_requirement) else {
+        return Ok((!gated.is_empty()).then_some(gated));
+    };
+    let mut direct = words_at_source(&["you", "may", "play", "it"]);
+    if free {
+        direct.extend(words_at_source(&["without", "paying", "its", "mana", "cost"]));
+    }
+    let mut effects = crate::clause_support::parse_effect_sentences_lexed(&direct)?;
+    let mut installed = false;
+    for effect in &mut effects {
+        install_required_spell(effect, &spell_requirement, &mut installed);
+    }
+    if !installed {
+        return Ok((!gated.is_empty()).then_some(gated));
+    }
+    Ok(Some(effects))
+}
+
+/// The nonland arm of "if it's a land card or a nonland card <qualifier>".
+fn nonland_spell_requirement(effect: &EffectAst) -> Option<crate::filter::ObjectFilter> {
+    use crate::cards::builders::{ConditionalEffectAst, PredicateAst};
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) = effect else {
+        return None;
+    };
+    let PredicateAst::Or(_, nonland) = predicate else {
+        return None;
+    };
+    let (PredicateAst::ItMatches(filter) | PredicateAst::TaggedMatches(_, filter)) =
+        nonland.as_ref()
+    else {
+        return None;
+    };
+    if filter.excluded_card_types != [crate::types::CardType::Land] || filter.mana_value.is_none() {
+        return None;
+    }
+    let mut spell = crate::filter::ObjectFilter::default();
+    spell.mana_value = filter.mana_value.clone();
+    Some(spell)
+}
+
+fn install_required_spell(
+    effect: &mut EffectAst,
+    requirement: &crate::filter::ObjectFilter,
+    installed: &mut bool,
+) {
+    use crate::cards::builders::{StackActionAst, SubjectVerbActionAst, SubjectVerbEffectAst};
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { allow_land: true, required_spell, .. }),
+        ..
+    }) = effect
+        && required_spell.is_none()
+    {
+        *required_spell = Some(requirement.clone());
+        *installed = true;
+        return;
+    }
+    crate::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            install_required_spell(effect, requirement, installed);
+        }
+    });
 }

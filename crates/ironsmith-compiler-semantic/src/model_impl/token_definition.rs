@@ -150,6 +150,10 @@ pub enum TokenKeywordShape {
     Forestwalk,
     Swampwalk,
     Plainswalk,
+    /// "flanking" (CR 702.25a).
+    Flanking,
+    /// "training" (CR 702.149a).
+    Training,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
@@ -388,6 +392,8 @@ pub struct ArtifactTokenShape {
     pub text_roles: Option<TokenDescriptionTextRoles>,
     pub subtypes: Vec<Subtype>,
     pub legendary: bool,
+    /// "a colorless snow artifact token" (CR 205.4a supertype on the token).
+    pub snow: bool,
     pub colorless: bool,
     pub colors: ColorSet,
     pub equipment_rules: Option<EquipmentRulesShape>,

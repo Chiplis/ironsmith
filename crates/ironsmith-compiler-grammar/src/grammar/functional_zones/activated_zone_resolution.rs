@@ -141,14 +141,13 @@ fn origin_zones(words: &[&str], index: usize) -> Option<Vec<Zone>> {
 }
 
 fn explicit_activation_zones(words: &[&str]) -> Option<Vec<Zone>> {
-    let start = words
-        .windows(3)
-        .position(|part| part == ["activate", "only", "if"])?
-        + 3;
+    let activation = words.iter().position(|word| *word == "activate")?;
+    let start = words[activation + 1..].windows(2)
+        .position(|part| part == ["only", "if"])? + activation + 3;
     let end = source_end(words, start)?;
     // "Activate only if this card is suspended" (Greater Gargadon): a
     // suspended card is in exile (CR 702.62b).
-    if words.get(end) == Some(&"is") && words.get(end + 1) == Some(&"suspended") {
+    if words.get(end) == Some(&"is") && matches!(words.get(end + 1), Some(&"suspended" | &"exiled")) {
         return Some(vec![Zone::Exile]);
     }
     if words.get(end) != Some(&"is") || !matches!(words.get(end + 1), Some(&"in" | &"on")) {

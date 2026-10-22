@@ -1217,7 +1217,8 @@ pub(super) fn rewrite_token_copy_followup_recognizes_next_upkeep_sacrifice() {
     assert_eq!(
         followup,
         super::super::effect_sentences::TokenCopyFollowup::SacrificeAtNextUpkeep(
-            crate::cards::builders::PlayerAst::Any
+            crate::cards::builders::PlayerAst::Any,
+            false,
         )
     );
 }
@@ -4746,7 +4747,11 @@ pub(super) fn kicked_counter_entry_preserves_quoted_activated_ability() {
         "entry must retain the quoted activated ability"
     );
     assert_eq!(
-        parsed.definition.abilities.len(),
+        parsed.definition.abilities.iter().filter(|ability| matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition
+        )).count(),
         2,
         "one entry replacement per kicker"
     );

@@ -12,6 +12,14 @@ pub(super) fn parse_trigger_zone_hint_tokens(tokens: &[OwnedLexToken]) -> Option
 pub fn parse_trigger_functional_zone_facts_tokens(
     tokens: &[OwnedLexToken],
 ) -> TriggerFunctionalZoneFacts {
+    // A quoted granted ability has its own source and functional zone.
+    // Its restrictions cannot move the enclosing trigger out of the battlefield.
+    let mut quoted = false;
+    let outer = tokens.iter().filter_map(|token| {
+        if token.is_quote() { quoted = !quoted; None }
+        else if quoted { None } else { Some(token.clone()) }
+    }).collect::<Vec<_>>();
+    let tokens = outer.as_slice();
     TriggerFunctionalZoneFacts {
         explicit_zone: parse_trigger_zone_hint_tokens(tokens),
         explicit_zone_or_battlefield: has_any_phrase(

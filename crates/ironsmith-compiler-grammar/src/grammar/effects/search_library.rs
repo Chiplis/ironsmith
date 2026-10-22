@@ -21,6 +21,8 @@ const EACH_OF_THEM_SUBJECT: &[&str] = &["each", "of", "them"];
 const DIFFERENT_NAMES_CLAUSES: &[&[&str]] = &[
     &["with", "different", "names"],
     &["that", "have", "different", "names"],
+    // "Dragon cards not named Tiamat that each have different names"
+    &["that", "each", "have", "different", "names"],
 ];
 const LIFE_FOLLOWUP_PREFIXES: &[&[&str]] = &[
     &["you", "gain"],
@@ -810,7 +812,7 @@ pub fn strip_search_library_different_names_clause_lexed(
 ) -> (Vec<OwnedLexToken>, bool) {
     let mut cursor = 0usize;
     while cursor < tokens.len() {
-        for pattern_len in [3usize, 4usize] {
+        for pattern_len in [3usize, 4usize, 5usize] {
             if cursor + pattern_len <= tokens.len()
                 && search_library_words_equal_any(
                     &parser_token_word_refs(&tokens[cursor..cursor + pattern_len]),
@@ -1688,6 +1690,14 @@ pub fn parse_search_library_object_filter_lexed(
         .map(|(_, word)| *word)
         .collect::<Vec<_>>();
     if let Some(named_idx) = search_library_word_index(&parser_word_refs, "named") {
+        // A name following an explicit selector union belongs to that arm,
+        // not to the whole search ("a land card or a card named ...").
+        if parser_word_refs[..named_idx].iter().any(|word| matches!(*word, "or" | "and/or")) {
+            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            if let Some(color_count) = color_count { filter.color_count = Some(color_count); }
+            filter.distinct_names |= distinct_names;
+            return Ok(filter);
+        }
         let negated_named = crate::slice_primitives::select_last_position(
             &parser_words[..named_idx],
             |(_, word)| !is_article(word),

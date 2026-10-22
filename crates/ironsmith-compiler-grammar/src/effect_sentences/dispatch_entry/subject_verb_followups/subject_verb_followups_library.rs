@@ -40,6 +40,20 @@ pub(super) fn pre_rule_when_milled_this_way_followup(
     if shape.kind != followup_shapes::ConditionalFollowupKind::WhenMilledThisWay {
         return Ok(None);
     }
+    // "Each opponent mills two cards. When one or more cards are milled this
+    // way, ..." (Saruman of Many Colors): after a player loop the result is
+    // the loop's aggregate, one reflexive trigger after every player milled.
+    // The generic reflexive reading keeps it outside the loop.
+    if matches!(
+        _state.effects.last(),
+        Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachOpponent { .. }
+                | ForEachEffectAst::ForEachPlayer { .. }
+                | ForEachEffectAst::ForEachPlayersFiltered { .. }
+        ))
+    ) {
+        return Ok(None);
+    }
     let mut plan = SentenceParsePlan::new(trim_commas(shape.continuation_tokens).to_vec());
     plan.wrap_if_result = Some(IfResultPredicate::Did);
     Ok(Some(PreParseFollowupResult::Plan(plan)))

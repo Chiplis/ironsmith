@@ -38,7 +38,13 @@ impl TriggerMatcher for DamagePreventedThisWayTrigger {
     fn display(&self) -> String {
         match &self.source_filter {
             Some(filter) => {
-                let source = filter.description();
+                // A zone-unrestricted quality names a damage source of any
+                // kind ("a black or red source"), not only a permanent.
+                let source = if filter.zone.is_none() {
+                    filter.description_with_default_noun("source")
+                } else {
+                    filter.description()
+                };
                 let article = if source.starts_with("a ")
                     || source.starts_with("an ")
                     || source.starts_with("the ")

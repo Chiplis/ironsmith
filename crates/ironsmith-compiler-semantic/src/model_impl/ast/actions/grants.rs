@@ -37,6 +37,11 @@ pub enum GrantActionAst {
         spell_cost_increase_unless_targets: Option<(ManaCost, ObjectFilter)>,
         alternative_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+        /// "You may play target snow permanent card from your graveyard
+        /// this turn. If you do, it enters tapped." (Kaldring, the
+        /// Rimestaff): the land played or permanent spell cast through this
+        /// permission enters the battlefield tapped.
+        permanents_enter_tapped: bool,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagRef,

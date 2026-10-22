@@ -20,6 +20,9 @@ pub enum ExileLibraryPlayerShape {
     Player(PlayerAst),
     EachPlayer,
     EachOpponent,
+    /// "each of those opponents' libraries": every player a grouped damage
+    /// trigger's batch damaged (Breeches, Brazen Plunderer).
+    EachOfThosePlayers,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,7 +62,7 @@ fn library_player(
         return Some(ExileLibraryPlayerShape::EachOpponent);
     }
     // "the top card of each of those opponents' libraries": the players the
-    // triggering event named (the damaged opponent), not every opponent.
+    // triggering damage batch named, not every opponent.
     let words = TokenWordView::new(tokens).word_refs();
     if allow_each_opponent
         && matches!(
@@ -67,7 +70,7 @@ fn library_player(
             ["each", "of", "those", "opponents" | "opponents'" | "players" | "players'", "libraries"]
         )
     {
-        return Some(ExileLibraryPlayerShape::Player(PlayerAst::That));
+        return Some(ExileLibraryPlayerShape::EachOfThosePlayers);
     }
     let owner = parse_exile_library_owner_shape(tokens, default_player)?;
     (owner.consumed_words == TokenWordView::new(tokens).len())

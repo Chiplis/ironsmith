@@ -296,6 +296,26 @@ fn resolve_cost_reduction_amount(
     resolve_cost_reduction_amount_for_caster(game, spell, source, controller, controller, reduction)
 }
 
+/// How many times a mana-symbol reduction applies: once, or once per unit
+/// of its "for each" count (Eluge), counted as the total cost is determined.
+fn mana_cost_reduction_for_each(
+    game: &GameState,
+    spell: &crate::object::Object,
+    source: ObjectId,
+    controller: PlayerId,
+    caster: PlayerId,
+    reduction: &crate::static_abilities::CostReductionManaCost,
+) -> usize {
+    let Some(count) = &reduction.repetitions else {
+        return 1;
+    };
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source, controller, &mut dm);
+    ctx.iteration.iterated_player = Some(caster);
+    ctx.iteration.iterated_object = Some(spell.id);
+    usize::try_from(resolve_value(game, count, &ctx).unwrap_or(0)).unwrap_or(0)
+}
+
 fn resolve_cost_reduction_amount_for_caster(
     game: &GameState,
     spell: &crate::object::Object,
@@ -304,13 +324,16 @@ fn resolve_cost_reduction_amount_for_caster(
     caster: PlayerId,
     reduction: &crate::static_abilities::CostReduction,
 ) -> i32 {
-    let per_characteristic = resolve_cost_modifier_value_for_cast(
-        game,
-        source,
-        controller,
-        caster,
-        &reduction.reduction,
-    );
+    // "for each time it's been cast" (Myth Unbound): within a cost
+    // modifier, "it" is the spell being priced, exposed as the iterated
+    // object alongside the iterated caster.
+    let per_characteristic = {
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, controller, &mut dm);
+        ctx.iteration.iterated_player = Some(caster);
+        ctx.iteration.iterated_object = Some(spell.id);
+        resolve_value(game, &reduction.reduction, &ctx).unwrap_or(0)
+    };
     let Some(intersection) = &reduction.characteristic_intersection else {
         return per_characteristic;
     };
@@ -6428,6 +6451,7 @@ pub(crate) fn collect_spell_cost_modifiers(
             )
             && optional_life_reduction_was_paid(spell, reduction, spell.id)
         {
+            let for_each = mana_cost_reduction_for_each(game, spell, spell.id, player, player, reduction);
             for _ in 0..cost_modifier_target_repetitions(
                 game,
                 &reduction.filter,
@@ -6435,7 +6459,7 @@ pub(crate) fn collect_spell_cost_modifiers(
                 reduction.per_target,
                 chosen_target_count,
                 chosen_targets,
-            ) {
+            ) * for_each {
                 if reduction.colored_only {
                     reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                 } else {
@@ -6888,6 +6912,9 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     )
                     && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
+                    let for_each = mana_cost_reduction_for_each(
+                        game, spell, perm_id, controller, caster, reduction,
+                    );
                     for _ in 0..cost_modifier_target_repetitions(
                         game,
                         &reduction.filter,
@@ -6895,7 +6922,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         reduction.per_target,
                         chosen_target_count,
                         chosen_targets,
-                    ) {
+                    ) * for_each {
                         if reduction.colored_only {
                             reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                         } else {
@@ -7036,6 +7063,9 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                     )
                     && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
+                    let for_each = mana_cost_reduction_for_each(
+                        game, spell, perm_id, controller, caster, reduction,
+                    );
                     for _ in 0..cost_modifier_target_repetitions(
                         game,
                         &reduction.filter,
@@ -7043,7 +7073,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                         reduction.per_target,
                         chosen_target_count,
                         chosen_targets,
-                    ) {
+                    ) * for_each {
                         if reduction.colored_only {
                             reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                         } else {

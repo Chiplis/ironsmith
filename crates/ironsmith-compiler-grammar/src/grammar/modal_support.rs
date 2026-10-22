@@ -479,9 +479,13 @@ fn parse_conditional_mode_change(
     } else {
         super::grammar::filters::parse_condition_predicate_lexed(condition_tokens)?
     };
+    let optional = change_choose_idx >= 2
+        && tokens[change_choose_idx - 2].is_word("you")
+        && tokens[change_choose_idx - 1].is_word("may");
     Ok(Some(ParsedConditionalModeChange {
         condition,
         selection,
+        optional,
     }))
 }
 
@@ -1222,7 +1226,9 @@ fn parse_modal_header_prefix_effects(
     let (prefix_tokens, modal_gate) =
         if let Some(gate_spec) = split_trailing_modal_gate_clause(tokens) {
             let effect_predicate = match gate_spec.predicate {
-                IfResultPredicate::Did => EffectPredicate::Happened,
+                IfResultPredicate::Did | IfResultPredicate::SourcePowerBecomes(_) => {
+                    EffectPredicate::Happened
+                }
                 IfResultPredicate::WonClash => {
                     EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
                 }
@@ -1243,7 +1249,11 @@ fn parse_modal_header_prefix_effects(
                     ),
                 ),
                 IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
+                IfResultPredicate::ExcessDamageDealtToCreature => {
+                    EffectPredicate::ExcessDamageDealtToCreature
+                }
                 IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
+                IfResultPredicate::ExcessDamageRedirected => EffectPredicate::ExcessDamageRedirected,
                 IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
                     EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
                 }

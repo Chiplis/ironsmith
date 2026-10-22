@@ -4140,6 +4140,117 @@ mod tests {
             });
     }
 
+    /// The rules lines the battlefield frame draws: the changed-ability
+    /// surface when there is one, otherwise the object's oracle text.
+    fn battlefield_frame_lines(
+        game: &GameState,
+        controller: PlayerId,
+        id: ironsmith::ids::ObjectId,
+    ) -> Vec<String> {
+        let (battlefield, _) = grouped_battlefield_for_player(game, controller, &HashSet::new());
+        let snapshot = battlefield
+            .iter()
+            .find(|permanent| permanent.id == id.0)
+            .expect("permanent should be in the battlefield snapshot");
+        if snapshot.abilities.is_empty() {
+            snapshot.oracle_text.lines().map(str::to_string).collect()
+        } else {
+            snapshot.abilities.clone()
+        }
+    }
+
+    fn flying_bear_definition() -> ironsmith::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::from_raw(90_101), "Flying Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .with_ability(Ability::static_ability(StaticAbility::flying()))
+            .build()
+    }
+
+    #[test]
+    fn clone_entering_as_a_copy_shows_the_exception_granted_keyword() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let original =
+            game.create_object_from_definition(&flying_bear_definition(), bob, Zone::Battlefield);
+        let clone = ironsmith_registry_test::compile_to_runtime_definition(
+            "Menace Clone",
+            "Mana cost: {3}{U}\nType: Creature — Shapeshifter\nPower/Toughness: 0/0\nYou may have this creature enter as a copy of any creature on the battlefield, except it has menace.",
+            false,
+        )
+        .expect("clone should compile");
+        // The optional copy lists "don't copy" first; pick the bear.
+        struct CopyChoice(ironsmith::ids::ObjectId);
+        impl ironsmith::decision::DecisionMaker for CopyChoice {
+            fn decide_options(
+                &mut self,
+                game: &GameState,
+                ctx: &ironsmith::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                ctx.options
+                    .iter()
+                    .find(|option| {
+                        option.legal
+                            && option
+                                .related_object_ids
+                                .as_ref()
+                                .is_some_and(|objects| objects.contains(&self.0))
+                    })
+                    .map(|option| vec![option.index])
+                    .unwrap_or_else(|| {
+                        ironsmith::decision::SelectFirstDecisionMaker.decide_options(game, ctx)
+                    })
+            }
+        }
+        let entrant = game.create_object_from_definition(&clone, alice, Zone::Hand);
+        let receipt = game
+            .move_object_with_etb_processing_with_dm(entrant, Zone::Battlefield, &mut CopyChoice(original))
+            .unwrap();
+        let ironsmith::events::processing::EventOutcome::Proceed(result) = receipt.original else {
+            panic!("the clone should enter");
+        };
+        let copy = result.new_id;
+        assert_eq!(game.object(copy).unwrap().name.as_ref(), "Flying Bear");
+        assert_eq!(battlefield_frame_lines(&game, alice, copy), vec!["Flying", "Menace"]);
+    }
+
+    #[test]
+    fn becoming_a_copy_shows_the_exception_granted_keyword() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let original =
+            game.create_object_from_definition(&flying_bear_definition(), bob, Zone::Battlefield);
+        let shifter = ironsmith_registry_test::compile_to_runtime_definition(
+            "Menace Shifter",
+            "Mana cost: {2}{U}\nType: Creature — Shapeshifter\nPower/Toughness: 1/1\n{T}: This creature becomes a copy of target creature until end of turn, except it has menace.",
+            false,
+        )
+        .expect("shifter should compile");
+        let shifter_id = game.create_object_from_definition(&shifter, alice, Zone::Battlefield);
+        let program = shifter
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated.effects.clone()),
+                _ => None,
+            })
+            .expect("become-copy ability");
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let mut ctx = ironsmith::effects::EffectContext::new(shifter_id, alice, &mut dm)
+            .with_targets(vec![ironsmith::effects::ResolvedTarget::Object(original)]);
+        for effect in program.all_effects() {
+            ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        drop(ctx);
+        let current = game.calculated_characteristics(shifter_id).unwrap();
+        assert_eq!(current.name.as_ref(), "Flying Bear");
+        assert_eq!(battlefield_frame_lines(&game, alice, shifter_id), vec!["Flying", "Menace"]);
+    }
+
     #[test]
     fn battlefield_ability_surface_includes_granted_ability() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

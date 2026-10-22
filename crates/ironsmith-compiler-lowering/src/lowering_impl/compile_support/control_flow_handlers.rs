@@ -955,7 +955,10 @@ pub fn compile_result_followup(
         ));
     }
     let id = ctx.next_effect_id();
-    if predicate == IfResultPredicate::DealtDamageToPlayer {
+    if matches!(
+        predicate,
+        IfResultPredicate::DealtDamageToPlayer | IfResultPredicate::ExcessDamageRedirected
+    ) {
         let damage_idx = crate::slice_primitives::select_last_position(&first_effects, |effect| {
             effect_contains_deal_damage(effect)
         })
@@ -1095,7 +1098,9 @@ pub fn compile_effects_preserving_last_effect(
 
 pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPredicate {
     match predicate {
-        IfResultPredicate::Did => EffectPredicate::Happened,
+        IfResultPredicate::Did | IfResultPredicate::SourcePowerBecomes(_) => {
+            EffectPredicate::Happened
+        }
         IfResultPredicate::WonClash => {
             EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
         }
@@ -1116,7 +1121,11 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
             ))
         }
         IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
+        IfResultPredicate::ExcessDamageDealtToCreature => {
+            EffectPredicate::ExcessDamageDealtToCreature
+        }
         IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
+        IfResultPredicate::ExcessDamageRedirected => EffectPredicate::ExcessDamageRedirected,
         IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
             EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
         }

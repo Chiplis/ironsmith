@@ -85,10 +85,38 @@ fn comma_starts_explicit_card_filter_union_arm(tokens: &[OwnedLexToken]) -> bool
 fn first_consult_trailing_comma(tokens: &[OwnedLexToken]) -> Option<usize> {
     tokens.iter().enumerate().find_map(|(idx, token)| {
         (token.kind == TokenKind::Comma
+            && !comma_continues_card_type_list(&tokens[idx + 1..])
             && !comma_starts_explicit_card_filter_union_arm(&tokens[idx + 1..])
             && !comma_continues_card_descriptor(&tokens[idx + 1..]))
         .then_some(idx)
     })
+}
+
+/// "until they exile an instant, sorcery, or creature card" (Strago and
+/// Relm): the comma separates arms of one serial card-type list whose shared
+/// head noun follows the last arm, so it does not end the stop filter.
+fn comma_continues_card_type_list(tokens: &[OwnedLexToken]) -> bool {
+    const TYPE_WORDS: &[&str] = &[
+        "artifact", "battle", "creature", "enchantment", "instant", "kindred", "land",
+        "planeswalker", "sorcery",
+    ];
+    let mut saw_conjunction = false;
+    let mut saw_type = false;
+    for token in tokens {
+        if token.kind == TokenKind::Comma {
+            continue;
+        }
+        let Some(word) = token.as_word() else {
+            return false;
+        };
+        match word {
+            "card" | "cards" => return saw_type && saw_conjunction,
+            "or" | "and" | "and/or" => saw_conjunction = true,
+            word if TYPE_WORDS.contains(&word) => saw_type = true,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// A comma can join card qualifiers ("nonlegendary, nonland card ...").

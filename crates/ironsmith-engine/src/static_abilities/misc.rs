@@ -121,6 +121,8 @@ fn pluralize_filter_description(description: &str) -> String {
         " an opponent owns",
         " that player controls",
         " that player owns",
+        " enchanted player controls",
+        " enchanted player owns",
     ] {
         if let Some(head) = base.strip_suffix(suffix) {
             return format!("{}{}", pluralize(head.trim_end()), suffix);
@@ -269,6 +271,14 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
             Value::CommanderCastCount(PlayerFilter::You) => Some((
                 1,
                 "time you've cast your commander from the command zone this game".to_string(),
+            )),
+            Value::CommandersCastFromCommandZoneBy(PlayerFilter::You) => Some((
+                1,
+                "time you've cast a commander from the command zone this game".to_string(),
+            )),
+            Value::CommanderCastCountOf(_) => Some((
+                1,
+                "time it's been cast from the command zone this game".to_string(),
             )),
             Value::CreaturesDiedThisTurn => Some((1, "creature that died this turn".to_string())),
             Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You) => {
@@ -896,11 +906,13 @@ impl StaticAbilityKind for DoesntUntap {
 pub struct UntapDuringEachOtherPlayersUntapStep {
     pub filter: ObjectFilter,
     pub display: String,
+    /// "during each opponent's untap step": opponents' untap steps only.
+    pub opponents_only: bool,
 }
 
 impl UntapDuringEachOtherPlayersUntapStep {
     pub fn new(filter: ObjectFilter, display: String) -> Self {
-        Self { filter, display }
+        Self { filter, display, opponents_only: false }
     }
 }
 
@@ -915,6 +927,10 @@ impl StaticAbilityKind for UntapDuringEachOtherPlayersUntapStep {
 
     fn untap_during_each_other_players_untap_step_filter(&self) -> Option<&ObjectFilter> {
         Some(&self.filter)
+    }
+
+    fn untap_during_other_players_untap_step_opponents_only(&self) -> bool {
+        self.opponents_only
     }
 }
 
@@ -1362,6 +1378,29 @@ impl StaticAbilityKind for ChooseCreatureCardNameAndTypeAsBecomesAttached {
     }
 
     fn creature_card_name_and_type_choice_as_becomes_attached(&self) -> bool {
+        true
+    }
+}
+
+/// "As this Equipment becomes attached to a creature, choose an exiled
+/// creature card used to craft this Equipment." (Dinosaur Headdress): each
+/// attachment records one of this source's craft materials (CR 702.167c) as
+/// its chosen object; later choices replace earlier ones ("last chosen").
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseCraftMaterialAsBecomesAttached {
+    pub display: String,
+}
+
+impl StaticAbilityKind for ChooseCraftMaterialAsBecomesAttached {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChooseCraftMaterialAsBecomesAttached
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn craft_material_choice_as_becomes_attached(&self) -> bool {
         true
     }
 }
@@ -2976,7 +3015,12 @@ impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
     }
 }
 
-/// If this would be put into a graveyard from anywhere, shuffle into library instead.
+/// If this would be put into a graveyard from anywhere, reveal it and shuffle
+/// it into its owner's library instead (Darksteel Colossus, Nexus of Fate).
+///
+/// The replaced event keeps its provenance (a discarded or milled card is
+/// still discarded/milled); the card moves to its owner's library, is
+/// revealed, and that library is shuffled through the canonical shuffle path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ShuffleIntoLibraryFromGraveyard;
 
@@ -2986,7 +3030,7 @@ impl StaticAbilityKind for ShuffleIntoLibraryFromGraveyard {
     }
 
     fn display(&self) -> String {
-        "If this would be put into a graveyard from anywhere, shuffle it into its owner's library instead".to_string()
+        "If this would be put into a graveyard from anywhere, reveal this and shuffle it into its owner's library instead".to_string()
     }
 
     fn generate_replacement_effect(
@@ -2994,11 +3038,22 @@ impl StaticAbilityKind for ShuffleIntoLibraryFromGraveyard {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        Some(
+        let tag = crate::tag::TagKey::from(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG);
+        let reveal = crate::effect::Effect::new(crate::effects::RevealTaggedEffect::new(
+            tag.clone(),
+        ));
+        let shuffle = crate::effect::Effect::new(crate::effects::ShuffleLibraryEffect::new(
+            crate::target::PlayerFilter::OwnerOf(ironsmith_core::ObjectRef::Tagged(tag)),
+        ));
+        let mut effect =
             ZoneReplacementSpec::new(ObjectFilter::specific(source), crate::zone::Zone::Library)
                 .to_zone(crate::zone::Zone::Graveyard)
-                .build(source, controller),
-        )
+                .build(source, controller);
+        effect.replacement = ReplacementAction::MoveToZoneThen {
+            zone: crate::zone::Zone::Library,
+            effects: vec![reveal, shuffle],
+        };
+        Some(effect)
     }
 }
 
@@ -4681,8 +4736,13 @@ impl StaticAbilityKind for EnterTappedForFilter {
             );
         }
 
+        // The filter names a set of permanents ("Creatures enchanted player
+        // controls enter tapped"), so the plural verb takes a plural subject.
         render_conditioned_entry_rule(
-            format!("{} enter the battlefield tapped", self.filter.description()),
+            format!(
+                "{} enter the battlefield tapped",
+                pluralize_filter_description(&self.filter.description())
+            ),
             self.condition.as_ref(),
         )
     }

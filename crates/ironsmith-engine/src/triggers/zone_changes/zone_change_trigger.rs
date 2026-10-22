@@ -489,8 +489,23 @@ impl ZoneChangeTrigger {
 
             // Ownership determines the destination graveyard below. Keeping
             // it on the noun would duplicate the relation as "you own ...
-            // into your graveyard".
-            subject.owner = None;
+            // into your graveyard". A "dies" surface names no graveyard, so
+            // the owner stays on the noun ("a creature you control but don't
+            // own dies").
+            let dies_surface = trigger.from == ZonePattern::Specific(Zone::Battlefield)
+                && trigger.to == ZonePattern::Specific(Zone::Graveyard)
+                && (trigger.graveyard_surface == Some(GraveyardTriggerSurface::Dies)
+                    || (trigger.graveyard_surface.is_none()
+                        && (subject_is_always_creature(&trigger.object_filter)
+                            || subject_uses_mixed_death_surface(&trigger.object_filter))));
+            let renders_owner_on_noun = dies_surface
+                && matches!(
+                    trigger.object_filter.owner,
+                    Some(PlayerFilter::NotYou | PlayerFilter::Opponent)
+                );
+            if !renders_owner_on_noun {
+                subject.owner = None;
+            }
             let description = subject.description();
             description
                 .strip_suffix(" in a graveyard")
@@ -1092,6 +1107,15 @@ impl ZoneChangeTrigger {
                 filter_desc = format!("other {rest}");
             }
             filter_desc = pluralize_zone_change_subject(&filter_desc, &self.object_filter);
+            // "one or more creatures you control and/or creature cards in
+            // your graveyard" (Kaya, Spirits' Justice): every arm of a batch
+            // union is plural, not only the first.
+            if !self.object_filter.any_of.is_empty() {
+                filter_desc = filter_desc
+                    .replace(" card in ", " cards in ")
+                    .replace(" card and/or ", " cards and/or ")
+                    .replace(" card or ", " cards or ");
+            }
         }
         let has_article = filter_desc.starts_with("a ")
             || filter_desc.starts_with("an ")
@@ -1324,7 +1348,16 @@ impl ZoneChangeTrigger {
                 } else {
                     "is"
                 };
-                let graveyard = owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard");
+                // "one or more creature cards are put into graveyards from
+                // anywhere": a batch bound for any graveyard is plural.
+                let graveyard = if self.count_mode == CountMode::OneOrMore
+                    && self.from == ZonePattern::Any
+                    && matches!(self.object_filter.owner, None | Some(PlayerFilter::Any))
+                {
+                    "graveyards".to_string()
+                } else {
+                    owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard")
+                };
                 let verb = if opponent_effect_cause { "to be" } else { verb };
                 parts.push(format!("{verb} put into {graveyard}"));
                 if let Some(origin) = graveyard_origin_phrase(self) {

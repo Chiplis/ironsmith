@@ -223,11 +223,14 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
     match surface.metric {
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
         AggregateValueMetric::CardTypes => Some(Value::CardTypesAmong(filter)),
+        AggregateValueMetric::PermanentTypes => Some(Value::PermanentTypesAmong(filter)),
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
+        AggregateValueMetric::PlaneswalkerTypes => Some(Value::PlaneswalkerTypesAmong(filter)),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
         AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
         AggregateValueMetric::DistinctManaValues => Some(Value::DistinctManaValues(filter)),
+        AggregateValueMetric::DistinctManaCosts => Some(Value::DistinctManaCosts(filter)),
         AggregateValueMetric::UnlockedDoors => Some(Value::UnlockedDoorsAmong(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
         AggregateValueMetric::DistinctCounterTypes => {
@@ -489,6 +492,23 @@ fn parse_spell_cast_history_count(
             false,
         ),
         (&["you", "cast", "this", "turn"], PlayerFilter::You, false),
+        // "for each spell they've cast this turn" (Rug of Smothering): the
+        // player the ability is about (the triggering caster).
+        (
+            &["theyve", "cast", "this", "turn"],
+            PlayerFilter::IteratedPlayer,
+            false,
+        ),
+        (
+            &["they've", "cast", "this", "turn"],
+            PlayerFilter::IteratedPlayer,
+            false,
+        ),
+        (
+            &["they", "have", "cast", "this", "turn"],
+            PlayerFilter::IteratedPlayer,
+            false,
+        ),
         // "for each other spell that player has cast this turn" (Damping
         // Sphere): the player casting the spell being priced.
         (

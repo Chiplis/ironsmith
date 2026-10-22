@@ -1,6 +1,17 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    if matches!(words,
+        ["for", "each", "dilemma", "youve" | "you've", "faced", "this", "turn"]
+        | ["for", "each", "dilemma", "you", "have", "faced", "this", "turn"])
+    {
+        return Some((Value::TurnHistoryCount(
+            ironsmith_core::TurnHistoryCount::KeywordActionsPerformed {
+                player: PlayerFilter::You,
+                actions: vec![ironsmith_core::KeywordActionKind::FaceDilemma],
+            },
+        ).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), words.len()));
+    }
     // "for each color of mana spent to cast that spell" (Magmablood
     // Archaic): the distinct colors paid for the spell whose cast triggered
     // this ability, not the colors paid for the ability's source.
@@ -160,11 +171,13 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     // "Whenever one or more Pirates you control deal damage to your
     // opponents, you create a Treasure token for each opponent dealt damage"
     // (Malcolm, Keen-Eyed Navigator): with no "this turn", the players the
-    // triggering damage was dealt to. Each damaged opponent is its own
-    // trigger occurrence, so this counts that occurrence's damaged player.
+    // triggering damage was dealt to: every player the grouped damage batch
+    // damaged (a lone damage event is a batch of its one damaged player).
     if matches!(words, ["for", "each", "opponent" | "player", "dealt", "damage"]) {
         return Some((
-            Value::CountPlayers(PlayerFilter::DamagedPlayer)
+            Value::CountPlayers(PlayerFilter::TaggedPlayer(
+                ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG.into(),
+            ))
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
             words.len(),
         ));
@@ -497,17 +510,9 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     // The runtime value deliberately counts casts from the command zone, not
     // commanders that happen to exist in a zone now.
     let commander_count_end = value_boundary(&words[idx..]) + idx;
-    if let Some(player) = super::super::value_helper_shapes::parse_commander_cast_count_player(
+    if let Some(value) = super::super::value_helper_shapes::parse_commander_cast_count_value(
         &words[idx..commander_count_end],
     ) {
-        let mut value = Value::CommanderCastCount(player);
-        if crate::word_primitives::sequence_occurs(
-            &words[idx..commander_count_end],
-            &["a", "commander"],
-        ) {
-            value = value
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference);
-        }
         return Some((value, commander_count_end));
     }
 

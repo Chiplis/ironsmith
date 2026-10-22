@@ -83,6 +83,10 @@ fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction
         crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers,
             player,
+        }
+        | crate::effect::Restriction::AttackPlayerOrPermanentsControlledBy {
+            attackers,
+            player,
         } => object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player(),
         _ => false,
     }

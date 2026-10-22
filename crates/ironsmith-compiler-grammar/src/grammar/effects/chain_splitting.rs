@@ -21,6 +21,7 @@ pub use verbs::{find_chain_verb_tokens, find_chain_verb_words};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChainVerbKind {
+    Assimilate,
     Add,
     Move,
     Deal,

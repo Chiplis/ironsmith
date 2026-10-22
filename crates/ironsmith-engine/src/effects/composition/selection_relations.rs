@@ -4,7 +4,11 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 
 pub(crate) fn has_relations(filter: &ObjectFilter) -> bool {
-    filter.distinct_names || filter.shares_name || filter.shares_color || filter.shares_card_type
+    filter.distinct_names
+        || filter.shares_name
+        || filter.shares_color
+        || filter.shares_card_type
+        || filter.target_set_shared_creature_type
 }
 
 fn names(game: &GameState, id: ObjectId) -> Vec<String> {
@@ -67,6 +71,25 @@ pub(crate) fn allows(
         for id in known.iter().skip(1) {
             let types = game.current_card_types(*id).unwrap_or_default();
             shared.retain(|card_type| types.contains(card_type));
+        }
+        if shared.is_empty() {
+            return false;
+        }
+    }
+    // "two untapped creatures you control that share a creature type"
+    // (Weight of Conscience): some creature type is common to the whole set.
+    if filter.target_set_shared_creature_type {
+        let creature_types = |id: ObjectId| {
+            game.current_subtypes(id)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|subtype| subtype.is_creature_type())
+                .collect::<Vec<_>>()
+        };
+        let mut shared = creature_types(known[0]);
+        for id in known.iter().skip(1) {
+            let types = creature_types(*id);
+            shared.retain(|subtype| types.contains(subtype));
         }
         if shared.is_empty() {
             return false;

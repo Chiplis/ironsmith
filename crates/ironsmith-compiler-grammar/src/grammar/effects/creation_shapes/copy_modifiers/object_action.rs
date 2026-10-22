@@ -139,10 +139,15 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     // keyword list after the last grant verb (CR 707.9a). Reading stops at
     // the first word that isn't a keyword, leaving quoted or self-referential
     // grants ("has this ability") to their own owners.
-    if let Some(grant_idx) = modifier_words
+    // "except it's a 3/3 black Wraith with menace" (Sauron, the
+    // Necromancer): an identity clause's `with` list grants the same way.
+    let grant_positions = modifier_words
         .iter()
-        .rposition(|word| matches!(*word, "has" | "have" | "gain" | "gains"))
-    {
+        .enumerate()
+        .filter(|(_, word)| matches!(**word, "has" | "have" | "gain" | "gains" | "with"))
+        .map(|(idx, _)| idx)
+        .collect::<Vec<_>>();
+    for grant_idx in grant_positions {
         let list = &modifier_words[grant_idx + 1..];
         let mut idx = 0;
         while idx < list.len() {
@@ -218,7 +223,17 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
         }
         let explicit_colorless =
             crate::word_primitives::contains_word(&modifier_words[..addition], "colorless");
-        spec.set_colors = (explicit_colorless || !colors.is_empty()).then_some(colors);
+        // "in addition to its other colors and types" keeps the copied
+        // colors; "in addition to its other types" replaces them.
+        let keeps_colors = modifier_words[addition..]
+            .iter()
+            .take(6)
+            .any(|word| matches!(*word, "colors" | "colours"));
+        if keeps_colors && !explicit_colorless {
+            spec.added_colors = colors;
+        } else {
+            spec.set_colors = (explicit_colorless || !colors.is_empty()).then_some(colors);
+        }
     } else if surface.starts(CreationPhrase::IdentityClause) {
         let descriptor_end = surface
             .location(CreationWordClass::DescriptorEnd)

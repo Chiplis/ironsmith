@@ -2,6 +2,7 @@ use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::DelayedEffectAst;
+use crate::model::ast::TriggerIntroSurfaceAst;
 use crate::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
     bind_condition_counter_antecedent_in_effects, bind_condition_it_counter_antecedent_in_effects,
@@ -17,6 +18,9 @@ pub fn compile_delayed_trigger_spec(
             ironsmith_core::DelayedTriggerSpec::ZoneChange(event.clone()),
         ),
         TriggerSpec::SpellCastThroughPreviousPermission => Ok(ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission),
+        TriggerSpec::PlayedOrCastThroughPreviousPermission(_) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::PlayedOrCastThroughPreviousPermission)
+        }
         TriggerSpec::ConditionQualified {
             trigger,
             condition,
@@ -230,6 +234,7 @@ pub fn compile_delayed_trigger_spec(
             per_source_controller,
             recipient_passive,
             during_your_turn,
+            object_recipient: None,
         } => Ok(
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source: source.clone(),
@@ -521,7 +526,83 @@ fn compile_delayed_effects_preserving_outer_context_with_event_value(
     // and references inside that body must not escape into the outer ability.
     ctx.apply_id_gen_context(id_gen);
     ctx.apply_lowering_frame(saved_frame);
+    let compiled = rebind_registering_player_or_planeswalker_target(compiled);
     Ok((compiled, Vec::new()))
+}
+
+/// "It deals an additional 3 damage to that player or planeswalker at the
+/// beginning of your next upkeep step" (Quenchable Fire): inside a delayed
+/// ability, "that player or planeswalker" names the registering ability's
+/// own target, which the registration carries as `targeted_0` (a
+/// planeswalker) or the delayed target-player tag (a player). It is a
+/// reference, not a new target announced for the delayed ability.
+fn rebind_registering_player_or_planeswalker_target(effects: Vec<Effect>) -> Vec<Effect> {
+    fn is_back_reference(spec: &ChooseSpec) -> bool {
+        matches!(
+            spec.base(),
+            ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        )
+    }
+    fn reference() -> ChooseSpec {
+        let mut planeswalker = ObjectFilter::default().with_type(crate::types::CardType::Planeswalker);
+        planeswalker.zone = Some(Zone::Battlefield);
+        planeswalker.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::TagKey::from("targeted_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        ChooseSpec::ObjectOrPlayer(
+            planeswalker,
+            PlayerFilter::TaggedPlayer(ironsmith_core::tag::DELAYED_TARGET_PLAYERS_TAG.into()),
+        )
+    }
+    fn rewrite(effect: Effect) -> Option<Effect> {
+        if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && is_back_reference(&target_only.target)
+        {
+            return None;
+        }
+        if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+            && is_back_reference(&damage.target)
+        {
+            let mut damage = damage.clone();
+            damage.target = reference();
+            return Some(Effect::new(damage));
+        }
+        if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+            let inner = rewrite((*with_source.effect).clone())?;
+            let mut with_source = with_source.clone();
+            with_source.effect = Box::new(inner);
+            return Some(Effect::new(with_source));
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let inner = rewrite((*tagged.effect).clone())?;
+            return Some(Effect::new(tagged.with_effect(inner)));
+        }
+        Some(effect)
+    }
+    let references_original = effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some_and(|target_only| is_back_reference(&target_only.target))
+    });
+    if !references_original {
+        // "... unless that player or that planeswalker's controller pays {U}
+        // before that step": the punisher wraps the delayed body.
+        return effects
+            .into_iter()
+            .map(|effect| {
+                if let Some(unless) = effect.downcast_ref::<crate::effects::UnlessPaysEffect<Effect>>() {
+                    let mut unless = unless.clone();
+                    unless.effects =
+                        rebind_registering_player_or_planeswalker_target(unless.effects);
+                    Effect::new(unless)
+                } else {
+                    effect
+                }
+            })
+            .collect();
+    }
+    effects.into_iter().filter_map(rewrite).collect()
 }
 
 /// A next-end-step payload can consume the amount actually prevented by the
@@ -825,6 +906,31 @@ fn compile_duration_scoped_delayed_trigger(
     while_any_tagged_object_in_zone: &Option<(TagKey, Zone)>,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    // "Until end of turn, whenever you play a land or cast a spell this way,
+    // ..." (Apple of Eden): the body keeps the play-or-cast event's
+    // references; the matcher is linked to the exact preceding play grants.
+    if let TriggerSpec::PlayedOrCastThroughPreviousPermission(event) =
+        trigger_without_intro(trigger)
+    {
+        let (compiled, choices) = compile_duration_scoped_delayed_trigger(
+            event,
+            effects,
+            one_shot,
+            duration,
+            either_of_watched_objects,
+            while_any_tagged_object_in_zone,
+            ctx,
+        )?;
+        let [effect] = compiled.as_slice() else {
+            unreachable!("delayed registration is one effect");
+        };
+        let mut schedule = effect
+            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            .unwrap()
+            .clone();
+        schedule.trigger = ironsmith_core::DelayedTriggerSpec::PlayedOrCastThroughPreviousPermission;
+        return Ok((vec![Effect::new(schedule)], choices));
+    }
     if let TriggerSpec::ConditionQualified {
         trigger,
         condition,
@@ -914,6 +1020,12 @@ fn compile_duration_scoped_delayed_trigger(
             !filter.source && !references_tag
         })
     };
+    // "When that creature dies, if it has an egg counter on it, ..." (Xira):
+    // the dying object is the event's own object, so the body's "it" names
+    // it as it last existed on the battlefield (CR 603.10a), not the
+    // scheduling instruction's earlier snapshot of it.
+    let trigger_supplies_own_object = trigger_supplies_own_object
+        || matches!(trigger_without_intro(trigger), TriggerSpec::Dies(_));
     let lowered = compile_trigger_effects_with_imports(
         Some(trigger),
         effects,
@@ -1091,6 +1203,7 @@ fn compile_duration_scoped_delayed_trigger(
             per_source_controller,
             recipient_passive,
             during_your_turn,
+            object_recipient: None,
         } => {
             let resolved = resolve_it_tag(source, &refs)?;
             if let Some(tag) = watch_tag_from_filter(&resolved) {
@@ -1162,6 +1275,50 @@ pub(super) fn try_compile_timing_and_control_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    // "When that creature deals combat damage to a player this turn, ..."
+    // (Optimus Prime): a repeating this-turn delayed trigger keeps its
+    // authored "When". Lower the bare trigger, then stamp the intro on the
+    // scheduling effects it produced.
+    if let EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger: TriggerSpec::WithIntro { intro, trigger: inner },
+        effects,
+        one_shot,
+        until_end_of_combat,
+        attach_to_previous_ability,
+    }) = effect
+    {
+        let bare = EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+            trigger: (**inner).clone(),
+            effects: effects.clone(),
+            one_shot: *one_shot,
+            until_end_of_combat: *until_end_of_combat,
+            attach_to_previous_ability: *attach_to_previous_ability,
+        });
+        let intro = match intro {
+            TriggerIntroSurfaceAst::When => ironsmith_core::CompilerTriggerIntroSurface::When,
+            TriggerIntroSurfaceAst::Whenever => {
+                ironsmith_core::CompilerTriggerIntroSurface::Whenever
+            }
+            TriggerIntroSurfaceAst::At => ironsmith_core::CompilerTriggerIntroSurface::At,
+        };
+        return Ok(try_compile_timing_and_control_effect(&bare, ctx)?.map(
+            |(compiled, choices)| {
+                let compiled = compiled
+                    .into_iter()
+                    .map(|effect| {
+                        match effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+                        {
+                            Some(schedule) => {
+                                Effect::new(schedule.clone().with_intro_surface(intro))
+                            }
+                            None => effect,
+                        }
+                    })
+                    .collect();
+                (compiled, choices)
+            },
+        ));
+    }
     let compiled = match effect {
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { player, effects }) => {
             let player_spec = crate::reference_helpers::resolve_choose_spec_it_tag(
@@ -1423,6 +1580,29 @@ pub(super) fn try_compile_timing_and_control_effect(
             until_end_of_combat,
             attach_to_previous_ability,
         }) => {
+            // "At this turn's next end of combat, ...": the step trigger has no
+            // event object, so its body keeps the scheduling instruction's
+            // references (as an unqualified end-of-combat delay does), and
+            // the registration expires at end of turn.
+            if matches!(trigger_without_intro(trigger), TriggerSpec::EndOfCombat)
+                && *one_shot
+                && !*until_end_of_combat
+                && !*attach_to_previous_ability
+            {
+                let (delayed_effects, choices) =
+                    compile_delayed_effects_preserving_outer_context(effects, ctx)?;
+                let effect = Effect::new(
+                    crate::effects::ScheduleDelayedTriggerEffect::new(
+                        ironsmith_core::DelayedTriggerSpec::EndOfCombat,
+                        delayed_effects,
+                        true,
+                        Vec::new(),
+                        PlayerFilter::You,
+                    )
+                    .until_end_of_turn(),
+                );
+                return Ok(Some((vec![effect], choices)));
+            }
             if matches!(trigger_without_intro(trigger), TriggerSpec::SpellCastThroughPreviousPermission) {
                 // The body has the ordinary cast-event reference scope; only
                 // its matcher is linked to the exact preceding permission.
@@ -1464,7 +1644,9 @@ pub(super) fn try_compile_timing_and_control_effect(
                         source_filter: source_filter.clone(),
                     },
                     delayed_effects,
-                    false,
+                    // "When damage is prevented this way" (New Way Forward)
+                    // triggers once; "Whenever" every time.
+                    *one_shot,
                     Vec::new(),
                     PlayerFilter::You,
                 )
@@ -2055,6 +2237,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     per_source_controller,
                     recipient_passive,
                     during_your_turn,
+                    object_recipient: None,
                 } => {
                     let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
                     let trigger =
@@ -2121,9 +2304,24 @@ pub(super) fn try_compile_timing_and_control_effect(
                     (vec![effect], choices)
                 }
                 _ => {
+                    // "Whenever that creature deals combat damage to a player
+                    // or planeswalker this turn" (Hunter's Insight): a
+                    // compound event still watches the object the preceding
+                    // instruction named; bind its bare `it` to that object.
+                    let mut bound_trigger = trigger.clone();
+                    if let Some(last) = ctx.last_object_tag.clone().map(TagKey::from)
+                        && last.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+                    {
+                        use ironsmith_core::tag::TagKeyWalk;
+                        bound_trigger.map_tag_keys(&mut |key| {
+                            if key.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                                *key = last.clone();
+                            }
+                        });
+                    }
                     let effect = Effect::new(
                         crate::effects::ScheduleDelayedTriggerEffect::new(
-                            compile_delayed_trigger_spec(trigger)?,
+                            compile_delayed_trigger_spec(&bound_trigger)?,
                             delayed_effects,
                             *one_shot,
                             Vec::new(),
@@ -2310,9 +2508,32 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 },
                 |ctx| compile_effects(effects, ctx),
             )?;
+            // "When its power becomes 20 this way" (Inferno of the Star
+            // Mounts): the reflexive ability triggers only if the antecedent
+            // left the source at that power (CR 603.12); no "if" is printed,
+            // so nothing is rechecked on resolution.
+            let power_gate = match predicate {
+                IfResultPredicate::SourcePowerBecomes(power) => {
+                    Some(crate::effect::Condition::ValueComparison {
+                        left: Value::SourcePower,
+                        operator: ironsmith_core::ValueComparisonOperator::Equal,
+                        right: Value::Fixed(*power as i32),
+                    })
+                }
+                _ => None,
+            };
             let predicate = effect_predicate_from_if_result(predicate.clone());
-            let effect =
+            let mut effect =
                 Effect::reflexive_trigger(*condition, predicate, inner_effects, inner_choices);
+            if let Some(gate) = power_gate {
+                effect = Effect::new(crate::effects::ReflexiveTriggerEffect {
+                    intervening_if: Some(gate),
+                    ..effect
+                        .downcast_ref::<crate::effects::ReflexiveTriggerEffect>()
+                        .expect("reflexive_trigger builds a reflexive trigger")
+                        .clone()
+                });
+            }
             (vec![effect], Vec::new())
         }
         EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
@@ -2324,6 +2545,15 @@ pub(super) fn try_compile_stack_and_condition_effect(
                     "trailing-if condition lowered without an effect".to_string(),
                 ));
             };
+            // A control condition folded into a lasting play permission
+            // ("you may play it if you control a Kavu") is already gated.
+            if lowered_conditional_effect
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                .is_some_and(|grant| grant.while_player_controls.is_some())
+            {
+                compiled.push(lowered_conditional_effect);
+                return Ok(Some((compiled, choices)));
+            }
             let Some(lowered_conditional) =
                 lowered_conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
             else {
@@ -2534,6 +2764,168 @@ fn compile_conditional_ast(
         true_effects
     };
 
+    // "For as long as they remain exiled, you may play them if you control a
+    // Wizard." (Flameshape, Possibility Technician): the control condition
+    // gates each use of the lasting permission, not its creation, so it
+    // belongs to the permission rather than to a resolution-time branch.
+    let true_effects = match (true_effects.as_slice(), false_effects.is_empty(), &condition) {
+        (
+            [grant],
+            true,
+            crate::effect::Condition::PlayerControls {
+                player: PlayerFilter::You,
+                filter,
+            },
+        ) if prelude.is_empty()
+            && grant
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                .is_some_and(|grant| {
+                    grant.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+                        && grant.player == PlayerFilter::You
+                        && grant.while_player_controls.is_none()
+                        && grant.during_turns_counter_put_on_source.is_none()
+                        && grant.during_turns_attacked_with.is_none()
+                        && !grant.during_turns_cast_another_spell
+                        && !grant.while_on_top_of_library
+                }) =>
+        {
+            let mut gated = grant
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                .expect("checked above")
+                .clone();
+            gated.while_player_controls = Some(filter.clone());
+            ctx.last_object_tag = true_last_tag.clone().or_else(|| saved_last_tag.clone());
+            return Ok((vec![Effect::new(gated)], true_choices));
+        }
+        _ => true_effects,
+    };
+    // "You may cast it if ... . If you don't, put it into your hand." The
+    // "if you don't" fallback reads the optional action's result, which never
+    // exists when the condition fails; it runs then as well (the card was
+    // not cast), so it follows the conditional instead of living inside it.
+    let mut trailing_fallback = None;
+    let mut true_effects = true_effects;
+    if false_effects.is_empty()
+        && let Some(last) = true_effects.last()
+        && let Some(fallback) = last.downcast_ref::<crate::effects::IfEffect>()
+        && fallback.predicate == crate::effect::EffectPredicate::DidNotHappen
+        && fallback.else_.is_empty()
+        && true_effects[..true_effects.len() - 1].iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .is_some_and(|with_id| {
+                    with_id.id == fallback.condition
+                        && with_id.effect.downcast_ref::<crate::effects::MayEffect<Effect>>().is_some()
+                })
+        })
+    {
+        trailing_fallback = true_effects.pop();
+    }
+    // "You may cast that card ... if ... . Otherwise, put it into your
+    // hand." (Bre of Clan Stoutarm): the card goes to its owner's hand
+    // whenever it isn't cast, including when the eligible cast is declined.
+    let true_effects = match (true_effects.as_slice(), false_effects.as_slice()) {
+        ([may], [fallback])
+            if may
+                .downcast_ref::<crate::effects::MayEffect<Effect>>()
+                .is_some_and(|may| {
+                    matches!(may.effects.as_slice(), [cast]
+                        if cast.downcast_ref::<crate::effects::CastTaggedEffect>().is_some_and(|cast| {
+                            fallback.downcast_ref::<crate::effects::MoveToZoneEffect>().is_some_and(|moved| {
+                                moved.zone == Zone::Hand
+                                    && matches!(moved.target.unhinted(), ChooseSpec::Tagged(tag) if *tag == cast.tag)
+                            })
+                        }))
+                }) =>
+        {
+            // "if the spell's mana value is ..." (CR 601.3e): the condition
+            // names the prospective spell, so the cast itself also requires
+            // the proposed spell (the face being cast) to satisfy it.
+            let may = match &condition {
+                crate::effect::Condition::ValueComparison {
+                    left: crate::effect::Value::ManaValueOf(spec),
+                    operator,
+                    right,
+                } => {
+                    let may_effect = may
+                        .downcast_ref::<crate::effects::MayEffect<Effect>>()
+                        .expect("checked above");
+                    let cast = may_effect.effects[0]
+                        .downcast_ref::<crate::effects::CastTaggedEffect>()
+                        .expect("checked above");
+                    if matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if *tag == cast.tag) {
+                        let bound = Box::new(right.clone());
+                        let comparison = match operator {
+                            crate::effect::ValueComparisonOperator::GreaterThan => {
+                                crate::filter::Comparison::GreaterThanExpr(bound)
+                            }
+                            crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                                crate::filter::Comparison::GreaterThanOrEqualExpr(bound)
+                            }
+                            crate::effect::ValueComparisonOperator::Equal => {
+                                crate::filter::Comparison::EqualExpr(bound)
+                            }
+                            crate::effect::ValueComparisonOperator::LessThan => {
+                                crate::filter::Comparison::LessThanExpr(bound)
+                            }
+                            crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                                crate::filter::Comparison::LessThanOrEqualExpr(bound)
+                            }
+                            crate::effect::ValueComparisonOperator::NotEqual => {
+                                crate::filter::Comparison::NotEqualExpr(bound)
+                            }
+                        };
+                        let mut cast = cast.clone();
+                        cast.required_spell = Some(ObjectFilter {
+                            mana_value: Some(comparison),
+                            ..ObjectFilter::default()
+                        });
+                        let mut may_effect = may_effect.clone();
+                        may_effect.effects[0] = Effect::new(cast);
+                        Effect::new(may_effect)
+                    } else {
+                        may.clone()
+                    }
+                }
+                _ => may.clone(),
+            };
+            let id = ctx.next_effect_id();
+            let gated_by_spell = may
+                .downcast_ref::<crate::effects::MayEffect<Effect>>()
+                .and_then(|may| may.effects.first())
+                .and_then(|cast| cast.downcast_ref::<crate::effects::CastTaggedEffect>())
+                .is_some_and(|cast| cast.required_spell.is_some());
+            let lowered = vec![
+                Effect::with_id(id.0, may),
+                Effect::if_then(
+                    id,
+                    crate::effect::EffectPredicate::DidNotHappen,
+                    false_effects.clone(),
+                ),
+            ];
+            // The cast's own prospective-spell requirement replaces the card
+            // mana value pre-check (a split half or an Adventure can qualify
+            // where the whole card doesn't); a card not cast goes to hand.
+            if gated_by_spell {
+                prelude.extend(lowered);
+                prelude.extend(trailing_fallback);
+                ctx.last_object_tag = condition_reference_tag.clone().or(saved_last_tag.clone());
+                let mut choices = true_choices;
+                if let Some(choice) = declared_choice {
+                    push_choice(&mut choices, choice);
+                }
+                for choice in false_choices {
+                    push_choice(&mut choices, choice);
+                }
+                if let Some(choice) = antecedent_choice {
+                    push_choice(&mut choices, choice);
+                }
+                return Ok((prelude, choices));
+            }
+            lowered
+        }
+        _ => true_effects,
+    };
     let conditional = if true_effects.is_empty() && false_effects.is_empty() {
         // A bare state gate ("When this ability resolves for the third time
         // this turn, ..." - Gimli) exists only so a later result follow-up can
@@ -2549,6 +2941,7 @@ fn compile_conditional_ast(
         Effect::conditional(condition, true_effects, false_effects)
     };
     prelude.push(conditional);
+    prelude.extend(trailing_fallback);
 
     if ctx.iterated_object && if_false.is_empty()
         && ironsmith_compiler_resolve::reference_resolution::effects_only_create_tokens(if_true)

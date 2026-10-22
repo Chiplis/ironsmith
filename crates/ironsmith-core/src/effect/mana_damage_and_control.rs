@@ -294,6 +294,9 @@ pub struct DestroyNoRegenerationEffect {
     pub filter: Option<ObjectFilter>,
     pub target: Option<ChooseSpec>,
     pub creature_destroyed_this_way_surface: bool,
+    /// "The creature can't be regenerated." (Mephitic Ooze).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub definite_noun_rider_surface: bool,
 }
 
 impl DestroyNoRegenerationEffect {
@@ -302,6 +305,7 @@ impl DestroyNoRegenerationEffect {
             filter: Some(filter),
             target: None,
             creature_destroyed_this_way_surface: false,
+            definite_noun_rider_surface: false,
         }
     }
 
@@ -310,11 +314,17 @@ impl DestroyNoRegenerationEffect {
             filter: None,
             target: Some(target),
             creature_destroyed_this_way_surface: false,
+            definite_noun_rider_surface: false,
         }
     }
 
     pub fn with_creature_destroyed_this_way_surface(mut self, present: bool) -> Self {
         self.creature_destroyed_this_way_surface = present;
+        self
+    }
+
+    pub fn with_definite_noun_rider_surface(mut self, present: bool) -> Self {
+        self.definite_noun_rider_surface = present;
         self
     }
 }
@@ -1213,6 +1223,18 @@ pub struct GrantPlayTaggedEffect<C> {
     /// Appended; absent in older artifacts.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
     pub alternative_cost_x_is_mana_value: bool,
+    /// "For as long as they remain exiled, you may play them if you control
+    /// a Wizard" (Flameshape, Possibility Technician): the lasting permission
+    /// is usable only while its player controls a permanent matching this
+    /// filter (read as the card is played, not when the permission is
+    /// created). Appended; absent in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub while_player_controls: Option<ObjectFilter>,
+    /// "If you do, it enters tapped." (Kaldring, the Rimestaff): a land
+    /// played or a permanent spell cast through this permission enters the
+    /// battlefield tapped. Appended; absent in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub permanents_enter_tapped: bool,
 }
 
 #[cfg(feature = "serde")]
@@ -1266,6 +1288,8 @@ impl<C> GrantPlayTaggedEffect<C> {
             spell_cost_reduction_per_opponent: 0,
             during_your_turns: false,
             alternative_cost_x_is_mana_value: false,
+            while_player_controls: None,
+            permanents_enter_tapped: false,
         }
     }
 
@@ -1502,6 +1526,9 @@ pub struct RegisterManaRewriteEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RegisterCounterPlacementReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
+    /// None covers placements by any player; legacy effects apply only to you.
+    #[cfg_attr(feature = "serde", serde(default = "counter_placement_default_actor"))]
+    pub actor: Option<crate::filter_model::PlayerFilter>,
     pub counter_type: Option<CounterType>,
     pub additional: u32,
     pub mode: ReplacementApplyMode,
@@ -1516,11 +1543,16 @@ impl RegisterCounterPlacementReplacementEffect {
     ) -> Self {
         Self {
             filter,
+            actor: counter_placement_default_actor(),
             counter_type,
             additional,
             mode,
         }
     }
+}
+
+fn counter_placement_default_actor() -> Option<crate::filter_model::PlayerFilter> {
+    Some(crate::filter_model::PlayerFilter::You)
 }
 
 /// "Until end of turn, if one or more tokens would be created under your
@@ -3776,6 +3808,11 @@ pub struct CastSourceEffect {
     pub cast_as_suspend: bool,
     /// Cast the source's linked transform-like face instead of its current face.
     pub cast_other_face: bool,
+    /// "you may cast this card from your graveyard": the permission covers
+    /// the card only while it's still in that zone (CR 400.7 — a card that
+    /// left is a new object the instruction doesn't name).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub required_zone: Option<crate::zone::Zone>,
 }
 
 impl CastSourceEffect {
@@ -3785,7 +3822,13 @@ impl CastSourceEffect {
             require_exile: false,
             cast_as_suspend: false,
             cast_other_face: false,
+            required_zone: None,
         }
+    }
+
+    pub fn from_zone(mut self, zone: crate::zone::Zone) -> Self {
+        self.required_zone = Some(zone);
+        self
     }
 
     pub fn without_paying_mana_cost(mut self) -> Self {
@@ -5004,6 +5047,12 @@ pub struct ReturnFromGraveyardToBattlefieldEffect {
     pub as_aura: Option<ReturnAsAuraOptions>,
     /// Counters that are part of this object's battlefield-entry event.
     pub enters_with_counters: Vec<BattlefieldEntryCounterSpec>,
+    /// "that creature's controller returns this Aura ... to the battlefield"
+    /// (Traveling Plague): the authored player who puts the card onto the
+    /// battlefield, and so controls it (CR 110.2a). `None` keeps the card's
+    /// own controller (its owner, for a card in a graveyard). Appended.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub returning_player: Option<PlayerFilter>,
 }
 
 /// Return the resolving ability's source from either its owner's graveyard or
@@ -5028,11 +5077,17 @@ impl ReturnFromGraveyardToBattlefieldEffect {
             tapped,
             as_aura: None,
             enters_with_counters: Vec::new(),
+            returning_player: None,
         }
     }
 
     pub fn with_entry_counter(mut self, counter: BattlefieldEntryCounterSpec) -> Self {
         self.enters_with_counters.push(counter);
+        self
+    }
+
+    pub fn with_returning_player(mut self, player: PlayerFilter) -> Self {
+        self.returning_player = Some(player);
         self
     }
 
@@ -5388,6 +5443,19 @@ pub struct CastTaggedEffect<C> {
     /// controls the caster while the cast spell resolves (CR 722).
     #[cfg_attr(feature = "serde", serde(default))]
     pub control_caster_while_spell_resolves: bool,
+    /// The printed instruction names the zone the card is cast from ("you
+    /// may cast it from your graveyard", Oskar, Rubbish Reclaimer). The cast
+    /// is offered only while the tagged card is still in that zone; a card a
+    /// replacement put elsewhere (a discard redirected to exile) isn't cast.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub required_zone: Option<crate::zone::Zone>,
+    /// CR 601.3e: the instruction permits casting only a spell with these
+    /// characteristics ("cast an instant or sorcery spell with mana value 3
+    /// or less", "if the spell's mana value is ..."). The proposed spell (the
+    /// face being cast, as it would exist on the stack) must match, or the
+    /// proposal is reversed.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub required_spell: Option<crate::filter_model::ObjectFilter>,
 }
 
 /// A payment the resolving instruction substitutes for the cast spell's mana
@@ -5415,6 +5483,8 @@ impl<C: PartialEq> PartialEq for CastTaggedEffect<C> {
             && self.caster_land_mana_abilities_only == other.caster_land_mana_abilities_only
             && self.control_caster_while_spell_resolves
                 == other.control_caster_while_spell_resolves
+            && self.required_zone == other.required_zone
+            && self.required_spell == other.required_spell
     }
 }
 
@@ -5436,7 +5506,14 @@ impl<C> CastTaggedEffect<C> {
             alternative_cost: None,
             caster_land_mana_abilities_only: false,
             control_caster_while_spell_resolves: false,
+            required_zone: None,
+            required_spell: None,
         }
+    }
+
+    pub fn from_zone(mut self, zone: crate::zone::Zone) -> Self {
+        self.required_zone = Some(zone);
+        self
     }
 
     pub fn caster_land_mana_abilities_only(mut self) -> Self {
@@ -5466,6 +5543,8 @@ impl<C> CastTaggedEffect<C> {
             alternative_cost: self.alternative_cost.map(|cost| cost.try_map(&mut map)).transpose()?,
             caster_land_mana_abilities_only: self.caster_land_mana_abilities_only,
             control_caster_while_spell_resolves: self.control_caster_while_spell_resolves,
+            required_zone: self.required_zone,
+            required_spell: self.required_spell,
         })
     }
 
@@ -6336,6 +6415,13 @@ pub struct ForPlayersEffect<E> {
     pub sequential: bool,
     pub starting_with_controller: bool,
     pub stop_after_first_happened: bool,
+    /// "For each opponent who has three or more poison counters as you cast
+    /// this spell, put up to one target ..." (Geth's Summons): the per-player
+    /// condition fixes, as the spell is cast, which players' iterations
+    /// announce targets (CR 601.2c). It is not rechecked on resolution; a
+    /// player without announced targets has nothing to act on.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub announcement_condition: Option<crate::value_model::Condition>,
 }
 
 /// Execute a body once for each announced target slot in a dynamic range.

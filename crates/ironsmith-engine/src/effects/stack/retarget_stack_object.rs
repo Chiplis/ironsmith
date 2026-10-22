@@ -558,6 +558,54 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         events.extend(completion);
                     }
                 }
+                // "The copy targets that creature" (Feather): every target
+                // instance whose slot can legally take the fixed object
+                // becomes it; other slots stay unchanged (CR 115.7, 707.10c).
+                RetargetMode::AllToFixed(spec) => {
+                    let fixed_target = match resolve_fixed_target(game, ctx, spec) {
+                        Ok(target) => target,
+                        Err(_) => continue,
+                    };
+                    if let Some(restriction) = &self.new_target_restriction
+                        && filter_targets_with_restriction(
+                            vec![fixed_target],
+                            Some(restriction),
+                            game,
+                            ctx,
+                        )
+                        .is_empty()
+                    {
+                        continue;
+                    }
+                    let mut new_targets = entry.targets.clone();
+                    for (req, slot) in requirements.iter().zip(slots.iter()) {
+                        let legal = filter_targets_with_restriction(
+                            req.legal_targets.clone(),
+                            self.new_target_restriction.as_ref(),
+                            game,
+                            ctx,
+                        );
+                        if !legal.contains(&fixed_target) {
+                            continue;
+                        }
+                        for idx in slot.range.clone() {
+                            if let Some(target) = new_targets.get_mut(idx) {
+                                *target = fixed_target;
+                            }
+                        }
+                    }
+                    if new_targets == entry.targets
+                        || !retarget_proposal_respects_other_targets(&slots, &new_targets)
+                    {
+                        continue;
+                    }
+                    if let Some((did_change, completion)) =
+                        commit_retarget(game, entry.target_id(), new_targets, ctx.provenance)
+                    {
+                        changed += i32::from(did_change);
+                        events.extend(completion);
+                    }
+                }
                 RetargetMode::OneToFixed(spec) => {
                     let fixed_target = match resolve_fixed_target(game, ctx, spec) {
                         Ok(target) => target,

@@ -35,13 +35,23 @@ pub fn parse_if_enters_with_additional_counter_sentence(
 pub fn parse_tagged_enters_with_additional_counter_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = counter_shapes::parse_tagged_enters_additional_tokens(clause.tokens()) else {
+    // "that creature enters with X additional +1/+1 counters on it, where X
+    // is ..." (Runadi): the same external entry replacement with the count
+    // left as X for the enclosing where-X binding to define.
+    let Some((shape, x_count)) =
+        counter_shapes::parse_tagged_enters_additional_tokens_with_x(clause.tokens())
+    else {
         return Ok(None);
+    };
+    let count = if x_count {
+        Value::X
+    } else {
+        Value::Fixed(shape.descriptor.count as i32)
     };
 
     Ok(Some(vec![EffectAst::subject_verb_put_counters(
         shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32)
+        count
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence),

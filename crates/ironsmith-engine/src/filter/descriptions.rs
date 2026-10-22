@@ -1348,8 +1348,17 @@ pub(crate) fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 )
             }
+            Value::PlaneswalkerTypesAmong(filter) => {
+                format!(
+                    "the number of planeswalker types among {}",
+                    filter.description()
+                )
+            }
             Value::CardTypesAmong(filter) => {
                 format!("the number of card types among {}", filter.description())
+            }
+            Value::PermanentTypesAmong(filter) => {
+                format!("the number of permanent types among {}", filter.description())
             }
             Value::GreatestPower(filter) => {
                 format!("the greatest power among {}", filter.description())

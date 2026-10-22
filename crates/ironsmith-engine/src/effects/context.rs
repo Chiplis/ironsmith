@@ -1577,6 +1577,16 @@ impl<'a> ExecutionContext<'a> {
         for (tag, players) in event.player_tags() {
             self.set_tagged_players(tag.clone(), players.clone());
         }
+        // A damage event that was not coalesced with others is its own
+        // batch: "those opponents" is just the damaged player.
+        if let Some(damage) = event.downcast::<crate::events::DamageEvent>()
+            && let crate::events::DamageTarget::Player(player) = damage.target
+            && !event
+                .player_tags()
+                .contains_key(&TagKey::from(ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG))
+        {
+            self.set_tagged_players(ironsmith_core::tag::DAMAGE_BATCH_PLAYERS_TAG, vec![player]);
+        }
         if let Some(damage) = event.downcast::<crate::events::DamageEvent>()
             && let Some(snapshot) = event
                 .source_snapshot()

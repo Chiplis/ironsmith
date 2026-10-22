@@ -108,7 +108,7 @@ pub use source_references::{
 pub use source_references::{
     LeafSourceReferenceAlias, parse_leaf_source_reference_alias_words,
     parse_leaf_source_reference_aliases_for_name,
-    parse_leaf_source_reference_possessive_alias_words, parse_multiword_name_before_of,
+    parse_leaf_source_reference_possessive_alias_words, parse_multiword_name_before_of, parse_titled_personal_name,
 };
 pub use targets::parse_leaf_target_head_tokens;
 

@@ -169,10 +169,13 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::LeastManaValue(filter)
         | crate::effect::Value::BasicLandTypesAmong(filter)
         | crate::effect::Value::CreatureTypesAmong(filter)
+        | crate::effect::Value::PlaneswalkerTypesAmong(filter)
+        | crate::effect::Value::PermanentTypesAmong(filter)
         | crate::effect::Value::CardTypesAmong(filter)
         | crate::effect::Value::ColorsAmong(filter)
         | crate::effect::Value::DistinctNames(filter)
         | crate::effect::Value::DistinctManaValues(filter)
+        | crate::effect::Value::DistinctManaCosts(filter)
         | crate::effect::Value::UnlockedDoorsAmong(filter)
         | crate::effect::Value::DistinctPowers(filter) => {
             object_filter_mentions_iterated_player(filter)
@@ -658,7 +661,7 @@ fn collect_candidates_in_zone(
             let owner_ids =
                 graveyard_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;
 
-            if effect.top_only {
+            if effect.top_only || effect.bottom_only {
                 let mut top_matches = Vec::new();
                 for owner_id in owner_ids {
                     if top_matches.len() >= top_only_limit {
@@ -667,11 +670,14 @@ fn collect_candidates_in_zone(
                     let Some(player) = game.player(owner_id) else {
                         continue;
                     };
-                    for (id, obj) in player
-                        .graveyard
-                        .iter()
-                        .rev()
-                        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                    // The graveyard's last entry is its top card; a
+                    // bottom-only selection reads it from the other end.
+                    let ordered: Box<dyn Iterator<Item = &ObjectId> + '_> = if effect.top_only {
+                        Box::new(player.graveyard.iter().rev())
+                    } else {
+                        Box::new(player.graveyard.iter())
+                    };
+                    for (id, obj) in ordered.filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                     {
                         if !hidden_zone_filter.matches(obj, &filter_ctx, game) {
                             continue;

@@ -211,6 +211,16 @@ impl EffectExecutor for ExileEffect {
             && filter.zone == Some(Zone::Graveyard)
             && filter.owner == Some(crate::target::PlayerFilter::You)
         {
+            // Every card in a graveyard is a nontoken object; "all cards
+            // from your graveyard" (Grip of Amnesia).
+            let mut rest = filter.clone();
+            rest.zone = None;
+            rest.owner = None;
+            rest.nontoken = false;
+            rest.union_surface = Default::default();
+            if rest == crate::target::ObjectFilter::default() {
+                return Some("Exile all cards from your graveyard".to_string());
+            }
             return Some(format!("Exile all {}", filter.description()));
         }
         if matches!(self.spec.base(), ChooseSpec::Source) {

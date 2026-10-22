@@ -26,6 +26,8 @@ const VOTE_WINNER_SUFFIXES: &[&[&str]] = &[
 const DIFFERENT_NAMES_CLAUSES: &[&[&str]] = &[
     &["with", "different", "names"],
     &["that", "have", "different", "names"],
+    // "Dragon cards not named Tiamat that each have different names"
+    &["that", "each", "have", "different", "names"],
 ];
 
 const NOT_ON_BATTLEFIELD_PHRASES: &[&[&str]] = &[
@@ -401,11 +403,17 @@ fn parse_without_tail_decoration(input: &mut WordInput<'_>) -> WResult<FilterTai
 }
 
 fn parse_with_keyword_decoration(input: &mut WordInput<'_>) -> WResult<FilterTailDecoration> {
+    // "with flying, deathtouch, and/or lifelink" is satisfied by any one of
+    // the keywords, exactly like the plain `or` list.
     if let Some((constraints, connective, consumed)) =
         crate::util::parse_filter_keyword_constraint_list_words(input)
         && constraints.len() > 2
         && constraints.len() <= MAX_KEYWORD_LIST
-        && connective == crate::util::FilterKeywordListConnective::Or
+        && matches!(
+            connective,
+            crate::util::FilterKeywordListConnective::Or
+                | crate::util::FilterKeywordListConnective::AndOr
+        )
         && consumed <= input.len()
     {
         let mut keywords = [None; MAX_KEYWORD_LIST];
@@ -417,10 +425,14 @@ fn parse_with_keyword_decoration(input: &mut WordInput<'_>) -> WResult<FilterTai
     }
     let first = parse_keyword_constraint.parse_next(input)?;
     let after_first = *input;
-    if primitives::word_slice_exact("or")
+    if (primitives::word_slice_exact("or")
         .void()
         .parse_next(input)
         .is_ok()
+        || primitives::word_slice_exact("and/or")
+            .void()
+            .parse_next(input)
+            .is_ok())
         && let Ok(second) = parse_keyword_constraint.parse_next(input)
     {
         return Ok(FilterTailDecoration::WithEitherKeyword(first, second));

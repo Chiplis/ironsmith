@@ -36,6 +36,18 @@ impl EffectExecutor for RegisterEnterWithCountersReplacementEffect {
         } else {
             vec![self.filter.clone()]
         };
+        // A replacement bound to objects named now ("that creature enters
+        // with X additional counters, where X is its mana value minus 4",
+        // Runadi) fixes its count at resolution: the spell's mana value on
+        // the stack, with the resolution's tagged referents still known.
+        let count = if self.objects.is_some()
+            && !filters.is_empty()
+            && !matches!(self.count, crate::Value::Fixed(_))
+        {
+            crate::Value::Fixed(crate::effects::helpers::resolve_value(game, &self.count, ctx)?)
+        } else {
+            self.count.clone()
+        };
         for filter in filters {
             let replacement = ReplacementEffect::with_matcher(
                 ctx.source,
@@ -44,7 +56,7 @@ impl EffectExecutor for RegisterEnterWithCountersReplacementEffect {
                 ReplacementAction::EnterWithCounters {
                     counter_kinds_from: None,
                     counter_type: self.counter_type,
-                    count: self.count.clone(),
+                    count: count.clone(),
                     count_condition: None,
                     otherwise_count: None,
                     added_subtypes: Vec::new(),

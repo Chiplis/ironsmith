@@ -1212,6 +1212,12 @@ const PUT_INTO_A_GRAVEYARD_FROM_ANYWHERE_SUFFIXES: &[TriggerSuffixShape] = &[
         clause_shape!(suffix & ["are", "put", "into", "a", "graveyard", "from", "anywhere"]),
         7,
     ),
+    // "one or more creature cards are put into graveyards from anywhere"
+    // (Dennick, Pious Apparition): any graveyard, batched.
+    trigger_suffix_shape(
+        clause_shape!(suffix & ["are", "put", "into", "graveyards", "from", "anywhere"]),
+        6,
+    ),
 ];
 const PUT_INTO_A_GRAVEYARD_FROM_ANYWHERE_EXCEPT_BATTLEFIELD_SUFFIXES: &[TriggerSuffixShape] = &[
     trigger_suffix_shape(
@@ -1285,6 +1291,24 @@ const PUT_INTO_OPPONENT_GRAVEYARD_FROM_ANYWHERE_SUFFIXES: &[TriggerSuffixShape] 
                 ]
         ),
         8,
+    ),
+];
+/// "a creature card is put into an opponent's graveyard from their library"
+/// (Undead Alchemist): library origin, owned by an opponent.
+const PUT_INTO_OPPONENT_GRAVEYARD_FROM_THEIR_LIBRARY_SUFFIXES: &[TriggerSuffixShape] = &[
+    trigger_suffix_shape(
+        clause_shape!(
+            suffix
+                & ["is", "put", "into", "an", "opponents", "graveyard", "from", "their", "library"]
+        ),
+        9,
+    ),
+    trigger_suffix_shape(
+        clause_shape!(
+            suffix
+                & ["are", "put", "into", "an", "opponents", "graveyard", "from", "their", "library"]
+        ),
+        9,
     ),
 ];
 const ATTACHED_OBJECT_PUT_INTO_GRAVEYARD_SUFFIXES: &[TriggerSuffixShape] = &[
@@ -2272,7 +2296,88 @@ fn try_parse_transforms_or_enters_transformed_trigger_lexed(
     )))
 }
 
+/// Event-time turn windows that qualify an arbitrary trigger event
+/// ("Whenever you get one or more {E} during your turn", "Whenever you cast an
+/// instant spell during your main phase").
+fn trigger_turn_window_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], crate::cards::builders::PredicateAst, &'static str)> {
+    use crate::cards::builders::{PredicateAst, SourcePredicateAst};
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    if let Some(core) = crate::grammar::primitives::strip_lexed_suffix_phrase(
+        tokens,
+        &["during", "your", "turn"],
+    ) {
+        return Some((core, PredicateAst::YourTurn, "during your turn"));
+    }
+    if let Some(core) =
+        crate::grammar::primitives::strip_lexed_suffix_phrase(tokens, DURING_YOUR_MAIN_PHASE_SUFFIX)
+    {
+        return Some((
+            core,
+            PredicateAst::Source(SourcePredicateAst::SourceControllersMainPhase),
+            "during your main phase",
+        ));
+    }
+    None
+}
+
+/// "this creature enters or becomes tapped" (Champions of the Shoal): one
+/// subject with two independent events. The bare "tapped" must not be read as
+/// the "enters tapped" entry state.
+fn try_parse_enters_or_becomes_tapped_trigger_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    let Some(or_idx) = tokens.iter().position(|token| token.is_word("or")) else {
+        return Ok(None);
+    };
+    if or_idx < 2
+        || !tokens[or_idx - 1].is_any_word(&["enters", "enter"])
+        || tokens.len() != or_idx + 3
+        || !tokens[or_idx + 1].is_any_word(&["becomes", "become"])
+        || !tokens[or_idx + 2].is_any_word(&["tapped", "untapped"])
+    {
+        return Ok(None);
+    }
+    let subject = &tokens[..or_idx - 1];
+    let mut becomes = subject.to_vec();
+    becomes.extend_from_slice(&tokens[or_idx + 1..]);
+    let (Ok(enters), Ok(becomes)) = (
+        parse_trigger_clause_lexed_inner(&tokens[..or_idx]),
+        parse_trigger_clause_lexed_inner(&becomes),
+    ) else {
+        return Ok(None);
+    };
+    Ok(Some(TriggerSpec::Either(Box::new(enters), Box::new(becomes))))
+}
+
 pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+    if let Some(trigger) = try_parse_enters_or_becomes_tapped_trigger_lexed(tokens)? {
+        return Ok(trigger);
+    }
+    let full = parse_trigger_clause_lexed_inner(tokens);
+    // A turn-window suffix that the event grammar silently ignored (the
+    // clause reads the same with and without it) still restricts the event:
+    // keep it as an event-time qualification instead of dropping it.
+    if let Ok(full_spec) = &full
+        && let Some((core_tokens, condition, surface)) = trigger_turn_window_suffix(tokens)
+        && !core_tokens.is_empty()
+        && let Ok(core_spec) = parse_trigger_clause_lexed_inner(core_tokens)
+        && core_spec == *full_spec
+    {
+        return Ok(TriggerSpec::ConditionQualified {
+            trigger: Box::new(core_spec),
+            condition,
+            surface: surface.to_string(),
+        });
+    }
+    full
+}
+
+fn parse_trigger_clause_lexed_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<TriggerSpec, CardTextError> {
     if let Some(trigger) = try_parse_transforms_or_enters_transformed_trigger_lexed(tokens)? {
         return Ok(trigger);
     }
@@ -2821,12 +2926,22 @@ fn try_parse_player_attack_with_one_or_more_lexed(
     let Ok(mut filter) = parse_object_filter_lexed(&tokens[filter_start..], false) else {
         return Ok(None);
     };
+    let per_attacking_player = player != PlayerFilter::You;
     filter.controller = Some(player);
     filter.set_union_one_or_more(true);
-    Ok(Some(apply_leading_trigger_intro_surface(
-        TriggerSpec::AttacksOneOrMore(filter),
-        raw_tokens,
-    )))
+    // "Whenever an opponent attacks with creatures" (Mangara, Tomik): each
+    // attacking player's creatures are one group, so a shared-team
+    // declaration triggers once per attacking player.
+    let trigger = if per_attacking_player {
+        TriggerSpec::AttacksOneOrMoreWithMinTotal {
+            filter,
+            min_total_attackers: 1,
+            per_attacking_player,
+        }
+    } else {
+        TriggerSpec::AttacksOneOrMore(filter)
+    };
+    Ok(Some(apply_leading_trigger_intro_surface(trigger, raw_tokens)))
 }
 
 fn try_parse_source_and_another_attack_different_players(
@@ -2933,6 +3048,7 @@ fn try_parse_shared_player_attack_draw_cast_union_lexed(
     attack_filter.targets_only_player = Some(attacked);
     attack_filter.set_union_one_or_more(true);
     let attack = TriggerSpec::AttacksOneOrMoreWithMinTotal {
+        per_attacking_player: actor != PlayerFilter::You,
         filter: attack_filter,
         min_total_attackers: minimum,
     };
@@ -3267,6 +3383,15 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
                 })
                 .unwrap_or(left.len().min(4));
             (0..=subject_end).rev().collect()
+        } else if right_words.first() == Some(&"leaves")
+            && left
+                .last()
+                .is_some_and(|token| token.is_word("enters") || token.is_word("enter"))
+        {
+            // "another artifact you control enters or leaves the battlefield"
+            // (Sludge Strider): the departure shares the entire entry
+            // subject, so only that full subject is tried.
+            vec![left.len() - 1]
         } else {
             (0..=left.len().min(4)).collect()
         };

@@ -50,6 +50,20 @@ pub enum CardType {
 }
 
 impl CardType {
+    /// CR 110.4: the permanent types are artifact, battle, creature,
+    /// enchantment, land, and planeswalker.
+    pub const fn is_permanent_type(self) -> bool {
+        matches!(
+            self,
+            Self::Artifact
+                | Self::Battle
+                | Self::Creature
+                | Self::Enchantment
+                | Self::Land
+                | Self::Planeswalker
+        )
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             CardType::Land => "land",
@@ -667,6 +681,15 @@ pub enum Subtype {
     Orb,
     // CR 205.3m (Tetravus's Tetravite tokens); appended for ordinal stability.
     Tetravite,
+    // Append new vocabulary to preserve serialized variant ordinals.
+    Officer,
+    Klingon,
+    Tribble,
+    Borg,
+    Vulcan,
+    ElAurian,
+    Q,
+    Ferengi,
 }
 
 impl Subtype {
@@ -1024,6 +1047,14 @@ impl Subtype {
             Subtype::Walrus,
             Subtype::Weasel,
             Subtype::Llama,
+            Subtype::Officer,
+            Subtype::Klingon,
+            Subtype::Tribble,
+            Subtype::Borg,
+            Subtype::Vulcan,
+            Subtype::ElAurian,
+            Subtype::Q,
+            Subtype::Ferengi,
         ]
     }
 
@@ -1181,6 +1212,7 @@ impl Subtype {
             Subtype::Ctan => "C'tan".to_string(),
             Subtype::PowerPlant => "Power-Plant".to_string(),
             Subtype::Shiar => "Shi'ar".to_string(),
+            Subtype::ElAurian => "El-Aurian".to_string(),
             _ => split_pascal_case_identifier(&format!("{self:?}")),
         }
     }

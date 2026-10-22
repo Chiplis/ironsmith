@@ -511,7 +511,17 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
     /// Current-name reductions must observe layer-one copy and name changes.
     /// Tagged historical collections continue to use their captured names.
     pub(super) fn distinct_names(&self, filter: &ObjectFilter) -> Result<i64, ExecutionError> {
+        // CR 201.2a: a nameless object adds no name. CR 709.4 / 709.5: a
+        // combined "A // B" name (a split card outside the stack, a fully
+        // unlocked Room) is both names, each counted on its own.
         let mut names = std::collections::HashSet::new();
+        let mut insert_names = |name: &str| {
+            for part in name.split(" // ") {
+                if !crate::filter::name_is_nameless(part) {
+                    names.insert(part.trim().to_string());
+                }
+            }
+        };
         match self.mode {
             Mode::Execution(ctx) => {
                 let filter_ctx = ctx.filter_context(self.game);
@@ -524,7 +534,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             snapshot,
                         )
                     }) {
-                        names.insert(snapshot.name.to_string());
+                        insert_names(&snapshot.name);
                     }
                 } else {
                     let ids = value_candidate_ids_for_filter(self.game, filter, ctx)
@@ -549,12 +559,12 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                                 "distinct names has no current characteristics for object {id:?}"
                             ))
                         })?;
-                        names.insert(chars.name.to_string());
+                        insert_names(&chars.name);
                     }
                 }
             }
             Mode::Continuous(layer) => layer.visit_layered(filter, |_, chars| {
-                names.insert(chars.name.to_string());
+                insert_names(&chars.name);
             }),
         }
         i64::try_from(names.len()).map_err(|_| {
@@ -953,6 +963,15 @@ impl EvaluationContext<'_, '_> {
         let Some(ctx) = self.execution() else {
             return Ok(self.layer().object_number(spec, property));
         };
+        // "the exiled creature's power": the departure history of the
+        // instruction's result. When the object never left its zone there is
+        // no history; the result itself is then the creature (CR 608.2h).
+        if let ChooseSpec::Tagged(tag) = spec.base()
+            && let Some(base) = ironsmith_core::tag::pre_move_history_base_tag(tag)
+            && ctx.get_tagged_all(tag).is_none()
+        {
+            return self.object_number(&ChooseSpec::Tagged(base), property);
+        }
         if matches!(spec.base(), ChooseSpec::Source) && property.is_power_or_toughness() {
             return self.source_number(property);
         }

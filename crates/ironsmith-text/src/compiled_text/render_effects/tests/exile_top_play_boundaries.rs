@@ -121,12 +121,17 @@ fn plural_exile_pool_with_one_shared_play_renders_one_of_those_cards() {
         )
     );
 
-    for max_plays in [None, Some(2)] {
+    // An uncapped pool plays "those cards"; a cap of two keeps its count
+    // ("up to two of those cards", March of Reckless Joy).
+    for (max_plays, permission) in [
+        (None, "may play those cards"),
+        (Some(2), "may play up to two of those cards"),
+    ] {
         grant.max_plays = max_plays;
         assert!(
             describe_effect_clause_list(&[exile.clone(), Effect::new(grant.clone())]).is_some_and(
                 |text| {
-                    text.contains("may play those cards")
+                    text.contains(permission)
                         && !text.contains("play one of those cards")
                 }
             ),

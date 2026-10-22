@@ -252,7 +252,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         // New attack/damage observations start their own exact role. Other
         // delayed bodies inherit a selected actor at registration time.
-        let bound_trigger = if self.trigger.downcast_ref::<crate::triggers::SpellCastThroughPermissionTrigger>().is_some() {
+        let bound_trigger = if let Some(watcher) = self.trigger.downcast_ref::<crate::triggers::SpellCastThroughPermissionTrigger>() {
             for grant in &mut game.effect_store.grant_registry.grants {
                 if grant.permission_identity.as_ref().is_some_and(|identity| ctx.last_play_permissions.contains(identity)) {
                     grant.play_from_constraints.requires_cast_receipt = true;
@@ -260,6 +260,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             }
             Trigger::new(crate::triggers::SpellCastThroughPermissionTrigger {
                 permissions: ctx.last_play_permissions.clone(),
+                include_land_plays: watcher.include_land_plays,
             })
         } else { self.trigger.clone() };
         let new_combat_observation = self.trigger.subscribed_kinds().is_some_and(|kinds|
@@ -340,11 +341,26 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             })
             .transpose()?;
         let prevention_shield = if self.event_value_from_prior_prevention {
-            Some(ctx.last_prevention_shield.ok_or_else(|| {
-                ExecutionError::UnresolvableValue(
-                    "delayed prevention metric requires a prior prevention shield".to_string(),
-                )
-            })?)
+            match ctx.last_prevention_shield {
+                Some(shield) => Some(shield),
+                // "The next time ... prevent that damage. When damage is
+                // prevented this way, ..." (New Way Forward): a next-time
+                // replacement has no shield identity; the delayed ability is
+                // linked to this source's prevention events instead.
+                None if self
+                    .trigger
+                    .downcast_ref::<crate::triggers::DamagePreventedThisWayTrigger>()
+                    .is_some() =>
+                {
+                    None
+                }
+                None => {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "delayed prevention metric requires a prior prevention shield"
+                            .to_string(),
+                    ));
+                }
+            }
         } else {
             None
         };

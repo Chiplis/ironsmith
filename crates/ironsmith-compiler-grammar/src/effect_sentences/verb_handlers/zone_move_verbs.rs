@@ -363,6 +363,10 @@ pub fn parse_draw(
                             (Value::CommanderCastCount(PlayerFilter::IteratedPlayer), PlayerAst::Target) => {
                                 Value::CommanderCastCount(PlayerFilter::target_player())
                             }
+                            (
+                                Value::CommandersCastFromCommandZoneBy(PlayerFilter::IteratedPlayer),
+                                PlayerAst::Target,
+                            ) => Value::CommandersCastFromCommandZoneBy(PlayerFilter::target_player()),
                             (other, _) => other,
                         }
                         .with_surface_hints(hints);

@@ -394,6 +394,14 @@ fn excluded_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
     }
 }
 
+/// "spell ... that wasn't cast" (Errant, Street Artist): a terminal relative
+/// clause denying the cast itself, with no origin zone after it.
+fn denies_spell_was_cast(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    crate::word_primitives::parse_sequence_suffix(&words, &["that", "wasnt", "cast"])
+        || crate::word_primitives::parse_sequence_suffix(&words, &["that", "was", "not", "cast"])
+}
+
 fn positive_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
     let words = parser_token_word_refs(tokens);
     let from = crate::word_primitives::parse_last_sequence_start(&words, &["cast", "from"])
@@ -913,6 +921,10 @@ fn preserve_public_spell_filter_facts(filter: &mut ObjectFilter, tokens: &[Owned
         filter.excluded_cast_origin_zone = Some(zone);
         preserve_explicit_spell_domain(filter, tokens);
     }
+    if denies_spell_was_cast(tokens) {
+        filter.not_cast = true;
+        preserve_explicit_spell_domain(filter, tokens);
+    }
 
     let words = parser_token_word_refs(tokens);
     // Retain all three characteristic alternatives and their source-owned
@@ -1187,12 +1199,32 @@ fn preserve_combat_role_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLe
     // alternatives, not an intersection.
     let words = parser_token_word_refs(tokens);
     let state_word = |word: &str| matches!(word, "attacking" | "blocking" | "tapped");
-    let Some(pair) = words.windows(3).find_map(|window| {
-        (state_word(window[0])
-            && window[1] == "or"
-            && state_word(window[2])
-            && window[0] != window[2])
-            .then(|| (window[0], window[2]))
+    // "attacking, blocking, or tapped creature" (Sonar Strike): a serial
+    // list of state adjectives (commas are not words) is one disjunction.
+    let Some(states) = (0..words.len()).find_map(|start| {
+        if !state_word(words[start]) {
+            return None;
+        }
+        let mut states = vec![words[start]];
+        let mut saw_or = false;
+        let mut index = start + 1;
+        while index < words.len() {
+            if words[index] == "or"
+                && words.get(index + 1).is_some_and(|word| state_word(word))
+            {
+                saw_or = true;
+                states.push(words[index + 1]);
+                index += 2;
+            } else if state_word(words[index]) {
+                states.push(words[index]);
+                index += 1;
+            } else {
+                break;
+            }
+        }
+        let mut distinct = states.clone();
+        distinct.dedup();
+        (saw_or && distinct.len() == states.len() && states.len() >= 2).then_some(states)
     }) else {
         return;
     };
@@ -1202,10 +1234,10 @@ fn preserve_combat_role_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLe
         "blocking" => filter.blocking,
         _ => filter.tapped,
     };
-    if !flag(filter, pair.0) && !flag(filter, pair.1) {
+    if !states.iter().any(|state| flag(filter, state)) {
         return;
     }
-    if pair.0 != "tapped" && pair.1 != "tapped" && !(filter.attacking && filter.blocking) {
+    if !states.contains(&"tapped") && !(filter.attacking && filter.blocking) {
         return;
     }
 
@@ -1228,7 +1260,7 @@ fn preserve_combat_role_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLe
         branch.set_explicit_card_type_noun(explicit_card_type_noun);
         branch
     };
-    filter.any_of = vec![branch(pair.0), branch(pair.1)];
+    filter.any_of = states.iter().map(|state| branch(state)).collect();
     filter.set_union_connective(ObjectFilterUnionConnective::Or);
 }
 
@@ -1492,6 +1524,10 @@ pub(crate) fn split_from_among_those_cards_suffix(
     ) {
         4
     } else if crate::word_primitives::parse_sequence_suffix(&words, &["among", "those", "cards"]) {
+        3
+    } else if crate::word_primitives::parse_sequence_suffix(&words, &["from", "among", "them"]) {
+        // "exile up to two creature cards from among them" (Dubious
+        // Challenge): the same referenced collection.
         3
     } else {
         return None;
@@ -1760,6 +1796,73 @@ pub fn parse_object_filter(
         let mut filter = parse_object_filter(head, other)?;
         filter.sector = Some(sector);
         return Ok(filter);
+    }
+    // "creature card in your graveyard that's an artifact or that has mana
+    // value 3 or less" (Desdemona, Freedom's Edge): the head noun is required
+    // and the two relative clauses are alternatives.
+    {
+        let words = crate::lexer::TokenWordView::new(tokens);
+        let words_ref = words.word_refs();
+        if let Some(rel) = words_ref.iter().position(|word| matches!(*word, "that's" | "thats"))
+            && rel > 0
+            && let Some(or_rel) = words_ref
+                .windows(3)
+                .position(|window| window == ["or", "that", "has"])
+            && or_rel > rel + 1
+            && let Some(&rel_start) = words.token_start_indices().get(rel)
+            && let Some(&or_start) = words.token_start_indices().get(or_rel)
+        {
+            let head = &tokens[..rel_start];
+            let first = &tokens[rel_start + 1..or_start];
+            let second = &tokens[or_start + 3..];
+            let mut base = parse_object_filter(head, other)?;
+            let mut type_branch = parse_object_filter(first, false)?;
+            let span = tokens[or_start].span;
+            let mut with_tokens = vec![
+                crate::lexer::OwnedLexToken::word("card".to_string(), span),
+                crate::lexer::OwnedLexToken::word("with".to_string(), span),
+            ];
+            with_tokens.extend_from_slice(second);
+            let mut quality_branch = parse_object_filter(&with_tokens, false)?;
+            for branch in [&mut type_branch, &mut quality_branch] {
+                branch.zone = None;
+            }
+            if !type_branch.card_types.is_empty() && quality_branch.mana_value.is_some() {
+                base.any_of = vec![type_branch, quality_branch];
+                return Ok(base);
+            }
+        }
+    }
+    // "card in a graveyard that was discarded or put there from a library
+    // this turn" (Ghost of Ramirez DePietro): one graveyard card with either
+    // recent history, not a graveyard-or-library union.
+    {
+        let words = crate::lexer::TokenWordView::new(tokens);
+        let words_ref = words.word_refs();
+        const TAIL: &[&str] = &[
+            "discarded", "or", "put", "there", "from", "a", "library", "this", "turn",
+        ];
+        let head_words = words_ref.len().saturating_sub(TAIL.len() + 2);
+        if words_ref.len() > TAIL.len() + 2
+            && words_ref.ends_with(TAIL)
+            && words_ref[head_words] == "that"
+            && matches!(words_ref[head_words + 1], "was" | "were")
+            && let Some(&boundary) = words.token_start_indices().get(head_words)
+        {
+            let mut filter = parse_object_filter(&tokens[..boundary], other)?;
+            filter.any_of = vec![
+                ObjectFilter {
+                    discarded_or_cycled_this_turn_by: Some(PlayerFilter::Any),
+                    ..ObjectFilter::default()
+                },
+                ObjectFilter {
+                    entered_graveyard_this_turn: true,
+                    entered_graveyard_from_library_this_turn: true,
+                    ..ObjectFilter::default()
+                },
+            ];
+            return Ok(filter);
+        }
     }
     if let Some(base) = split_shares_card_type_with_cycled_card_tokens(tokens) {
         // "a card that shares a card type with the cycled card": the cycled
@@ -2050,6 +2153,9 @@ fn parse_object_filter_inner(
     preserve_explicit_spell_domain(&mut filter, tokens);
     if let Some(zone) = excluded_cast_origin_zone(tokens) {
         filter.excluded_cast_origin_zone = Some(zone);
+    }
+    if denies_spell_was_cast(tokens) {
+        filter.not_cast = true;
     }
     let is_explicit_stack_spell = filter.zone == Some(Zone::Stack)
         && filter.stack_kind == Some(crate::filter::StackObjectKind::Spell);

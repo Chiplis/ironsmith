@@ -361,3 +361,13 @@ mod additive_commander_draw;
 mod counted_restriction;
 
 mod manifest_pile_universal;
+mod semantic_loss_wave_d;
+mod semantic_loss_wave_t1;
+mod semantic_loss_wave_t2;
+mod semantic_loss_wave_t3;
+mod semantic_loss_wave_t5a;
+mod semantic_loss_wave_t5b;
+mod semantic_loss_wave_ma;
+mod semantic_loss_wave_mb;
+mod semantic_loss_wave_mc;
+mod semantic_loss_wave_md;

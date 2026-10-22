@@ -2249,10 +2249,11 @@ fn counter_on_source_surface(
 
     let matched = COUNTER_ON_SOURCE_TAIL_PATTERN.parse_full(clause)?;
     let source = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
-    if !is_source_state_subject_clause(source) {
+    let words = source.word_refs();
+    if !is_source_state_subject_clause(source)
+        && !matches!(words.as_slice(), ["him"] | ["her"]) {
         return None;
     }
-    let words = source.word_refs();
     source_reference_surface_for_words(&words)
         .or_else(|| this_source_surface_for_words(&words))
         .or_else(|| {
@@ -2450,8 +2451,19 @@ fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Opti
     {
         return None;
     }
+    // "if it targets one or more other permanents you control" (Orvar, the
+    // All-Form): an existential over the spell's targets.
+    let target_tokens = target.tokens();
+    let target_tokens = match crate::lexer::token_word_refs(target_tokens).as_slice() {
+        ["one", "or", "more", ..] => {
+            let view = crate::lexer::TokenWordView::new(target_tokens);
+            let start = view.token_start_indices().get(3).copied()?;
+            &target_tokens[start..]
+        }
+        _ => target_tokens,
+    };
     let target = crate::grammar::primitives::probe_shape(
-        crate::grammar::shared_util::target_semantics::parse_target_phrase_inner(target.tokens()),
+        crate::grammar::shared_util::target_semantics::parse_target_phrase_inner(target_tokens),
     )?;
     let spell_filter = match target {
         TargetAst::Object(target_filter, None, _) => {
@@ -3897,6 +3909,12 @@ fn parse_passive_this_way_tagged_object_predicate(
         crate::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(&action_words)
             .map(|(action, _)| action),
     );
+    // "if at least one creature card was exiled this way" (Kaya, Orzhov
+    // Usurper): the tagged match is already any-of; keep the authored
+    // quantifier for the compiled surface.
+    if filter_clause.word_refs().starts_with(&["at", "least", "one"]) {
+        filter.set_union_one_or_more(true);
+    }
     Ok(Some(PredicateAst::TaggedMatches(
         reference_tag.bind(),
         filter,
@@ -4658,6 +4676,20 @@ fn parse_demonstrative_or_descriptor_predicate(
     if left_tokens.is_empty() || right_tokens.is_empty() {
         return Ok(None);
     }
+    // "it was attacking or blocking alone" (Thijarian Witness): the shared
+    // trailing "alone" qualifies both combat participles (CR 506.5).
+    let shared_alone_tokens;
+    let left_tokens = if left_tokens.len() == 1
+        && matches!(left_tokens[0].parser_text(), "attacking" | "blocking")
+        && right_tokens.len() == 2
+        && matches!(right_tokens[0].parser_text(), "attacking" | "blocking")
+        && right_tokens[1].is_word("alone")
+    {
+        shared_alone_tokens = vec![left_tokens[0].clone(), right_tokens[1].clone()];
+        shared_alone_tokens.as_slice()
+    } else {
+        left_tokens
+    };
 
     let antecedent_surface = demonstrative_antecedent_surface(tokens);
     let parse_branch = |branch_tokens: &[OwnedLexToken]| -> Result<ObjectFilter, CardTextError> {

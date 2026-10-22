@@ -552,6 +552,19 @@ fn parse_shared_name_restriction_tail(words: &[&str], mut filter: ObjectFilter) 
         filter.name = Some("{chosen name}".to_string());
         return Some(filter);
     }
+    // "spells with the same mana value as that spell" (Living
+    // Breakthrough): the referenced object's mana value, compared against
+    // its tagged snapshot.
+    if let Some(comparison) =
+        prefix_remainder(words, &["with", "the", "same", "mana", "value", "as"])
+        && exact_any(comparison, &[&["that", "spell"], &["that", "creature"], &["that", "card"]])
+    {
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            relation: crate::filter::TaggedOpbjectRelation::SameManaValueAsTagged,
+        });
+        return Some(filter);
+    }
     let comparison = prefix_remainder(words, &["with", "the", "same", "name", "as"])?;
     if exact(comparison, &["a", "nontoken", "permanent"]) {
         return Some(filter.sharing_characteristics_with(
@@ -673,7 +686,18 @@ pub fn parse_compound_player_action_restriction_words(words: &[&str]) -> Option<
     let split = words.windows(2).position(|pair| pair == ["or", "activate"])?;
     let first = parse_player_activation_restriction_tail_words(&words[..split])?;
     let second = parse_player_activation_restriction_tail_words(&words[split + 1..])?;
-    if !matches!(first, PlayerActivationRestrictionTailFact::CastSpellsMatching(_))
-        || !matches!(second, PlayerActivationRestrictionTailFact::ActivateAbilitiesOf { .. }) { return None; }
+    // "can't cast spells or activate planeswalkers' loyalty abilities"
+    // (Revel in Silence): a loyalty-ability lockout joins a cast lockout.
+    if !matches!(
+        first,
+        PlayerActivationRestrictionTailFact::CastSpellsMatching(_)
+            | PlayerActivationRestrictionTailFact::CastSpells
+    ) || !matches!(
+        second,
+        PlayerActivationRestrictionTailFact::ActivateAbilitiesOf { .. }
+            | PlayerActivationRestrictionTailFact::ActivateLoyaltyAbilitiesOf(_)
+    ) {
+        return None;
+    }
     Some(vec![first, second])
 }

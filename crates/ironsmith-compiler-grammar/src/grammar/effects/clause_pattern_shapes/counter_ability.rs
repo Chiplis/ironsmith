@@ -158,6 +158,12 @@ fn parse_source_card_type<'a>(input: &mut LexStream<'a>) -> WResult<CardType> {
         .parse_next(input)
 }
 
+fn parse_source_non_card_type<'a>(input: &mut LexStream<'a>) -> WResult<CardType> {
+    primitives::word_parser_text
+        .verify_map(|word| word.strip_prefix("non").and_then(parse_card_type))
+        .parse_next(input)
+}
+
 /// The ability source's qualities: "from an artifact source", "from a
 /// colorless source", "from another legendary source that's not a
 /// commander" (Abstruse Archaic, The Peregrine Dynamo). Stack abilities are
@@ -165,6 +171,8 @@ fn parse_source_card_type<'a>(input: &mut LexStream<'a>) -> WResult<CardType> {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct AbilitySourceQualifiers {
     pub(super) card_types: Vec<CardType>,
+    /// "from a noncreature source" (Dissonant Wave).
+    pub(super) excluded_card_types: Vec<CardType>,
     pub(super) colorless: bool,
     pub(super) legendary: bool,
     pub(super) another: bool,
@@ -174,6 +182,7 @@ pub(super) struct AbilitySourceQualifiers {
 #[derive(Clone, Copy)]
 enum SourceAdjective {
     CardType(CardType),
+    NonCardType(CardType),
     Colorless,
     Legendary,
 }
@@ -182,6 +191,7 @@ fn source_adjective<'a>(input: &mut LexStream<'a>) -> WResult<SourceAdjective> {
     alt((
         primitives::kw("colorless").value(SourceAdjective::Colorless),
         primitives::kw("legendary").value(SourceAdjective::Legendary),
+        parse_source_non_card_type.map(SourceAdjective::NonCardType),
         parse_source_card_type.map(SourceAdjective::CardType),
     ))
     .parse_next(input)
@@ -214,6 +224,9 @@ fn parse_source_types_tail<'a>(input: &mut LexStream<'a>) -> WResult<AbilitySour
     for adjective in adjectives {
         match adjective {
             SourceAdjective::CardType(card_type) => qualifiers.card_types.push(card_type),
+            SourceAdjective::NonCardType(card_type) => {
+                qualifiers.excluded_card_types.push(card_type)
+            }
             SourceAdjective::Colorless => qualifiers.colorless = true,
             SourceAdjective::Legendary => qualifiers.legendary = true,
         }

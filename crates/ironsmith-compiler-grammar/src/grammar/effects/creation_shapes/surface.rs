@@ -186,6 +186,8 @@ impl CreationPhrase {
                 ],
                 &["in", "addition", "to", "its", "other", "types"],
                 &["in", "addition", "to", "their", "other", "types"],
+                &["in", "addition", "to", "its", "other", "colors", "and", "types"],
+                &["in", "addition", "to", "their", "other", "colors", "and", "types"],
             ],
             Self::AtEndOfCombat => &[&["at", "end", "of", "combat"]],
             Self::AttachedTo => &[&["attached", "to"]],
@@ -364,6 +366,8 @@ impl CreationPhrase {
                 &["arent", "legendary"],
                 &["aren", "t", "legendary"],
                 &["are", "not", "legendary"],
+                // "except they're not legendary" (Jace, Cunning Castaway).
+                &["not", "legendary"],
             ],
             Self::NumberOf => &[&["a", "number", "of"], &["the", "number", "of"]],
             Self::ObjectExiledThisWay => &[

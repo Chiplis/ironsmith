@@ -65,6 +65,16 @@ pub fn parse_matching_spell_cost_reduction_shape(
         primitives::phrase(&["to", "cast"]).void(),
     )
     .map(|(_, rest)| rest);
+    // "Creature spells you cast cost {1} less to cast for each 1 life your
+    // opponents have lost this turn" (Rakdos, Lord of Riots): the "this turn"
+    // belongs to the for-each count, so this is a permanent static
+    // modifier, not a this-turn reduction that would drop the multiplier.
+    if let Some(after_to_cast) = after_to_cast
+        && parser_token_word_refs(after_to_cast).starts_with(&["for", "each"])
+        && !common::present(&parser_token_word_refs(&tokens[..less_token_idx]), &["this", "turn"])
+    {
+        return None;
+    }
     if cost_token_idx <= spell_token_idx
         || less_token_idx <= cost_token_idx
         || (!has_you_cast && !has_that_player_casts && !has_chosen_name && !has_opponents_cast)
@@ -94,9 +104,28 @@ pub fn parse_matching_spell_cost_reduction_shape(
         crate::util::trim_edge_punctuation_tokens(&tokens[subject_start_token_idx..cost_token_idx]);
     let reduction_tokens =
         crate::util::trim_edge_punctuation_tokens(&tokens[cost_token_idx + 1..less_token_idx]);
-    let (reduction, used) = crate::util::parse_value(reduction_tokens)?;
+    let (mut reduction, used) = crate::util::parse_value(reduction_tokens)?;
     if used != reduction_tokens.len() {
         return None;
+    }
+    // "costs {1} less to cast for each counter removed this way" (Mutated
+    // Cultist): the per-unit amount scales by the counted basis; dropping
+    // the tail would leave a flat {1} reduction.
+    let mut scaled_by_for_each = false;
+    if let Some(after_to_cast) = after_to_cast {
+        let tail = parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(after_to_cast));
+        if tail.starts_with(&["for", "each"])
+            && let Some((per_unit, consumed)) = crate::util::parse_for_each_count_value_words(&tail)
+            && consumed == tail.len()
+            && let Value::Fixed(amount) = reduction
+        {
+            reduction = if amount == 1 {
+                per_unit
+            } else {
+                Value::Scaled(Box::new(per_unit), amount)
+            };
+            scaled_by_for_each = true;
+        }
     }
 
     let where_value_tokens = if matches!(reduction, Value::X) {
@@ -133,7 +162,7 @@ pub fn parse_matching_spell_cost_reduction_shape(
     }
 
     let next_spell = common::prefix(&words, &["the", "next"]);
-    let next_spell_mana_reduction = if next_spell && !increase {
+    let next_spell_mana_reduction = if next_spell && !increase && !scaled_by_for_each {
         leaf::parse_leaf_fixed_mana_cost_prefix_tokens(reduction_tokens)
             .filter(|parsed| parsed.consumed == reduction_tokens.len())
             .map(|parsed| parsed.cost)

@@ -598,6 +598,7 @@ pub(super) fn run_post_parse_followup_registry(
                 .as_str(),
                 sentence_tokens,
             );
+            crate::parse_trace::event(format!("post-parse followup rule: {}", rule_match.rule));
             Ok(Some(candidate.result))
         }
     }
@@ -1398,6 +1399,9 @@ fn pre_rule_cant_be_regenerated_followup(
         ) {
             super::mark_last_destroy_creature_destroyed_this_way_surface(state.effects);
         }
+        if shape.subject == followup_shapes::CantBeRegeneratedSubject::TheCreature {
+            super::mark_last_destroy_definite_noun_rider_surface(state.effects);
+        }
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
             route: None,
@@ -2052,8 +2056,37 @@ fn pre_rule_excess_damage_to_controller(
     ];
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::parser_token_word_refs(tokens);
+    fn is_damage_instruction(effect: Option<&EffectAst>) -> bool {
+        matches!(
+            effect,
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Damage(
+                    DamageActionAst::DealDamage { .. }
+                        | DamageActionAst::DealDamageEqualToPower { .. }
+                ),
+                ..
+            }))
+        )
+    }
+    // A damage instruction inside a reflexive "When you do, ..." body is
+    // the one a continuation sentence modifies (Megatron, Destructive Force).
+    let effects: &mut Vec<EffectAst> = if !is_damage_instruction(state.effects.last())
+        && state
+            .effects
+            .last_mut()
+            .and_then(super::trailing_reflexive_body_mut)
+            .is_some_and(|body| is_damage_instruction(body.last()))
+    {
+        state
+            .effects
+            .last_mut()
+            .and_then(super::trailing_reflexive_body_mut)
+            .expect("checked above")
+    } else {
+        &mut *state.effects
+    };
     let damage_by_object = matches!(
-        state.effects.last(),
+        effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. }),
             ..
@@ -2061,7 +2094,7 @@ fn pre_rule_excess_damage_to_controller(
     );
     let modifies_damage = damage_by_object
         || matches!(
-            state.effects.last(),
+            effects.last(),
             Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }),
                 ..
@@ -2069,6 +2102,75 @@ fn pre_rule_excess_damage_to_controller(
         );
     if !modifies_damage {
         return Ok(None);
+    }
+    // "If excess damage would be dealt to that creature this way, instead
+    // that damage is dealt to that creature's controller and you convert
+    // Megatron." (Megatron, Destructive Force): the same CR 120.4a redirect,
+    // with a rider performed as part of the replacement. The redirected
+    // damage is the only player damage the instruction can deal, so the
+    // rider is gated on the instruction having dealt damage to a player.
+    const REPLACEMENT_HEAD: &[&str] = &[
+        "if", "excess", "damage", "would", "be", "dealt", "to", "that", "creature", "this", "way",
+    ];
+    const REPLACEMENT_BODY: &[&str] = &[
+        "instead", "that", "damage", "is", "dealt", "to", "that", "creatures", "controller",
+    ];
+    if let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && crate::lexer::parser_token_word_refs(&tokens[..comma]).as_slice() == REPLACEMENT_HEAD
+    {
+        let body_tokens = &tokens[comma + 1..];
+        let body_words = crate::lexer::parser_token_word_refs(body_tokens);
+        if !body_words.starts_with(REPLACEMENT_BODY) {
+            return Ok(None);
+        }
+        let rider_words = &body_words[REPLACEMENT_BODY.len()..];
+        let rider = match rider_words {
+            [] => Vec::new(),
+            ["and", ..] => {
+                let rider_start = body_tokens
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, token)| token.as_word().is_some())
+                    .nth(REPLACEMENT_BODY.len() + 1)
+                    .map(|(idx, _)| idx)
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "excess damage replacement rider is empty".to_string(),
+                        )
+                    })?;
+                let rider = parse_effect_chain(&body_tokens[rider_start..])?;
+                if rider.is_empty() {
+                    return Ok(None);
+                }
+                rider
+            }
+            _ => return Ok(None),
+        };
+        let damage = effects.pop().expect("checked above");
+        effects.push(EffectAst::Sequence {
+            effects: vec![
+                damage,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        role: SubjectVerbRoleAst::Actor,
+                        player: PlayerAst::Implicit,
+                    },
+                    action: SubjectVerbActionAst::Damage(
+                        DamageActionAst::ExcessDamageToController { condition: None },
+                    ),
+                }),
+            ],
+        });
+        if !rider.is_empty() {
+            effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: IfResultPredicate::ExcessDamageRedirected,
+                    effects: rider,
+                }));
+        }
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: Some("excess-damage-to-controller"),
+        }));
     }
     let condition = if words.as_slice() == TAIL {
         None
@@ -2106,8 +2208,8 @@ fn pre_rule_excess_damage_to_controller(
     };
     // The rider belongs to the damage instruction itself, so both lower
     // together as one sequence.
-    let damage = state.effects.pop().expect("checked above");
-    state.effects.push(EffectAst::Sequence {
+    let damage = effects.pop().expect("checked above");
+    effects.push(EffectAst::Sequence {
         effects: vec![
             damage,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -2297,7 +2399,10 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     ),
     pre_followup_rule!(
         "permission-payment-followup",
-        &["if"],
+        // "If you cast a spell this way, mana of any type can be spent to
+        // cast it." reaches dispatch normalized to "mana of any type can be
+        // spent to cast spells this way" (Bloodsoaked Insight).
+        &["if", "mana"],
         pre_rule_permission_payment_followup
     ),
     pre_followup_rule!(
@@ -2374,6 +2479,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "cant-be-regenerated",
         &[
             "it",
+            "the",
             "that",
             "they",
             "those",
@@ -2443,6 +2549,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "after-first-combat-additional-combat",
         &["after"],
         pre_rule_after_first_combat_additional_combat_followup
+    ),
+    pre_followup_rule!(
+        "additional-combat-after-this-phase-that-combat",
+        &["there", "theres", "there's"],
+        pre_rule_additional_combat_after_this_phase_that_combat_followup
     ),
     pre_followup_rule!(
         "animation-base-pt-self-replacement",
@@ -2784,6 +2895,7 @@ pub(super) use subject_verb_followups_condition_programs::post_rule_future_zone_
 use subject_verb_followups_condition_programs::{
     default_effects_for_self_replacement, post_rule_self_replacement_common_suffix,
     pre_rule_conditional_optional_result_followup, pre_rule_if_no_one_does_followup,
+    pre_rule_additional_combat_after_this_phase_that_combat_followup,
     pre_rule_after_first_combat_additional_combat_followup,
     pre_rule_after_second_main_additional_phases_followup, pre_rule_if_you_win_followup,
     pre_rule_phase_in_while_source_tapped_followup,

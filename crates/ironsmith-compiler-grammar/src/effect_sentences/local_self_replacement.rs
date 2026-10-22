@@ -47,7 +47,7 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
     }
     let mut predicate = crate::grammar::filters::parse_condition_predicate_lexed(&tokens[index + 2..])?;
     if counter && let PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
-        player: PlayerAst::ItsController, count,
+        player: PlayerAst::ItsController, count, ..
     }) = &predicate {
         // Only this complete replacement repeats the original counter target.
         // Its gate runs before the original counter action can export a tag.

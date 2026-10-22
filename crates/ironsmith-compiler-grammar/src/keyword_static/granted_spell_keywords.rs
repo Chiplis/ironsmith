@@ -94,6 +94,9 @@ pub fn parse_granted_spell_keyword_line(
     if tokens.get(verb_idx + 1).is_some_and(|token| token.is_word("evoke")) {
         return parse_granted_hand_evoke(&tokens, verb_idx);
     }
+    if let Some(ability) = parse_granted_hand_web_slinging(&tokens, verb_idx)? {
+        return Ok(Some(ability));
+    }
     // "Creature spells you cast have sticker kicker {1}." (Wicker Picker)
     let sticker_kicker = tokens.get(verb_idx + 1).is_some_and(|token| token.is_word("sticker"))
         && tokens.get(verb_idx + 2).is_some_and(|token| token.is_word("kicker"));
@@ -275,6 +278,86 @@ fn parse_granted_hand_evoke(
             rider,
             "When this permanent enters, sacrifice it",
         ),
+    );
+    let display = crate::lexer::render_token_slice(tokens)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    spec.filtered_zone_surface = Some(display);
+    Ok(Some(StaticAbility::grants(spec)))
+}
+
+/// "Each legendary spell you cast that's one or more colors has
+/// web-slinging {G}{W}{U}." (Amazing Spider-Man): the web-slinging
+/// alternative cost (pay the mana and return a tapped creature you control
+/// to its owner's hand, CR 702.188a) for matching cards cast from your hand.
+fn parse_granted_hand_web_slinging(
+    tokens: &[OwnedLexToken],
+    verb_idx: usize,
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if !tokens[verb_idx].is_any_word(&["has", "have"]) {
+        return Ok(None);
+    }
+    let after_verb = &tokens[verb_idx + 1..];
+    let keyword_len = if after_verb.first().is_some_and(|token| token.is_word("web-slinging")) {
+        1
+    } else if after_verb.first().is_some_and(|token| token.is_word("web"))
+        && after_verb.get(1).is_some_and(|token| token.is_word("slinging"))
+    {
+        2
+    } else {
+        return Ok(None);
+    };
+    let tail = &after_verb[keyword_len..];
+    let Some(mana) = parse_leaf_mana_cost_prefix_tokens(tail) else {
+        return Ok(None);
+    };
+    if !parser_token_word_refs(&tail[mana.consumed..]).is_empty() {
+        return Ok(None);
+    }
+    let mut subject = &tokens[..verb_idx];
+    if subject.first().is_some_and(|token| token.is_word("each")) {
+        subject = &subject[1..];
+    }
+    let view = crate::lexer::TokenWordView::new(subject);
+    let words = view.word_refs();
+    let Some(cast_word) = words.windows(2).position(|window| window == ["you", "cast"]) else {
+        return Ok(None);
+    };
+    if cast_word == 0 {
+        return Ok(None);
+    }
+    // "that's one or more colors": the spell is not colorless (CR 105.2).
+    let colored = match &words[cast_word + 2..] {
+        [] => false,
+        ["that's" | "thats", "one", "or", "more", "colors"] => true,
+        _ => return Ok(None),
+    };
+    let Some(span) = view.token_span_for_words(0, cast_word) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter_lexed(&subject[span], false)?;
+    filter.zone = None;
+    filter.stack_kind = None;
+    filter.cast_by = None;
+    filter.owner = Some(crate::target::PlayerFilter::You);
+    if colored {
+        filter.color_count = Some(crate::filter::Comparison::GreaterThanOrEqual(1));
+    }
+    if !filter.excluded_card_types.contains(&crate::types::CardType::Land) {
+        filter.excluded_card_types.push(crate::types::CardType::Land);
+    }
+    let mut returned = ObjectFilter::creature().you_control();
+    returned.tapped = true;
+    let method = crate::model::CompilerAlternativeCastingMethod::alternative_cost(
+        "Web-slinging",
+        Some(mana.cost),
+        vec![crate::model::CompilerCost::ReturnChosenToHand { count: 1, filter: returned }],
+    );
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::AlternativeCast(method),
+        filter,
+        Zone::Hand,
     );
     let display = crate::lexer::render_token_slice(tokens)
         .trim()

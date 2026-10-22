@@ -415,6 +415,7 @@ pub enum BattlefieldChangeThisTurnConditionAst {
     PermanentLeftBattlefieldUnderYourControl {
         surface: crate::PermanentLeftBattlefieldControlSurface,
     },
+    CreatureLeftBattlefieldUnderYourControl,
     ObjectPutIntoGraveyardFromBattlefield {
         filter: ObjectFilter,
     },
@@ -1748,6 +1749,9 @@ fn parse_battlefield_change_this_turn_shape(
                     surface,
                 },
             )
+        }
+        zone_change_shapes::BattlefieldChangeShape::CreatureLeftUnderYourControl => {
+            Some(BattlefieldChangeThisTurnConditionAst::CreatureLeftBattlefieldUnderYourControl)
         }
         zone_change_shapes::BattlefieldChangeShape::LandPutIntoGraveyardFromBattlefield => Some(
             BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {

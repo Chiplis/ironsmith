@@ -434,6 +434,21 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         let mut base = filter.clone();
         base.with_attached_object = None;
         base.set_relative_attachment_state_surface(false);
+        // "Creatures you control that are equipped" (Hexgold Hoverwings): an
+        // attached Equipment (or Fortification) is the "equipped" state, not
+        // an enchantment.
+        let mut bare_attachment = attachment.as_ref().clone();
+        bare_attachment.union_surface = Default::default();
+        for (subtype, state) in [
+            (crate::types::Subtype::Equipment, "equipped"),
+            (crate::types::Subtype::Fortification, "fortified"),
+        ] {
+            let mut probe = ObjectFilter::default();
+            probe.subtypes = vec![subtype];
+            if bare_attachment == probe {
+                return format!("{} that are {state}", pluralized_subject_text(&base));
+            }
+        }
         return format!(
             "{} that are enchanted by {}",
             pluralized_subject_text(&base),
@@ -946,6 +961,10 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
     }
     if filter.is_commander {
         qualifiers.push("commander".to_string());
+    }
+    // "Legendary creature spells you cast have convoke." (We Ride at Dawn)
+    for supertype in &filter.supertypes {
+        qualifiers.push(supertype.name().to_ascii_lowercase());
     }
     for card_type in &filter.excluded_card_types {
         qualifiers.push(format!("non{}", card_type.name().to_ascii_lowercase()));
@@ -1832,7 +1851,7 @@ fn describe_static_value_threshold_condition(
             Some(format!("this permanent has {count_text} or more counters on it"))
         }
         (Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
-            player, filter,
+            player, filter, this_combat: false, attacked: None,
         }), Op::GreaterThanOrEqual, Value::Fixed(count)) if *count > 0 => {
             let mut objects = filter.clone();
             objects.zone = None;
@@ -2314,6 +2333,37 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         return described;
     }
     match condition {
+        // "if this creature was cast this turn" (Rock Jockey): the source
+        // was cast and entered this turn.
+        crate::ConditionExpr::And(left, right)
+            if matches!(
+                (left.as_ref(), right.as_ref()),
+                (
+                    crate::ConditionExpr::TurnHistory(
+                        ironsmith_core::TurnHistoryCondition::SourceWasCast { .. }
+                    ),
+                    crate::ConditionExpr::TurnHistory(
+                        ironsmith_core::TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { .. }
+                    ),
+                )
+            ) =>
+        {
+            let crate::ConditionExpr::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::SourceWasCast { surface },
+            ) = left.as_ref()
+            else {
+                unreachable!()
+            };
+            let subject = match surface {
+                crate::target::SourceReferenceSurface::ThisPermanentType(noun)
+                    if !noun.starts_with("this ") =>
+                {
+                    format!("this {noun}")
+                }
+                other => other.display_text(),
+            };
+            format!("as long as {subject} was cast this turn")
+        }
         crate::ConditionExpr::And(_, _) => {
             let mut clauses = Vec::new();
             flatten_static_condition_and(condition, &mut clauses);
@@ -2388,6 +2438,28 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             format!("as long as X is {amount} or more")
         }
         crate::ConditionExpr::YourTurn => "as long as it's your turn".to_string(),
+        // "gets +0/+2 as long as it's not attacking" (Arcades Sabboth): the
+        // per-object condition tests the affected object's combat/tap state.
+        crate::ConditionExpr::TargetMatches(filter)
+            if affected_object_state_word(filter).is_some() =>
+        {
+            format!(
+                "as long as it's {}",
+                affected_object_state_word(filter).unwrap_or_default()
+            )
+        }
+        crate::ConditionExpr::Not(inner)
+            if matches!(inner.as_ref(), crate::ConditionExpr::TargetMatches(filter)
+                if affected_object_state_word(filter).is_some()) =>
+        {
+            let crate::ConditionExpr::TargetMatches(filter) = inner.as_ref() else {
+                unreachable!()
+            };
+            format!(
+                "as long as it's not {}",
+                affected_object_state_word(filter).unwrap_or_default()
+            )
+        }
         crate::ConditionExpr::CurrentTurnIsExtra => "during extra turns".to_string(),
         crate::ConditionExpr::Not(inner)
             if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn) =>
@@ -3159,6 +3231,35 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             "as long as {}",
             crate::runtime_display::describe_condition(condition)
         ),
+    }
+}
+
+/// The single combat or tap state an affected-object condition tests
+/// ("attacking", "blocking", "tapped", "untapped").
+fn affected_object_state_word(filter: &ObjectFilter) -> Option<&'static str> {
+    let mut bare = filter.clone();
+    if bare.card_types.as_slice() == [crate::types::CardType::Creature] {
+        bare.card_types.clear();
+    }
+    if bare.zone == Some(crate::zone::Zone::Battlefield) {
+        bare.zone = None;
+    }
+    bare.union_surface = ObjectFilter::default().union_surface;
+    let state = |set: fn(&mut ObjectFilter)| {
+        let mut expected = ObjectFilter::default();
+        set(&mut expected);
+        expected == bare
+    };
+    if state(|f| f.attacking = true) {
+        Some("attacking")
+    } else if state(|f| f.blocking = true) {
+        Some("blocking")
+    } else if state(|f| f.tapped = true) {
+        Some("tapped")
+    } else if state(|f| f.untapped = true) {
+        Some("untapped")
+    } else {
+        None
     }
 }
 

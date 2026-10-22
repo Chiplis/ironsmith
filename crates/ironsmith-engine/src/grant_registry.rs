@@ -132,6 +132,15 @@ pub enum GrantSource {
         source_id: ObjectId,
         player: PlayerId,
     },
+    /// A persistent zone grant whose permission is usable only while
+    /// `player` controls a permanent matching `filter` ("For as long as they
+    /// remain exiled, you may play them if you control a Wizard"). The filter
+    /// is read with `player` as "you" and `source_id` as its source.
+    EffectWhilePlayerControls {
+        source_id: ObjectId,
+        player: PlayerId,
+        filter: ObjectFilter,
+    },
     /// From a static ability on a permanent.
     /// The grant exists only while the source is on the battlefield.
     StaticAbility {
@@ -259,6 +268,7 @@ impl GrantSource {
             GrantSource::EffectDuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
             GrantSource::EffectDuringTurnsAttackedWith { source_id, .. } => *source_id,
             GrantSource::EffectDuringTurnsCastAnotherSpell { source_id, .. } => *source_id,
+            GrantSource::EffectWhilePlayerControls { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id }
             | GrantSource::EffectWhileSourceOnBattlefield { source_id } => *source_id,
         }
@@ -397,6 +407,8 @@ impl GrantSource {
                     &ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
                         player: crate::target::PlayerFilter::You,
                         filter: filter.clone(),
+                        this_combat: false,
+                        attacked: None,
                     },
                     &filter_ctx,
                     None,
@@ -408,6 +420,18 @@ impl GrantSource {
             // turn is "another" spell (CR 601.2).
             GrantSource::EffectDuringTurnsCastAnotherSpell { player, .. } => {
                 game.turn_store.turn_history.spells_cast_by_player(*player) >= 1
+            }
+            GrantSource::EffectWhilePlayerControls {
+                source_id,
+                player,
+                filter,
+            } => {
+                let filter_ctx = crate::filter::FilterContext::new(*player).with_source(*source_id);
+                game.battlefield.iter().any(|id| {
+                    game.object(*id).is_some_and(|object| {
+                        game.controller_of(object) == *player && filter.matches(object, &filter_ctx, game)
+                    })
+                })
             }
         }
     }
@@ -455,7 +479,8 @@ impl GrantSource {
             } => turn_number <= *expires_end_of_turn,
             GrantSource::EffectDuringTurnsCounterPutOnSource { .. }
             | GrantSource::EffectDuringTurnsAttackedWith { .. }
-            | GrantSource::EffectDuringTurnsCastAnotherSpell { .. } => true,
+            | GrantSource::EffectDuringTurnsCastAnotherSpell { .. }
+            | GrantSource::EffectWhilePlayerControls { .. } => true,
         }
     }
 }
@@ -500,6 +525,10 @@ pub enum GrantLifetime {
         source_id: ObjectId,
         player: PlayerId,
     },
+    WhilePlayerControls {
+        source_id: ObjectId,
+        player: PlayerId,
+    },
 }
 
 impl GrantLifetime {
@@ -514,6 +543,7 @@ impl GrantLifetime {
             GrantLifetime::DuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
             GrantLifetime::DuringTurnsAttackedWith { source_id, .. } => *source_id,
             GrantLifetime::DuringTurnsCastAnotherSpell { source_id, .. } => *source_id,
+            GrantLifetime::WhilePlayerControls { source_id, .. } => *source_id,
         }
     }
 }
@@ -609,6 +639,12 @@ impl GrantSource {
                     player: *player,
                 }
             }
+            GrantSource::EffectWhilePlayerControls {
+                source_id, player, ..
+            } => GrantLifetime::WhilePlayerControls {
+                source_id: *source_id,
+                player: *player,
+            },
         }
     }
 }
@@ -1883,6 +1919,7 @@ impl GrantRegistry {
                 GrantSource::EffectDuringTurnsCounterPutOnSource { source_id: sid, .. } |
                 GrantSource::EffectDuringTurnsAttackedWith { source_id: sid, .. } |
                 GrantSource::EffectDuringTurnsCastAnotherSpell { source_id: sid, .. } |
+                GrantSource::EffectWhilePlayerControls { source_id: sid, .. } |
                 GrantSource::EffectWhileSourceOnBattlefield { source_id: sid } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
@@ -2015,7 +2052,8 @@ impl GrantRegistry {
             GrantSource::EffectUntilSourceExilesAnother { .. }
             | GrantSource::EffectDuringTurnsCounterPutOnSource { .. }
             | GrantSource::EffectDuringTurnsAttackedWith { .. }
-            | GrantSource::EffectDuringTurnsCastAnotherSpell { .. } => true,
+            | GrantSource::EffectDuringTurnsCastAnotherSpell { .. }
+            | GrantSource::EffectWhilePlayerControls { .. } => true,
         });
         self.cleanup_orphaned_shared_usage();
     }

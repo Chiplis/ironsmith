@@ -641,7 +641,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // "Enchanted creature is a copy of the chosen creature." (Metamorphic
         // Alteration): the derived "attached" head never starts the line.
         "parse_attached_is_copy_of_chosen_object_line" => {
-            vec![StaticAbilityLineHeadHint::Single("enchanted")]
+            vec![
+                StaticAbilityLineHeadHint::Single("enchanted"),
+                StaticAbilityLineHeadHint::Single("equipped"),
+            ]
         }
         "parse_players_skip_extra_turns_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
@@ -2678,10 +2681,54 @@ fn parse_static_ability_ast_line_lexed_committed(
     if let Some(abilities) = parse_attached_subtype_and_predicate_static_line(tokens)? {
         return Ok(Some(abilities));
     }
+    if let Some(abilities) = parse_attached_pronoun_conjoined_predicate_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(abilities) = parse_attached_takes_source_chosen_name_and_type_line(tokens)? {
         return Ok(Some(abilities));
     }
     parse_static_ability_ast_line_lexed_unstacked(tokens)
+}
+
+/// "Enchanted creature has flying, lifelink, and protection from Vampires,
+/// and it gets +X/+X, where X is ..." (Katilda's Rising Dawn): the `it` of
+/// the coordinated clause is the attached subject itself, so the line is the
+/// same compound predicate as "... has <keywords> and gets <P/T>". Elide the
+/// comma and the coreferent pronoun and read the compound under the one
+/// attached subject (the pronoun must not become a second, source-scoped
+/// subject, and the keyword list must not absorb the predicate).
+fn parse_attached_pronoun_conjoined_predicate_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["enchanted", "equipped", "fortified"]))
+        || tokens.iter().any(OwnedLexToken::is_quote)
+    {
+        return Ok(None);
+    }
+    let Some(and_idx) = (2..tokens.len().saturating_sub(2)).find(|&index| {
+        tokens[index].is_word("and")
+            && tokens[index + 1].is_word("it")
+            && tokens[index + 2].is_any_word(&["gets", "has", "gains"])
+    }) else {
+        return Ok(None);
+    };
+    // The clause before the pronoun is itself a predicate of the subject.
+    if !tokens[2..and_idx]
+        .first()
+        .is_some_and(|token| token.is_any_word(&["has", "gets", "gains"]))
+    {
+        return Ok(None);
+    }
+    let mut head_end = and_idx;
+    while head_end > 0 && tokens[head_end - 1].kind == TokenKind::Comma {
+        head_end -= 1;
+    }
+    let mut line = tokens[..head_end].to_vec();
+    line.push(tokens[and_idx].clone());
+    line.extend_from_slice(&tokens[and_idx + 2..]);
+    parse_static_ability_ast_line_lexed(&line)
 }
 
 /// "Equipped creature has ward {1}, it can't be blocked, and its name and
@@ -2989,11 +3036,68 @@ fn parse_heal_before_damage_to_source_line(tokens: &[OwnedLexToken]) -> Option<S
     ))
 }
 
+/// "Creatures you control of the chosen type get +1/+1. As long as you have
+/// the city's blessing, they also have vigilance." (Radiant Destiny): a
+/// leading-condition sentence whose pronoun subject names the previous
+/// static sentence's recipients, not this object. Restore that subject so
+/// the conditional grant reaches the same group.
+pub(crate) fn rebind_conditional_pronoun_recipient_sentences(
+    sentences: &[&[OwnedLexToken]],
+) -> Vec<Vec<OwnedLexToken>> {
+    let mut out: Vec<Vec<OwnedLexToken>> = Vec::with_capacity(sentences.len());
+    for (index, sentence) in sentences.iter().enumerate() {
+        let rebound = index
+            .checked_sub(1)
+            .and_then(|previous_index| {
+                let previous = sentences[previous_index];
+                let split = split_as_long_as_condition_prefix_lexed(sentence)?;
+                if !split.remainder_tokens.first()?.is_word("they") {
+                    return None;
+                }
+                if previous.first()?.is_any_word(&["as", "if", "during", "when", "whenever"]) {
+                    return None;
+                }
+                let verb = previous
+                    .iter()
+                    .position(|token| token.is_any_word(&["get", "have"]))?;
+                let subject = &previous[..verb];
+                if subject.is_empty()
+                    || subject.iter().any(|token| {
+                        token.is_comma()
+                            || token.is_quote()
+                            || token.is_any_word(&["it", "they", "this"])
+                    })
+                {
+                    return None;
+                }
+                let prefix_len = sentence.len() - split.remainder_tokens.len();
+                let mut rest = &split.remainder_tokens[1..];
+                if rest.first().is_some_and(|token| token.is_word("also")) {
+                    rest = &rest[1..];
+                }
+                let mut rebound = sentence[..prefix_len].to_vec();
+                rebound.extend_from_slice(subject);
+                rebound.extend_from_slice(rest);
+                Some(rebound)
+            })
+            .unwrap_or_else(|| sentence.to_vec());
+        out.push(rebound);
+    }
+    out
+}
+
 fn parse_static_ability_ast_line_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if let Some(ability) = parse_heal_before_damage_to_source_line(tokens) {
         return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
+    }
+    // "Enchanted creature is legendary, gets +1/+1, and has flying, ..." (On
+    // Serra's Wings): the supertype predicate must be claimed before the
+    // anthem readers take "is legendary" as a subject qualifier
+    // ("enchanted legendary creature") and gate every bonus on it.
+    if let Some(abilities) = parse_attached_is_legendary_gets_and_has_keywords_line(tokens)? {
+        return Ok(Some(abilities));
     }
     // Prevention and its counter follow-up form one replacement program.
     // Recognize that complete owner before splitting independent static sentences.
@@ -3104,6 +3208,9 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     // A quoted attached grant has its own complete tail grammar, including
     // type additions. Keep its quoted body out of the sibling-clause splitter.
     if tokens.iter().any(|token| token.kind == TokenKind::Quote) {
+        if let Some(abilities) = parse_attached_quoted_grant_then_type_sentence_line(tokens)? {
+            return Ok(Some(abilities));
+        }
         if split_as_long_as_condition_prefix_lexed(tokens).is_some_and(|split| {
             split.condition_tokens.first().is_some_and(|token| {
                 token.is_word("enchanted") || token.is_word("equipped") || token.is_word("fortified")
@@ -3148,6 +3255,7 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     // tail can absorb the next sentence into its keyword or subject filter.
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() > 1 {
+        let sentences = rebind_conditional_pronoun_recipient_sentences(&sentences);
         let (parsed, loss) = crate::parse_loss::capture(|| {
             let mut combined = Vec::new();
             for sentence in &sentences {
@@ -3604,6 +3712,10 @@ fn parse_each_opponent_who_did_this_turn_cant_line(
             "each", "opponent", "who", "attacked", "with", "a", "creature", "this", "turn",
             "can't" | "cant" | "cannot", action @ ..,
         ] => (History::AttackedWithCreature, action),
+        [
+            "each", "opponent", "who", "attacked", "you", "or", "a", "planeswalker", "you",
+            "control", "this", "turn", "can't" | "cant" | "cannot", action @ ..,
+        ] => (History::AttackedYouOrYourPlaneswalker, action),
         _ => return Ok(None),
     };
     // Opponents with that history: the history set minus your team.
@@ -4975,7 +5087,13 @@ pub fn parse_activated_abilities_cost_increase_line(
             clause_display
         ))
     })?;
-    if filter.zone.is_none() {
+    // "Activated abilities of sources ..." covers sources in every zone
+    // (cycling or unearth abilities included, CR 113.6); only a permanent
+    // type noun ("creatures", "artifacts") names battlefield objects.
+    let subject_names_sources = crate::util::non_article_token_word_refs(subject_tokens)
+        .iter()
+        .any(|word| matches!(*word, "source" | "sources"));
+    if filter.zone.is_none() && !subject_names_sources {
         filter.zone = Some(Zone::Battlefield);
     }
 
@@ -6339,6 +6457,11 @@ pub fn parse_attached_is_copy_of_chosen_object_line(
     if !crate::grammar::abilities::is_attached_is_copy_of_chosen_object_line_lexed(tokens) {
         return Ok(None);
     }
+    if tokens.first().is_some_and(|token| token.is_word("equipped")) {
+        return Ok(Some(StaticAbility::attached_is_copy_of_chosen_object(
+            "Equipped creature is a copy of the last chosen card.",
+        )));
+    }
     let noun = if tokens.iter().any(|token| token.is_word("permanent")) {
         "permanent"
     } else {
@@ -7188,6 +7311,11 @@ fn parse_trigger_duplication_event_matcher(
     };
 
     match shape {
+        EventShape::PlayerGainingLife(player) => Ok(match player {
+            PlayerSubject::You => TriggerSpec::YouGainLife,
+            PlayerSubject::Any => TriggerSpec::PlayerGainsLife { player: PlayerFilter::Any, during_turn: None },
+            PlayerSubject::Opponent => TriggerSpec::PlayerGainsLife { player: PlayerFilter::Opponent, during_turn: None },
+        }),
         EventShape::TurningFaceUp { subject_tokens } => Ok(TriggerSpec::TurnedFaceUp(
             build_filter(&tokens[subject_tokens])?,
         )),
@@ -8258,6 +8386,9 @@ pub fn parse_enter_as_copy_as_enters_line(
                 }
                 for exception in exceptions {
                     match exception {
+                        keyword_static_lines::CopyExceptionShape::NonLegendary => {
+                            removed_supertypes.push(crate::types::Supertype::Legendary);
+                        }
                         keyword_static_lines::CopyExceptionShape::OwnOtherAbilities { subject } => {
                             let words = parser_token_word_refs(subject);
                             let normalized = crate::util::possessive_normalized_word_refs(&words);
@@ -8698,6 +8829,16 @@ pub fn parse_choose_color_as_becomes_attached_line(
         return Ok(Some(
             StaticAbility::choose_creature_card_name_and_type_as_becomes_attached(display),
         ));
+    }
+    // "..., choose an exiled creature card used to craft this Equipment."
+    // (Dinosaur Headdress): one of this source's craft materials.
+    if let ["choose", "an", "exiled", "creature", "card", "used", "to", "craft", "this", _] =
+        word_refs.as_slice()
+    {
+        let display = render_token_slice(tokens)
+            .replacen(parsed_subject, display_subject, 1)
+            .replacen("craft this equipment", "craft this Equipment", 1);
+        return Ok(Some(StaticAbility::choose_craft_material_as_becomes_attached(display)));
     }
     let Some((consumed, excluded_color_set)) = parse_choose_color_phrase_words(&word_refs)? else {
         return Ok(None);
@@ -9175,6 +9316,26 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
     }
     if words.word_refs().as_slice() == ["the", "last", "chosen", "number"] {
         return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
+    }
+    // "power is equal to the total power of the exiled cards" (Sutured
+    // Ghoul): a characteristic-defining ability has no prior instruction, so
+    // "the exiled cards" is the set linked to this object as it entered
+    // (CR 607.2a), never an unbound prior-effect metric.
+    if let ["the", "total", axis @ ("power" | "toughness"), "of", "the", "exiled", "cards"] =
+        words.word_refs().as_slice()
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.set_explicit_card_noun(true);
+        filter.set_definite_exiled_reference(true);
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        return Some(if *axis == "power" {
+            Value::TotalPower(filter)
+        } else {
+            Value::TotalToughness(filter)
+        });
     }
     // "the greatest number noted for it this turn" (Bell Borca): the values
     // its "note the mana value of each card as it's put into exile" ability

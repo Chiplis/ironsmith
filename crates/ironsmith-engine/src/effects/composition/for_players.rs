@@ -47,6 +47,10 @@ pub struct ForPlayersEffect {
     pub sequential: bool,
     /// Whether iteration should stop after the first player whose effects happened.
     pub stop_after_first_happened: bool,
+    /// A per-player condition fixed as the spell is cast ("for each opponent
+    /// who has three or more poison counters as you cast this spell"): only
+    /// iterations whose player satisfies it announce targets (CR 601.2c).
+    pub announcement_condition: Option<crate::effect::Condition>,
 }
 
 impl ForPlayersEffect {
@@ -58,6 +62,7 @@ impl ForPlayersEffect {
             starting_with_controller: false,
             sequential: false,
             stop_after_first_happened: false,
+            announcement_condition: None,
         }
     }
 
@@ -68,6 +73,7 @@ impl ForPlayersEffect {
             starting_with_controller: true,
             sequential: false,
             stop_after_first_happened: false,
+            announcement_condition: None,
         }
     }
 

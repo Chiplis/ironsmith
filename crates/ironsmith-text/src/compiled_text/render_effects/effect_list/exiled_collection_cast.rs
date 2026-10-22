@@ -1412,8 +1412,19 @@ pub(super) fn describe_chosen_graveyard_card_may_free_cast(
         || choose != &crate::effects::ChooseObjectsEffect::new(
             choose.filter.clone(), choose.count, PlayerFilter::You, choose.tag.clone(),
         ).in_zone(Zone::Graveyard)
-        || cast != &crate::effects::CastTaggedEffect::new(choose.tag.clone(), PlayerFilter::You)
-            .without_paying_mana_cost()
+        || {
+            // CR 601.3e: a required spell matching the chosen card's own
+            // characteristics is what "cast an ... spell" already says.
+            let mut bare = cast.clone();
+            let required = bare.required_spell.take();
+            let mut expected_spell = choose.filter.clone();
+            expected_spell.zone = None;
+            expected_spell.owner = None;
+            expected_spell.castable_face_match = false;
+            bare != crate::effects::CastTaggedEffect::new(choose.tag.clone(), PlayerFilter::You)
+                .without_paying_mana_cost()
+                || required.is_some_and(|required| required != expected_spell)
+        }
     {
         return None;
     }
@@ -1429,6 +1440,7 @@ pub(super) fn describe_chosen_graveyard_card_may_free_cast(
     let mut filter = choose.filter.clone();
     filter.zone = None;
     filter.owner = None;
+    filter.castable_face_match = false;
     filter.excluded_card_types.retain(|card_type| *card_type != CardType::Land);
     if !filter.excluded_card_types.is_empty() {
         return None;

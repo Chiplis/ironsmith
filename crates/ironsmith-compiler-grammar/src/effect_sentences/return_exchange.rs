@@ -59,6 +59,11 @@ fn parse_return_back_reference_target(
             filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
                 crate::lexer::render_token_slice(tokens).trim().to_string(),
             ));
+            // "Return those cards from your graveyard to the battlefield"
+            // (Revivify): a plural demonstrative names the whole set.
+            if tokens.first().is_some_and(|token| token.is_word("those")) {
+                filter.set_plural_pronoun_reference_surface(true);
+            }
             return Ok(TargetAst::Object(filter, None, span));
         }
         Ok(TargetAst::Tagged(

@@ -35,6 +35,8 @@ pub struct PlayFromZoneFact<'a> {
     pub zone: Zone,
     /// "from the top of your graveyard" (Bösium Strip): only the topmost card.
     pub top_of_graveyard: bool,
+    /// "from any graveyard" (The Great Work): every player's graveyard.
+    pub any_graveyard: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,7 +129,11 @@ fn parse_play_from_zone<'a>(input: &mut LexStream<'a>) -> WResult<PlayFromZoneFa
     let top_of_graveyard = opt(semantic_phrase(&["the", "top", "of", "your", "graveyard"]))
         .parse_next(input)?
         .is_some();
-    let zone = if top_of_graveyard {
+    let any_graveyard = !top_of_graveyard
+        && opt(semantic_phrase(&["any", "graveyard"]))
+            .parse_next(input)?
+            .is_some();
+    let zone = if top_of_graveyard || any_graveyard {
         Zone::Graveyard
     } else {
         zone_location.parse_next(input)?
@@ -138,6 +144,7 @@ fn parse_play_from_zone<'a>(input: &mut LexStream<'a>) -> WResult<PlayFromZoneFa
         filter_tokens,
         zone,
         top_of_graveyard,
+        any_graveyard,
     })
 }
 

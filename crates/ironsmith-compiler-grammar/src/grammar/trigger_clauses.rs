@@ -427,7 +427,15 @@ fn parse_you_or_controlled_object_subject_word_slice(
     ))
     .parse_next(input)?
     .is_some();
-    let filter = alt((
+    // "Whenever you or another permanent you control becomes the target"
+    // (Valkmira): the controlled set excludes this permanent.
+    let other = winnow::combinator::opt(alt((
+        primitives::word_slice_exact("another"),
+        primitives::word_slice_exact("other"),
+    )))
+    .parse_next(input)?
+    .is_some();
+    let mut filter = alt((
         alt((
             primitives::word_slice_exact("permanent"),
             primitives::word_slice_exact("permanents"),
@@ -465,6 +473,7 @@ fn parse_you_or_controlled_object_subject_word_slice(
         primitives::word_slice_exact("control"),
     )
         .parse_next(input)?;
+    filter.other = other;
     // "and/or at least one" names a single event per spell or ability.
     Ok((filter, and_or || at_least_one))
 }

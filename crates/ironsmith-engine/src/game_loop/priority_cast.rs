@@ -1005,6 +1005,11 @@ pub(super) fn format_alternative_method(
                 format!("{cost_desc} from graveyard"),
             )
         }
+        AlternativeCastingMethod::BeamMeUp { .. } => (
+            "Beam me up".to_string(),
+            format!("{}, return a creature you control", method.mana_cost()
+                .map(format_mana_cost_simple).unwrap_or_else(|| "0".to_string())),
+        ),
         AlternativeCastingMethod::Retrace { .. } => {
             let mut parts = Vec::new();
             if let Some(mana) = method.mana_cost() {
@@ -1773,6 +1778,7 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price_and_outputs(
         tagged_objects,
         provenance,
         decision_maker,
+        None,
     )
 }
 
@@ -1795,6 +1801,7 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price_lock_and_outputs(
     tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     provenance: ProvNodeId,
     decision_maker: &mut impl DecisionMaker,
+    spell_requirement: Option<(&crate::target::ObjectFilter, &crate::filter::FilterContext)>,
 ) -> Result<Option<EffectDrivenCastOutputs>, GameLoopError> {
     cast_spell_from_resolving_effect_with_captured_price_and_outputs(
         game,
@@ -1812,6 +1819,7 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price_lock_and_outputs(
         tagged_objects,
         provenance,
         decision_maker,
+        spell_requirement,
     )
 }
 
@@ -1859,6 +1867,7 @@ pub(crate) fn cast_spell_from_revealed_miracle_with_outputs(
         Default::default(),
         provenance,
         decision_maker,
+        None,
     );
     game.revoke_miracle_cast(proof.card);
     result
@@ -1902,6 +1911,7 @@ fn cast_spell_from_resolving_effect_with_captured_price(
         tagged_objects,
         provenance,
         decision_maker,
+        None,
     )
     .map(|result| result.map(|completed| completed.new_id))
 }
@@ -1923,15 +1933,34 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
     tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     provenance: ProvNodeId,
     decision_maker: &mut impl DecisionMaker,
+    spell_requirement: Option<(&crate::target::ObjectFilter, &crate::filter::FilterContext)>,
 ) -> Result<Option<EffectDrivenCastOutputs>, GameLoopError> {
     // The referenced card may have more than one castable face. Choose its
     // spell before deriving a source-relative price; neither a front-face MV
     // nor the off-stack combined split value is an announced spell price.
-    let selected_face = if alternative_cost.is_some() || miracle_price.is_some() {
+    // CR 709.3 / 715.3 / 712.12: an effect that lets a player cast a card
+    // lets them cast any face it can be cast as (a split half, an
+    // Adventure, a modal DFC's back face). A spell requirement (CR 601.3e)
+    // narrows the choice to the faces that qualify.
+    let selected_face = {
         let spell = game
             .object(spell_id)
-            .ok_or_else(|| GameLoopError::InvalidState("priced card disappeared".into()))?;
-        let other = crate::decision::spell_view_for_split_other_half_cast(game, spell);
+            .ok_or_else(|| GameLoopError::InvalidState("effect-cast card disappeared".into()))?;
+        let mut other = crate::decision::spell_view_for_split_other_half_cast(game, spell);
+        let mut front_allowed = true;
+        if let Some((requirement, filter_ctx)) = spell_requirement {
+            let mut front = spell.clone();
+            front.split_combined = None;
+            let face_matches = |face: &crate::object::Object| {
+                let snapshot = crate::snapshot::ObjectSnapshot::from_object(face, game);
+                requirement.matches_snapshot(&snapshot, filter_ctx, game)
+            };
+            front_allowed = face_matches(&front);
+            other = other.filter(|view| face_matches(view));
+            if !front_allowed && other.is_none() {
+                return Ok(None);
+            }
+        }
         let method = match casting_method.without_exact_permission() {
             CastingMethod::Normal => Some(CastingMethod::SplitOtherHalf),
             CastingMethod::PlayFrom {
@@ -1946,6 +1975,9 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
             _ => None,
         };
         if let Some((other, method)) = other.zip(method) {
+            if !front_allowed {
+                Some(method)
+            } else {
             let options = vec![
                 crate::decisions::context::SelectableOption::new(0, spell.name.to_string()),
                 crate::decisions::context::SelectableOption::new(1, other.name.to_string()),
@@ -1971,11 +2003,10 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
                     ));
                 }
             }
+            }
         } else {
             None
         }
-    } else {
-        None
     };
     let casting_method = selected_face.as_ref().unwrap_or(casting_method);
     // A resolving instruction grants the origin/timing, not necessarily a
@@ -2139,6 +2170,18 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
             return Err(error);
         }
     };
+    // CR 601.3e: an instruction permitting only a spell with certain
+    // qualities considers the proposed spell as it exists on the stack (the
+    // face being cast). A spell without them can't be cast this way; the
+    // proposal is reversed (CR 601.2).
+    if let Some((requirement, filter_ctx)) = spell_requirement
+        && !game
+            .object(stack_id)
+            .is_some_and(|spell| requirement.matches(spell, filter_ctx, game))
+    {
+        state.rollback_action(game);
+        return Ok(None);
+    }
     let effects = game
         .object(stack_id)
         .map(|object| object.spell_effect_owned().unwrap_or_default())

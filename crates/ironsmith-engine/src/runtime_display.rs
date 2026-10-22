@@ -586,6 +586,11 @@ pub fn describe_value(value: &Value) -> String {
             "the number of {} counters on this source",
             counter_type.description()
         ),
+        // The object carrying the ability is the spell that was cast.
+        Value::ColorsOfManaSpentToCastThisSpell => {
+            "the number of colors of mana spent to cast it".to_string()
+        }
+        Value::ManaSpentToCastThisSpell => "the amount of mana spent to cast it".to_string(),
         Value::LifeTotal(player) => format!("{} life total", possessive_player(player)),
         Value::StartingLifeTotal(player) => {
             format!("{} starting life total", possessive_player(player))
@@ -605,6 +610,26 @@ pub fn describe_value(value: &Value) -> String {
         Value::PowerOf(spec) if source_object(spec) => "this object's power".to_string(),
         Value::ToughnessOf(spec) if source_object(spec) => "this object's toughness".to_string(),
         Value::ManaValueOf(spec) if source_object(spec) => "this object's mana value".to_string(),
+        // "where X is equipped creature's power" (Glamdring): an object named
+        // relative to this source carries its authored noun phrase.
+        Value::PowerOf(spec) if spec.source_reference_surface().is_some() => format!(
+            "{}'s power",
+            spec.source_reference_surface()
+                .map(|surface| surface.display_text())
+                .unwrap_or_default()
+        ),
+        Value::ToughnessOf(spec) if spec.source_reference_surface().is_some() => format!(
+            "{}'s toughness",
+            spec.source_reference_surface()
+                .map(|surface| surface.display_text())
+                .unwrap_or_default()
+        ),
+        Value::ManaValueOf(spec) if spec.source_reference_surface().is_some() => format!(
+            "{}'s mana value",
+            spec.source_reference_surface()
+                .map(|surface| surface.display_text())
+                .unwrap_or_default()
+        ),
         _ => format!("{value:?}"),
     }
 }

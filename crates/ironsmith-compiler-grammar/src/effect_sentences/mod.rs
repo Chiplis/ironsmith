@@ -95,7 +95,9 @@ pub enum TokenCopyFollowup {
     EnterTappedAndAttacking,
     EnterTappedAndAttackingThatPlayer,
     SacrificeAtNextEndStep(crate::effect::TokenCopyReferenceSurface),
-    SacrificeAtNextUpkeep(crate::cards::builders::PlayerAst),
+    /// The player whose upkeep, and whether the authored reference was the
+    /// plural "those tokens" (Force of Rage) rather than "it"/"that token".
+    SacrificeAtNextUpkeep(crate::cards::builders::PlayerAst, bool),
     ExileAtNextEndStep(crate::effect::TokenCopyReferenceSurface),
     ExileAtEndOfCombat(crate::effect::TokenCopyReferenceSurface),
     SacrificeAtEndOfCombat,

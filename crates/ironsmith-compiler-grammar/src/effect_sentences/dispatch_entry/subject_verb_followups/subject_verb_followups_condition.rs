@@ -292,8 +292,23 @@ pub(super) fn pre_rule_if_you_win_followup(
         followup_shapes::ConditionalFollowupKind::IfYouWinClash => IfResultPredicate::WonClash,
         followup_shapes::ConditionalFollowupKind::IfYouWinFlip => IfResultPredicate::Did,
         followup_shapes::ConditionalFollowupKind::IfYouWin => {
+            // "you may clash with an opponent. If you win, ..." (Sentry Oak):
+            // an optional clash still produces the result the follow-up reads.
             let preceded_by_clash = state.effects.last().is_some_and(|effect| {
                 terminal_result_producer(effect) == Some(TerminalResultProducer::Clash)
+                    || matches!(
+                        effect,
+                        EffectAst::Permissions(
+                            crate::cards::builders::PermissionEffectAst::May { effects }
+                                | crate::cards::builders::PermissionEffectAst::MayByPlayer {
+                                    effects,
+                                    ..
+                                }
+                        ) if effects.last().is_some_and(|inner| {
+                            terminal_result_producer(inner)
+                                == Some(TerminalResultProducer::Clash)
+                        })
+                    )
             });
             if preceded_by_clash {
                 IfResultPredicate::WonClash
@@ -320,7 +335,11 @@ fn sacrifice_self_replacement_predicate(predicate: &IfResultPredicate) -> Option
     let IfResultPredicate::PriorEffectResult(surface) = predicate else {
         return None;
     };
-    if surface.action != PriorEffectAction::Sacrificed
+    // "If a creature card was discarded this way, draw two cards instead"
+    // (Lukka, Wayward Bonder): a discard, like a sacrifice, already
+    // happened before the replaced instruction, so its count is readable.
+    let action = surface.action;
+    if !matches!(action, PriorEffectAction::Sacrificed | PriorEffectAction::Discarded)
         || surface.quantifier != PriorEffectResultQuantifier::One
         || surface.required_count.is_some()
         || surface.shared_characteristic.is_some()
@@ -330,7 +349,7 @@ fn sacrifice_self_replacement_predicate(predicate: &IfResultPredicate) -> Option
     let mut query =
         PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count)
             .with_filter(surface.filter.clone())
-            .with_action(PriorEffectAction::Sacrificed);
+            .with_action(action);
     match surface.actor {
         PriorEffectResultActor::You => query = query.with_player(PlayerFilter::You),
         PriorEffectResultActor::Passive => {}
@@ -1127,6 +1146,70 @@ pub(super) fn pre_rule_after_second_main_additional_phases_followup(
             if_false: vec![delayed],
         })]),
         consumed_sentences: consumed,
+    })))
+}
+
+/// "There's an additional combat phase after this phase. At the beginning of
+/// that combat, untap all creatures you control." (Moraug, Fury of Akoum)
+///
+/// The combat is inserted directly after the current phase, so "that combat"
+/// is the next combat this turn: its rider is a one-shot delayed
+/// beginning-of-combat trigger created with the phase, not a separate
+/// "at the beginning of each combat" ability.
+pub(super) fn pre_rule_additional_combat_after_this_phase_that_combat_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let head_ok = matches!(
+        words.as_slice(),
+        ["theres" | "there's", "an", "additional", "combat", "phase", "after", "this", "phase"]
+            | ["there", "is", "an", "additional", "combat", "phase", "after", "this", "phase"]
+    );
+    if !head_ok {
+        return Ok(None);
+    }
+    let Some(next) = sentences.get(sentence_idx + 1) else {
+        return Ok(None);
+    };
+    let next_tokens = next.lexed();
+    let view = crate::lexer::TokenWordView::new(next_tokens);
+    if !view
+        .word_refs()
+        .starts_with(&["at", "the", "beginning", "of", "that", "combat"])
+    {
+        return Ok(None);
+    }
+    let Some(start) = view.token_index_after_words(6) else {
+        return Ok(None);
+    };
+    let body = trim_commas(&next_tokens[start..]);
+    let rider = crate::clause_support::parse_effect_sentences_lexed(&body)?;
+    if rider.is_empty() {
+        return Ok(None);
+    }
+    let mut program = crate::clause_support::parse_effect_sentences_lexed(sentence_tokens)?;
+    if program.is_empty() {
+        return Ok(None);
+    }
+    program.push(EffectAst::Delayed(
+        crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+            trigger: crate::cards::builders::TriggerSpec::BeginningOfCombat(
+                crate::target::PlayerFilter::Any,
+            ),
+            effects: rider,
+            one_shot: true,
+            until_end_of_combat: false,
+            attach_to_previous_ability: false,
+        },
+    ));
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(program),
+        consumed_sentences: 2,
     })))
 }
 

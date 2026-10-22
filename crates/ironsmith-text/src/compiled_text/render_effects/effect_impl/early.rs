@@ -614,8 +614,57 @@ if filter.zone == Some(Zone::Hand)
         {
             return text;
         }
+        // "that player sacrifices a creature and a planeswalker of their
+        // choice" (To the Slaughter): two choose-then-sacrifice pairs by one
+        // player form one coordinated sacrifice.
+        if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            && sequence.effects.len() == 4
+            && let Some((text, 4)) = describe_two_choose_sacrifices_same_player(
+                &sequence.effects.iter().collect::<Vec<_>>(),
+            )
+        {
+            return text;
+        }
         if let Some(text) = describe_choose_color_reveal_hand_and_discard(&sequence.effects) {
             return text;
+        }
+        // "creatures you control gain first strike and trample until end of
+        // turn and can't be blocked by creature tokens this turn" (Legion
+        // Loyalist): the restriction's attackers are the grant's result set,
+        // bound by a choice-free synthetic declaration; one shared subject.
+        if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            && let [grant_effect, binding_effect, cant_effect] = sequence.effects.as_slice()
+            && let Some(granted) = grant_effect.downcast_ref::<crate::effects::TaggedEffect>()
+            && granted
+                .effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .is_some()
+            && let Some(binding) = unwrap_basic_tag_wrappers(binding_effect)
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && !binding.explicit_declaration
+            && binding.chooser.is_none()
+            && matches!(binding.target.unhinted(), ChooseSpec::Tagged(tag) if *tag == granted.tag)
+            && let Some(cant) = cant_effect.downcast_ref::<crate::effects::CantEffect>()
+            && let crate::effect::Restriction::BlockSpecificAttacker { attacker, .. } =
+                &cant.restriction
+            && matches!(
+                attacker.tagged_constraints.as_slice(),
+                [constraint] if constraint.tag == granted.tag
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+        {
+            let grant_text = describe_effect(grant_effect);
+            let grant_text = grant_text.trim().trim_end_matches('.');
+            let cant_text = describe_effect(cant_effect);
+            let cant_text = cant_text.trim().trim_end_matches('.');
+            if let Some(tail) = cant_text
+                .strip_prefix("It ")
+                .or_else(|| cant_text.strip_prefix("it "))
+                .or_else(|| cant_text.strip_prefix("They "))
+                .or_else(|| cant_text.strip_prefix("they "))
+            {
+                return format!("{grant_text} and {tail}");
+            }
         }
         // "you draw a card and create a Treasure token" (Seize the
         // Spotlight): the authored "you" leads the coordinated pair instead
@@ -1033,6 +1082,26 @@ if filter.zone == Some(Zone::Hand)
                 filter.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 });
+            // The Aura's own attachment ("enchanted"/"equipped") is one
+            // object: "on enchanted creature" (Hydra's Growth), not a set.
+            if let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                && let [card_type] = filter.card_types.as_slice()
+                && (ObjectFilter {
+                    tagged_constraints: Vec::new(),
+                    card_types: Vec::new(),
+                    zone: None,
+                    union_surface: Default::default(),
+                    ..filter.clone()
+                }) == ObjectFilter::default()
+            {
+                return format!(
+                    "Double the number of {counter_text} on {} {}",
+                    constraint.tag.as_str(),
+                    card_type.name().to_ascii_lowercase()
+                );
+            }
             if has_tagged_iterated_reference {
                 return format!(
                     "Double the number of {counter_text} on each of those {}",
@@ -1107,6 +1176,22 @@ if filter.zone == Some(Zone::Hand)
                 "Flip a coin for each {}. Destroy each {noun} whose coin comes up {face}",
                 strip_indefinite_article(&for_each.filter.description())
             );
+        }
+        // "Transform all Incubator tokens you control." (The Argent Etchings,
+        // Moonmist): a per-object transform over the whole matching set.
+        if let [inner] = for_each.effects.as_slice()
+            && let Some(transform) =
+                unwrap_basic_tag_wrappers(inner).downcast_ref::<crate::effects::TransformEffect>()
+            && matches!(transform.target, ChooseSpec::Iterated)
+            && for_each.filter.tagged_constraints.is_empty()
+        {
+            let description = for_each.filter.description();
+            let set = crate::compiled_text::pluralize_noun_phrase(
+                strip_indefinite_article(&description).trim(),
+            );
+            if !set.is_empty() {
+                return format!("Transform all {set}");
+            }
         }
         if let [inner] = for_each.effects.as_slice()
             && let Some(put) = unwrap_basic_tag_wrappers(inner).downcast_ref::<crate::effects::PutCountersEffect>()
@@ -1641,6 +1726,27 @@ if filter.zone == Some(Zone::Hand)
         {
             return format!("Each {filter_text} is sacrificed by its controller");
         }
+        // A loop over exactly a previously named set (the tokens just
+        // created, the objects that triggered the ability) with no further
+        // qualification: "For each of them, ..." (Invoke the Ancients,
+        // Kambal). The bare filter has no noun of its own.
+        if let [constraint] = for_each.filter.tagged_constraints.as_slice()
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            // The generic "it" back-reference keeps its noun ("For each
+            // card", Sylvan Library).
+            && constraint.tag.as_str() != "__it__"
+            // "for each card exiled with it" (Unidentified Hovership) names
+            // the source's exile pool, not a just-named set.
+            && constraint.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+            && {
+                let mut bare = for_each.filter.clone();
+                bare.tagged_constraints.clear();
+                bare.zone = None;
+                bare == ObjectFilter::default()
+            }
+        {
+            return format!("For each of them, {}", lowercase_first(&effect_text));
+        }
         return format!(
             "For each {}, {}",
             filter_text,
@@ -1782,6 +1888,48 @@ if filter.zone == Some(Zone::Hand)
                 }
             }
         }
+        // "That player puts the rest of the revealed cards into their
+        // graveyard" (Curse of Unbinding, Thought Dissector): every revealed
+        // card except the one identified by another tag (the consulted
+        // match) moves; the exclusion is identity, not a type check. The
+        // revealed cards come from one player's library, so their owner's
+        // graveyard is that player's.
+        if crate::cards::is_sentence_helper_tag(for_each_tagged.tag.as_str(), "revealed")
+            && let [conditional_effect] = for_each_tagged.effects.as_slice()
+            && let Some(conditional) = structural_unwrap_render_wrappers(conditional_effect)
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Condition::TaggedObjectMatches(iterated_tag, filter) = &conditional.condition
+            && iterated_tag.as_str() == "__it__"
+            && let [constraint] = filter.tagged_constraints.as_slice()
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SameStableId
+            && (ObjectFilter {
+                tagged_constraints: Vec::new(),
+                ..filter.clone()
+            }) == ObjectFilter::default()
+            && conditional.if_true.is_empty()
+            && let [rest_move] = conditional.if_false.as_slice()
+            && let Some(moved) = structural_unwrap_render_wrappers(rest_move)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && matches!(moved.target.base(), ChooseSpec::Iterated)
+            && moved.remainder_surface == Some(ironsmith_core::LibraryRemainderSurface::Rest)
+            && moved.zone == Zone::Graveyard
+        {
+            return "Put the rest of the revealed cards into their graveyard".to_string();
+        }
+        // "reveals cards ... until they reveal a creature card. Put that card
+        // onto the battlefield" (Curse of Unbinding): the consulted match is
+        // one card, so its move needs no per-object loop surface.
+        if crate::cards::is_sentence_helper_tag(for_each_tagged.tag.as_str(), "consult_match")
+            && let [moved_effect] = for_each_tagged.effects.as_slice()
+            && let Some(moved) = structural_unwrap_render_wrappers(moved_effect)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && matches!(moved.target.base(), ChooseSpec::Iterated)
+        {
+            let rendered = describe_effect_list(&for_each_tagged.effects);
+            if rendered.to_ascii_lowercase().contains("that card") {
+                return capitalize_first(rendered.trim().trim_end_matches('.'));
+            }
+        }
         if for_each_tagged.tag.as_str().starts_with("targeted_")
             && for_each_tagged.effects.len() == 1
             && let Some(villainous) =
@@ -1873,7 +2021,8 @@ if filter.zone == Some(Zone::Hand)
             || tag.starts_with("exiled_")
             || crate::cards::is_sentence_helper_tag(tag, "exiled")
         {
-            "For each card exiled this way".to_string()
+            let noun = source_exiled_this_way_noun().unwrap_or_else(|| "card".to_string());
+            format!("For each {noun} exiled this way")
         } else if tag == crate::effects::VOTED_OBJECTS_TAG {
             "For each object with one or more votes".to_string()
         } else if let Some(action) = this_way_action_from_tag(&for_each_tagged.tag) {
@@ -1900,7 +2049,111 @@ if filter.zone == Some(Zone::Hand)
     {
         return "Ascend".to_string();
     }
+    if effect.downcast_ref::<crate::effects::ForPlayersEffect>().is_some()
+        && let Some(text) = super::effect_lists::describe_each_player_blights(
+            std::slice::from_ref(effect),
+        )
+    {
+        return text;
+    }
+    // "each creature you control attacking a player gets +1/+0 until end of
+    // turn for each creature that player controls" (Jurin, Leading the
+    // Charge): a per-attacked-player pump reads as one sentence over the
+    // creatures attacking "a player", with "that player" bound per attacker.
+    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>()
+        && for_players.filter == PlayerFilter::Any
+        && !for_players.starting_with_controller
+        && !for_players.stop_after_first_happened
+        && let [inner] = for_players.effects.as_slice()
+    {
+        let rebind = |apply: &crate::effects::ApplyContinuousEffect| {
+            let crate::continuous::EffectTarget::Filter(filter) = &apply.target else {
+                return None;
+            };
+            if !filter.attacking_player_only
+                || filter.attacking_player_or_planeswalker_controlled_by
+                    != Some(PlayerFilter::IteratedPlayer)
+            {
+                return None;
+            }
+            let mut apply = apply.clone();
+            if let crate::continuous::EffectTarget::Filter(filter) = &mut apply.target {
+                filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Any);
+            }
+            Some(apply)
+        };
+        if let Some(tagged) = inner.downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(apply) = tagged.effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && let Some(apply) = rebind(apply)
+        {
+            let mut tagged = tagged.clone();
+            tagged.effect = Box::new(Effect::new(apply));
+            return describe_effect(&Effect::new(tagged));
+        }
+        if let Some(apply) = inner.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && let Some(apply) = rebind(apply)
+        {
+            return describe_effect(&Effect::new(apply));
+        }
+    }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        // "you may cast a spell from each opponent's graveyard without paying
+        // its mana cost. If a spell cast this way would be put into a
+        // graveyard, exile it instead." (Jetsam): per opponent, an optional
+        // nonland card chosen from that player's graveyard, cast, and its
+        // spell's graveyard destination replaced.
+        if for_players.filter == PlayerFilter::Opponent
+            && !for_players.starting_with_controller
+            && !for_players.stop_after_first_happened
+            && let [choose, cast, rider] = for_players.effects.as_slice()
+            && let Some(choose) = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && choose.chooser == PlayerFilter::You
+            && choose.count.min == 0
+            && choose.count.max == Some(1)
+            && !choose.is_search
+            && {
+                let mut pool = crate::target::ObjectFilter::default();
+                pool.zone = Some(Zone::Graveyard);
+                pool.owner = Some(PlayerFilter::IteratedPlayer);
+                pool.excluded_card_types = vec![CardType::Land];
+                choose.filter == pool
+            }
+            && let Some(cast) = cast
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .map(|with_id| &*with_id.effect)
+                .or(Some(cast))
+            && let Some(may) = cast.downcast_ref::<crate::effects::MayEffect>()
+            && matches!(may.decider, None | Some(PlayerFilter::You))
+            && let [tagged_cast] = may.effects.as_slice()
+            && let Some(tagged_cast) = tagged_cast
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .map(|tagged| &*tagged.effect)
+                .or(Some(tagged_cast))
+            && let Some(cast) = tagged_cast.downcast_ref::<crate::effects::CastTaggedEffect>()
+            && cast.tag == choose.tag
+            && cast.player == PlayerFilter::You
+            && !cast.allow_land
+            && !cast.as_copy
+            && cast.additional_mana_cost.is_none()
+            && cast.alternative_cost.is_none()
+            && let Some(rider) = rider.downcast_ref::<crate::effects::IfEffect>()
+            && rider.else_.is_empty()
+            && let [replacement] = rider.then.as_slice()
+            && let Some(replacement) =
+                replacement.downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+            && replacement.cast_this_way_surface
+            && replacement.to_zone == Some(Zone::Graveyard)
+            && replacement.replacement_zone == Zone::Exile
+        {
+            let free = if cast.without_paying_mana_cost {
+                " without paying its mana cost"
+            } else {
+                ""
+            };
+            return format!(
+                "you may cast a spell from each opponent's graveyard{free}. If a spell cast this way would be put into a graveyard, exile it instead"
+            );
+        }
         // "they lose life equal to the number they guessed and you draw a
         // card" (The Toymaker's Trap): the iteration ranges over the players
         // whose guess the preceding condition named, so they are "they".
@@ -2612,6 +2865,10 @@ if filter.zone == Some(Zone::Hand)
                 PlayerFilter::Target(inner) if **inner == PlayerFilter::Any => {
                     "Target player".to_string()
                 }
+                // "Each opponent gets an emblem" (Chandra, Awakened Inferno):
+                // the iteration covers every matching player.
+                PlayerFilter::Opponent => "Each opponent".to_string(),
+                PlayerFilter::Any => "Each player".to_string(),
                 filter => capitalize_first(&describe_player_filter(filter)),
             };
             if let Some(emblem_text) = stored_emblem_rules_text(&create_emblem.emblem) {
@@ -2699,6 +2956,9 @@ if filter.zone == Some(Zone::Hand)
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_nonland_put_counter(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_look_reveal_to_hand_rest_bottom(for_players) {
             return compact;
         }
         if let Some(compact) =
@@ -3031,6 +3291,18 @@ if filter.zone == Some(Zone::Hand)
         } else {
             lowercase_first(&describe_effect_list(&for_players.effects))
         };
+        // "For each opponent who has three or more poison counters as you
+        // cast this spell, put ..." (Geth's Summons): the participant gate
+        // fixed on casting reads as a relative clause on the quantified player.
+        if let Some(condition) = &for_players.announcement_condition {
+            let condition_text = describe_condition(condition);
+            let relative = condition_text
+                .strip_prefix("that player has ")
+                .map(|rest| format!("who has {rest}"))
+                .or_else(|| condition_text.strip_prefix("that player ").map(|rest| format!("who {rest}")))
+                .unwrap_or_else(|| format!("for whom {condition_text}"));
+            return format!("For each {each_player} {relative} as you cast this spell, {inner}");
+        }
         // "For each opponent who has three or more poison counters, put ..."
         // (Geth's Summons): a per-player state gate reads as a relative
         // clause on the quantified player rather than "if that player has".
@@ -3181,8 +3453,22 @@ if filter.zone == Some(Zone::Hand)
         let suppress_location_suffix = revealed_keyword_choice_label(choose).is_some()
             || controlled_battlefield_choice
             || permanent_noun_choice;
+        // A choice scoped to a tagged collection ("choose a creature card
+        // from among them", Kaya, Spirits' Justice) scans every zone only so
+        // the tagged objects can be found wherever they now are; the
+        // collection, not the zone list, is the authored scope.
+        let tagged_pool_choice = choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }) && choose_search_zones(choose).is_some_and(|zones| zones.len() >= 5);
         let location_suffix = if suppress_location_suffix {
             String::new()
+        } else if tagged_pool_choice {
+            let choice_lower = choice_text.to_ascii_lowercase();
+            if choice_lower.contains("among") || choice_lower.contains("of them") {
+                String::new()
+            } else {
+                " from among them".to_string()
+            }
         } else if let Some(zones) = choose_search_zones(choose)
             && zones.len() > 1
         {
@@ -3211,7 +3497,9 @@ if filter.zone == Some(Zone::Hand)
                 || choice_lower.contains("from among")
                 || choice_lower.contains("revealed this way")
                 || choice_lower.contains("of them")
-                || choice_lower.contains("in it");
+                || choice_lower.contains("in it")
+                // A suspended card is a card in exile (CR 702.62b).
+                || (zone_keyword == "exile" && choice_lower.contains("suspended card"));
             if includes_zone_already {
                 String::new()
             } else {
@@ -3413,7 +3701,19 @@ if filter.zone == Some(Zone::Hand)
         let chooser = describe_player_filter(&choose_card_type.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         if let Some((filter, count)) = &choose_card_type.shared_among {
-            return format!("{chooser} {choose_verb} a card type shared among {count} {}", filter.description());
+            let count_text = number_word(*count as i32).unwrap_or_else(|| count.to_string());
+            let description = filter.description();
+            let domain = if *count > 1
+                && let Some(head) = description.strip_suffix(" used to craft it")
+            {
+                // The craft-material relative clause agrees with the head.
+                format!("{} used to craft it", crate::compiled_text::pluralize_noun_phrase(head))
+            } else if *count > 1 {
+                crate::compiled_text::pluralize_noun_phrase(&description)
+            } else {
+                filter.description()
+            };
+            return format!("{chooser} {choose_verb} a card type shared among {count_text} {domain}");
         }
         let permanent_type_options = [
             crate::types::CardType::Artifact,
@@ -3497,6 +3797,24 @@ if filter.zone == Some(Zone::Hand)
     if let Some(directional_control) =
         effect.downcast_ref::<crate::effects::DirectionalAdjacentPlayerControlEffect>()
     {
+        if let Some(direction) = directional_control.fixed_direction {
+            let side = match direction {
+                ironsmith_core::SeatingDirection::Left => "left",
+                ironsmith_core::SeatingDirection::Right => "right",
+            };
+            let neighbour = format!("controlled by the player to their {side}");
+            if directional_control.all_matching {
+                return format!(
+                    "Each player gains control of all {} {neighbour}",
+                    pluralize_noun_phrase(&directional_control.filter.description())
+                );
+            }
+            let chooser = if directional_control.controller_chooses { "your" } else { "their" };
+            return format!(
+                "Each player gains control of {} of {chooser} choice {neighbour}",
+                with_indefinite_article(&directional_control.filter.description())
+            );
+        }
         if directional_control.all_matching {
             return format!(
                 "Each player gains control of all {} controlled by the next player in the chosen direction",
@@ -3628,6 +3946,48 @@ if filter.zone == Some(Zone::Hand)
                 }
                 None => format!("{rendered} with the noted number and kind of counters on it"),
             };
+        }
+        if let Some(changes) = &move_to_zone.entry_type_changes {
+            // Recognize the keyword from its complete entry operations. Any
+            // extra move rider remains in the expanded rendering below.
+            if changes.added_card_types == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
+                && changes.removed_subtype_families == [crate::types::SubtypeFamily::Creature]
+                && changes.added_subtypes == [crate::types::Subtype::Borg]
+                && let [counter] = move_to_zone.enters_with_counters.as_slice()
+                && counter.counter_type == crate::object::CounterType::PlusOnePlusOne
+                && counter.amount.unhinted() == &Value::Fixed(1)
+                && counter.condition.is_none()
+                && counter.object_filter.is_none()
+            {
+                let mut plain = move_to_zone.clone();
+                plain.entry_type_changes = None;
+                plain.enters_with_counters.clear();
+                let rendered = describe_effect(&Effect::new(plain));
+                let body = rendered.trim_end_matches('.');
+                if let Some(target) = body.strip_prefix("Put ")
+                    .and_then(|body| body.strip_suffix(" onto the battlefield under your control"))
+                    .or_else(|| body.strip_prefix("Return ")
+                        .and_then(|body| body.strip_suffix(" to the battlefield under your control")))
+                    .or_else(|| body.strip_prefix("Move ")
+                        .and_then(|body| body.strip_suffix(" to the battlefield under your control")))
+                {
+                    return format!("Assimilate {target}");
+                }
+            }
+            let mut plain_move = move_to_zone.clone();
+            plain_move.entry_type_changes = None;
+            let rendered = describe_effect(&Effect::new(plain_move));
+            let mut clauses = changes.removed_subtype_families.iter()
+                .map(|family| format!("it loses all {}s", family.type_phrase())).collect::<Vec<_>>();
+            if !changes.added_card_types.is_empty() {
+                clauses.push(format!("it is {} in addition to its other types",
+                    changes.added_card_types.iter().map(|kind| kind.name()).collect::<Vec<_>>().join(" and ")));
+            }
+            if !changes.added_subtypes.is_empty() {
+                clauses.push(format!("it has the {} subtypes in addition to its other subtypes",
+                    changes.added_subtypes.iter().map(|kind| format!("{kind}")).collect::<Vec<_>>().join(" and ")));
+            }
+            return format!("{}. As it enters, {}", rendered.trim_end_matches('.'), clauses.join(", and "));
         }
         if move_to_zone.enters_as_non_aura {
             // "return this card to the battlefield ... as a non-Aura
@@ -3819,6 +4179,15 @@ if filter.zone == Some(Zone::Hand)
                     "{} graveyard",
                     describe_possessive_graveyard_owner_filter(&owner)
                 ),
+                // "up to two target creature cards from a single graveyard"
+                // (Push // Pull).
+                None if matches!(
+                    move_to_zone.target.base(),
+                    ChooseSpec::Object(filter) if filter.single_graveyard
+                ) =>
+                {
+                    "a single graveyard".to_string()
+                }
                 None if choose_spec_allows_multiple(&move_to_zone.target) => {
                     "graveyards".to_string()
                 }
@@ -4086,10 +4455,20 @@ if filter.zone == Some(Zone::Hand)
                 } else {
                     ""
                 };
+                // "put it onto the battlefield tapped and attacking defending
+                // player or a planeswalker they control" (Hans Eriksson).
                 let attacking_suffix = if move_to_zone.enters_attacking {
-                    " and attacking"
+                    match &move_to_zone.attack_target_mode {
+                        Some(crate::effects::MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+                            player,
+                        )) if !matches!(player, PlayerFilter::DamagedPlayer) => format!(
+                            " and attacking {} or a planeswalker they control",
+                            describe_player_filter(player)
+                        ),
+                        _ => " and attacking".to_string(),
+                    }
                 } else {
-                    ""
+                    String::new()
                 };
                 let face_down_suffix = if move_to_zone.enters_face_down {
                     " face down"
@@ -4113,6 +4492,15 @@ if filter.zone == Some(Zone::Hand)
                     crate::effects::BattlefieldController::Owner => owner_control_suffix,
                     crate::effects::BattlefieldController::You => " under your control",
                 };
+                // "put a creature card from your hand onto the battlefield
+                // blocking that creature" (Aetherplasm, CR 509.4).
+                let blocking_suffix = move_to_zone
+                    .enters_blocking
+                    .as_ref()
+                    .map(|attacker| format!(" blocking {}", describe_choose_spec(attacker)))
+                    .unwrap_or_default();
+                let controller_suffix = format!("{controller_suffix}{blocking_suffix}");
+                let controller_suffix = controller_suffix.as_str();
                 if source_from_exile_target.is_some() {
                     if matches!(
                         move_to_zone.battlefield_controller,
@@ -4162,8 +4550,15 @@ if filter.zone == Some(Zone::Hand)
                             "Put {target} onto the battlefield{face_down_suffix}{transformed_suffix}{controller_suffix}. It enters {entry} that player"
                         );
                     }
+                    // "... with total mana value X or less ..., where X is
+                    // the result" (Ancient Brass Dragon).
+                    let where_x = if target.contains(" X ") && !target.contains("where X is") {
+                        choose_spec_filter_where_x_clause(&move_to_zone.target).unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
                     format!(
-                        "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}"
+                        "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}{where_x}"
                     )
                 }
             }
@@ -4245,6 +4640,48 @@ if filter.zone == Some(Zone::Hand)
         return text;
     }
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        // "exile up to two creature cards from among them" (Dubious
+        // Challenge): a counted choice from the looked-at collection.
+        if !exile.face_down
+            && !exile.turn_face_up
+            && let ChooseSpec::WithCount(inner, count) = &exile.spec
+            && !count.is_single()
+            && let ChooseSpec::Object(filter) = inner.as_ref()
+            && let [constraint] = filter.tagged_constraints.as_slice()
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && (crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed")
+                || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "looked"))
+        {
+            let mut pool_member = filter.clone();
+            pool_member.tagged_constraints.clear();
+            pool_member.zone = None;
+            let counted = describe_choose_spec(&ChooseSpec::WithCount(
+                Box::new(ChooseSpec::Object(pool_member)),
+                *count,
+            ));
+            return format!("Exile {counted} from among them");
+        }
+        // "exile all cards from your graveyard" (Grip of Amnesia's unless
+        // cost): every nontoken object a player owns in their graveyard.
+        if !exile.face_down
+            && !exile.turn_face_up
+            && let ChooseSpec::All(filter) = &exile.spec
+            && filter.nontoken
+            && filter.zone == Some(Zone::Graveyard)
+            && let Some(owner) = filter.owner.as_ref()
+            && (ObjectFilter {
+                nontoken: false,
+                zone: None,
+                owner: None,
+                union_surface: Default::default(),
+                ..filter.clone()
+            }) == ObjectFilter::default()
+        {
+            return format!(
+                "Exile all cards from {} graveyard",
+                describe_possessive_player_filter(owner)
+            );
+        }
         if !exile.face_down && !exile.turn_face_up
             && let ChooseSpec::All(filter) = &exile.spec
             && let Some(rendered) = (|| {
@@ -4644,6 +5081,8 @@ if filter.zone == Some(Zone::Hand)
             "A creature destroyed this way can't be regenerated"
         } else if choose_spec_allows_multiple(&destroy.spec) {
             "They can't be regenerated"
+        } else if destroy.definite_noun_rider_surface {
+            "The creature can't be regenerated"
         } else {
             "It can't be regenerated"
         };
@@ -4679,6 +5118,48 @@ if filter.zone == Some(Zone::Hand)
             remainder.set_explicit_card_noun(false);
             if remainder == ObjectFilter::default() {
                 return "Destroy all other permanents except for lands and tokens".to_string();
+            }
+        }
+        // "Destroy all [other] permanents except for artifacts, lands, and
+        // Phyrexians." (The Argent Etchings): a permanent sweep whose only
+        // qualification is an excluded subtype or three or more excluded
+        // types reads as an exception list rather than a chain of "non-"
+        // prefixes. Two excluded card types keep "noncreature, nonland".
+        if let ChooseSpec::All(filter) = destroy.spec.unhinted()
+            && (filter.card_types.is_empty()
+                || card_types_are_permanent_card_types(&filter.card_types))
+            && filter.excluded_card_types.len() + filter.excluded_subtypes.len() >= 2
+            && (!filter.excluded_subtypes.is_empty() || filter.excluded_card_types.len() >= 3)
+        {
+            let mut remainder = filter.clone();
+            remainder.card_types.clear();
+            remainder.excluded_card_types.clear();
+            remainder.excluded_subtypes.clear();
+            remainder.other = false;
+            if remainder.zone == Some(Zone::Battlefield) {
+                remainder.zone = None;
+            }
+            remainder.set_explicit_card_noun(false);
+            if remainder == ObjectFilter::default() {
+                let mut exceptions = filter
+                    .excluded_card_types
+                    .iter()
+                    .map(|card_type| {
+                        crate::compiled_text::pluralize_noun_phrase(
+                            &card_type.to_string().to_ascii_lowercase(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                exceptions.extend(filter.excluded_subtypes.iter().map(|subtype| {
+                    crate::compiled_text::pluralize_noun_phrase(&subtype.to_string())
+                }));
+                let list = match exceptions.as_slice() {
+                    [first, second] => format!("{first} and {second}"),
+                    [init @ .., last] => format!("{}, and {last}", init.join(", ")),
+                    [] => String::new(),
+                };
+                let other = if filter.other { "other " } else { "" };
+                return format!("Destroy all {other}permanents except for {list}");
             }
         }
         if let ChooseSpec::All(filter) = destroy.spec.unhinted()
@@ -4746,8 +5227,14 @@ if filter.zone == Some(Zone::Hand)
         {
             return "Destroy all creatures with no counters on them".to_string();
         }
+        // "Destroy each permanent with a doom counter on it": only the
+        // whole permanent domain reads as "permanent"; a narrower filter
+        // ("each creature your opponents control with a prey counter on it",
+        // Tetzimoc) keeps its own type and controller below.
         if let ChooseSpec::All(filter) = &destroy.spec
             && let Some(counter) = filter.with_counter
+            && filter.controller.is_none()
+            && filter.card_types.len() >= 5
             && filter.card_types.iter().any(|card_type| {
                 matches!(
                     card_type,
@@ -5036,6 +5523,20 @@ if filter.zone == Some(Zone::Hand)
                 );
             }
 
+            // "it deals damage equal to its mana value to each creature"
+            // (Terminal Velocity): the amount measures the damage source
+            // itself, so it reads with the source's possessive pronoun.
+            if let ChooseSpec::Tagged(source_tag) = with_source.source.base()
+                && let Value::ManaValueOf(measured) = deal_damage.amount.unhinted()
+                && matches!(measured.base(), ChooseSpec::Tagged(tag) if tag == source_tag)
+            {
+                let verb = if choose_spec_is_plural(&with_source.source) {
+                    "deal"
+                } else {
+                    "deals"
+                };
+                return format!("{subject} {verb} damage equal to its mana value to {target}");
+            }
             // The amount names some other object's power (an additional
             // cost's revealed or chosen card), not the damage source's.
             if let Value::PowerOf(spec) | Value::ToughnessOf(spec) = &deal_damage.amount
@@ -5045,6 +5546,38 @@ if filter.zone == Some(Zone::Hand)
                 && !matches!(with_source.source.base(), ChooseSpec::Tagged(source_tag)
                     if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == source_tag))
             {
+                let verb = if choose_spec_is_plural(&with_source.source) {
+                    "deal"
+                } else {
+                    "deals"
+                };
+                return format!(
+                    "{subject} {verb} damage equal to {} to {target}",
+                    describe_value(&deal_damage.amount)
+                );
+            }
+            // "This artifact deals damage equal to the tapped creature's
+            // power" (Unerring Sling): the measured object is not the damage
+            // source, so "its power" would name the wrong object.
+            if let Value::PowerOf(measured) | Value::ToughnessOf(measured) =
+                deal_damage.amount.unhinted()
+                && matches!(with_source.source.base(), ChooseSpec::Source)
+                && matches!(measured.base(), ChooseSpec::Tagged(_))
+                && measured.source_reference_surface().is_some()
+            {
+                // An activation cost's tapped creature measures the damage of
+                // the ability's own source; the imperative form lets the
+                // ability renderer supply the source's typed subject ("This
+                // artifact deals ...").
+                if with_source.source.source_reference_surface().is_none()
+                    && matches!(measured.base(), ChooseSpec::Tagged(tag)
+                        if tag.as_str().starts_with("tap_cost_"))
+                {
+                    return format!(
+                        "Deal damage equal to {} to {target}",
+                        describe_value(&deal_damage.amount)
+                    );
+                }
                 let verb = if choose_spec_is_plural(&with_source.source) {
                     "deal"
                 } else {
@@ -5192,7 +5725,25 @@ if filter.zone == Some(Zone::Hand)
         // control with flying") keeps its authored distributive subject;
         // otherwise Oracle quantifies simultaneous damage fanouts with "each".
         let filter_text = damage.filter.description();
-        let target = if filter_text.contains(" except for ") {
+        // "For each opponent, choose up to one target creature that player
+        // controls. ... deals damage ... to each of the chosen creatures"
+        // (Mega Flare): the recipients are exactly the per-player choices.
+        let chosen_set = match damage.filter.tagged_constraints.as_slice() {
+            [constraint] => {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str()
+                        == crate::effect_text_shared::ABILITY_CONTROLLER_TARGET_CHOICE_TAG
+            }
+            _ => false,
+        };
+        let target = if chosen_set {
+            let noun = match damage.filter.card_types.as_slice() {
+                [CardType::Creature] => "creatures",
+                [CardType::Planeswalker] => "planeswalkers",
+                _ => "permanents",
+            };
+            format!("each of the chosen {noun}")
+        } else if filter_text.contains(" except for ") {
             format!("each {filter_text}")
         } else {
             describe_each_damage_recipient(&damage.filter)
@@ -5542,6 +6093,17 @@ if filter.zone == Some(Zone::Hand)
                 describe_damage_target(&deal_damage.target)
             );
         }
+        // "deals twice that much damage" (Borborygmos and Fblthp).
+        if let Value::Scaled(inner, 2) = deal_damage.amount.unhinted()
+            && !inner.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            && matches!(inner.unhinted(), Value::EffectValue(_))
+            && is_effect_count_reference(inner, None)
+        {
+            return format!(
+                "Deal twice that much damage to {}",
+                describe_damage_target(&deal_damage.target)
+            );
+        }
         if value_prefers_equal_to(&deal_damage.amount)
             || power_damage_prefers_equal_to(&deal_damage.amount)
         {
@@ -5766,7 +6328,12 @@ if filter.zone == Some(Zone::Hand)
         let target_text = describe_choose_spec(&counter_spell.target)
             .replace("instant spell spell", "instant spell")
             .replace("sorcery spell spell", "sorcery spell");
-        return format!("Counter {target_text}");
+        // "counter target spell with mana value X or less, where X is the
+        // number of Faeries you control": the filter's X comparison carries
+        // its own definition.
+        let where_clause =
+            choose_spec_filter_where_x_clause(&counter_spell.target).unwrap_or_default();
+        return format!("Counter {target_text}{where_clause}");
     }
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
         // "destroy that creature unless its controller pays 2 life. A creature
@@ -5844,6 +6411,14 @@ if filter.zone == Some(Zone::Hand)
                 return None;
             };
             let verb = if payer == "you" { base } else { third_person };
+            // An unless cost resolves "you" relative to its payer
+            // (unless_pays executor), so another payer's cost reads with
+            // "their" ("exiles all cards from their graveyard", Grip of
+            // Amnesia).
+            if payer != "you" {
+                let rest = rest.replace("your ", "their ");
+                return Some(format!("{verb} {rest}"));
+            }
             Some(format!("{verb} {rest}"))
         };
         if let ironsmith_core::TotalCostKind::OneOf(branches) = unless_pays.cost.kind() {
@@ -6073,6 +6648,22 @@ if filter.zone == Some(Zone::Hand)
                 describe_choose_spec(&put_counters.target)
             );
         }
+        // "put its +1/+1 counters on target creature you control" (Selfless
+        // Police Captain): as many counters of the same kind as the
+        // triggering object had.
+        if let Value::CountersOn(source, Some(counted)) = put_counters.amount.unhinted()
+            && *counted == put_counters.counter_type
+            && matches!(source.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+            && put_counters.maximum_total.is_none()
+            && !put_counters.distributed
+            && put_counters.target_count.is_none()
+        {
+            return format!(
+                "Put its {} counters on {}",
+                describe_counter_type(put_counters.counter_type),
+                describe_choose_spec(&put_counters.target)
+            );
+        }
         if let Some(maximum) = put_counters.maximum_total {
             let mut uncapped = put_counters.clone();
             uncapped.maximum_total = None;
@@ -6110,6 +6701,18 @@ if filter.zone == Some(Zone::Hand)
                 describe_counter_count_with_where_x(&put_counters.amount, put_counters.counter_type)
             {
                 return format!("Distribute {counter_text} among {recipients}, where X is {where_x}");
+            }
+            // "distribute a number of +1/+1 counters equal to the number of
+            // +1/+1 counters on this creature" (Vastwood Hydra).
+            if matches!(
+                put_counters.amount.unhinted(),
+                Value::CountersOnSource(_) | Value::CountersOn(..)
+            ) {
+                return format!(
+                    "Distribute a number of {} counters equal to {} among {recipients}",
+                    describe_counter_type(put_counters.counter_type),
+                    describe_value(&put_counters.amount),
+                );
             }
             return format!(
                 "Distribute {} among {recipients}",
@@ -6329,6 +6932,22 @@ if filter.zone == Some(Zone::Hand)
                 describe_counter_type(remove_counters.counter_type)
             );
         }
+        // "remove that many reprieve counters from this creature" (Magnanimous
+        // Magistrate): when the amount is a characteristic of another tagged
+        // object, "it" would read as that object, so name the source.
+        let amount_names_other_object = matches!(
+            remove_counters.count.unhinted(),
+            Value::ManaValueOf(spec) | Value::PowerOf(spec) | Value::ToughnessOf(spec)
+                if matches!(spec.base(), ChooseSpec::Tagged(_))
+        );
+        if matches!(remove_counters.target, ChooseSpec::Source) && amount_names_other_object {
+            return format!(
+                "Remove a number of {} counters equal to {} from {}",
+                describe_counter_type(remove_counters.counter_type),
+                describe_value(&remove_counters.count),
+                describe_choose_spec(&remove_counters.target)
+            );
+        }
         let target = if matches!(remove_counters.target, ChooseSpec::Source) {
             "it".to_string()
         } else {
@@ -6498,9 +7117,34 @@ if filter.zone == Some(Zone::Hand)
             .or_else(|| choose_spec_filter_where_x_clause(&return_to_battlefield.target))
             .unwrap_or_default();
         if matches!(return_to_battlefield.target.unhinted(), ChooseSpec::Source) {
+            // An exile-functional source returns from exile (Darigaaz
+            // Reincarnated), not from the graveyard.
+            let origin = if super::single_effects_early::RENDERING_EXILE_FUNCTIONAL_ABILITY
+                .with(std::cell::Cell::get)
+            {
+                ""
+            } else {
+                " from your graveyard"
+            };
+            // "that creature's controller returns this Aura from its owner's
+            // graveyard to the battlefield" (Traveling Plague).
+            if let Some(player) = &return_to_battlefield.returning_player {
+                let actor = describe_player_filter(player);
+                let origin = if origin.is_empty() { "" } else { " from its owner's graveyard" };
+                return append_battlefield_entry_counter_surface(
+                    format!(
+                        "{} {} {}{origin} to the battlefield{}{where_clause}",
+                        capitalize_first(&actor),
+                        player_verb(&actor, "return", "returns"),
+                        describe_choose_spec(&return_to_battlefield.target),
+                        if return_to_battlefield.tapped { " tapped" } else { "" }
+                    ),
+                    &return_to_battlefield.enters_with_counters,
+                );
+            }
             return append_battlefield_entry_counter_surface(
                 format!(
-                    "Return {} from your graveyard to the battlefield{}{where_clause}",
+                    "Return {}{origin} to the battlefield{}{where_clause}",
                     describe_choose_spec(&return_to_battlefield.target),
                     if return_to_battlefield.tapped {
                         " tapped"
@@ -6548,6 +7192,25 @@ if filter.zone == Some(Zone::Hand)
                     } else {
                         ""
                     }
+                ),
+                &return_to_battlefield.enters_with_counters,
+            );
+        }
+        // "Return those cards from your graveyard to the battlefield"
+        // (Revivify): the authored plural reference to a tagged set.
+        if let ChooseSpec::All(filter) = return_to_battlefield.target.base()
+            && filter.has_plural_pronoun_reference_surface()
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+            && let Some(crate::target::SourceReferenceSurface::ThisPermanentType(reference)) =
+                &filter.source_surface
+            && reference.starts_with("those ")
+        {
+            return append_battlefield_entry_counter_surface(
+                format!(
+                    "Return {reference} to the battlefield{}{where_clause}",
+                    if return_to_battlefield.tapped { " tapped" } else { "" }
                 ),
                 &return_to_battlefield.enters_with_counters,
             );
@@ -6682,7 +7345,7 @@ if filter.zone == Some(Zone::Hand)
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
         if let Value::Add(base, extra) = draw.count.unhinted()
             && matches!(base.unhinted(), Value::X)
-            && let Value::CommanderCastCount(caster) = extra.unhinted()
+            && let Value::CommandersCastFromCommandZoneBy(caster) = extra.unhinted()
             && caster == &draw.player
         {
             let player = describe_player_filter(&draw.player);
@@ -7905,6 +8568,12 @@ if filter.zone == Some(Zone::Hand)
         if target == "equipped creature" {
             return "Equipped creature phases out".to_string();
         }
+        // "Any number of target creatures you control phase out." (No More,
+        // Clever Concealment): an open-ended target set is the subject of the
+        // plural verb, like an `All` set above.
+        if phase_out.spec.is_target() && phase_out.spec.count().is_any_number() {
+            return format!("{} phase out", capitalize_first(&target));
+        }
         return format!("Phase out {target}");
     }
     if let Some(phase_in) = effect.downcast_ref::<crate::effects::PhaseInEffect>() {
@@ -7993,7 +8662,32 @@ if filter.zone == Some(Zone::Hand)
                     };
                     return format!("{subject} sacrifices it");
                 }
+                if filter.has_plural_pronoun_reference_surface() {
+                    return "Sacrifice them".to_string();
+                }
+                if filter.has_plural_object_noun_surface() && filter.token {
+                    return "Sacrifice those tokens".to_string();
+                }
                 return "Sacrifice it".to_string();
+            }
+            // "enchanted creature's controller sacrifices it" (Parasitic
+            // Implant): the host's controller, not you, makes the sacrifice.
+            if let Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))) =
+                sacrifice_target.player.as_ref()
+                && let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.tag == *tag
+                && matches!(tag.as_str(), "enchanted" | "equipped")
+            {
+                let noun = match filter.card_types.as_slice() {
+                    [CardType::Creature] => "creature",
+                    [CardType::Artifact] => "artifact",
+                    [CardType::Land] => "land",
+                    _ => "permanent",
+                };
+                return format!(
+                    "{} {noun}'s controller sacrifices it",
+                    capitalize_first(tag.as_str())
+                );
             }
             let mut chosen_creature = filter.clone();
             let chosen_constraints = chosen_creature
@@ -8036,6 +8730,21 @@ if filter.zone == Some(Zone::Hand)
         );
     }
     if let Some(return_to_hand) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
+        // "Return up to X cards from among cards exiled with this artifact
+        // to their owners' hands, where X is the result" (Bag of Devouring):
+        // the pool is the source's linked exile.
+        if let ChooseSpec::WithCountValue(inner, count, value) = return_to_hand.spec.unhinted()
+            && matches!(inner.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            && count.dynamic_x
+        {
+            let up_to = if count.up_to_x { "up to " } else { "" };
+            let where_x = describe_where_x_basis(value)
+                .map(|basis| format!(", where X is {basis}"))
+                .unwrap_or_default();
+            return format!(
+                "Return {up_to}X cards from among cards exiled with this permanent to their owners' hands{where_x}"
+            );
+        }
         if is_target_nonland_permanent_or_suspended_card(&return_to_hand.spec)
             && return_to_hand.destination_player_surface.is_none()
             && return_to_hand.actor_surface.is_none()
@@ -8164,7 +8873,44 @@ if filter.zone == Some(Zone::Hand)
                 .set_reference_surface
                 .as_deref()
                 .is_some_and(subject_is_plural));
-        let target_text = if matches!(return_to_hand.spec.base(), ChooseSpec::Tagged(_)) {
+        // "You may return one of those Dragons to its owner's hand" (Zurgo
+        // and Ojutai): one object chosen from a referenced plural set.
+        let one_of_referenced_set = match &return_to_hand.spec {
+            ChooseSpec::WithCount(inner, count)
+                if count.is_single()
+                    && return_to_hand.set_quantifier_surface
+                        == Some(ironsmith_core::SetQuantifierSurface::Those) =>
+            {
+                match (inner.base(), return_to_hand.set_reference_surface.as_deref()) {
+                    (ChooseSpec::Object(filter), Some(reference))
+                        if reference.starts_with("those ")
+                            && filter.tagged_constraints.iter().any(|constraint| {
+                                constraint.relation
+                                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            }) =>
+                    {
+                        let mut words = reference.split(' ').map(str::to_string).collect::<Vec<_>>();
+                        for word in words.iter_mut() {
+                            if filter.subtypes.iter().any(|subtype| {
+                                let name = subtype.to_string().to_ascii_lowercase();
+                                *word == name || *word == format!("{name}s")
+                            }) {
+                                let mut chars = word.chars();
+                                if let Some(first) = chars.next() {
+                                    *word = first.to_uppercase().chain(chars).collect();
+                                }
+                            }
+                        }
+                        Some(format!("one of {}", words.join(" ")))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let target_text = if let Some(one_of) = one_of_referenced_set {
+            one_of
+        } else if matches!(return_to_hand.spec.base(), ChooseSpec::Tagged(_)) {
             return_to_hand
                 .set_reference_surface
                 .clone()
@@ -8253,7 +8999,10 @@ if filter.zone == Some(Zone::Hand)
         } else {
             ""
         };
+        // "Return any number of cards with total mana value X or less ...,
+        // where X is the total of those results" (Pair o' Dice Lost).
         let where_clause = choose_spec_dynamic_count_value_where_clause(&return_from_gy.target)
+            .or_else(|| choose_spec_filter_where_x_clause(&return_from_gy.target))
             .unwrap_or_default();
         if matches!(return_from_gy.target.base(), ChooseSpec::Source) {
             return format!(
@@ -8347,6 +9096,14 @@ if filter.zone == Some(Zone::Hand)
         if matches!(&shuffle_library.player, PlayerFilter::AliasedTarget(_)) {
             return "That player shuffles".to_string();
         }
+        // "search its controller's graveyard, hand, and library ... Then that
+        // player shuffles" (Deicide): the object's controller shuffles.
+        if matches!(
+            &shuffle_library.player,
+            PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target)
+        ) {
+            return "That player shuffles".to_string();
+        }
         return format!(
             "Shuffle {} library",
             describe_possessive_player_filter(&shuffle_library.player)
@@ -8415,7 +9172,16 @@ if filter.zone == Some(Zone::Hand)
             } else {
                 "their owners' libraries"
             };
-            return format!("Shuffle {target_text} into {destination}");
+            // "with mana value X or less ..., where X is ..." (Teferi Akosa).
+            let where_x = if target_text.contains(" X ") && !target_text.contains("where X is") {
+                choose_spec_filter_where_x_clause(
+                    &shuffle_objects.target,
+                )
+                .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            return format!("Shuffle {target_text} into {destination}{where_x}");
         }
         if matches!(shuffle_objects.target.base(), ChooseSpec::Source)
             && matches!(
@@ -8489,8 +9255,44 @@ if filter.zone == Some(Zone::Hand)
                     }
                     None => owner_library_phrase_for_spec(&shuffle_objects.target).to_string(),
                 };
+                // "Shuffle this card into your library from your graveyard"
+                // (Kogla and Yidaro): the source card names its destination
+                // first.
+                if matches!(
+                    shuffle_objects.target.base(),
+                    ChooseSpec::Object(filter) | ChooseSpec::All(filter) if filter.source
+                ) {
+                    return format!("Shuffle {target_text} into {library} from {from_text}");
+                }
                 return format!("Shuffle {target_text} from {from_text} into {library}");
             }
+        }
+        // "then that player shuffles their hand into their library" (Jace,
+        // the Mind Sculptor): another player shuffles their own whole hand.
+        if shuffle_objects.player != PlayerFilter::You
+            && let ChooseSpec::All(filter) = shuffle_objects.target.base()
+            && filter.zone == Some(Zone::Hand)
+            && filter.owner.as_ref().is_some_and(|owner| {
+                owner == &shuffle_objects.player
+                    || matches!(
+                        (owner, &shuffle_objects.player),
+                        (PlayerFilter::Target(left), PlayerFilter::AliasedTarget(right))
+                            | (PlayerFilter::AliasedTarget(left), PlayerFilter::Target(right))
+                            if left == right
+                    )
+            })
+            && {
+                let mut rest = filter.clone();
+                rest.zone = None;
+                rest.owner = None;
+                rest.union_surface = ObjectFilter::default().union_surface;
+                rest == ObjectFilter::default()
+            }
+        {
+            return format!(
+                "{} shuffles their hand into their library",
+                capitalize_first(&describe_player_filter(&shuffle_objects.player))
+            );
         }
         return format!(
             "Shuffle {} into {} library",
@@ -8884,6 +9686,18 @@ if filter.zone == Some(Zone::Hand)
             rest.tagged_constraints.clear();
             if rest == ObjectFilter::default() {
                 return "Look at the exiled cards".to_string();
+            }
+        }
+        // "Exile the top card of your library face down and look at it"
+        // (Ugin, the Ineffable): a bare back-reference to the object a prior
+        // instruction tagged is that object, not an untyped "permanent".
+        if let [constraint] = look_at_objects.filter.tagged_constraints.as_slice()
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        {
+            let mut rest = look_at_objects.filter.clone();
+            rest.tagged_constraints.clear();
+            if rest == ObjectFilter::default() {
+                return "Look at it".to_string();
             }
         }
         return format!("Look at {}", look_at_objects.filter.description());
@@ -10385,6 +11199,44 @@ if filter.zone == Some(Zone::Hand)
                     with_indefinite_article(strip_leading_article(&desc))
                 ));
             }
+            // "You may reveal that card if it has three or more colored mana
+            // symbols in its mana cost" — the condition inspects the very
+            // card the branch reveals, so it reads as a present-tense quality
+            // of "it" rather than a "was revealed this way" back-reference.
+            if let crate::effect::Condition::TaggedObjectMatches(tag, filter) = &conditional.condition
+                && let [action] = branch_effects
+                && structural_unwrap_render_wrappers(action)
+                    .downcast_ref::<crate::effects::MayEffect>()
+                    .and_then(|may| match may.effects.as_slice() {
+                        [inner] => Some(inner),
+                        _ => None,
+                    })
+                    .unwrap_or(action)
+                    .downcast_ref::<crate::effects::RevealTaggedEffect>()
+                    .is_some_and(|reveal| reveal.tag == *tag)
+            {
+                let mut quality = filter.clone();
+                quality.zone = None;
+                // A card in a library or hand is never a token.
+                quality.nontoken = false;
+                let desc = quality.description_with_default_noun("card");
+                let desc = strip_leading_article(&desc).to_string();
+                if let Some(rest) = desc.strip_prefix("card with ") {
+                    return finish_condition(format!("{effect_text} if it has {rest}"));
+                }
+                let desc = if desc.contains("card") {
+                    desc
+                } else {
+                    match desc.split_once(" with ") {
+                        Some((head, tail)) => format!("{head} card with {tail}"),
+                        None => format!("{desc} card"),
+                    }
+                };
+                return finish_condition(format!(
+                    "{effect_text} if it's {}",
+                    with_indefinite_article(&desc)
+                ));
+            }
             // "Destroy target creature if it has mana value 2 or less" — the
             // condition inspects the pending target of THIS clause's own
             // action, so its tag must read present-tense, not as a
@@ -10821,6 +11673,19 @@ if filter.zone == Some(Zone::Hand)
             if is_reflexive_choose_one_followup(if_effect, &then_text) {
                 return format!("When you do, {}", lowercase_first(then_text.trim_start()));
             }
+            // "You may cast ... If that spell would be put into your
+            // graveyard, exile it instead." (Diviner of Mist): the future
+            // replacement only watches the spell the optional cast created,
+            // so the cast happening is implied by the replacement itself.
+            if if_effect.predicate == EffectPredicate::Happened
+                && let [replacement] = if_effect.then.as_slice()
+                && let Some(replacement) = replacement
+                    .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+                && replacement.filter.zone == Some(Zone::Stack)
+                && !replacement.filter.tagged_constraints.is_empty()
+            {
+                return then_text;
+            }
             if matches!(
                 if_effect.predicate,
                 EffectPredicate::PriorEffectResult(_)
@@ -10864,6 +11729,12 @@ if filter.zone == Some(Zone::Hand)
         // +1/+1 counters ..." (Augusta, Order Returned): a count of exactly
         // the trigger condition's matching objects is its "that many".
         triggered = rebind_reflexive_matching_count_surface(reflexive, &triggered);
+        // "When its power becomes 20 this way" (Inferno of the Star Mounts):
+        // a trigger-time gate on the source's resulting power, with no
+        // mirrored resolution check in the body.
+        if let Some(opening) = reflexive_source_power_gate_opening(reflexive) {
+            return format!("{opening}, {triggered}");
+        }
         let condition = match &reflexive.predicate {
             EffectPredicate::Happened => "When you do".to_string(),
             EffectPredicate::DidNotHappen => "When you don't".to_string(),
@@ -10928,7 +11799,7 @@ if filter.zone == Some(Zone::Hand)
             let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
                 !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
             });
-            if tag == "it" || tag_is_numbered {
+            if tag == "it" || tag == ironsmith_core::tag::SOURCE_OBJECT_TAG || tag_is_numbered {
                 "the copy".to_string()
             } else {
                 format!("a copy of {}", describe_choose_spec(&spec))
@@ -10938,9 +11809,62 @@ if filter.zone == Some(Zone::Hand)
         } else {
             describe_choose_spec(&spec)
         };
-        let mut text = format!("{verb} {target}");
+        // "Otherwise, the player casts it without paying its mana cost"
+        // (Omen Machine): an iterated player, not you, performs the cast.
+        let mut text = if cast_tagged.player == PlayerFilter::IteratedPlayer {
+            format!(
+                "that player {}s {target}",
+                verb
+            )
+        } else {
+            format!("{verb} {target}")
+        };
+        // "play it if it's a land card or cast it if it's a spell with mana
+        // value less than or equal to that damage" (Ziatora's Envoy): a land
+        // is played; anything else is cast only as a spell matching the
+        // instruction's requirement (CR 601.3e).
+        if cast_tagged.allow_land
+            && !cast_tagged.as_copy
+            && let Some(required) = cast_tagged.required_spell.as_ref()
+        {
+            let spell = required.description_with_default_noun("spell");
+            let spell = strip_leading_article(&spell);
+            let spell = if spell.starts_with("spell") {
+                spell.to_string()
+            } else {
+                format!("{spell} spell")
+            };
+            text = format!(
+                "{text} if it's a land card or cast it if it's {}",
+                with_indefinite_article(&spell)
+            );
+        }
+        if let Some(zone) = cast_tagged.required_zone {
+            let owner_zone = match zone {
+                Zone::Graveyard => Some("your graveyard"),
+                Zone::Hand => Some("your hand"),
+                Zone::Library => Some("your library"),
+                Zone::Exile => Some("exile"),
+                _ => None,
+            };
+            if let Some(owner_zone) = owner_zone {
+                text.push_str(&format!(" from {owner_zone}"));
+            }
+        }
         if cast_tagged.without_paying_mana_cost {
             text.push_str(" without paying its mana cost");
+        }
+        if !cast_tagged.allow_land
+            && let Some(required) = cast_tagged.required_spell.as_ref()
+        {
+            let mut rest = required.clone();
+            let mana_value = rest.mana_value.take();
+            if rest == ObjectFilter::nonland() && let Some(comparison) = mana_value {
+                text.push_str(&format!(" if that spell's mana value {}", describe_filter_comparison_clause(&comparison)));
+            } else {
+                let spell = required.description_with_default_noun("spell");
+                text.push_str(&format!(" if it's {}", with_indefinite_article(strip_leading_article(&spell))));
+            }
         }
         match cast_tagged.alternative_payment {
             Some(ironsmith_core::CastTaggedAlternativePayment::EnergyEqualToManaValue) => text
@@ -10976,6 +11900,102 @@ if filter.zone == Some(Zone::Hand)
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
         if let Some(compact) = describe_may_temporary_flash_and_cast_trigger(may) {
             return compact;
+        }
+        // "Target opponent may choose one of the exiled cards and put it onto
+        // the battlefield under their control." (Dubious Challenge): the
+        // declared decider makes the choice and the move.
+        if let Some(PlayerFilter::Target(decider)) = may.decider.as_ref()
+            && let [sequence] = may.effects.as_slice()
+            && let Some(sequence) = sequence.downcast_ref::<crate::effects::SequenceEffect>()
+            && let [declare, choose, put] = sequence.effects.as_slice()
+            && let Some(declare) = declare.downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && matches!(declare.target.base(), ChooseSpec::Player(_))
+            && let Some(choose) = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && choose.chooser == PlayerFilter::Target(decider.clone())
+            && choose.count.is_single()
+            && choose.filter.zone == Some(Zone::Exile)
+            && choose.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            })
+            && let Some(put) = unwrap_basic_tag_wrappers(put)
+                .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+            && matches!(&put.target, ChooseSpec::Tagged(tag) if *tag == choose.tag)
+        {
+            return format!(
+                "{} may choose one of the exiled cards and put it onto the battlefield under their control",
+                capitalize_first(&describe_choose_spec(&declare.target))
+            );
+        }
+        // "You may reveal a creature card you own from outside the game and
+        // put it into your hand" (Burning Wish, Vivien, Arkbow Ranger): an
+        // optional single pick from outside the game, revealed, then moved
+        // to your hand.
+        if matches!(may.decider, None | Some(PlayerFilter::You))
+            && let [choose_effect, reveal_effect, move_effect] = may.effects.as_slice()
+            && let Some(choose) =
+                unwrap_basic_tag_wrappers(choose_effect).downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && choose.filter.zone == Some(Zone::OutsideGame)
+            && choose.chooser == PlayerFilter::You
+            && choose.count.max == Some(1)
+            && let Some(reveal) =
+                unwrap_basic_tag_wrappers(reveal_effect).downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && reveal.tag == choose.tag
+            && let Some(moved) =
+                unwrap_basic_tag_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && moved.zone == Zone::Hand
+            && matches!(moved.target.unhinted(), ChooseSpec::Tagged(tag) if *tag == choose.tag)
+            && matches!(choose.filter.owner, None | Some(PlayerFilter::You))
+        {
+            let mut card = choose.filter.clone();
+            card.zone = None;
+            let owner_text = if card.owner.take().is_some() { " you own" } else { "" };
+            let noun = card.description_with_default_noun("card");
+            let noun = strip_leading_article(&noun);
+            let noun = if noun.contains("card") { noun.to_string() } else { format!("{noun} card") };
+            return format!(
+                "You may reveal {}{owner_text} from outside the game and put it into your hand",
+                with_indefinite_article(&noun)
+            );
+        }
+        // "You may play target snow permanent card from your graveyard this
+        // turn. If you do, it enters tapped." (Kaldring, the Rimestaff): the
+        // targeted graveyard card and the one-turn permission over it.
+        if matches!(may.decider, None | Some(PlayerFilter::You))
+            && let [target_effect, grant_effect] = may.effects.as_slice()
+            && let Some(tagged) = target_effect.downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(target_only) =
+                tagged.effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && target_only.target.is_target()
+            && let ChooseSpec::Object(filter) = target_only.target.base()
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner == Some(PlayerFilter::You)
+            && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && grant.tag == tagged.tag
+            && grant.player == PlayerFilter::You
+            && grant.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+            && grant.mana_spend_mode == ironsmith_core::value_model::ManaSpendMode::Normal
+            && grant.alternative_cost.is_none()
+            && grant.filter.is_none()
+            && grant.spell_filter.is_none()
+            && !grant.while_on_top_of_library
+            && grant.while_player_controls.is_none()
+            && grant.spell_cost_increase.is_none()
+            && grant.spell_cost_reduction.is_none()
+            && grant.max_plays.is_none()
+        {
+            let mut card = filter.clone();
+            card.zone = None;
+            card.owner = None;
+            let verb = if grant.allow_land { "play" } else { "cast" };
+            let rider = if grant.permanents_enter_tapped {
+                ". If you do, it enters tapped"
+            } else {
+                ""
+            };
+            return format!(
+                "you may {verb} target {} from your graveyard this turn{rider}",
+                card.description()
+            );
         }
         // "You may put a land card from among those cards onto the
         // battlefield." (Journey to the Lost City): an optional single choice
@@ -11359,6 +12379,15 @@ if filter.zone == Some(Zone::Hand)
                 // The body is fixed text; the generic inner render would
                 // re-introduce its own subject ("that player ends the turn").
                 return "The player whose turn it is may end the turn".to_string();
+            } else if matches!(
+                decider,
+                PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
+                    if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            ) {
+                // "the exiled card's owner may cast that card" (Spell
+                // Queller): "its owner" would name the source, not the card
+                // the source exiled (cf. the token-creator subject).
+                "the exiled card's owner".to_string()
             } else {
                 describe_player_filter(decider)
             };
@@ -11677,3 +12706,4 @@ if filter.zone == Some(Zone::Hand)
         return format!("You may {inner}");
     }
 }
+

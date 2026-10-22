@@ -2937,9 +2937,12 @@
             idx += 3;
             continue;
         }
+        // "sacrifices a creature and a planeswalker of their choice" (To the
+        // Slaughter): two paired choose-then-sacrifice steps by one player are
+        // read before a single pair absorbs the second choice as a follow-up.
         if idx + 3 < filtered.len()
             && let Some((compact, consumed)) =
-                describe_choose_sacrifice_then_same_player_actions(&filtered[idx..])
+                describe_two_choose_sacrifices_same_player(&filtered[idx..])
         {
             parts.push(compact);
             idx += consumed;
@@ -2947,7 +2950,7 @@
         }
         if idx + 3 < filtered.len()
             && let Some((compact, consumed)) =
-                describe_two_choose_sacrifices_same_player(&filtered[idx..])
+                describe_choose_sacrifice_then_same_player_actions(&filtered[idx..])
         {
             parts.push(compact);
             idx += consumed;

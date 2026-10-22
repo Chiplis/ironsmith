@@ -35,6 +35,24 @@ impl GameState {
         self.effect_store.continuous_effects.expire_at_upkeep_end(&players);
     }
 
+    /// "you haven't been dealt combat damage since your last turn": combat
+    /// damage dealt to `player` in any turn after their most recently
+    /// completed turn (the whole game when they haven't completed one).
+    pub fn player_was_dealt_combat_damage_since_their_last_turn(&self, player: PlayerId) -> bool {
+        let Some(dealt_turn) = self
+            .turn_store
+            .player_last_dealt_combat_damage_turn
+            .get(&player)
+            .copied()
+        else {
+            return false;
+        };
+        self.turn_store
+            .last_completed_turn_by_player
+            .get(&player)
+            .is_none_or(|last_turn| dealt_turn > *last_turn)
+    }
+
     pub fn enchanted_permanent_attacked_or_blocked_since_last_upkeep(
         &self,
         aura: ObjectId,
@@ -1801,10 +1819,14 @@ impl GameState {
         let completed_turn_history = std::mem::take(&mut self.turn_store.turn_history);
         self.turn_store.turn_history.ability_activation_counts = Some(HashMap::new());
         self.turn_store.turn_history.draw_occurrences = Some(Default::default());
+        let completed_turn_number = self.turn.turn_number.saturating_sub(1);
         for player in completed_turn_players {
             self.turn_store
                 .last_turn_history_by_player
                 .insert(player, completed_turn_history.clone());
+            self.turn_store
+                .last_completed_turn_by_player
+                .insert(player, completed_turn_number);
         }
         self.turn_store.previous_turn_history = completed_turn_history;
         self.turn_store.turn_history.monarch_at_turn_start = self.monarch;

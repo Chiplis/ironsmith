@@ -36,6 +36,19 @@ pub(crate) fn parse_copy_for_each_target_sentence(
         return Ok(None);
     };
     let wrap_if_result = shape.wrap_if_result;
+    // The printed stack-object noun of the copied back-reference.
+    let reference_kind = |target_tokens: &[OwnedLexToken]| {
+        let words = crate::lexer::token_word_refs(target_tokens);
+        let spell = words.iter().any(|word| matches!(*word, "spell" | "spells"));
+        let ability = words.iter().any(|word| matches!(*word, "ability" | "abilities"));
+        match (spell, ability) {
+            (true, true) => Some(crate::filter::StackObjectKind::SpellOrAbility),
+            (true, false) => Some(crate::filter::StackObjectKind::Spell),
+            (false, true) => Some(crate::filter::StackObjectKind::Ability),
+            (false, false) => None,
+        }
+    };
+    let target_reference_kind;
     let (target, object_filter, player_filter, player, exclude_current_targets) = match shape.layout
     {
         effect_grammar::CopyForEachLayout::CopyThenForEach {
@@ -52,6 +65,7 @@ pub(crate) fn parse_copy_for_each_target_sentence(
             let candidate_tokens = trim_commas(&tokens[candidate]);
             let (object_filter, player_filter, exclude_current_targets) =
                 parse_copy_for_each_candidate_filter(&candidate_tokens)?;
+            target_reference_kind = reference_kind(&target_tokens);
             (
                 target_for_referenced_stack_object(sentences, sentence_idx, &target_tokens),
                 object_filter,
@@ -65,6 +79,7 @@ pub(crate) fn parse_copy_for_each_target_sentence(
             let candidate_tokens = trim_commas(&tokens[candidate]);
             let (object_filter, player_filter, exclude_current_targets) =
                 parse_copy_for_each_candidate_filter(&candidate_tokens)?;
+            target_reference_kind = reference_kind(&target_tokens);
             (
                 target_for_referenced_stack_object(sentences, sentence_idx, &target_tokens),
                 object_filter,
@@ -81,7 +96,8 @@ pub(crate) fn parse_copy_for_each_target_sentence(
         player,
         exclude_current_targets,
         Vec::new(),
-    );
+    )
+    .with_copy_for_each_target_reference_kind(target_reference_kind);
     Ok(Some(if wrap_if_result {
         EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,

@@ -1,3 +1,4 @@
+pub mod corpus;
 pub mod serde_tag_keys;
 pub mod runtime_audit;
 mod tooling;

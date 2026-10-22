@@ -957,11 +957,9 @@ impl WasmGame {
                     || viewer == Some(self.game.controlling_player_for(object.owner))
             }
             Zone::Library => false,
-            Zone::Battlefield if self.game.is_face_down(id) => {
-                let permanent_controller = self.game.controller_of(object);
-                viewer == Some(permanent_controller)
-                    || viewer == Some(self.game.controlling_player_for(permanent_controller))
-            }
+            Zone::Battlefield if self.game.is_face_down(id) => viewer.is_some_and(|viewer| {
+                self.game.can_player_look_at_face_down_permanent(id, viewer)
+            }),
             Zone::Exile if self.game.is_face_down(id) => viewer.is_some_and(|viewer| {
                 self.game
                     .can_player_look_at_face_down_exiled_card(id, viewer)

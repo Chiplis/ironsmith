@@ -156,14 +156,70 @@ pub(in crate::compiled_text) fn describe_quantified_created_tokens_goaded_foreve
         structural_unwrap_render_wrappers(consumer).downcast_ref::<crate::effects::GoadEffect>()?;
     if create.controller != PlayerFilter::IteratedPlayer
         || create.controller_target.is_some()
-        || goad.duration != Until::Forever
         || !choose_spec_references_exact_tag(&goad.target, &tagged.tag)
     {
         return None;
     }
+    // "The tokens are goaded for as long as this Saga remains on the
+    // battlefield." (The War Games): the same follow-up with a
+    // source-lifetime duration.
+    let duration = match &goad.duration {
+        Until::Forever => "for the rest of the game".to_string(),
+        duration @ Until::ForAsLongAs(
+            ironsmith_core::ContinuousDurationPredicate::ObjectOnBattlefield(
+                ironsmith_core::ContinuousDurationObject::Source,
+            ),
+        ) => describe_until(duration),
+        _ => return None,
+    };
     Some(format!(
-        "{}. The tokens are goaded for the rest of the game",
+        "{}. The tokens are goaded {duration}",
         rendered_clause(producer)
+    ))
+}
+
+/// "If you do, create a token that's a copy of that creature. If you didn't
+/// create a token this way, create a 1/1 green Insect creature token."
+/// (Springheart Nantuko): a fallback gated on the gated creation's own result,
+/// not on the original optional payment.
+pub(in crate::compiled_text) fn describe_gated_creation_this_way_fallback(
+    effects: &[Effect],
+) -> Option<String> {
+    let (fallback, rest) = effects.split_last()?;
+    let (gate, _) = rest.split_last()?;
+    let fallback = fallback.downcast_ref::<crate::effects::IfEffect>()?;
+    let gate_with_id = gate.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let gate_if = gate_with_id
+        .effect
+        .downcast_ref::<crate::effects::IfEffect>()?;
+    if fallback.condition != gate_with_id.id
+        || fallback.predicate != crate::effect::EffectPredicate::DidNotHappen
+        || !fallback.else_.is_empty()
+        || gate_if.predicate != crate::effect::EffectPredicate::Happened
+        || !gate_if.else_.is_empty()
+    {
+        return None;
+    }
+    let [created] = gate_if.then.as_slice() else {
+        return None;
+    };
+    let created = structural_unwrap_render_wrappers(created);
+    if created
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+        .is_none()
+        && created
+            .downcast_ref::<crate::effects::CreateTokenEffect>()
+            .is_none()
+    {
+        return None;
+    }
+    let prefix = describe_effect_list(rest);
+    let prefix = prefix.trim().trim_end_matches('.');
+    let body = describe_effect_list(&fallback.then);
+    let body = body.trim().trim_end_matches('.');
+    Some(format!(
+        "{prefix}. If you didn't create a token this way, {}",
+        lowercase_first(body)
     ))
 }
 

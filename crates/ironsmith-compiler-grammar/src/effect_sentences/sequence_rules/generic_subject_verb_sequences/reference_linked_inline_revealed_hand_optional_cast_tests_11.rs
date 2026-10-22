@@ -51,6 +51,8 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
                     alternative_payment: None,
                     caster_land_mana_abilities_only: false,
                     control_caster_while_spell_resolves: false,
+                    required_zone: None,
+                    required_spell: None,
                 }),
             ..
         }),
