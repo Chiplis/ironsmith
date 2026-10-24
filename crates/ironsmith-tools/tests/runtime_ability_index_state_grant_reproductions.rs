@@ -346,13 +346,22 @@ fn run(
     let actual;
     if def.name() == "Keen-Eyed Curator" {
         let before_count = [0, 3, 4][mode];
+        // A repeated type keeps card count and card-type count apart: four
+        // exiled cards cover only three types, so an object count that
+        // masquerades as a type count disagrees with the printed gate.
         let types = [
+            CardType::Creature,
             CardType::Creature,
             CardType::Artifact,
             CardType::Enchantment,
-            CardType::Sorcery,
             CardType::Land,
         ];
+        let distinct_types = |n: usize| {
+            types[..n]
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+        };
         let mut gy = vec![];
         for (i, kind) in types.into_iter().enumerate() {
             let mut b =
@@ -376,8 +385,11 @@ fn run(
             .objects_in_deterministic_order()
             .iter()
             .filter(|o| o.name.starts_with("Exile type witness") && o.zone == Zone::Exile)
-            .count();
-        expected = json!({"activation":{"offered":true,"announcement_error":null,"resolution_error":null,"mana_paid":1,"remaining_stack":0},"before_power":if before_count>=4{7}else{3},"before_trample":before_count>=4,"power":if after>=4{7}else{3},"toughness":if after>=4{7}else{3},"trample":after>=4,"exiled_types":after});
+            .flat_map(|o| o.card_types.iter().copied())
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        let (before_types, after_types) = (distinct_types(before_count), distinct_types(after));
+        expected = json!({"activation":{"offered":true,"announcement_error":null,"resolution_error":null,"mana_paid":1,"remaining_stack":0},"before_power":if before_types>=4{7}else{3},"before_trample":before_types>=4,"power":if after_types>=4{7}else{3},"toughness":if after_types>=4{7}else{3},"trample":after_types>=4,"exiled_types":after_types});
         actual = json!({"activation":outcome,"before_power":evidence["before_stats"]["power"],"before_trample":evidence["before_stats"]["trample"],"power":g.calculated_power(source),"toughness":g.calculated_toughness(source),"trample":g.object_has_static_ability_id(source,K::Trample),"exiled_types":exiled});
     } else if def.name() == "Warden of the Inner Sky" {
         let prior = [0, 2, 3][mode];

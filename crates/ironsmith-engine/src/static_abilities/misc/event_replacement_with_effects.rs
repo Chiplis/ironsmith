@@ -60,7 +60,7 @@ impl StaticAbilityKind for EventReplacementWithEffects {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("EventReplacementWithEffects", &self.display, self)
     }
 
     fn generate_replacement_effect(

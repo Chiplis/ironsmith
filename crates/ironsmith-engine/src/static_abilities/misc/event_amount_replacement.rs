@@ -66,7 +66,7 @@ impl StaticAbilityKind for EventAmountReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("EventAmountReplacement", &self.display, self)
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {

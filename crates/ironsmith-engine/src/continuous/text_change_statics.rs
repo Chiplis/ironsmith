@@ -116,6 +116,8 @@ pub(crate) fn rewrite_static_model_words(
     let mut rewritten = model.clone();
     match &mut rewritten.payload {
         P::DevotionIncrease { .. } => {}
+        P::CommanderPairing { .. } => {}
+        P::DeckConstructionCopyLimit { .. } => {}
         P::MorphCostIncrease { .. } => {}
         P::UnlockCostReduction { .. } => {}
         P::OpponentDiscardThisToBattlefieldWithCounters { .. } => {}

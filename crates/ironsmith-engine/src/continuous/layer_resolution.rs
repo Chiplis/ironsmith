@@ -1425,19 +1425,26 @@ pub(super) fn count_filter_matches(
         return count;
     }
     let mut count = 0i32;
+    let set_constrained = filter.has_selection_set_constraint();
+    let mut members = Vec::new();
     for_each_filter_candidate(ctx, filter, |obj| {
-        let matches = ctx
+        let Some(chars) = ctx
             .effects
             .calculate_characteristics(obj.id, ctx.objects, ctx.battlefield, ctx.game)
-            .is_some_and(|chars| {
-                filter_matches_with_characteristics_in_context(
-                    filter, obj, &chars, ctx.game, filter_ctx,
-                )
-            });
-        if matches {
+        else {
+            return;
+        };
+        if filter_matches_with_characteristics_in_context(filter, obj, &chars, ctx.game, filter_ctx)
+        {
             count += 1;
+            if set_constrained {
+                members.push(crate::static_abilities::SetMember::layered(obj, &chars));
+            }
         }
     });
+    if set_constrained {
+        return crate::static_abilities::set_constrained_member_count(filter, members) as i32;
+    }
     count
 }
 

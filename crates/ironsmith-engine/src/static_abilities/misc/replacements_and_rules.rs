@@ -57,7 +57,7 @@ impl StaticAbilityKind for DoubleDamageFromSourcesYouControlOfChosenType {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DoubleDamageFromSourcesYouControlOfChosenType", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -103,7 +103,7 @@ impl StaticAbilityKind for RedirectDamageToSourceController {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("RedirectDamageToSourceController", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -549,7 +549,7 @@ impl StaticAbilityKind for MinimumDamageAmountReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("MinimumDamageAmountReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -620,7 +620,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DoubleDamageAmountReplacement", &self.display, self)
     }
 
     fn with_static_condition(
@@ -693,7 +693,7 @@ impl StaticAbilityKind for PreventHalfDamageReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("PreventHalfDamageReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -923,7 +923,7 @@ impl StaticAbilityKind for DoubleCountersReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DoubleCountersReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -1011,6 +1011,29 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            use ironsmith_core::semantic_audit::humanize_variant;
+            let mut recipients = Vec::new();
+            if self.includes_permanents {
+                recipients.push(self.filter.description());
+            }
+            if let Some(player) = &self.player_filter {
+                recipients.push(humanize_variant(player));
+            }
+            return format!(
+                "If {}{} counters would be put on {}{}, that many plus {} are put instead",
+                self.actor
+                    .as_ref()
+                    .map_or(String::new(), |actor| format!("{} would cause ", humanize_variant(actor))),
+                self.counter_type
+                    .map_or("one or more".to_string(), |counter| counter.description().to_string()),
+                recipients.join(" or "),
+                self.cause
+                    .as_ref()
+                    .map_or(String::new(), |cause| format!(" by {}", humanize_variant(cause))),
+                self.additional
+            );
+        }
         self.display.clone()
     }
 
@@ -1107,7 +1130,7 @@ impl StaticAbilityKind for PlayerCounterPerTurnLimitReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("PlayerCounterPerTurnLimitReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -1158,7 +1181,7 @@ impl StaticAbilityKind for DoubleTokenCreationReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DoubleTokenCreationReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -1209,7 +1232,7 @@ impl StaticAbilityKind for MultiplyTokenCreationReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("MultiplyTokenCreationReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -1274,7 +1297,7 @@ impl StaticAbilityKind for AddTokenCreationReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("AddTokenCreationReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -1832,6 +1855,22 @@ impl StaticAbilityKind for ThisSpellCastRestriction {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            // The restriction's typed timing and condition, never its prose.
+            use ironsmith_core::semantic_audit::{audited_condition, humanize_variant};
+            let mut parts = Vec::new();
+            if let Some(timing) = &self.kind.timing {
+                parts.push(humanize_variant(timing));
+            }
+            match &self.kind.condition {
+                Some(crate::static_abilities::ThisSpellCastCondition::Condition(condition)) => {
+                    parts.push(format!("if {}", audited_condition("ThisSpellCastRestriction", condition)))
+                }
+                Some(condition) => parts.push(format!("if {}", humanize_variant(condition))),
+                None => {}
+            }
+            return format!("Cast this spell only {}", parts.join(" and only "));
+        }
         self.display.clone()
     }
 
@@ -1862,7 +1901,7 @@ impl StaticAbilityKind for ThisSpellXMaximum {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ThisSpellXMaximum", &self.display, self)
     }
 
     fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
@@ -1892,7 +1931,7 @@ impl StaticAbilityKind for ThisSpellXMinimum {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ThisSpellXMinimum", &self.display, self)
     }
 
     fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
@@ -2301,7 +2340,7 @@ impl StaticAbilityKind for ConditionalDrawReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ConditionalDrawReplacement", &self.display, self)
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
@@ -2378,7 +2417,7 @@ impl StaticAbilityKind for LoseGameReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("LoseGameReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -2440,7 +2479,7 @@ impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("LoseGameReplacement", &self.display, self)
     }
 }
 
@@ -2490,7 +2529,7 @@ impl StaticAbilityKind for DrawExtraCardsReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DrawExtraCardsReplacement", &self.display, self)
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
@@ -2578,7 +2617,7 @@ impl ReplacementMatcher for WouldDrawInstructionMatcher {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DrawExtraCardsReplacement", &self.display, self)
     }
 }
 
@@ -2608,7 +2647,7 @@ impl StaticAbilityKind for CreateOneOfEachTokenReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("CreateOneOfEachTokenReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -2709,7 +2748,7 @@ impl StaticAbilityKind for DrawReplacementWithEffects {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DrawReplacementWithEffects", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -2737,7 +2776,7 @@ impl StaticAbilityKind for RedirectDrawReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("RedirectDrawReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -2801,7 +2840,7 @@ impl ReplacementMatcher for WouldDrawByPlayerMatcher {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("RedirectDrawReplacement", &self.display, self)
     }
 }
 
@@ -2901,7 +2940,7 @@ impl StaticAbilityKind for DrawReplacementRevealTopMatchingToHandRestBottom {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DrawReplacementRevealTopMatchingToHandRestBottom", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -2991,7 +3030,7 @@ impl StaticAbilityKind for KeywordActionReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("KeywordActionReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -3838,7 +3877,7 @@ impl StaticAbilityKind for RedirectWouldEnterReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("RedirectWouldEnterReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -3955,7 +3994,7 @@ impl StaticAbilityKind for ManaProductionReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ManaProductionReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -4002,7 +4041,7 @@ impl StaticAbilityKind for ManaProductionMultiplierReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ManaProductionMultiplierReplacement", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -4087,7 +4126,7 @@ impl StaticAbilityKind for DoubleLifeChangeReplacement {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DoubleLifeChangeReplacement", &self.display, self)
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
@@ -4163,7 +4202,7 @@ impl ReplacementMatcher for ConditionalWouldChangeLifeMatcher {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DoubleLifeChangeReplacement", &self.display, self)
     }
 }
 
@@ -4467,15 +4506,22 @@ impl StaticAbilityKind for DoubleAgenda {
     }
 }
 
-/// Deck-construction rule text with no in-game rules impact.
+/// Deck-construction rule text. It has no in-game rules impact, but deck
+/// validation enforces its typed copy limit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeckConstructionRuleText {
     pub text: String,
+    /// `Some(None)`: any number of copies; `Some(Some(n))`: up to `n`.
+    pub copy_limit: Option<Option<u32>>,
 }
 
 impl DeckConstructionRuleText {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
+        Self { text: text.into(), copy_limit: None }
+    }
+
+    pub fn with_copy_limit(text: impl Into<String>, maximum: Option<u32>) -> Self {
+        Self { text: text.into(), copy_limit: Some(maximum) }
     }
 }
 
@@ -4484,7 +4530,19 @@ impl StaticAbilityKind for DeckConstructionRuleText {
         StaticAbilityId::DeckConstructionRuleText
     }
 
+    fn deck_copy_limit(&self) -> Option<Option<u32>> {
+        self.copy_limit
+    }
+
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return match self.copy_limit {
+                Some(None) => "A deck can have any number of copies of this card".to_string(),
+                Some(Some(limit)) => format!("A deck can have up to {limit} copies of this card"),
+                // The instruction ("circle two colors") has no typed effect.
+                None => "A deck-construction instruction with no modeled game effect".to_string(),
+            };
+        }
         fn title_case_name_fragment(name: &str) -> String {
             name.split_whitespace()
                 .map(|part| {
@@ -5020,7 +5078,7 @@ pub struct AddLifeGainReplacement {
 
 impl StaticAbilityKind for AddLifeGainReplacement {
     fn id(&self) -> StaticAbilityId { StaticAbilityId::AddLifeGainReplacement }
-    fn display(&self) -> String { self.display.clone() }
+    fn display(&self) -> String { ironsmith_core::semantic_audit::retained("AddLifeGainReplacement", &self.display, self) }
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
         let mut combined = self.clone();
         combined.condition = Some(match combined.condition.take() {
@@ -5054,7 +5112,7 @@ pub struct TokenCreationTemplates {
 }
 impl StaticAbilityKind for TokenCreationTemplates {
     fn id(&self) -> StaticAbilityId { StaticAbilityId::TokenCreationTemplates }
-    fn display(&self) -> String { self.display.clone() }
+    fn display(&self) -> String { ironsmith_core::semantic_audit::retained("TokenCreationTemplates", &self.display, self) }
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
         let mut next = self.clone();
         next.condition = Some(match next.condition { Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(condition)), None => condition });
@@ -5131,7 +5189,7 @@ pub struct ManaProductionRewrite {
 }
 impl StaticAbilityKind for ManaProductionRewrite {
     fn id(&self) -> StaticAbilityId { StaticAbilityId::ManaProductionRewrite }
-    fn display(&self) -> String { self.display.clone() }
+    fn display(&self) -> String { ironsmith_core::semantic_audit::retained("ManaProductionRewrite", &self.display, self) }
     fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
         Some(ReplacementEffect::with_matcher(source, controller,
             crate::events::mana::matchers::ManaRewriteMatcher {rule: self.rule.clone()},

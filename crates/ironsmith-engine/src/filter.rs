@@ -2398,13 +2398,9 @@ fn resolve_filter_comparison_rhs_value(
             ),
         ),
         Value::Count(filter) => {
-            let mut count = 0i64;
-            for object in game.objects_in_deterministic_order() {
-                if filter.matches(object, ctx, game) {
-                    count += 1;
-                }
-            }
-            Some(count)
+            let objects = game.objects_in_deterministic_order();
+            let matching = objects.iter().copied().filter(|object| filter.matches(object, ctx, game));
+            Some(crate::static_abilities::set_constrained_count(filter, matching, game) as i64)
         }
         Value::DistinctNames(filter) => {
             let mut names = std::collections::HashSet::new();
@@ -2433,12 +2429,9 @@ fn resolve_filter_comparison_rhs_value(
             i64::try_from(names.len()).ok()
         }
         Value::CountScaled(filter, factor) => {
-            let mut count = 0i64;
-            for object in game.objects_in_deterministic_order() {
-                if filter.matches(object, ctx, game) {
-                    count += 1;
-                }
-            }
+            let objects = game.objects_in_deterministic_order();
+            let matching = objects.iter().copied().filter(|object| filter.matches(object, ctx, game));
+            let count = crate::static_abilities::set_constrained_count(filter, matching, game) as i64;
             Some(count * i64::from(*factor))
         }
         Value::GreatestSharedCreatureTypeCount(filter) => {

@@ -273,11 +273,14 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             }
             return count;
         }
-        (value_candidate_ids_for_filter(self.game, filter, ctx)
+        let candidates = value_candidate_ids_for_filter(self.game, filter, ctx);
+        let matching = candidates
             .iter()
             .filter_map(|id| self.game.object(*id))
-            .filter(|object| filter.matches(object, &filter_ctx, self.game))
-            .count()
+            .filter(|object| filter.matches(object, &filter_ctx, self.game));
+        // Set-level constraints ("with different powers") limit the counted
+        // collection, not each object.
+        (crate::static_abilities::set_constrained_count(filter, matching, self.game)
             + count_as_card_named_for_spell_effect_bonus(self.game, filter, ctx, &filter_ctx))
             as i32
     }

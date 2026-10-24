@@ -2525,8 +2525,10 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
     }
 
     fn display(&self) -> String {
-        let mut line = if let Some(display) = &self.display {
-            display.clone()
+        // An audit always takes the structural reading of the fields below.
+        let display = ironsmith_core::semantic_audit::authored(self.display.as_deref());
+        let mut line = if let Some(display) = display {
+            display.to_string()
         } else if let Some(replacement) = &self.replacement_mana_cost {
             if self.filter == ObjectFilter::source() {
                 format!(
@@ -2560,7 +2562,7 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         // An authored display already states the equip-ability scope
         // ("Equip abilities you activate that target ...").
         if let Some(condition) = &self.condition
-            && self.display.is_none()
+            && display.is_none()
             && !matches!(condition, ActivatedAbilityCostCondition::ThisAbility { .. })
         {
             line.push(' ');
@@ -2602,8 +2604,9 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
     }
 
     fn display(&self) -> String {
-        if let Some(display) = &self.display {
-            return describe_cost_modifier_with_condition(display.clone(), &self.condition);
+        // An audit always takes the structural reading below.
+        if let Some(display) = ironsmith_core::semantic_audit::authored(self.display.as_deref()) {
+            return describe_cost_modifier_with_condition(display.to_string(), &self.condition);
         }
 
         let increase = self.increase.display();
@@ -2688,8 +2691,13 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
                 )
             }
         };
-        if self.non_mana_only {
+        if self.non_mana_only
+            || matches!(self.ability_condition, Some(ActivatedAbilityCostCondition::NonManaAbility))
+        {
             line.push_str(" unless they're mana abilities");
+        } else if let Some(condition) = &self.ability_condition {
+            line.push(' ');
+            line.push_str(&describe_activated_ability_cost_condition(condition));
         }
         describe_cost_modifier_with_condition(line, &self.condition)
     }
@@ -2766,8 +2774,14 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::FirstSpellYouCastThisGame => {
             Some("this spell is the first spell you've cast this game".to_string())
         }
-        ThisSpellCostCondition::ConditionExpr { display, .. }
-        | ThisSpellCostCondition::AsLongAsConditionExpr { display, .. } => Some(display.clone()),
+        ThisSpellCostCondition::ConditionExpr { display, condition }
+        | ThisSpellCostCondition::AsLongAsConditionExpr { display, condition } => Some(
+            if ironsmith_core::semantic_audit::semantic_audit_active() {
+                ironsmith_core::semantic_audit::audited_condition("ThisSpellCostCondition", condition)
+            } else {
+                display.clone()
+            },
+        ),
         ThisSpellCostCondition::TargetsPlayer(player) => Some(format!(
             "it targets {}",
             describe_player_filter_for_spell_target(player)
@@ -2857,10 +2871,20 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::OnlyCreatureCardsInHandNamed(name) => Some(format!(
             "the only other creature cards in your hand are named {name}"
         )),
-        ThisSpellCostCondition::NoCardsInHandMatching { display, .. } => Some(display.clone()),
-        ThisSpellCostCondition::CardInYourGraveyardMatching { display, .. } => {
-            Some(display.clone())
-        }
+        ThisSpellCostCondition::NoCardsInHandMatching { display, filter } => Some(
+            if ironsmith_core::semantic_audit::semantic_audit_active() {
+                format!("you have no {} in hand", filter.description())
+            } else {
+                display.clone()
+            },
+        ),
+        ThisSpellCostCondition::CardInYourGraveyardMatching { display, filter } => Some(
+            if ironsmith_core::semantic_audit::semantic_audit_active() {
+                format!("{} is in your graveyard", filter.description())
+            } else {
+                display.clone()
+            },
+        ),
         ThisSpellCostCondition::NotStartingPlayer => {
             Some("you weren't the starting player".to_string())
         }
@@ -3609,7 +3633,7 @@ impl StaticAbilityKind for ActivateAbilitiesAsThoughHaste {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ActivateAbilitiesAsThoughHaste", &self.display, self)
     }
 
     fn activate_abilities_as_though_haste(&self) -> Option<&ActivateAbilitiesAsThoughHaste> {
@@ -3642,7 +3666,7 @@ impl StaticAbilityKind for CostIncreaseLife {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("CostIncreaseLife", &self.display, self)
     }
 
     fn cost_increase_life(&self) -> Option<&CostIncreaseLife> {

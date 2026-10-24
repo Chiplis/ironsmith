@@ -39,6 +39,70 @@ mod prime_value_tests {
     }
 }
 
+/// References a resolving count can only get from its execution context:
+/// the implicit "it" and objects paid as costs. Reserved tags the matcher
+/// resolves by itself (source links, the library top, ...) are not listed.
+fn is_resolution_reference_tag(tag: &str) -> bool {
+    tag == IMPLICIT_IT_TAG || tag == "__additional_cost_object__" || tag.contains("_cost_")
+}
+
+/// The first resolution reference in `filter` that `filter_ctx` leaves
+/// unbound. Matching would treat it as an empty set and quietly count zero.
+pub(crate) fn unbound_resolution_reference(
+    filter: &crate::target::ObjectFilter,
+    filter_ctx: &FilterContext,
+) -> Option<String> {
+    for constraint in &filter.tagged_constraints {
+        let tag = constraint.tag.as_str();
+        if constraint.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+            && is_resolution_reference_tag(tag)
+            && !filter_ctx.tagged_objects.contains_key(tag)
+        {
+            return Some(tag.to_string());
+        }
+    }
+    filter
+        .any_of
+        .iter()
+        .chain(filter.attached_to_object.as_deref())
+        .find_map(|nested| unbound_resolution_reference(nested, filter_ctx))
+}
+
+/// "Counter target spell if it has the same name as that card": an
+/// unbound implicit "it" in a resolving count names the instruction's object
+/// target, as stack resolution does for tagged effects.
+fn resolution_count_filter_context(game: &GameState, exec: &ExecutionContext) -> FilterContext {
+    let mut filter_ctx = exec.filter_context(game);
+    if !filter_ctx.tagged_objects.contains_key(IMPLICIT_IT_TAG)
+        && let Some(snapshot) = exec.targets.iter().find_map(|target| match target {
+            crate::effects::ResolvedTarget::Object(id) => game
+                .object(*id)
+                .and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)),
+            crate::effects::ResolvedTarget::Player(_) => None,
+        })
+    {
+        filter_ctx
+            .tagged_objects
+            .insert(crate::tag::TagKey::from(IMPLICIT_IT_TAG), vec![snapshot]);
+    }
+    filter_ctx
+}
+
+fn require_bound_count_references(
+    count: &crate::static_abilities::AnthemCountExpression,
+    filter_ctx: &FilterContext,
+) -> Result<(), ExecutionError> {
+    let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) = count else {
+        return Ok(());
+    };
+    match unbound_resolution_reference(filter, filter_ctx) {
+        Some(tag) => Err(ExecutionError::IncompleteEvidence(format!(
+            "count condition references `{tag}`, which this resolution never bound"
+        ))),
+        None => Ok(()),
+    }
+}
+
 fn attachment_count_condition_matches(
     game: &GameState,
     source: ObjectId,
@@ -4346,16 +4410,12 @@ fn evaluate_condition_in_context(
             .into_iter()
             .any(|player_id| {
                 let filter_ctx = ctx.player_filter_context(game, player, player_id);
-                if filter.distinct_powers {
-                    return count_distinct_matching_powers(game, player_id, filter, &filter_ctx)
-                        >= *count as usize;
-                }
-                condition_objects_for_zone(game, filter.zone)
+                let matching = condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, player_id, filter.zone)
                     })
-                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .count()
+                    .filter(|obj| filter.matches(obj, &filter_ctx, game));
+                crate::static_abilities::set_constrained_count(filter, matching, game)
                     >= *count as usize
             })),
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
@@ -5270,7 +5330,10 @@ fn evaluate_condition_in_context(
             comparison,
             ..
         } => {
-            let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
+            let filter_ctx = ctx
+                .execution()
+                .map(|exec| exec.filter_context(game))
+                .unwrap_or_else(|| game.filter_context_for(shared.controller, Some(shared.source)));
             Ok(attachment_count_condition_matches(
                 game,
                 shared.source,
@@ -6254,12 +6317,20 @@ fn evaluate_condition_in_context(
                 let value = crate::events::damage::checked_scalar_count(exact as u128, "cast-time battlefield count")?;
                 return Ok(comparison.evaluate(value));
             }
+            // A resolving ability's count keeps its bound references
+            // ("a card with the same name as that spell"); a fresh static
+            // context would drop them and match nothing.
+            let resolution_ctx = ctx.execution().map(|exec| resolution_count_filter_context(game, exec));
+            if let Some(filter_ctx) = &resolution_ctx {
+                require_bound_count_references(count, filter_ctx)?;
+            }
             Ok(
-                comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression_checked(
+                comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression_checked_in_context(
                     count,
                     game,
                     ctx.source,
                     ctx.controller,
+                    resolution_ctx.as_ref(),
                 )?),
             )
         }
@@ -6268,11 +6339,16 @@ fn evaluate_condition_in_context(
                 return Ok(false);
             }
 
-            let value = crate::static_abilities::resolve_anthem_count_expression_checked(
+            let resolution_ctx = ctx.execution().map(|exec| resolution_count_filter_context(game, exec));
+            if let Some(filter_ctx) = &resolution_ctx {
+                require_bound_count_references(count, filter_ctx)?;
+            }
+            let value = crate::static_abilities::resolve_anthem_count_expression_checked_in_context(
                 count,
                 game,
                 ctx.source,
                 ctx.controller,
+                resolution_ctx.as_ref(),
             )?;
             Ok(value % 2 == if *even { 0 } else { 1 })
         }

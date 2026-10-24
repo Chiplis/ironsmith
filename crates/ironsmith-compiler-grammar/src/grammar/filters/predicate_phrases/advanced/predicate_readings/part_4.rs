@@ -734,6 +734,21 @@ pub(super) fn read_same_name_as_filter_predicate(
             filter.cast_this_turn = true;
             filter.zone = Some(crate::zone::Zone::Stack);
         }
+        // "it has the same name as that card" (Jester's Scepter): the
+        // demonstrative cannot be the subject "it" itself, or the predicate
+        // compares an object with its own name. It names the prior paid-cost
+        // object; reference resolution rejects the card if none exists.
+        let demonstrative = filter_tokens.first().is_some_and(|token| token.is_word("that"));
+        if demonstrative {
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                {
+                    constraint.tag =
+                        (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into();
+                }
+            }
+        }
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::SameNameAsTagged,

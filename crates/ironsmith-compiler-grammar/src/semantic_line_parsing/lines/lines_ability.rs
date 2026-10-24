@@ -175,7 +175,9 @@ pub(super) fn parse_static_line_impl(
         .or_else(|| keyword_special_grammar::parse_partner_visible_label_tokens(&line.parse_tokens))
     {
         return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(StaticAbility::partner().with_text(visible_label).into()),
+            // The visible keyword names the pairing group ("Partner—Survivors");
+            // keep it typed rather than only as replaced label text.
+            LineAst::StaticAbility(StaticAbility::partner_variant(visible_label).into()),
             chosen_option,
         );
     }

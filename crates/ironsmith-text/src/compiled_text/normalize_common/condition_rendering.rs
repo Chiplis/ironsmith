@@ -3579,7 +3579,30 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 ensure_indefinite_article(&desc)
             )
         }
-        Condition::AttachmentCount { display, .. } => display.clone(),
+        Condition::AttachmentCount {
+            attachment,
+            host,
+            comparison,
+            display,
+        } => match ironsmith_core::semantic_audit::authored(Some(display)) {
+            Some(display) => display.to_string(),
+            None => {
+                let host = match host {
+                    ironsmith_core::AttachmentConditionHost::Source => "this permanent".to_string(),
+                    ironsmith_core::AttachmentConditionHost::SourceAttachedObject => {
+                        "the object this is attached to".to_string()
+                    }
+                    ironsmith_core::AttachmentConditionHost::Matching(filter) => {
+                        ensure_indefinite_article(&filter.description())
+                    }
+                };
+                format!(
+                    "the number of {} attached to {host} is {}",
+                    pluralize_noun_phrase(strip_indefinite_article(&attachment.description())),
+                    describe_comparison(comparison)
+                )
+            }
+        },
         Condition::SourceHasNoCounter(counter_type) => {
             format!("there are no {} counters on it", counter_type.description())
         }
@@ -5400,7 +5423,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             display,
             count,
             comparison,
-        } => display.as_ref().map(|s| s.to_string()).unwrap_or_else(|| {
+        } => ironsmith_core::semantic_audit::authored(display.as_deref()).map(|s| s.to_string()).unwrap_or_else(|| {
             // An undisplayed count over a described object set still has a
             // structural reading ("at least two other creatures that attacked
             // this combat"); never leak the internal label.
@@ -5416,12 +5439,47 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 }
                 return format!("the number of {objects} {}", describe_comparison(comparison));
             }
+            if ironsmith_core::semantic_audit::semantic_audit_active() {
+                use crate::static_abilities::AnthemCountExpression as Count;
+                return match count {
+                    Count::CountersOnSource(counter_type)
+                    | Count::CountersOnSourceWithSurface { counter_type, .. }
+                    | Count::CountersOnSourceWithPronoun { counter_type, .. } => format!(
+                        "the number of {} counters on this permanent is {}",
+                        describe_counter_type(*counter_type),
+                        describe_comparison(comparison)
+                    ),
+                    other => format!(
+                        "the count {} is {}",
+                        ironsmith_core::semantic_audit::structural_reading(other, &[]),
+                        describe_comparison(comparison)
+                    ),
+                };
+            }
             "count comparison".to_string()
         }),
-        Condition::CountParity { display, even, .. } => display
-            .as_ref()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("count is {}", if *even { "even" } else { "odd" })),
+        Condition::CountParity { display, even, count } => {
+            ironsmith_core::semantic_audit::authored(display.as_deref())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    if ironsmith_core::semantic_audit::semantic_audit_active() {
+                        use crate::static_abilities::AnthemCountExpression as Count;
+                        let counted = match count {
+                            Count::MatchingFilter(filter) => format!(
+                                "the number of {}",
+                                pluralize_noun_phrase(strip_indefinite_article(&filter.description()))
+                            ),
+                            Count::SourcePower => "this permanent's power".to_string(),
+                            other => format!(
+                                "the count {}",
+                                ironsmith_core::semantic_audit::structural_reading(other, &[])
+                            ),
+                        };
+                        return format!("{counted} is {}", if *even { "even" } else { "odd" });
+                    }
+                    format!("count is {}", if *even { "even" } else { "odd" })
+                })
+        }
         Condition::ValueIsPrime(value) => {
             let controlled_lands = ObjectFilter::land().you_control();
             if matches!(value.unhinted(), Value::Count(filter) if filter == &controlled_lands) {
@@ -6730,8 +6788,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 if *count >= 2
                     && let Some(rest) = described.strip_prefix("the number of card types among ")
                 {
+                    // "cards exiled with this creature" is a standing link
+                    // (Keen-Eyed Curator); only a one-shot result is past.
                     let tense = if rest.contains("sacrificed")
-                        || rest.contains("exiled")
+                        || (rest.contains("exiled") && !rest.contains("exiled with "))
                         || rest.contains("this way")
                     {
                         "were"

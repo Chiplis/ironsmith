@@ -6028,6 +6028,12 @@ pub(super) fn parse_object_on_battlefield_predicate(
     if object_tokens.is_empty() {
         return Ok(None);
     }
+    // "a nontoken permanent with the same name is on the battlefield"
+    // (Bazaar of Wonders): the name comparison belongs to the same-name
+    // existence reading; the object reader here would drop it.
+    if crate::lexer::token_word_refs(object_tokens).ends_with(&["with", "the", "same", "name"]) {
+        return Ok(None);
+    }
     // "ten or more lands are on the battlefield" (Limited Resources): a
     // counted threshold over every matching permanent, not mere existence.
     let mut threshold = None;

@@ -950,7 +950,9 @@ where
 
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
-        if let Some(surface) = &self.filtered_zone_surface {
+        // A captured permission sentence stands in for the zone, filter, and
+        // beneficiary fields; an audit must describe those fields instead.
+        if let Some(surface) = crate::semantic_audit::authored(self.filtered_zone_surface.as_deref()) {
             // A captured permission sentence that omits the per-cast extra
             // cost ("You may cast spells from the top of your library" +
             // sacrificing a nonland permanent, Into the Pit) still names it.
@@ -1949,7 +1951,7 @@ where
         };
         // A rider attached after the permission sentence was captured
         // ("If you do, it enters with a finality counter on it").
-        if let Some(surface) = &self.filtered_zone_surface {
+        if let Some(surface) = crate::semantic_audit::authored(self.filtered_zone_surface.as_deref()) {
             return format!(
                 "{}{}",
                 self.surface_with_usage_lead_in(surface),
@@ -2884,8 +2886,14 @@ where
 fn describe_cast_condition(condition: &ThisSpellCostCondition) -> Option<String> {
     match condition {
         ThisSpellCostCondition::Always => None,
-        ThisSpellCostCondition::ConditionExpr { display, .. }
-        | ThisSpellCostCondition::AsLongAsConditionExpr { display, .. } => Some(display.clone()),
+        ThisSpellCostCondition::ConditionExpr { display, condition }
+        | ThisSpellCostCondition::AsLongAsConditionExpr { display, condition } => Some(
+            if crate::semantic_audit::semantic_audit_active() {
+                crate::semantic_audit::audited_condition("ThisSpellCostCondition", condition)
+            } else {
+                display.clone()
+            },
+        ),
         ThisSpellCostCondition::YourTurn => Some("it's your turn".to_string()),
         ThisSpellCostCondition::NotYourTurn => Some("it isn't your turn".to_string()),
         _ => Some("the condition is true".to_string()),

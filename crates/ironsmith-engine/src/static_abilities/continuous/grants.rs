@@ -47,6 +47,9 @@ impl StaticAbilityKind for ControlAttachedPermanent {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "You control the permanent this is attached to".to_string();
+        }
         self.display.clone()
     }
 
@@ -178,6 +181,9 @@ impl StaticAbilityKind for EnchantedLandIsChosenType {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "The land this is attached to is the chosen land type".to_string();
+        }
         self.display.clone()
     }
 
@@ -223,6 +229,9 @@ impl StaticAbilityKind for AttachedIsCopyOfChosenObject {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "The permanent this is attached to is a copy of the chosen object".to_string();
+        }
         self.display.clone()
     }
 
@@ -273,6 +282,9 @@ impl StaticAbilityKind for SourceLandIsChosenType {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "This land is the chosen land type".to_string();
+        }
         self.display.clone()
     }
 
@@ -320,7 +332,7 @@ impl StaticAbilityKind for FirstChosenLandTypeBecomesSecond {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("FirstChosenLandTypeBecomesSecond", &self.display, self)
     }
 
     fn generate_effects(
@@ -381,7 +393,7 @@ impl StaticAbilityKind for AddChosenCreatureTypeForFilter {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("AddChosenCreatureTypeForFilter", &self.display, self)
     }
 
     fn generate_effects(
@@ -429,7 +441,7 @@ impl StaticAbilityKind for AddChosenBasicLandTypeForFilter {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("AddChosenBasicLandTypeForFilter", &self.display, self)
     }
 
     fn generate_effects(
@@ -473,7 +485,7 @@ impl StaticAbilityKind for AddChosenColorForFilter {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("AddChosenColorForFilter", &self.display, self)
     }
 
     fn generate_effects(
@@ -517,7 +529,7 @@ impl StaticAbilityKind for SetChosenColorForFilter {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("SetChosenColorForFilter", &self.display, self)
     }
 
     fn generate_effects(
@@ -1055,6 +1067,23 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
     }
 
     fn display(&self) -> String {
+        // An audit reads the subject, the granted abilities and the gate,
+        // never the quoted text.
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            let granted = std::iter::once(&self.ability)
+                .chain(&self.additional_abilities)
+                .map(|ability| match &ability.kind {
+                    AbilityKind::Static(granted) => granted.display(),
+                    _ => ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                })
+                .collect::<Vec<_>>();
+            let mut text = format!("{} has {}", self.filter.description(), granted.join(" and "));
+            if let Some(condition) = &self.condition {
+                text.push(' ');
+                text.push_str(&describe_static_condition(condition));
+            }
+            return text;
+        }
         if self.derived_ability_display
             && let Some(granted) = self.granted_static_ability()
         {

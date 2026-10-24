@@ -689,6 +689,45 @@ impl IntrinsicStartingCounter {
     }
 }
 
+/// The group named by a partner keyword: "partner—survivors" and
+/// "partner - survivors" both name `survivors`; bare "partner" names none.
+pub fn partner_group_identifier(keyword: &str) -> Option<String> {
+    let group = keyword
+        .trim()
+        .to_lowercase()
+        .strip_prefix("partner")?
+        .trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '—' | '–'))
+        .trim()
+        .to_string();
+    (!group.is_empty()).then_some(group)
+}
+
+/// The copy limit stated by a deck-construction rule ("A deck can have any
+/// number of cards named ~" → `Some(None)`, "up to seven" → `Some(Some(7))`).
+pub fn deck_construction_copy_limit(text: &str) -> Option<Option<u32>> {
+    let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
+    if normalized.starts_with("a deck can have any number of cards named ") {
+        return Some(None);
+    }
+    let amount = normalized.strip_prefix("a deck can have up to ")?.split_whitespace().next()?;
+    let limit = amount.parse().ok().or_else(|| {
+        Some(match amount {
+            "one" => 1,
+            "two" => 2,
+            "three" => 3,
+            "four" => 4,
+            "five" => 5,
+            "six" => 6,
+            "seven" => 7,
+            "eight" => 8,
+            "nine" => 9,
+            "ten" => 10,
+            _ => return None,
+        })
+    })?;
+    Some(Some(limit))
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
@@ -1922,6 +1961,18 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// A planar roll batch gains one physical die; its roller chooses one
     /// result to ignore before any roll event or planar consequence occurs.
     ExtraPlanarDieIgnoreOne { player: PlayerFilter },
+    /// Commander pairing (CR 702.124): plain partner, partner with a named
+    /// card, a named partner group ("partner—survivors"), or "choose a
+    /// Background". Typed so deck validation never reads ability text.
+    /// Appended to preserve published payload discriminants.
+    CommanderPairing {
+        partner_with: Option<String>,
+        group: Option<String>,
+        choose_background: bool,
+    },
+    /// "A deck can have any number of / up to N cards named ~": the copy
+    /// limit deck validation enforces (`None` = any number). Appended.
+    DeckConstructionCopyLimit { maximum: Option<u32> },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2572,6 +2623,18 @@ where
             }
             StaticAbilityPayload::ExtraPlanarDieIgnoreOne { player } => {
                 StaticAbilityPayload::ExtraPlanarDieIgnoreOne { player }
+            }
+            StaticAbilityPayload::CommanderPairing {
+                partner_with,
+                group,
+                choose_background,
+            } => StaticAbilityPayload::CommanderPairing {
+                partner_with,
+                group,
+                choose_background,
+            },
+            StaticAbilityPayload::DeckConstructionCopyLimit { maximum } => {
+                StaticAbilityPayload::DeckConstructionCopyLimit { maximum }
             }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
@@ -4591,7 +4654,15 @@ impl<
     }
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
-        Self::identified(StaticAbilityId::DeckConstructionRuleText, text)
+        let text = text.into();
+        let Some(maximum) = deck_construction_copy_limit(&text) else {
+            return Self::identified(StaticAbilityId::DeckConstructionRuleText, text);
+        };
+        Self {
+            id: Some(StaticAbilityId::DeckConstructionRuleText),
+            label: text,
+            payload: StaticAbilityPayload::DeckConstructionCopyLimit { maximum },
+        }
     }
 
     /// CR 701.49d: "You can't enter this dungeon unless you 'venture into
@@ -5593,16 +5664,45 @@ impl<
         Self::identified(StaticAbilityId::CanBlockOnlyFlying, "can block only flying")
     }
     pub fn partner() -> Self {
-        Self::identified(StaticAbilityId::Partner, "partner")
+        Self {
+            id: Some(StaticAbilityId::Partner),
+            label: "partner".to_string(),
+            payload: StaticAbilityPayload::CommanderPairing {
+                partner_with: None,
+                group: None,
+                choose_background: false,
+            },
+        }
     }
+    /// A partner variant keyword ("Partner—Survivors", "Choose a
+    /// Background"). The keyword itself names the pairing group.
     pub fn partner_variant(display: impl AsRef<str>) -> Self {
-        Self::identified(StaticAbilityId::Partner, display.as_ref().trim())
+        let keyword = display.as_ref().trim();
+        let normalized = keyword.to_lowercase();
+        let choose_background = normalized == "choose a background";
+        Self {
+            id: Some(StaticAbilityId::Partner),
+            label: keyword.to_string(),
+            payload: StaticAbilityPayload::CommanderPairing {
+                partner_with: None,
+                group: (!choose_background)
+                    .then(|| partner_group_identifier(&normalized))
+                    .flatten(),
+                choose_background,
+            },
+        }
     }
     pub fn partner_with(partner_name: impl AsRef<str>) -> Self {
-        Self::identified(
-            StaticAbilityId::PartnerWith,
-            format!("partner with {}", partner_name.as_ref().trim()),
-        )
+        let partner_name = partner_name.as_ref().trim();
+        Self {
+            id: Some(StaticAbilityId::PartnerWith),
+            label: format!("partner with {partner_name}"),
+            payload: StaticAbilityPayload::CommanderPairing {
+                partner_with: Some(partner_name.to_string()),
+                group: None,
+                choose_background: false,
+            },
+        }
     }
     pub fn start_your_engines() -> Self {
         Self::identified(StaticAbilityId::StartYourEngines, "start your engines")

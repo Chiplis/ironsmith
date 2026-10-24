@@ -386,7 +386,6 @@ mod priority_yield_tests {
                     wasm.game.object_mut(id).unwrap().abilities =
                         std::sync::Arc::new(vec![ironsmith::ability::Ability::static_ability(
                             ironsmith::static_abilities::StaticAbility::must_attack(),
-                            "This creature attacks each combat if able".into(),
                         )]);
                 }
             }

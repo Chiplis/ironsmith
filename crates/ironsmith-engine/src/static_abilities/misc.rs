@@ -88,7 +88,7 @@ impl StaticAbilityKind for CountersRemainAcrossZoneChanges {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("CountersRemainAcrossZoneChanges", &self.display, self)
     }
 }
 
@@ -711,7 +711,7 @@ impl StaticAbilityKind for DieRollResultAdjustment {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DieRollResultAdjustment", &self.display, self)
     }
 
     fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
@@ -922,7 +922,7 @@ impl StaticAbilityKind for UntapDuringEachOtherPlayersUntapStep {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("UntapDuringEachOtherPlayersUntapStep", &self.display, self)
     }
 
     fn untap_during_each_other_players_untap_step_filter(&self) -> Option<&ObjectFilter> {
@@ -951,7 +951,7 @@ impl StaticAbilityKind for UntapStepLimit {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("UntapStepLimit", &self.display, self)
     }
 
     fn untap_step_limit(&self) -> Option<(&PlayerFilter, &ObjectFilter, u32)> {
@@ -975,7 +975,7 @@ impl StaticAbilityKind for UntapStepChosenCardTypeOnly {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("UntapStepChosenCardTypeOnly", &self.display, self)
     }
 
     fn untap_step_chosen_card_types(
@@ -1048,7 +1048,7 @@ impl StaticAbilityKind for PlayerProtectionFrom {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("PlayerProtectionFrom", &self.display, self)
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
@@ -1114,7 +1114,7 @@ impl StaticAbilityKind for SearchLimitedToTopCards {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("SearchLimitedToTopCards", &self.display, self)
     }
 
     fn search_top_card_limit(&self) -> Option<(&PlayerFilter, u32)> {
@@ -1304,7 +1304,7 @@ impl StaticAbilityKind for SourceHasAbilityStickerAbilitiesOf {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("SourceHasAbilityStickerAbilitiesOf", &self.display, self)
     }
 
     fn generate_effects(
@@ -1374,6 +1374,9 @@ impl StaticAbilityKind for ChooseCreatureCardNameAndTypeAsBecomesAttached {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this becomes attached to a creature, choose a creature card name and a creature type".to_string();
+        }
         self.display.clone()
     }
 
@@ -1397,6 +1400,9 @@ impl StaticAbilityKind for ChooseCraftMaterialAsBecomesAttached {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this becomes attached to a creature, choose an exiled card used to craft this".to_string();
+        }
         self.display.clone()
     }
 
@@ -2230,6 +2236,15 @@ impl StaticAbilityKind for EntersTappedUnlessCondition {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return format!(
+                "This permanent enters tapped unless {}",
+                ironsmith_core::semantic_audit::audited_condition(
+                    "EntersTappedUnlessCondition",
+                    &self.condition
+                )
+            );
+        }
         self.display.clone()
     }
 
@@ -3110,7 +3125,7 @@ impl StaticAbilityKind for ManaSpendPermissionAbility {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ManaSpendPermissionAbility", &self.display, self)
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
@@ -3173,7 +3188,7 @@ impl StaticAbilityKind for ChooseColorAsEnters {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ChooseColorAsEnters", &self.display, self)
     }
 
     fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
@@ -3202,6 +3217,9 @@ impl StaticAbilityKind for ChooseColorAsBecomesAttached {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this becomes attached to a creature, choose a color".to_string();
+        }
         self.display.clone()
     }
 
@@ -3235,7 +3253,7 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ChoosePlayerAsEnters", &self.display, self)
     }
 
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
@@ -3264,6 +3282,9 @@ impl StaticAbilityKind for NoteLifeTotalAsEnters {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this permanent enters, note your life total".to_string();
+        }
         self.display.clone()
     }
 
@@ -3290,6 +3311,9 @@ impl StaticAbilityKind for DiscardHandAsEnters {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this permanent enters, discard your hand".to_string();
+        }
         self.display.clone()
     }
 }
@@ -3325,7 +3349,7 @@ impl StaticAbilityKind for RevealFromHandAsEnters {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("RevealFromHandAsEnters", &self.display, self)
     }
 
     fn reveal_from_hand_as_enters(&self) -> Option<RevealFromHandAsEntersSpec> {
@@ -3369,7 +3393,7 @@ impl StaticAbilityKind for ChooseCardNameAsEnters {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ChooseCardNameAsEnters", &self.display, self)
     }
 
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
@@ -3400,6 +3424,9 @@ impl StaticAbilityKind for ChooseBasicLandTypeAsEnters {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this permanent enters, choose a basic land type".to_string();
+        }
         self.display.clone()
     }
 
@@ -3426,6 +3453,9 @@ impl StaticAbilityKind for ChooseLandTypeAsEnters {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this permanent enters, choose a land type".to_string();
+        }
         self.display.clone()
     }
 
@@ -3452,6 +3482,9 @@ impl StaticAbilityKind for ChooseCreatureTypeAsEnters {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "As this permanent enters, choose a creature type".to_string();
+        }
         self.display.clone()
     }
 
@@ -3499,7 +3532,7 @@ impl StaticAbilityKind for ChooseNamedOptionAsEnters {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ChooseNamedOptionAsEnters", &self.display, self)
     }
 
     fn named_option_choice_as_enters(&self) -> Option<ChooseNamedOptionAsEntersSpec> {
@@ -3538,7 +3571,7 @@ impl StaticAbilityKind for ChoosePowerToughnessAsEntersOrTurnsFaceUp {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ChoosePowerToughnessAsEntersOrTurnsFaceUp", &self.display, self)
     }
 
     fn power_toughness_choice_as_enters_or_turns_face_up(
@@ -3570,7 +3603,7 @@ impl StaticAbilityKind for EnterAsCopyAsEnters {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("EnterAsCopyAsEnters", &self.display, self)
     }
 
     fn enter_as_copy_as_enters(&self) -> Option<&EnterAsCopyAsEntersSpec> {
@@ -3602,6 +3635,9 @@ impl StaticAbilityKind for RedirectDamageToSource {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return format!("All damage that would be dealt to {} and {} is dealt to this permanent instead", ironsmith_core::semantic_audit::humanize_variant(&self.player_filter), self.object_filter.description());
+        }
         self.display.clone()
     }
 
@@ -4092,7 +4128,7 @@ impl StaticAbilityKind for PreventDamageToYouFromSourceFilter {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("PreventDamageToYouFromSourceFilter", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -4290,7 +4326,7 @@ impl StaticAbilityKind for PreventDamageToSelfPutCountersInstead {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("PreventDamageToSelfPutCountersInstead", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -4332,7 +4368,7 @@ impl StaticAbilityKind for HealDamageBeforeDamageToSelf {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("HealDamageBeforeDamageToSelf", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -4380,7 +4416,7 @@ impl StaticAbilityKind for PreventConstrainedDamageToSelfPutCountersInstead {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("PreventConstrainedDamageToSelfPutCountersInstead", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -4442,7 +4478,7 @@ impl StaticAbilityKind for ReplaceDamageWithCountersInstead {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("ReplaceDamageWithCountersInstead", &self.display, self)
     }
 
     fn generate_replacement_effect(
@@ -4489,6 +4525,9 @@ impl StaticAbilityKind for PreventDamageToOtherCreatureYouControlPutCountersInst
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return format!("If damage would be dealt to another creature you control, prevent it and put that many {} counters on that creature", self.counter_type.description());
+        }
         self.display.clone()
     }
 
@@ -5740,7 +5779,7 @@ impl StaticAbilityKind for DuplicateMatchingTriggeredAbilities {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("DuplicateMatchingTriggeredAbilities", &self.display, self)
     }
 
     fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
@@ -5773,6 +5812,9 @@ impl StaticAbilityKind for DungeonRoomTriggerDuplication {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "Room abilities of dungeons you own trigger an additional time".to_string();
+        }
         self.display.clone()
     }
 
@@ -5815,6 +5857,9 @@ impl StaticAbilityKind for ProtectionDoesntRemoveAuras {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return format!("Protection doesn't remove {}", if self.all_auras { "Auras" } else { "this Aura" });
+        }
         self.display.clone()
     }
 }
@@ -5847,7 +5892,7 @@ impl StaticAbilityKind for SuppressMatchingTriggeredAbilities {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("SuppressMatchingTriggeredAbilities", &self.display, self)
     }
 
     fn trigger_suppression_spec(&self) -> Option<TriggerSuppressionSpec> {

@@ -749,6 +749,16 @@ fn is_card_types_in_graveyard_metric(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn strip_leading_card_noun(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    // "card types among ..." names an aggregate metric, not a card noun;
+    // stripping "card" would leave "types among ..." for the object-filter
+    // fallback and count cards instead of distinct card types.
+    if tokens.first().is_some_and(|token| token.is_word("card"))
+        && tokens
+            .get(1)
+            .is_some_and(|token| token.is_word("type") || token.is_word("types"))
+    {
+        return tokens;
+    }
     primitives::parse_prefix(
         tokens,
         alt((primitives::kw("card"), primitives::kw("cards"))).void(),

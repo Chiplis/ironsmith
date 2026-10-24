@@ -29,6 +29,9 @@ mod r#parser_refactor_semantics;
 #[path = "../planar_nexus.rs"]
 mod r#planar_nexus;
 
+#[path = "../renderer_semantic_regressions.rs"]
+mod r#renderer_semantic_regressions;
+
 #[path = "../runtime_ability_index_counter_level_reproductions.rs"]
 mod r#runtime_ability_index_counter_level_reproductions;
 

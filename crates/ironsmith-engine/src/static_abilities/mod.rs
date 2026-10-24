@@ -74,7 +74,10 @@ pub use model_interpreter::{CompiledStaticAbility, StaticAbilityModelInterpreter
 pub use protection::*;
 pub use restrictions::*;
 
-pub(crate) use continuous::{resolve_anthem_count_expression_checked};
+pub(crate) use continuous::{
+    resolve_anthem_count_expression_checked, resolve_anthem_count_expression_checked_in_context,
+    SetMember, set_constrained_count, set_constrained_member_count,
+};
 use std::sync::Arc;
 
 use crate::continuous::ContinuousEffect;
@@ -329,6 +332,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     ///
     /// Examples: "Flying", "Protection from red", "Creatures you control get +1/+1"
     fn display(&self) -> String;
+
+    /// How this ability pairs commanders (CR 702.124), if it does.
+    fn commander_pairing(&self) -> Option<CommanderPairing> {
+        None
+    }
+
+    /// A deck-construction copy limit (`Some(None)` = any number of copies).
+    fn deck_copy_limit(&self) -> Option<Option<u32>> {
+        None
+    }
 
     /// Retain the compiler's typed static-ability model for structural
     /// rendering passes. Hand-authored runtime abilities return `None`.
@@ -1906,11 +1919,30 @@ impl StaticAbility {
 
     /// Get the display text for this ability.
     pub fn display(&self) -> String {
+        // An audit prefers the typed payload reading wherever a static is
+        // shown (granted abilities, token text, "loses ..." effects).
+        if ironsmith_core::semantic_audit::semantic_audit_active()
+            && let Some(model) = self.compiled_model()
+            && let Some(reading) = ironsmith_core::semantic_audit::described_value(model)
+        {
+            return reading;
+        }
         self.0.display()
     }
 
     pub fn dungeon_entry_quality(&self) -> Option<&str> {
         self.0.dungeon_entry_quality()
+    }
+
+    pub fn deck_copy_limit(&self) -> Option<Option<u32>> {
+        self.0.deck_copy_limit()
+    }
+
+    /// The typed commander pairing; plain "Partner" is a bare keyword kind.
+    pub fn commander_pairing(&self) -> Option<CommanderPairing> {
+        self.0.commander_pairing().or_else(|| {
+            (self.id() == StaticAbilityId::Partner).then_some(CommanderPairing::Partner)
+        })
     }
 
     pub fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
@@ -5491,7 +5523,11 @@ impl StaticAbility {
     }
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
-        Self::new(DeckConstructionRuleText::new(text))
+        let text = text.into();
+        match ironsmith_core::static_ability_model::deck_construction_copy_limit(&text) {
+            Some(maximum) => Self::new(DeckConstructionRuleText::with_copy_limit(text, maximum)),
+            None => Self::new(DeckConstructionRuleText::new(text)),
+        }
     }
 
     pub fn dungeon_entry_restriction(quality: impl Into<String>) -> Self {

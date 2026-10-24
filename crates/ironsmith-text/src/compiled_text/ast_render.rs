@@ -2217,6 +2217,7 @@ fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Optio
     let normalized_label = label.trim().trim_end_matches('.').to_ascii_lowercase();
     if first_inner.id() == crate::static_abilities::StaticAbilityId::Flash
         && normalized_label.contains("you may cast this spell as though it had flash")
+        && !ironsmith_core::semantic_audit::semantic_audit_active()
     {
         // Some conditional spell-keyword clauses retain their entire authored
         // sentence as the label while the typed inner ability carries the
@@ -6377,6 +6378,9 @@ fn modeled_keyword_count_condition(
     condition: &Condition,
     keyword: crate::static_abilities::StaticAbilityId,
 ) -> Option<(ObjectFilter, &str)> {
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let Condition::CountComparison {
         count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
         comparison: Comparison::GreaterThanOrEqual(1),
@@ -7279,6 +7283,9 @@ fn describe_structural_delve_keyword_variant_ladder(
 }
 
 fn modeled_basic_land_count_condition(condition: &Condition) -> Option<(Subtype, &str)> {
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let Condition::CountComparison {
         count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
         comparison: Comparison::GreaterThanOrEqual(1),
@@ -40678,6 +40685,9 @@ fn describe_structural_conditional_additional_land_play(ability: &Ability) -> Op
     ) {
         return None;
     }
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let Condition::CountComparison {
         comparison: Comparison::GreaterThanOrEqual(1),
         display: Some(display),
@@ -49434,6 +49444,9 @@ fn attached_source_restriction_grant(
 
 /// The `you control enchanted creature` count test, with its authored text.
 fn controlled_attached_condition_display(condition: &Condition) -> Option<&str> {
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let Condition::CountComparison {
         comparison: Comparison::GreaterThanOrEqual(1),
         display: Some(display),

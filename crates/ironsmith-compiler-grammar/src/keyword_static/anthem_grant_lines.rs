@@ -3595,6 +3595,39 @@ pub fn parse_static_quantity_prefix(
     parse_quantity_comparison_prefix(tokens, allow_default_one, true, "static condition")
 }
 
+/// `<metric noun(s)> among ...` where the metric is a set-level measurement
+/// (types, colors, names, powers, mana values ...). Such a phrase is never an
+/// object filter; reading it as one silently counts objects instead.
+fn is_unread_aggregate_metric_phrase(tokens: &[OwnedLexToken]) -> bool {
+    let view = TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let Some(among) = words.iter().position(|word| *word == "among") else {
+        return false;
+    };
+    among > 0
+        && among <= 3
+        && words[..among].last().is_some_and(|word| {
+            matches!(
+                *word,
+                "type"
+                    | "types"
+                    | "color"
+                    | "colors"
+                    | "name"
+                    | "names"
+                    | "power"
+                    | "powers"
+                    | "toughness"
+                    | "toughnesses"
+                    | "value"
+                    | "values"
+                    | "cost"
+                    | "costs"
+                    | "kinds"
+            )
+        })
+}
+
 pub fn parse_permanent_card_count_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let facts = anthem_grant_grammar::parse_permanent_card_count_facts(tokens)?;
 
@@ -3830,11 +3863,21 @@ pub fn parse_static_condition_clause(
     // "you control a Desert or there is a Desert card in your graveyard":
     // two complete clauses joined by `or` are a disjunction of conditions;
     // the single-filter readings below would fuse them into one object.
+    // "you control a land creature or a land entered the battlefield under
+    // your control this turn" (Earth Rumble Wrestlers): a right-hand clause
+    // with its own subject and verb is also a separate condition.
     if let Some(or_index) = tokens.iter().position(|token| token.is_word("or"))
         && or_index > 0
-        && tokens
-            .get(or_index + 1)
-            .is_some_and(|token| token.is_word("there") || token.is_word("you"))
+        && tokens.get(or_index + 1).is_some_and(|token| {
+            token.is_word("there")
+                || token.is_word("you")
+                || (token.is_any_word(&["a", "an", "another"])
+                    && tokens[or_index + 2..].iter().any(|token| {
+                        token.is_any_word(&[
+                            "entered", "is", "are", "was", "were", "attacked", "died", "left",
+                        ])
+                    }))
+        })
         && tokens
             .first()
             .is_some_and(|token| token.is_word("you") || token.is_word("there"))
@@ -4036,6 +4079,14 @@ pub fn parse_static_condition_clause(
                             operator,
                             right: Value::Fixed(threshold),
                         });
+                    }
+                    // An aggregate metric the reader above did not accept
+                    // ("types among ...", "powers among ...") must not fall
+                    // through to an ordinary object count.
+                    if is_unread_aggregate_metric_phrase(filter_tokens) {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported aggregate metric in static condition (clause: '{display}')"
+                        )));
                     }
                     let mut filter = parse_permanent_card_count_filter(filter_tokens)
                         .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, other)))

@@ -641,7 +641,7 @@ impl StaticAbilityKind for CounterLimit {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("CounterLimit", &self.display, self)
     }
 
     fn counter_limit(&self) -> Option<(CounterType, u32)> {
@@ -940,6 +940,19 @@ impl StaticAbilityKind for RuleRestriction {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            use ironsmith_core::semantic_audit::{audited_condition, audited_value};
+            let mut text = std::iter::once(&self.restriction)
+                .chain(&self.additional_restrictions)
+                .map(|restriction| audited_value("Restriction", restriction, restriction))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            if let Some(condition) = &self.condition {
+                text.push_str(" as long as ");
+                text.push_str(&audited_condition("RuleRestriction", condition));
+            }
+            return text;
+        }
         let Some(condition) = &self.condition else {
             return self.display.clone();
         };

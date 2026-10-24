@@ -799,6 +799,14 @@ fn compiler_activation_cost_component_reference(
                 tag.key.clone(),
             ))
         }
+        // "Put a card exiled with this artifact into its owner's graveyard"
+        // (Jester's Scepter): materialization tags the moved card
+        // `zone_cost_N`, sharing the return-to-hand counter.
+        CompilerCost::MoveChosenToZone { .. } => {
+            let tag = crate::tag::declared_key(format!("zone_cost_{}", counters.return_to_hand));
+            counters.return_to_hand += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
+        }
         _ => None,
     }
 }
@@ -864,6 +872,13 @@ pub fn compiler_activation_cost_reference_imports(
                 // that paid card through the canonical discarded-cost alias.
                 imports.snapshot_tag_aliases.push((
                     (crate::tag::CompilerReferenceTag::DiscardedCost.bind()).into(),
+                    tag,
+                ));
+            } else if tag.as_str().starts_with("zone_cost_") {
+                // The moved card stays the paid-cost antecedent after a
+                // target ("counter target spell") becomes the latest object.
+                imports.snapshot_tag_aliases.push((
+                    (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                     tag,
                 ));
             }

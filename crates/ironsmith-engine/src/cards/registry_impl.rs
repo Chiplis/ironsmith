@@ -962,6 +962,58 @@ fn raw_runtime_marker_issue(definition: &CardDefinition) -> Option<String> {
     ))
 }
 
+/// A static ability's gate is evaluated without a resolution, so references
+/// to "it" or to paid-cost objects in its counted filters can never be bound;
+/// matching them would quietly count zero (the Brass Knuckles failure).
+fn static_condition_unbindable_reference(
+    model: &crate::static_abilities::CompiledStaticAbility,
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let condition = match &model.payload {
+        P::Anthem(anthem) => anthem.condition.as_ref(),
+        P::AttachedAbilityGrant(grant) => grant.condition.as_ref(),
+        P::GrantObjectAbilityForFilter(grant) => grant.condition.as_ref(),
+        P::Conditional { condition, .. } | P::EntersTappedUnlessCondition { condition, .. } => {
+            Some(condition)
+        }
+        _ => None,
+    }?;
+    condition_unbindable_reference(condition)
+}
+
+fn condition_unbindable_reference(condition: &crate::ConditionExpr) -> Option<String> {
+    use crate::ConditionExpr as C;
+    let unbound = |filter: &crate::target::ObjectFilter| {
+        crate::condition_eval::unbound_resolution_reference(
+            filter,
+            &crate::filter::FilterContext::new(crate::ids::PlayerId::from_index(0)),
+        )
+    };
+    match condition {
+        C::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+            ..
+        }
+        | C::CountParity {
+            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+            ..
+        } => unbound(filter),
+        C::AttachmentCount {
+            attachment,
+            host,
+            ..
+        } => unbound(attachment).or_else(|| match host {
+            ironsmith_core::AttachmentConditionHost::Matching(filter) => unbound(filter),
+            _ => None,
+        }),
+        C::Not(inner) => condition_unbindable_reference(inner),
+        C::And(left, right) | C::Or(left, right) => {
+            condition_unbindable_reference(left).or_else(|| condition_unbindable_reference(right))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn generated_definition_support_issues(definition: &CardDefinition) -> Vec<String> {
     let mut issues: Vec<String> = Vec::new();
 
@@ -999,6 +1051,21 @@ pub(crate) fn generated_definition_support_issues(definition: &CardDefinition) -
                 push_issue("unsupported rules fallback", display);
             }
             _ => {}
+        }
+    }
+
+    for ability in &definition.abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        if let Some(tag) = static_ability
+            .compiled_model()
+            .and_then(static_condition_unbindable_reference)
+        {
+            push_issue(
+                "unbindable static reference",
+                format!("a static condition counts objects through `{tag}`, which static evaluation never binds"),
+            );
         }
     }
 

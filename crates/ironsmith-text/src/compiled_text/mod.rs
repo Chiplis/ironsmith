@@ -16,6 +16,7 @@ mod debug_safe;
 mod literal_search;
 mod merge_passes;
 mod normalize_common;
+mod audit_readings;
 pub(crate) use normalize_common::describe_condition;
 mod oracle_style;
 mod render_effects;
@@ -127,6 +128,79 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 }
 
 /// Render the structured compiled-text surface used for DB scoring.
+/// Semantic-audit rendering: every retained authored predicate or sentence is
+/// either read structurally from its executable fields or reported with an
+/// explicit `⟦unverified …⟧` marker. Use this, not `compiled_text_lines`, to
+/// check what a compiled model means.
+pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
+    ironsmith_core::semantic_audit::with_semantic_audit_describing(
+        |condition| describe_condition(condition),
+        |value| {
+            value
+                .downcast_ref::<crate::static_abilities::CompiledStaticAbility>()
+                .and_then(audit_readings::audit_payload_reading)
+                .or_else(|| value.downcast_ref::<Ability>().map(ability_surface_text))
+                .or_else(|| value.downcast_ref::<crate::effect::Restriction>().map(describe_restriction))
+        },
+        || {
+            // Each ability renders alone: the ordinary pipeline merges and
+            // orders neighbouring lines by comparing their retained prose,
+            // which would let presentation text shape the audit.
+            // The base chunk carries the spell effect, casting options and
+            // enchant restriction; each ability chunk carries only itself.
+            let mut base = def.clone();
+            base.abilities.clear();
+            base.ability_labels.clear();
+            let mut lines = compiled_text_lines(&base);
+            for (index, ability) in def.abilities.iter().enumerate() {
+                let mut single = def.clone();
+                single.spell_effect = None;
+                single.alternative_casts.clear();
+                single.optional_costs.clear();
+                single.additional_cost = Default::default();
+                single.aura_attach_filter = None;
+                // Static abilities read through the engine's audit-aware
+                // display: many text renderers here key on retained strings.
+                if let AbilityKind::Static(static_ability) = &ability.kind {
+                    if let Some(line) = static_ability
+                        .compiled_model()
+                        .and_then(audit_readings::audit_payload_reading)
+                    {
+                        lines.push(format!("{}.", capitalize_first(line.trim_end_matches('.'))));
+                        continue;
+                    }
+                    // Rule restrictions have a typed reader here.
+                    if let Some(model) = static_ability.compiled_model()
+                        && let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                            restriction,
+                            additional_restrictions,
+                            ..
+                        } = &model.payload
+                    {
+                        let line = std::iter::once(restriction)
+                            .chain(additional_restrictions)
+                            .map(describe_restriction)
+                            .collect::<Vec<_>>()
+                            .join(" and ");
+                        lines.push(format!("{}.", capitalize_first(line.trim_end_matches('.'))));
+                        continue;
+                    }
+                    let line = static_ability.display();
+                    let line = line.trim().trim_end_matches('.');
+                    if !line.is_empty() {
+                        lines.push(format!("{}.", capitalize_first(line)));
+                    }
+                    continue;
+                }
+                single.abilities = vec![ability.clone()];
+                single.ability_labels = def.ability_labels.get(index).cloned().into_iter().collect();
+                lines.extend(compiled_text_lines(&single));
+            }
+            lines
+        },
+    )
+}
+
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     let oracle_short = oracle_short_self_name(def);
     let lines = normalize_ast_surface_lines(debug_compiled_surface_lines(def))

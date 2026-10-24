@@ -78,6 +78,8 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             return count;
         }
         let mut count = 0;
+        let set_constrained = filter.has_selection_set_constraint();
+        let mut members = Vec::new();
         for_each_filter_candidate(ctx, filter, |object| {
             if let Some(chars) = calculate_characteristics_with_effects_simple(
                 object.id,
@@ -94,8 +96,14 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
                 &filter_ctx,
             ) {
                 count += 1;
+                if set_constrained {
+                    members.push(crate::static_abilities::SetMember::layered(object, &chars));
+                }
             }
         });
+        if set_constrained {
+            return crate::static_abilities::set_constrained_member_count(filter, members) as i32;
+        }
         count
     }
     // Greatest-count and other aggregate leaves have always used the contextual

@@ -1055,6 +1055,33 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SourceLineKeywordGroup { keyword_count } => {
                 StaticAbility::source_line_keyword_group(*keyword_count)
             }
+            ironsmith_core::StaticAbilityPayload::DeckConstructionCopyLimit { maximum } => {
+                StaticAbility::new(super::DeckConstructionRuleText::with_copy_limit(
+                    model.label.clone(),
+                    *maximum,
+                ))
+            }
+            ironsmith_core::StaticAbilityPayload::CommanderPairing {
+                partner_with,
+                group,
+                choose_background,
+            } => {
+                if let Some(name) = partner_with {
+                    StaticAbility::partner_with(name)
+                } else if *choose_background {
+                    StaticAbility::new(super::PartnerVariant::typed(
+                        super::CommanderPairing::ChooseBackground,
+                        model.label.clone(),
+                    ))
+                } else if let Some(group) = group {
+                    StaticAbility::new(super::PartnerVariant::typed(
+                        super::CommanderPairing::Group(group.clone()),
+                        model.label.clone(),
+                    ))
+                } else {
+                    StaticAbility::partner()
+                }
+            }
             ironsmith_core::StaticAbilityPayload::OpponentDiscardThisToBattlefieldWithCounters {
                 counter_type,
                 count,
@@ -2718,6 +2745,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .intrinsic_starting_counter_rule()
     }
 
+    fn deck_copy_limit(&self) -> Option<Option<u32>> {
+        self.leaf_static_ability().and_then(StaticAbility::deck_copy_limit)
+    }
+
+    fn commander_pairing(&self) -> Option<super::CommanderPairing> {
+        self.leaf_static_ability()
+            .and_then(StaticAbility::commander_pairing)
+    }
+
     fn dungeon_entry_quality(&self) -> Option<&str> {
         // CR 701.49d: a compiled "venture into [quality]" restriction.
         if let Some(quality) = self
@@ -2917,7 +2953,16 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         if let Some(increase) = &self.activated_ability_cost_increase {
             return increase.display();
         }
-        self.model.label.clone()
+        // No structural display handles this model: its label is all that
+        // describes it, so an audit reports the gap instead of the label. A
+        // payload-free model's behavior is fixed by its id, which is read.
+        if ironsmith_core::semantic_audit::semantic_audit_active()
+            && matches!(self.model.payload, ironsmith_core::StaticAbilityPayload::None)
+            && let Some(id) = self.model.id
+        {
+            return ironsmith_core::semantic_audit::humanize_variant(&id);
+        }
+        ironsmith_core::semantic_audit::retained("StaticModel", &self.model.label, &self.model.payload)
     }
 
     fn life_total_note_as_enters(

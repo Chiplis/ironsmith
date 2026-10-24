@@ -1750,6 +1750,30 @@ fn mana_symbol_word(symbol: crate::mana::ManaSymbol) -> &'static str {
     }
 }
 
+/// "two or more Equipment attached to the object this is attached to": the
+/// executable reading of an attachment-count gate, used when retained prose
+/// may not stand in for it.
+pub(crate) fn describe_attachment_count_structurally(
+    attachment: &ObjectFilter,
+    host: &ironsmith_core::AttachmentConditionHost,
+    comparison: &Comparison,
+) -> String {
+    let host = match host {
+        ironsmith_core::AttachmentConditionHost::Source => "this permanent".to_string(),
+        ironsmith_core::AttachmentConditionHost::SourceAttachedObject => {
+            "the object this is attached to".to_string()
+        }
+        ironsmith_core::AttachmentConditionHost::Matching(filter) => {
+            format!("a {}", filter.description())
+        }
+    };
+    format!(
+        "there are {} {} attached to {host}",
+        comparison_display(comparison),
+        pluralized_subject_text(attachment)
+    )
+}
+
 fn comparison_display(cmp: &Comparison) -> String {
     match cmp {
         Comparison::GreaterThan(n) => format!("more than {n}"),
@@ -2473,9 +2497,18 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     crate::runtime_display::describe_condition(condition)
                 )
             }),
-        crate::ConditionExpr::AttachmentCount { display, .. } => {
-            format!("as long as {display}")
-        }
+        crate::ConditionExpr::AttachmentCount {
+            attachment,
+            host,
+            comparison,
+            display,
+        } => match ironsmith_core::semantic_audit::authored(Some(display)) {
+            Some(display) => format!("as long as {display}"),
+            None => format!(
+                "as long as {}",
+                describe_attachment_count_structurally(attachment, host, comparison)
+            ),
+        },
         crate::ConditionExpr::SourceIsEquipped => {
             "as long as this creature is equipped".to_string()
         }
@@ -2664,8 +2697,8 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 return "unless it attacked or blocked this turn".to_string();
             }
             if let crate::ConditionExpr::CountComparison { display, .. } = inner.as_ref() {
-                let condition_text = display
-                    .clone()
+                let condition_text = ironsmith_core::semantic_audit::authored(display.as_deref())
+                    .map(str::to_string)
                     .unwrap_or_else(|| {
                         describe_static_condition(inner).replacen("as long as ", "", 1)
                     })
@@ -2801,7 +2834,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             comparison,
             display,
         } => {
-            if let Some(display) = display {
+            if let Some(display) = ironsmith_core::semantic_audit::authored(display.as_deref()) {
                 return format!("as long as {}", display.replace(" dont ", " don't "));
             }
             format!(
@@ -3373,6 +3406,210 @@ fn describe_static_player(player: &crate::target::PlayerFilter) -> &'static str 
     }
 }
 
+/// The characteristics a selection-set constraint reads from one member.
+pub(crate) struct SetMember {
+    pub power: Option<i32>,
+    pub name: String,
+    pub mana_value: i32,
+    pub subtypes: Vec<crate::types::Subtype>,
+    pub card_types: Vec<CardType>,
+    pub colors: crate::color::ColorSet,
+}
+
+impl SetMember {
+    /// Current characteristics, for callers outside layer evaluation.
+    pub(crate) fn current(obj: &crate::object::Object, game: &GameState) -> Self {
+        let chars = game.calculated_characteristics(obj.id);
+        let subtypes = game.calculated_subtypes(obj.id);
+        Self {
+            power: game.calculated_power(obj.id).or_else(|| obj.power()),
+            name: obj.name.to_string(),
+            mana_value: obj.subject_mana_value(),
+            subtypes: if subtypes.is_empty() { obj.subtypes.to_vec() } else { subtypes },
+            card_types: chars
+                .as_ref()
+                .map(|chars| chars.card_types.to_vec())
+                .unwrap_or_else(|| obj.card_types.to_vec()),
+            colors: chars.map(|chars| chars.colors).unwrap_or_else(|| obj.colors()),
+        }
+    }
+
+    /// In-progress layer characteristics, for counts evaluated inside a
+    /// continuous-effect calculation (reading current values would recurse).
+    pub(crate) fn layered(
+        obj: &crate::object::Object,
+        chars: &crate::continuous::CalculatedCharacteristics,
+    ) -> Self {
+        Self {
+            power: chars.power,
+            name: chars.name.to_string(),
+            mana_value: obj.subject_mana_value(),
+            subtypes: chars.subtypes.to_vec(),
+            card_types: chars.card_types.to_vec(),
+            colors: chars.colors,
+        }
+    }
+}
+
+/// Size of the largest collection of `matching` objects that satisfies the
+/// filter's selection-set constraints ("creatures with different powers",
+/// "lands that share a land type"). Individual-object matching cannot see
+/// those constraints, so a count that ignored them would count objects.
+pub(crate) fn set_constrained_count<'a>(
+    filter: &ObjectFilter,
+    matching: impl Iterator<Item = &'a crate::object::Object>,
+    game: &GameState,
+) -> usize {
+    if !filter.has_selection_set_constraint() {
+        return matching.count();
+    }
+    set_constrained_member_count(
+        filter,
+        matching.map(|obj| SetMember::current(obj, game)).collect(),
+    )
+}
+
+pub(crate) fn set_constrained_member_count(filter: &ObjectFilter, members: Vec<SetMember>) -> usize {
+    use std::collections::{HashMap, HashSet};
+
+    let mut candidates = members;
+    if filter.distinct_powers {
+        let mut seen = HashSet::new();
+        candidates.retain(|member| member.power.is_some_and(|power| seen.insert(power)));
+    }
+    if filter.distinct_names {
+        let mut seen = HashSet::new();
+        candidates.retain(|member| seen.insert(member.name.clone()));
+    }
+    if filter.distinct_mana_values {
+        let mut seen = HashSet::new();
+        candidates.retain(|member| seen.insert(member.mana_value));
+    }
+    // "that share a <characteristic>": the largest group sharing one value.
+    let largest_sharing_group = |keys: &dyn Fn(&SetMember) -> Vec<String>| -> usize {
+        let mut groups: HashMap<String, usize> = HashMap::new();
+        for member in &candidates {
+            for key in keys(member).into_iter().collect::<HashSet<_>>() {
+                *groups.entry(key).or_default() += 1;
+            }
+        }
+        groups.into_values().max().unwrap_or(0)
+    };
+    if filter.shares_land_type {
+        return largest_sharing_group(&|member| {
+            member
+                .subtypes
+                .iter()
+                .filter(|subtype| subtype.is_land_subtype())
+                .map(|subtype| format!("{subtype:?}"))
+                .collect()
+        });
+    }
+    if filter.shares_name {
+        return largest_sharing_group(&|member| vec![member.name.clone()]);
+    }
+    if filter.shares_card_type {
+        return largest_sharing_group(&|member| {
+            member.card_types.iter().map(|t| format!("{t:?}")).collect()
+        });
+    }
+    if filter.shares_color {
+        return largest_sharing_group(&|member| {
+            crate::color::Color::ALL
+                .into_iter()
+                .filter(|color| member.colors.contains(*color))
+                .map(|color| color.name().to_string())
+                .collect()
+        });
+    }
+    if filter.one_per_card_type {
+        let slots: Vec<Vec<String>> = candidates
+            .iter()
+            .map(|member| member.card_types.iter().map(|t| format!("{t:?}")).collect())
+            .collect();
+        return maximum_distinct_slot_assignment(&slots);
+    }
+    if filter.distinct_creature_types {
+        // "that share no creature types": the largest pairwise-disjoint
+        // collection. Exact for realistic board sizes.
+        let type_sets: Vec<HashSet<String>> = candidates
+            .iter()
+            .map(|member| {
+                member
+                    .subtypes
+                    .iter()
+                    .filter(|subtype| subtype.is_creature_type())
+                    .map(|subtype| format!("{subtype:?}"))
+                    .collect()
+            })
+            .collect();
+        return largest_pairwise_disjoint(&type_sets, 0, &mut Vec::new());
+    }
+    candidates.len()
+}
+
+/// Maximum bipartite matching of objects onto distinct slots (Kuhn's
+/// augmenting paths); each object may occupy any one of its slots.
+fn maximum_distinct_slot_assignment(slots: &[Vec<String>]) -> usize {
+    use std::collections::HashMap;
+
+    fn augment<'a>(
+        object: usize,
+        slots: &'a [Vec<String>],
+        owner: &mut HashMap<&'a str, usize>,
+        visited: &mut std::collections::HashSet<&'a str>,
+    ) -> bool {
+        for slot in &slots[object] {
+            if !visited.insert(slot.as_str()) {
+                continue;
+            }
+            let free = match owner.get(slot.as_str()).copied() {
+                None => true,
+                Some(other) => augment(other, slots, owner, visited),
+            };
+            if free {
+                owner.insert(slot.as_str(), object);
+                return true;
+            }
+        }
+        false
+    }
+
+    let mut owner = HashMap::new();
+    (0..slots.len())
+        .filter(|object| {
+            augment(
+                *object,
+                slots,
+                &mut owner,
+                &mut std::collections::HashSet::new(),
+            )
+        })
+        .count()
+}
+
+/// Size of the largest pairwise-disjoint subfamily (branch and bound).
+fn largest_pairwise_disjoint(
+    sets: &[std::collections::HashSet<String>],
+    next: usize,
+    chosen: &mut Vec<usize>,
+) -> usize {
+    if next == sets.len() {
+        return chosen.len();
+    }
+    let mut best = 0;
+    if chosen.iter().all(|other| sets[*other].is_disjoint(&sets[next])) {
+        chosen.push(next);
+        best = largest_pairwise_disjoint(sets, next + 1, chosen);
+        chosen.pop();
+    }
+    // Skipping `next` can only win if the remaining sets could beat `best`.
+    if chosen.len() + (sets.len() - next - 1) > best {
+        best = best.max(largest_pairwise_disjoint(sets, next + 1, chosen));
+    }
+    best
+}
+
 fn all_game_object_ids(game: &GameState) -> Vec<ObjectId> {
     let mut ids = Vec::new();
     ids.extend(game.battlefield.iter().copied());
@@ -3391,13 +3628,8 @@ fn entered_battlefield_this_turn_count(
     filter: &ObjectFilter,
     game: &GameState,
     source: ObjectId,
-    controller: PlayerId,
+    filter_ctx: &crate::filter::FilterContext,
 ) -> i32 {
-    let mut filter_ctx = game.filter_context_for(controller, Some(source));
-    if let Some(affected) = game.object(source) {
-        filter_ctx.target_objects =
-            vec![crate::snapshot::ObjectSnapshot::from_object(affected, game)];
-    }
     let type_effects = game.cached_continuous_effects_snapshot();
     game.turn_store
         .turn_history
@@ -3548,6 +3780,16 @@ pub(crate) fn resolve_anthem_count_expression_checked(
     source: ObjectId,
     controller: PlayerId,
 ) -> Result<i32, crate::effects::ExecutionError> {
+    resolve_anthem_count_expression_checked_in_context(count, game, source, controller, None)
+}
+
+pub(crate) fn resolve_anthem_count_expression_checked_in_context(
+    count: &AnthemCountExpression,
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    base: Option<&crate::filter::FilterContext>,
+) -> Result<i32, crate::effects::ExecutionError> {
     if let AnthemCountExpression::PlayerCounters(player, counter_type) = count {
         return crate::events::damage::checked_scalar_count(
             player_counter_anthem_count(player, *counter_type, game, source, controller),
@@ -3558,12 +3800,14 @@ pub(crate) fn resolve_anthem_count_expression_checked(
         AnthemCountExpression::TotalUnspentMana(player) => (player, None),
         AnthemCountExpression::UnspentMana { player, symbol } => (player, Some(*symbol)),
         _ => {
-            return Ok(resolve_anthem_count_expression(
-                count, game, source, controller,
+            return Ok(resolve_anthem_count_expression_in_context(
+                count, game, source, controller, base,
             ));
         }
     };
-    let context = game.filter_context_for(controller, Some(source));
+    let context = base
+        .cloned()
+        .unwrap_or_else(|| game.filter_context_for(controller, Some(source)));
     let exact = game
         .players
         .iter()
@@ -3636,27 +3880,56 @@ pub(crate) fn resolve_anthem_count_expression(
     source: ObjectId,
     controller: PlayerId,
 ) -> i32 {
+    resolve_anthem_count_expression_in_context(count, game, source, controller, None)
+}
+
+/// The default static context: "you" is the controller and the affected
+/// object (the source) is the only bound reference.
+fn static_count_filter_context(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+) -> crate::filter::FilterContext {
     let mut filter_ctx = game.filter_context_for(controller, Some(source));
     if let Some(affected) = game.object(source) {
         filter_ctx.target_objects =
             vec![crate::snapshot::ObjectSnapshot::from_object(affected, game)];
     }
+    filter_ctx
+}
+
+/// Resolve a count under `base`, the caller's filter context. Resolution
+/// callers pass their execution context so tagged references ("a card with
+/// the same name as that spell") stay bound; `None` is the static default.
+pub(crate) fn resolve_anthem_count_expression_in_context(
+    count: &AnthemCountExpression,
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    base: Option<&crate::filter::FilterContext>,
+) -> i32 {
+    let filter_ctx = match base {
+        Some(base) => base.clone(),
+        None => static_count_filter_context(game, source, controller),
+    };
     match count {
         AnthemCountExpression::MatchingFilter(filter)
             if filter.entered_battlefield_this_turn
                 || filter.entered_battlefield_controller.is_some() =>
         {
-            entered_battlefield_this_turn_count(filter, game, source, controller)
+            entered_battlefield_this_turn_count(filter, game, source, &filter_ctx)
         }
         // Counts observe current characteristics, including earlier layers
         // (for example, a land that became an Island). Layer evaluation exposes
         // in-progress characteristics through its calculation guards, so normal
         // matching also works while evaluating a continuous effect's condition.
-        AnthemCountExpression::MatchingFilter(filter) => all_game_object_ids(game)
-            .into_iter()
-            .filter_map(|id| game.object(id))
-            .filter(|obj| filter.matches(obj, &filter_ctx, game))
-            .count() as i32,
+        AnthemCountExpression::MatchingFilter(filter) => {
+            let matching = all_game_object_ids(game)
+                .into_iter()
+                .filter_map(|id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game));
+            set_constrained_count(filter, matching, game) as i32
+        }
         AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards } => {
             game.turn_store
                 .turn_order
@@ -5627,7 +5900,7 @@ impl StaticAbilityKind for CopyActivatedAbilities {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("CopyActivatedAbilities", &self.display, self)
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
@@ -5714,7 +5987,7 @@ impl StaticAbilityKind for CopyStaticAbilityVariants {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("CopyStaticAbilityVariants", &self.display, self)
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
@@ -5797,7 +6070,7 @@ impl StaticAbilityKind for CopyTriggeredAbilities {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("CopyTriggeredAbilities", &self.display, self)
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
@@ -7050,7 +7323,7 @@ impl StaticAbilityKind for SourceHasFullTextOfTopGraveyardCard {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("SourceHasFullTextOfTopGraveyardCard", &self.display, self)
     }
 
     fn generate_effects(
@@ -7616,6 +7889,22 @@ impl StaticAbilityKind for AttachedAbilityGrant {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            // The granted abilities and the gate, never the authored sentence.
+            let abilities = std::iter::once(&self.ability)
+                .chain(&self.additional_abilities)
+                .map(|ability| match &ability.kind {
+                    AbilityKind::Static(granted) => granted.display(),
+                    _ => ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                })
+                .collect::<Vec<_>>();
+            let mut text = format!("The object this is attached to has {}", abilities.join(" and "));
+            if let Some(condition) = &self.condition {
+                text.push(' ');
+                text.push_str(&describe_static_condition(condition));
+            }
+            return text;
+        }
         // A conditioned grant that removes all abilities describes a rule on
         // the attached permanent, not a global loss rule.  Keep the authored
         // attachment subject in front of the condition and use the pronoun in
@@ -7843,6 +8132,17 @@ impl StaticAbilityKind for AttachedChosenLandwalkGrant {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            let mut text = format!(
+                "The creature this is attached to has {}landwalk of the chosen land type",
+                if self.snow { "snow " } else { "" }
+            );
+            if let Some(condition) = &self.condition {
+                text.push(' ');
+                text.push_str(&describe_static_condition(condition));
+            }
+            return text;
+        }
         let mut text = self.display.clone();
         if let Some(condition) = &self.condition {
             text.push(' ');

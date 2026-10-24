@@ -1868,6 +1868,9 @@ impl StaticAbilityKind for AttachedGoadedBySourceController {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "The creature this is attached to is goaded by this permanent's controller".to_string();
+        }
         self.display.clone()
     }
 

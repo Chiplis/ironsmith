@@ -3672,6 +3672,20 @@ impl ObjectFilter {
         self.union_surface.additional_cost_object()
     }
 
+    /// Constraints on the chosen collection as a whole. Per-object matching
+    /// ignores them, so every count or selection consumer must apply them.
+    pub fn has_selection_set_constraint(&self) -> bool {
+        self.distinct_names
+            || self.distinct_mana_values
+            || self.distinct_powers
+            || self.distinct_creature_types
+            || self.shares_land_type
+            || self.shares_name
+            || self.shares_color
+            || self.shares_card_type
+            || self.one_per_card_type
+    }
+
     pub fn uses_power_or_toughness_characteristics(&self) -> bool {
         self.power.is_some()
             || self.power_parity.is_some()

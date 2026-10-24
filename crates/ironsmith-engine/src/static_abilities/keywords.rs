@@ -152,7 +152,7 @@ impl StaticAbilityKind for BandsWithOther {
     }
 
     fn display(&self) -> String {
-        self.display.clone()
+        ironsmith_core::semantic_audit::retained("BandsWithOther", &self.display, self)
     }
 
     fn is_keyword(&self) -> bool {
@@ -171,15 +171,44 @@ define_keyword!(Reach, Reach, "Reach",
 define_keyword!(Flanking, Flanking, "Flanking");
 define_keyword!(Partner, Partner, "Partner");
 
+/// How a commander pairs with another (CR 702.124). Deck validation reads
+/// this, never the keyword's display text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommanderPairing {
+    Partner,
+    /// "Partner with <name>"; the name is lowercased for comparison.
+    PartnerWith(String),
+    /// A named partner group ("partner—survivors"), lowercased.
+    Group(String),
+    ChooseBackground,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartnerVariant {
+    pairing: CommanderPairing,
     display: String,
 }
 
 impl PartnerVariant {
+    /// A partner-variant keyword ("Partner—Survivors", "Choose a
+    /// Background"); the keyword names the pairing group.
     pub fn new(display: impl AsRef<str>) -> Self {
+        let display = display.as_ref().trim().to_string();
+        let pairing = if display.eq_ignore_ascii_case("choose a background") {
+            CommanderPairing::ChooseBackground
+        } else {
+            match ironsmith_core::static_ability_model::partner_group_identifier(&display) {
+                Some(group) => CommanderPairing::Group(group),
+                None => CommanderPairing::Partner,
+            }
+        };
+        Self { pairing, display }
+    }
+
+    pub fn typed(pairing: CommanderPairing, display: impl Into<String>) -> Self {
         Self {
-            display: display.as_ref().trim().to_string(),
+            pairing,
+            display: display.into(),
         }
     }
 }
@@ -194,7 +223,19 @@ impl StaticAbilityKind for PartnerVariant {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return match &self.pairing {
+                CommanderPairing::Partner => "Partner".to_string(),
+                CommanderPairing::PartnerWith(name) => format!("Partner with {name}"),
+                CommanderPairing::Group(group) => format!("Partner within the group {group}"),
+                CommanderPairing::ChooseBackground => "Choose a Background".to_string(),
+            };
+        }
         self.display.clone()
+    }
+
+    fn commander_pairing(&self) -> Option<CommanderPairing> {
+        Some(self.pairing.clone())
     }
 
     fn is_keyword(&self) -> bool {
@@ -204,6 +245,7 @@ impl StaticAbilityKind for PartnerVariant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartnerWith {
+    partner_name: String,
     display: String,
 }
 
@@ -217,6 +259,7 @@ impl PartnerWith {
             partner_name
         };
         Self {
+            partner_name: partner_name.to_string(),
             display: format!("Partner with {partner_name}"),
         }
     }
@@ -232,7 +275,14 @@ impl StaticAbilityKind for PartnerWith {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return format!("Partner with {}", self.partner_name);
+        }
         self.display.clone()
+    }
+
+    fn commander_pairing(&self) -> Option<CommanderPairing> {
+        Some(CommanderPairing::PartnerWith(self.partner_name.to_ascii_lowercase()))
     }
 
     fn is_keyword(&self) -> bool {

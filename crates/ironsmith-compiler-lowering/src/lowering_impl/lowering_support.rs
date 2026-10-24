@@ -5101,6 +5101,43 @@ fn bind_source_grant_condition(condition: crate::ConditionExpr) -> crate::Condit
     }
 }
 
+/// In an attached grant ("Equipped creature has double strike as long as two
+/// or more Equipment are attached to it"), "it" is the object the source is
+/// attached to. A host left as `Matching(it)` has no binding when the static
+/// condition is evaluated, so it would match nothing.
+fn bind_attached_grant_condition(condition: crate::ConditionExpr) -> crate::ConditionExpr {
+    use crate::ConditionExpr as C;
+    match condition {
+        C::AttachmentCount {
+            attachment,
+            host: ironsmith_core::AttachmentConditionHost::Matching(filter),
+            comparison,
+            display,
+        } if filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && matches!(constraint.tag.as_str(), "__it__" | "enchanted" | "equipped")
+        }) =>
+        {
+            C::AttachmentCount {
+                attachment,
+                host: ironsmith_core::AttachmentConditionHost::SourceAttachedObject,
+                comparison,
+                display,
+            }
+        }
+        C::Not(inner) => C::Not(Box::new(bind_attached_grant_condition(*inner))),
+        C::And(left, right) => C::And(
+            Box::new(bind_attached_grant_condition(*left)),
+            Box::new(bind_attached_grant_condition(*right)),
+        ),
+        C::Or(left, right) => C::Or(
+            Box::new(bind_attached_grant_condition(*left)),
+            Box::new(bind_attached_grant_condition(*right)),
+        ),
+        other => other,
+    }
+}
+
 fn object_abilities_grant(
     filter: ObjectFilter,
     abilities: Vec<Ability>,
@@ -5397,6 +5434,7 @@ fn attached_object_abilities_grant(
     condition: Option<crate::ConditionExpr>,
     protection_does_not_remove_controlled_attachments: bool,
 ) -> Result<StaticAbility, CardTextError> {
+    let condition = condition.map(bind_attached_grant_condition);
     let mut abilities = abilities.into_iter().map(preserve_named_granting_source);
     let first = abilities.next().ok_or_else(|| {
         CardTextError::InvariantViolation(
@@ -5418,6 +5456,7 @@ fn lower_attached_keyword_action_grant(
     condition: Option<crate::ConditionExpr>,
     protection_does_not_remove_controlled_attachments: bool,
 ) -> Result<StaticAbility, CardTextError> {
+    let condition = condition.map(bind_attached_grant_condition);
     attached_object_abilities_grant(
         lower_keyword_action_to_object_abilities(action)?,
         display,
@@ -5502,6 +5541,7 @@ fn lower_attached_static_ability_grant(
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
+    let condition = condition.map(bind_attached_grant_condition);
     if let StaticAbilityAst::KeywordAction(action) = ability {
         return attached_object_abilities_grant(
             lower_keyword_action_to_object_abilities(action)?,
@@ -5524,6 +5564,7 @@ fn lower_attached_chosen_landwalk_grant(
     snow: bool,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
+    let condition = condition.map(bind_attached_grant_condition);
     let mut grant = crate::static_abilities::AttachedChosenLandwalkGrant::new(display, snow);
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);

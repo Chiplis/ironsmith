@@ -1080,37 +1080,14 @@ impl WasmGame {
             .collect()
     }
 
-    fn deck_construction_copy_limit(labels: impl IntoIterator<Item = String>) -> Option<usize> {
-        fn number_word(value: &str) -> Option<usize> {
-            value.parse().ok().or_else(|| {
-                Some(match value {
-                    "one" => 1,
-                    "two" => 2,
-                    "three" => 3,
-                    "four" => 4,
-                    "five" => 5,
-                    "six" => 6,
-                    "seven" => 7,
-                    "eight" => 8,
-                    "nine" => 9,
-                    "ten" => 10,
-                    _ => return None,
-                })
-            })
-        }
-
-        for label in labels {
-            let normalized = label.trim().trim_end_matches('.').to_ascii_lowercase();
-            if normalized.starts_with("a deck can have any number of cards named ") {
-                return Some(usize::MAX);
-            }
-            if let Some(remainder) = normalized.strip_prefix("a deck can have up to ")
-                && let Some(limit) = remainder.split_whitespace().next().and_then(number_word)
-            {
-                return Some(limit);
-            }
-        }
-        None
+    /// The typed copy limit of a deck-construction rule on `face`.
+    fn deck_construction_copy_limit(face: &CardDefinition) -> Option<usize> {
+        face.abilities.iter().find_map(|ability| match &ability.kind {
+            ironsmith::ability::AbilityKind::Static(ability) => ability
+                .deck_copy_limit()
+                .map(|maximum| maximum.map_or(usize::MAX, |limit| limit as usize)),
+            _ => None,
+        })
     }
 
     fn normal_constructed_copy_identity(
@@ -1125,12 +1102,7 @@ impl WasmGame {
         let is_basic_land = family.iter().any(|face| {
             face.card.has_supertype(Supertype::Basic) && face.card.has_card_type(CardType::Land)
         });
-        let explicit_limit = family.iter().find_map(|face| {
-            Self::deck_construction_copy_limit(Self::commander_static_ability_labels(
-                face,
-                StaticAbilityId::DeckConstructionRuleText,
-            ))
-        });
+        let explicit_limit = family.iter().find_map(Self::deck_construction_copy_limit);
 
         family.sort_by_key(|face| face.card.id.0);
         let display_name = family
@@ -1416,27 +1388,22 @@ impl WasmGame {
     }
 
     fn commander_pair_abilities(definition: &CardDefinition) -> Vec<CommanderPairAbility> {
-        let mut abilities = Vec::new();
-        for label in Self::commander_static_ability_labels(definition, StaticAbilityId::Partner) {
-            let normalized = label.trim().to_ascii_lowercase();
-            if normalized == "partner" {
-                abilities.push(CommanderPairAbility::Partner);
-            } else if normalized == "choose a background" {
-                abilities.push(CommanderPairAbility::ChooseBackground);
-            } else {
-                abilities.push(CommanderPairAbility::Variant(normalized));
-            }
-        }
-        for label in Self::commander_static_ability_labels(definition, StaticAbilityId::PartnerWith)
-        {
-            let normalized = label.trim().to_ascii_lowercase();
-            let partner_name = normalized
-                .strip_prefix("partner with ")
-                .unwrap_or(&normalized)
-                .trim()
-                .to_string();
-            abilities.push(CommanderPairAbility::PartnerWith(partner_name));
-        }
+        use ironsmith::static_abilities::CommanderPairing;
+        // The typed pairing, never the keyword's display text.
+        let mut abilities: Vec<CommanderPairAbility> = definition
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                ironsmith::ability::AbilityKind::Static(ability) => ability.commander_pairing(),
+                _ => None,
+            })
+            .map(|pairing| match pairing {
+                CommanderPairing::Partner => CommanderPairAbility::Partner,
+                CommanderPairing::ChooseBackground => CommanderPairAbility::ChooseBackground,
+                CommanderPairing::Group(group) => CommanderPairAbility::Variant(group),
+                CommanderPairing::PartnerWith(name) => CommanderPairAbility::PartnerWith(name),
+            })
+            .collect();
         if !Self::commander_static_ability_labels(definition, StaticAbilityId::DoctorsCompanion)
             .is_empty()
         {
