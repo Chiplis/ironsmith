@@ -496,6 +496,8 @@ pub struct CostPaymentIdentity {
 #[derive(Debug, Clone)]
 /// Context for sacrifice, discard, search, exile, and other object choices.
 pub struct SelectObjectsContext {
+    /// A complete selection must satisfy at least one branch, when present.
+    pub alternatives: Vec<ObjectSelectionAlternative>,
     /// The player making the decision.
     pub player: PlayerId,
     /// The source of the effect.
@@ -532,7 +534,36 @@ pub struct SelectObjectsContext {
     pub ui_hints: DecisionUiHints,
 }
 
+#[derive(Debug, Clone)]
+pub struct ObjectSelectionAlternative {
+    pub description: String,
+    pub candidates: Vec<ObjectId>,
+    pub min: usize,
+    pub max: usize,
+}
+
+impl ObjectSelectionAlternative {
+    pub fn accepts(&self, selected: &[ObjectId]) -> bool {
+        (self.min..=self.max).contains(&selected.len())
+            && selected.iter().enumerate().all(|(i, id)|
+                self.candidates.contains(id) && !selected[..i].contains(id))
+    }
+}
+
 impl SelectObjectsContext {
+    pub fn default_alternative_selection(&self) -> Option<Vec<ObjectId>> {
+        self.alternatives.iter().find_map(|rule| {
+            let selected = rule.candidates.iter().copied().filter(|id|
+                self.candidates.iter().any(|c| c.id == *id && c.legal))
+                .take(rule.min).collect::<Vec<_>>();
+            rule.accepts(&selected).then_some(selected)
+        })
+    }
+
+    pub fn selection_satisfies_alternatives(&self, selected: &[ObjectId]) -> bool {
+        self.alternatives.is_empty() || self.alternatives.iter().any(|rule| rule.accepts(selected))
+    }
+
     /// Create a new SelectObjectsContext.
     pub fn new(
         player: PlayerId,
@@ -552,6 +583,7 @@ impl SelectObjectsContext {
             max,
             aggregate_constraint: None,
             relation_filter: None,
+            alternatives: Vec::new(),
             allow_partial_completion: false,
             require_explicit_choice: false,
             automatic_public_reveal: false,

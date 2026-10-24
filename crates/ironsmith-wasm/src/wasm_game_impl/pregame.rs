@@ -464,6 +464,9 @@ impl WasmGame {
                         player_id,
                         ironsmith::zone::Zone::Library,
                     );
+                    // Match validation requires a fitting note; a list that
+                    // bypassed it keeps the card's default colors.
+                    let _ = self.game.apply_deck_construction_color_note(object_id, name);
                     if let Some(slot) = slots.get(slot_index) {
                         self.game.set_hidden_card_info(
                             object_id,
@@ -571,12 +574,13 @@ impl WasmGame {
                 let Some(definition) = self.find_card_definition(name).cloned() else {
                     return Err(format!("unknown card name: {name}"));
                 };
-                self.game.create_object_from_catalog_definition(
+                let object_id = self.game.create_object_from_catalog_definition(
                     &definition,
                     &self.registry,
                     player_id,
                     ironsmith::zone::Zone::OutsideGame,
                 );
+                let _ = self.game.apply_deck_construction_color_note(object_id, name);
             }
         }
         Ok(())
@@ -3671,6 +3675,68 @@ mod normal_constructed_setup_tests {
             repeated("Unlimited Copy Probe", 15),
         ))
         .expect("an explicit any-number Oracle rule should override the four-copy limit");
+    }
+
+    /// "Circle Probe ({U}{R})": a card that circles colors as its owner
+    /// builds the deck needs them written after its name. Match validation
+    /// rejects a missing or ill-fitting note, and setup records the colors
+    /// for each physical card created from the entry.
+    #[test]
+    fn decklist_color_notes_are_validated_and_recorded_at_setup() {
+        use ironsmith::color::{Color, ColorSet};
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        let probe = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::from_raw(91_101),
+            "Circle Probe",
+        )
+        .card_types(vec![CardType::Land])
+        .with_ability(ironsmith::ability::Ability::static_ability(
+            ironsmith::static_abilities::StaticAbility::deck_construction_rule_text(
+                "As you create your deck, circle two of the colors below.",
+            ),
+        ))
+        .build();
+        game.registry.register(probe);
+
+        let deck_with = |entry: &str| {
+            let mut deck = repeated(entry, 4);
+            deck.extend(repeated("Plains", 56));
+            normal_config(deck, Vec::new())
+        };
+        let issue_cards = |game: &mut WasmGame, config: &MatchSetupInput| {
+            game.validate_match_setup_input(config)
+                .expect("validation runs")
+                .issues
+                .into_iter()
+                .map(|issue| issue.card_name)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(issue_cards(&mut game, &deck_with("Circle Probe")), ["Circle Probe"; 2]);
+        assert_eq!(
+            issue_cards(&mut game, &deck_with("Circle Probe ({U}{U})")),
+            ["Circle Probe ({U}{U})"; 2]
+        );
+        assert_eq!(
+            issue_cards(&mut game, &deck_with("Plains ({W}{B})")),
+            ["Plains ({W}{B})"; 2]
+        );
+        assert!(issue_cards(&mut game, &deck_with("Circle Probe ({U}{R})")).is_empty());
+
+        game.apply_match_setup(deck_with("Circle Probe ({U}{R})"))
+            .expect("a fitting note sets up");
+        let blue_red = ColorSet::from_color(Color::Blue).union(ColorSet::from_color(Color::Red));
+        let probes = game
+            .game
+            .objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| object.name == "Circle Probe")
+            .map(|object| object.id)
+            .collect::<Vec<_>>();
+        assert_eq!(probes.len(), 8, "both players' copies are created by their card name");
+        for probe in probes {
+            assert_eq!(game.game.deck_construction_chosen_colors(probe), blue_red);
+        }
     }
 
     #[test]

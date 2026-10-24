@@ -803,7 +803,7 @@ fn collect_candidates_in_zone(
     Ok(candidates)
 }
 
-fn collect_candidates(
+pub(super) fn collect_candidates(
     effect: &ChooseObjectsEffect,
     game: &GameState,
     ctx: &ExecutionContext,
@@ -2091,7 +2091,9 @@ fn run_choose_objects_phase_with_outputs(
                         && has_hidden_search_zones
                         && (effect.reveal
                             || ctx.public_search_reveal_tag.as_ref() == Some(&effect.tag));
-                    let chosen: Vec<ObjectId> = if effect.count.is_random() {
+                    let chosen: Vec<ObjectId> = if let Some(selected) = ctx.preselected_objects.take() {
+                        selected.clone()
+                    } else if effect.count.is_random() {
                         let mut randomized = candidates.clone();
                         game.shuffle_slice(&mut randomized);
                         randomized.truncate(max);

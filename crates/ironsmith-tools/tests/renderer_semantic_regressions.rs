@@ -878,8 +878,8 @@ fn corpus_discovered_static_prose_is_structural_or_explicitly_unverified() {
             ("Embermaw Hellion", false),
             ("Etching of Kumano", false),
             ("Titania's Song", false),
-            ("Cogwork Tracker", true),
-            ("Plague Nurse", true),
+            ("Cogwork Tracker", false),
+            ("Plague Nurse", false),
             ("Lore Seeker", true),
             ("Elemental Time Flamingo", true),
         ] {

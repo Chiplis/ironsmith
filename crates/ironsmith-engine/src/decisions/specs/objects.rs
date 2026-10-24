@@ -105,6 +105,7 @@ impl DecisionSpec for SacrificeSpec {
 /// Specification for choosing one or more objects from a list of candidates.
 #[derive(Debug, Clone)]
 pub struct ChooseObjectsSpec {
+    pub alternatives: Vec<crate::decisions::context::ObjectSelectionAlternative>,
     /// The source of the effect.
     pub source: ObjectId,
     pub cost_payment: Option<crate::decisions::context::CostPaymentIdentity>,
@@ -147,6 +148,7 @@ impl ChooseObjectsSpec {
         Self {
             source,
             cost_payment: None,
+            alternatives: Vec::new(),
             description: description.into(),
             candidates,
             min,
@@ -250,6 +252,7 @@ impl DecisionSpec for ChooseObjectsSpec {
             self.max,
         );
         ctx.cost_payment = self.cost_payment;
+        ctx.alternatives = self.alternatives.clone();
         let ctx = if let Some(constraint) = self.aggregate_constraint.clone() {
             ctx.with_aggregate_constraint(constraint)
         } else {

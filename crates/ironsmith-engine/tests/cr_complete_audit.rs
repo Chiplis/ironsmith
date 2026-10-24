@@ -119523,3 +119523,6436 @@ fn cr_702_89a_full_umbra_survives_simultaneous_aura_creature_destruction_in_eith
         errors.len()
     );
 }
+
+// CR404.3; the same mass-destruction event includes the Aura destroyed by armor.
+#[test]
+fn cr_404_3_simultaneous_umbra_replacement_arrivals_join_the_owners_complete_graveyard_order() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, OrderContext};
+    use ironsmith::object::AttachmentTarget;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        PowerToughness, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    struct Choices {
+        wanted: Vec<String>,
+        offered: Vec<Vec<String>>,
+        players: Vec<PlayerId>,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_order(&mut self, _: &GameState, c: &OrderContext) -> Vec<ObjectId> {
+            self.players.push(c.player);
+            self.offered
+                .push(c.items.iter().map(|(_, name)| name.clone()).collect());
+            let mut items = c.items.clone();
+            items.sort_by_key(|(_, name)| {
+                self.wanted
+                    .iter()
+                    .position(|want| want == name)
+                    .unwrap_or(usize::MAX)
+            });
+            items.into_iter().map(|(id, _)| id).collect()
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual complete graveyard-order stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let hyena=ironsmith_compiler_runtime::compile_to_runtime_definition("Hyena Umbra","Mana cost: {W}\nType: Enchantment — Aura\nFirst printed set: Rise of the Eldrazi\nEnchant creature\nEnchanted creature gets +1/+1 and has first strike.\nUmbra armor (If enchanted creature would be destroyed, instead remove all damage from it and destroy this Aura.)",false).unwrap();
+    let spider=ironsmith_compiler_runtime::compile_to_runtime_definition("Spider Umbra","Mana cost: {G}\nType: Enchantment — Aura\nFirst printed set: Rise of the Eldrazi\nEnchant creature\nEnchanted creature gets +1/+1 and has reach. (It can block creatures with flying.)\nUmbra armor (If enchanted creature would be destroyed, instead remove all damage from it and destroy this Aura.)",false).unwrap();
+
+    let mass = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native actual complete graveyard-order destruction",
+        "Mana cost: {0}\nType: Instant\nDestroy all nonland permanents.",
+        false,
+    )
+    .unwrap();
+    for def in [&hyena, &spider, &mass] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let creature =
+        CardDefinitionBuilder::new(CardId::new(), "Native graveyard-order protected creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 3))
+            .build();
+    let artifact_a = CardDefinitionBuilder::new(CardId::new(), "Native graveyard-order artifact A")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_b = CardDefinitionBuilder::new(CardId::new(), "Native graveyard-order artifact B")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native graveyard-order land priority keeper")
+            .card_types(vec![CardType::Land])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+    let orders = [
+        [0usize, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    let mut errors = vec![];
+    let (mut games, mut casts, mut completed) = (0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, aura_def) in [(0u8, &hyena), (1u8, &spider)] {
+            for (order_index, order) in orders.iter().enumerate() {
+                let label = format!("actor={seat} aura={profile} order={order_index}");
+                let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                g.set_starting_player(actor);
+                g.turn.phase = Phase::FirstMain;
+                g.turn.step = None;
+                let turn = g.turn.turn_number;
+                // Creature-before-Aura initial fixtures isolate404.3 from the knownCR265 matcher failure.
+                let source = g.create_object_from_definition(&creature, actor, Zone::Battlefield);
+                let aura = g.create_object_from_definition(aura_def, actor, Zone::Battlefield);
+                assert!(g.attach_object_to_target(aura, AttachmentTarget::Object(source)));
+                let source_physical = g.object(source).unwrap().stable_id;
+                let first = g.create_object_from_definition(&artifact_a, actor, Zone::Battlefield);
+                let second = g.create_object_from_definition(&artifact_b, actor, Zone::Battlefield);
+                let originals = [aura, first, second];
+                let physical = originals.map(|id| g.object(id).unwrap().stable_id);
+                let names = originals.map(|id| g.object(id).unwrap().name.to_string());
+                let wanted = order
+                    .iter()
+                    .map(|index| names[*index].clone())
+                    .collect::<Vec<_>>();
+                let expected = order
+                    .iter()
+                    .map(|index| physical[*index])
+                    .collect::<Vec<_>>();
+                let keepers: Vec<_> = [actor, other]
+                    .into_iter()
+                    .map(|p| {
+                        (
+                            p,
+                            g.create_object_from_definition(&keeper, p, Zone::Battlefield),
+                        )
+                    })
+                    .collect();
+                let incoming = g.create_object_from_definition(&mass, other, Zone::Hand);
+                let incoming_physical = g.object(incoming).unwrap().stable_id;
+                let mut q = TriggerQueue::new();
+                let mut d = Choices {
+                    wanted,
+                    offered: vec![],
+                    players: vec![],
+                };
+                ironsmith::game_loop::advance_priority_with_dm(&mut g, &mut q, &mut d).unwrap();
+                assert_eq!(
+                    (g.current_power(source), g.current_toughness(source)),
+                    (Some(3), Some(4))
+                );
+                assert!(g.current_has_static_ability_id(
+                    aura,
+                    ironsmith::static_abilities::StaticAbilityId::UmbraArmor
+                ));
+                assert_eq!(
+                    g.object(aura).unwrap().attached_to,
+                    Some(AttachmentTarget::Object(source))
+                );
+                assert!(g.player(actor).unwrap().graveyard.is_empty());
+                cast(&mut g, &mut q, &mut d, other, incoming);
+                assert!(g.stack.last().unwrap().targets.is_empty());
+                settle(&mut g, &mut q, &mut d);
+                casts += 1;
+                assert_eq!(g.find_object_by_stable_id(source_physical), Some(source));
+                assert_eq!(g.object(source).unwrap().zone, Zone::Battlefield);
+                assert_eq!(
+                    (g.current_power(source), g.current_toughness(source)),
+                    (Some(2), Some(3))
+                );
+                assert_eq!(g.damage_on(source), 0);
+                for (index, stable) in physical.iter().enumerate() {
+                    let id = g.find_object_by_stable_id(*stable).unwrap();
+                    assert_ne!(id, originals[index]);
+                    assert_eq!(g.object(id).unwrap().zone, Zone::Graveyard);
+                    assert_eq!(g.object(id).unwrap().owner, actor);
+                }
+                let actual = g
+                    .player(actor)
+                    .unwrap()
+                    .graveyard
+                    .iter()
+                    .map(|id| g.object(*id).unwrap().stable_id)
+                    .collect::<Vec<_>>();
+                let actual_names = g
+                    .player(actor)
+                    .unwrap()
+                    .graveyard
+                    .iter()
+                    .map(|id| g.object(*id).unwrap().name.to_string())
+                    .collect::<Vec<_>>();
+                assert_eq!(actual.len(), 3);
+                assert!(actual.iter().all(|stable| physical.contains(stable)));
+                let matches = actual == expected;
+                if !matches {
+                    errors.push(format!("umbra-order-choice {label} wanted={:?} actual={actual_names:?} offered={:?}",d.wanted,d.offered));
+                }
+                let mut runner =
+                    TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                finish(&mut g, &mut q, &mut d);
+                runner.priority_done();
+                let mut done = false;
+                for _ in 0..320 {
+                    match runner.advance(&mut g, &mut q).unwrap() {
+                        TurnAction::Continue => {}
+                        TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                            runner.respond_attackers(vec![])
+                        }
+                        TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                            runner.respond_blockers(vec![], c.player)
+                        }
+                        TurnAction::RunPriority => {
+                            ironsmith::game_loop::advance_priority_with_dm(&mut g, &mut q, &mut d)
+                                .unwrap();
+                            settle(&mut g, &mut q, &mut d);
+                            finish(&mut g, &mut q, &mut d);
+                            runner.priority_done();
+                        }
+                        TurnAction::TurnComplete => {
+                            done = true;
+                            break;
+                        }
+                        other => panic!("unexpected actual graveyard-order turn {other:?}"),
+                    }
+                }
+                assert!(done);
+                assert_eq!(
+                    g.player(actor)
+                        .unwrap()
+                        .graveyard
+                        .iter()
+                        .map(|id| g.object(*id).unwrap().stable_id)
+                        .collect::<Vec<_>>(),
+                    actual
+                );
+                assert_eq!(g.find_object_by_stable_id(source_physical), Some(source));
+                assert_eq!(g.object(source).unwrap().zone, Zone::Battlefield);
+                for (p, id) in keepers {
+                    assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    assert_eq!(g.object(id).unwrap().owner, p);
+                    assert_eq!(g.current_controller(id), Some(p));
+                }
+                assert_eq!(
+                    g.player(other).unwrap().graveyard,
+                    vec![g.find_object_by_stable_id(incoming_physical).unwrap()]
+                );
+                assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 0);
+                assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 1);
+                for p in [actor, other] {
+                    assert_eq!(g.player(p).unwrap().life, 20);
+                    assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                }
+                assert_eq!(g.turn.turn_number, turn);
+                assert_eq!(g.turn.active_player, actor);
+                assert!(g.stack.is_empty() && q.is_empty());
+                g.validate_zone_consistency().unwrap();
+                games += 1;
+                completed += 1;
+                eprintln!(
+                    "umbra-order-observed {label} matches={matches} wanted={:?} actual={actual_names:?} offered={:?} players={:?} completed=true",
+                    d.wanted, d.offered, d.players
+                );
+            }
+        }
+    }
+    eprintln!("umbra-order-summary games={games} casts={casts} completed={completed}");
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!((games, casts, completed), (24, 24, 24));
+    assert!(
+        errors.is_empty(),
+        "CR404.3: owner canchooseany orderforall3cardsdestroyedsimultaneously,includingarmor replacementAura andtwoartifactarrivals. ResponsesonlyofferedlegalIDs,no manualGYreorder. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_88a_c_printed_and_full_cast_through_time_rebound_instances_are_redundant() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{BooleanContext, DecisionContext, TargetsContext};
+    use ironsmith::ids::StableId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase, Step,
+        Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    struct Choices {
+        actor: PlayerId,
+        physical: StableId,
+        has_rebound: bool,
+        accept: bool,
+        slot: usize,
+        offers: [usize; 4],
+        issues: Vec<String>,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_boolean(&mut self, g: &GameState, c: &BooleanContext) -> bool {
+            let expected = self.has_rebound
+                && self.slot == 1
+                && c.player == self.actor
+                && g.turn.active_player == self.actor
+                && g.turn.step == Some(Step::Upkeep);
+            if self.slot < 4 {
+                self.offers[self.slot] += 1;
+            }
+            if !expected {
+                self.issues.push(format!(
+                    "rebound-multiple-unexpected-offer slot={} player={:?}",
+                    self.slot, c.player
+                ));
+            }
+            if expected && !c.can_accept {
+                self.issues.push("rebound-multiple-disabled-offer".into());
+            }
+            let id = g.find_object_by_stable_id(self.physical).unwrap();
+            eprintln!(
+                "rebound-multiple-boolean slot={} expected={expected} accept={} legal={} zone={:?}",
+                self.slot,
+                self.accept,
+                c.can_accept,
+                g.object(id).unwrap().zone
+            );
+            expected && self.accept && c.can_accept
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            self.issues
+                .push("rebound-multiple-unexpected-target".into());
+            c.requirements
+                .iter()
+                .flat_map(|r| r.legal_targets.iter().copied().take(r.min_targets))
+                .collect()
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual repeated rebound stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let provider=ironsmith_compiler_runtime::compile_to_runtime_definition("Cast Through Time","Mana cost: {4}{U}{U}{U}\nType: Enchantment\nFirst printed set: Rise of the Eldrazi\nInstant and sorcery spells you control have rebound. (Exile the spell as it resolves if you cast it from your hand. At the beginning of your next upkeep, you may cast that card from exile without paying its mana cost.)",false).unwrap();
+
+    assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&provider));
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native repeated rebound priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+    let tail =
+        CardDefinitionBuilder::new(CardId::new(), "Native repeated rebound ordinary draw land")
+            .card_types(vec![CardType::Land])
+            .build();
+    let mut errors = vec![];
+    let (mut games, mut originals, mut triggers, mut freecasts, mut upkeeps, mut completed) =
+        (0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for instances in 0usize..3 {
+            let text = format!(
+                "Mana cost: {{0}}\nType: Instant\nYou gain 1 life.{}",
+                "\nRebound".repeat(instances)
+            );
+            let source_def = ironsmith_compiler_runtime::compile_to_runtime_definition(
+                "Native printed repeated rebound spell",
+                &text,
+                false,
+            )
+            .unwrap();
+            assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&source_def));
+            for grant in [false, true] {
+                for accept in [false, true] {
+                    let has_rebound = instances > 0 || grant;
+                    let label =
+                        format!("actor={seat} instances={instances} grant={grant} accept={accept}");
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let first_turn = g.turn.turn_number;
+                    let grant_id = if grant {
+                        Some(g.create_object_from_definition(&provider, actor, Zone::Battlefield))
+                    } else {
+                        None
+                    };
+                    let source = g.create_object_from_definition(&source_def, actor, Zone::Hand);
+                    let physical = g.object(source).unwrap().stable_id;
+                    let keepers: Vec<_> = [actor, other]
+                        .into_iter()
+                        .map(|p| {
+                            (
+                                p,
+                                g.create_object_from_definition(&keeper, p, Zone::Battlefield),
+                            )
+                        })
+                        .collect();
+                    let mut libraries = vec![];
+                    for p in [actor, other] {
+                        let ids: Vec<_> = (0..8)
+                            .map(|_| g.create_object_from_definition(&tail, p, Zone::Library))
+                            .collect();
+                        libraries.push(
+                            ids.iter()
+                                .map(|id| g.object(*id).unwrap().stable_id)
+                                .collect::<Vec<_>>(),
+                        );
+                    }
+                    let mut q = TriggerQueue::new();
+                    let mut d = Choices {
+                        actor,
+                        physical,
+                        has_rebound,
+                        accept,
+                        slot: 4,
+                        offers: [0; 4],
+                        issues: vec![],
+                    };
+                    ironsmith::game_loop::advance_priority_with_dm(&mut g, &mut q, &mut d).unwrap();
+                    cast(&mut g, &mut q, &mut d, actor, source);
+                    originals += 1;
+                    let stack_id = g.stack.last().unwrap().object_id;
+                    assert!(g.stack.last().unwrap().targets.is_empty());
+                    assert_eq!(g.object(stack_id).unwrap().mana_spent_to_cast.total(), 0);
+                    let stack_flag = g.current_has_static_ability_id(
+                        stack_id,
+                        ironsmith::static_abilities::StaticAbilityId::Rebound,
+                    );
+                    settle(&mut g, &mut q, &mut d);
+                    let id = g.find_object_by_stable_id(physical).unwrap();
+                    let original_zone = g.object(id).unwrap().zone;
+                    if original_zone
+                        != if has_rebound {
+                            Zone::Exile
+                        } else {
+                            Zone::Graveyard
+                        }
+                    {
+                        errors.push(format!("rebound-multiple-original-zone {label} actual={original_zone:?} expected_rebound={has_rebound}"));
+                    }
+                    assert_eq!(g.player(actor).unwrap().life, 21);
+                    assert!(g.player(actor).unwrap().hand.is_empty());
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 1);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    let (mut case_triggers, mut case_free, mut case_upkeeps) = (0, 0, 0);
+                    for round in 0usize..5 {
+                        let mut runner = if round == 0 {
+                            let mut runner =
+                                TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                            finish(&mut g, &mut q, &mut d);
+                            runner.priority_done();
+                            runner
+                        } else {
+                            d.slot = round - 1;
+                            g.next_turn();
+                            TurnRunner::new()
+                        };
+                        let mut done = false;
+                        for _ in 0..400 {
+                            match runner.advance(&mut g, &mut q).unwrap() {
+                                TurnAction::Continue => {}
+                                TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                    runner.respond_attackers(vec![])
+                                }
+                                TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                    runner.respond_blockers(vec![], c.player)
+                                }
+                                TurnAction::RunPriority => {
+                                    ironsmith::game_loop::advance_priority_with_dm(
+                                        &mut g, &mut q, &mut d,
+                                    )
+                                    .unwrap();
+                                    if g.turn.step == Some(Step::Upkeep) {
+                                        case_upkeeps += 1;
+                                        upkeeps += 1;
+                                        let seen = g.stack.len();
+                                        let wanted_trigger = usize::from(round == 2 && has_rebound);
+                                        case_triggers += seen;
+                                        triggers += seen;
+                                        if seen != wanted_trigger
+                                            || !g
+                                                .stack
+                                                .iter()
+                                                .all(|e| e.is_ability && e.controller == actor)
+                                        {
+                                            errors.push(format!("rebound-multiple-trigger {label} round={round} actual={seen} expected={wanted_trigger}"));
+                                        }
+                                        if !g.stack.is_empty() {
+                                            one(&mut g, &mut q, &mut d);
+                                        }
+                                        let actual_free: Vec<_> = g
+                                            .stack
+                                            .iter()
+                                            .filter(|e| {
+                                                !e.is_ability
+                                                    && g.object(e.object_id)
+                                                        .is_some_and(|o| o.stable_id == physical)
+                                            })
+                                            .map(|e| e.object_id)
+                                            .collect();
+                                        let wanted_free =
+                                            usize::from(round == 2 && has_rebound && accept);
+                                        if actual_free.len() != wanted_free {
+                                            errors.push(format!("rebound-multiple-free-cast {label} round={round} actual={} expected={wanted_free}",actual_free.len()));
+                                        }
+                                        for id in &actual_free {
+                                            assert_eq!(g.object(*id).unwrap().owner, actor);
+                                            assert_eq!(
+                                                g.object(*id).unwrap().mana_spent_to_cast.total(),
+                                                0
+                                            );
+                                        }
+                                        case_free += actual_free.len();
+                                        freecasts += actual_free.len();
+                                        settle(&mut g, &mut q, &mut d);
+                                        if g.turn_store.turn_history.spells_cast_by_player(actor)
+                                            != wanted_free as u32
+                                            || g.turn_store
+                                                .turn_history
+                                                .spells_cast_by_player(other)
+                                                != 0
+                                        {
+                                            errors.push(format!("rebound-multiple-cast-history {label} round={round}"));
+                                        }
+                                    } else {
+                                        settle(&mut g, &mut q, &mut d);
+                                    }
+                                    finish(&mut g, &mut q, &mut d);
+                                    runner.priority_done();
+                                }
+                                TurnAction::TurnComplete => {
+                                    done = true;
+                                    break;
+                                }
+                                other => {
+                                    panic!("unexpected actual repeated rebound turn {other:?}")
+                                }
+                            }
+                        }
+                        assert!(done);
+                        completed += 1;
+                        assert_eq!(g.turn.turn_number, first_turn + round as u32);
+                        assert_eq!(
+                            g.turn.active_player,
+                            if round % 2 == 0 { actor } else { other }
+                        );
+                        let expected_free = has_rebound && accept && round >= 2;
+                        let id = g.find_object_by_stable_id(physical).unwrap();
+                        let expected_zone = if !has_rebound || expected_free {
+                            Zone::Graveyard
+                        } else {
+                            Zone::Exile
+                        };
+                        let zone = g.object(id).unwrap().zone;
+                        let life = g.player(actor).unwrap().life;
+                        if zone != expected_zone || life != 21 + i32::from(expected_free) {
+                            errors.push(format!("rebound-multiple-turn-effect {label} round={round} zone={zone:?} expected={expected_zone:?} life={life}"));
+                        }
+                        assert_eq!(g.object(id).unwrap().owner, actor);
+                        assert_eq!(g.player(actor).unwrap().hand.len(), round / 2);
+                        assert_eq!(g.player(other).unwrap().hand.len(), (round + 1) / 2);
+                        assert_eq!(g.player(other).unwrap().life, 20);
+                        for p in [actor, other] {
+                            assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                        }
+                        assert!(g.stack.is_empty() && q.is_empty());
+                        g.validate_zone_consistency().unwrap();
+                    }
+                    assert_eq!(case_upkeeps, 4);
+                    if (d.offers[1] > 0) != has_rebound
+                        || d.offers[0] > 0
+                        || d.offers[2] > 0
+                        || d.offers[3] > 0
+                    {
+                        errors.push(format!(
+                            "rebound-multiple-offer {label} counts={:?}",
+                            d.offers
+                        ));
+                    }
+                    for issue in &d.issues {
+                        errors.push(format!("{issue} {label}"));
+                    }
+                    if let Some(id) = grant_id {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                        assert_eq!(g.object(id).unwrap().owner, actor);
+                        assert_eq!(g.current_controller(id), Some(actor));
+                    }
+                    for (p, id) in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                        assert_eq!(g.object(id).unwrap().owner, p);
+                    }
+                    for (index, p) in [actor, other].into_iter().enumerate() {
+                        for stable in &libraries[index] {
+                            let id = g.find_object_by_stable_id(*stable).unwrap();
+                            assert_eq!(g.object(id).unwrap().owner, p);
+                            assert!(matches!(
+                                g.object(id).unwrap().zone,
+                                Zone::Library | Zone::Hand
+                            ));
+                        }
+                        assert!(
+                            g.player(p)
+                                .unwrap()
+                                .library
+                                .iter()
+                                .chain(g.player(p).unwrap().hand.iter())
+                                .all(|id| libraries[index]
+                                    .contains(&g.object(*id).unwrap().stable_id))
+                        );
+                    }
+                    games += 1;
+                    let id = g.find_object_by_stable_id(physical).unwrap();
+                    eprintln!(
+                        "rebound-multiple-observed {label} expected_rebound={has_rebound} stack_flag={stack_flag} triggers={case_triggers} free_casts={case_free} offers={:?} final_zone={:?} actor_life={} completed_turns=5",
+                        d.offers,
+                        g.object(id).unwrap().zone,
+                        g.player(actor).unwrap().life
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "rebound-multiple-summary games={games} originals={originals} triggers={triggers} freecasts={freecasts} upkeeps={upkeeps} completed_turns={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!((games, originals, upkeeps, completed), (24, 24, 96, 120));
+    assert!(
+        errors.is_empty(),
+        "CR 702.88a/c: printed and full Cast Through Time grants of rebound are redundant. A hand-cast spell gets one next-own-upkeep recast; the exile cast does not rebound again. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_90a_d_infect_uses_current_source_and_latest_departure_after_actual_aura_destruction() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::object::AttachmentTarget;
+    use ironsmith::{
+        Ability, CardId, CardType, ChooseSpec, CounterType, Effect, GameProgress,
+        LegalAction, ManaCost, ObjectId, Phase, PowerToughness, Target, TurnAction, TurnRunner,
+        TurnRunnerState, Zone,
+    };
+    struct Choices {
+        actor: PlayerId,
+        target: Target,
+        targets: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(c.player, self.actor);
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.player, self.actor);
+            assert_eq!(c.requirements.len(), 1);
+            assert!(c.requirements[0].legal_targets.contains(&self.target));
+            self.targets += 1;
+            vec![self.target]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..64 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite real infect response stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                return;
+            }
+        }
+        panic!("real priority window completes");
+    }
+
+    fn priority(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        let mut state = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(d.actor) {
+                return;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut state,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(d.actor));
+    }
+
+    fn response(
+        g: &mut GameState,
+        q: &mut TriggerQueue,
+        d: &mut Choices,
+        id: ObjectId,
+        player: PlayerId,
+        target: ObjectId,
+    ) {
+        d.actor = player;
+        d.target = Target::Object(target);
+        priority(g, q, d);
+        let a = ironsmith::compute_legal_actions(g, player)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, player, a, d, q).unwrap();
+        one(g, q, d);
+    }
+    fn settle_responses_only(
+        g: &mut GameState,
+        q: &mut TriggerQueue,
+        d: &mut Choices,
+        ability: ObjectId,
+    ) {
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+        assert_eq!(g.stack.len(), 1);
+        assert_eq!(g.stack.last().unwrap().object_id, ability);
+    }
+    let aura = ironsmith_compiler_runtime::compile_to_runtime_definition("Corrupted Conscience","Mana cost: {3}{U}{U}\nType: Enchantment — Aura\nFirst printed set: Mirrodin Besieged\nEnchant creature\nYou control enchanted creature.\nEnchanted creature has infect. (It deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)",false).unwrap();
+    let destroy_aura = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native infect response destroys Aura",
+        "Mana cost: {0}\nType: Instant\nDestroy target enchantment.",
+        false,
+    )
+    .unwrap();
+    let destroy_source = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native infect response destroys source",
+        "Mana cost: {0}\nType: Instant\nDestroy target creature.",
+        false,
+    )
+    .unwrap();
+    for def in [&aura, &destroy_aura, &destroy_source] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let source_def = CardDefinitionBuilder::new(
+        CardId::new(),
+        "Native infect current-or-departure damage source",
+    )
+    .card_types(vec![CardType::Creature])
+    .power_toughness(PowerToughness::fixed(2, 4))
+    .with_ability(Ability::activated(
+        ironsmith::cost::TotalCost::free(),
+        vec![Effect::deal_damage(
+            3,
+            ChooseSpec::target(ChooseSpec::AnyTarget),
+        )],
+    ))
+    .build();
+    let victim_def = CardDefinitionBuilder::new(CardId::new(), "Native infect damage recipient")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 7))
+        .build();
+    let keeper = CardDefinitionBuilder::new(CardId::new(), "Native infect real priority keeper")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::activated(
+            ironsmith::cost::TotalCost::free(),
+            vec![Effect::gain_life(0)],
+        ))
+        .build();
+    let mut errors = Vec::new();
+    let (
+        mut games,
+        mut completed,
+        mut activations,
+        mut aura_casts,
+        mut source_casts,
+        mut total_poison,
+        mut total_counters,
+        mut total_marks,
+    ) = (0, 0, 0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for creature in [false, true] {
+            for remove_aura in [false, true] {
+                for remove_source in [false, true] {
+                    let label = format!(
+                        "actor={seat} creature={creature} remove_aura={remove_aura} remove_source={remove_source}"
+                    );
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let source =
+                        g.create_object_from_definition(&source_def, actor, Zone::Battlefield);
+                    let source_physical = g.object(source).unwrap().stable_id;
+                    let aura_id = g.create_object_from_definition(&aura, actor, Zone::Battlefield);
+                    let aura_physical = g.object(aura_id).unwrap().stable_id;
+                    assert!(g.attach_object_to_target(aura_id, AttachmentTarget::Object(source)));
+                    let victim =
+                        g.create_object_from_definition(&victim_def, other, Zone::Battlefield);
+                    let aura_spell =
+                        g.create_object_from_definition(&destroy_aura, other, Zone::Hand);
+                    let aura_spell_physical = g.object(aura_spell).unwrap().stable_id;
+                    let source_spell =
+                        g.create_object_from_definition(&destroy_source, other, Zone::Hand);
+                    let source_spell_physical = g.object(source_spell).unwrap().stable_id;
+                    let target = if creature {
+                        Target::Object(victim)
+                    } else {
+                        Target::Player(other)
+                    };
+                    let mut d = Choices {
+                        actor,
+                        target,
+                        targets: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    assert_eq!(g.current_controller(source), Some(actor));
+                    assert_eq!(g.object(source).unwrap().owner, actor);
+                    assert_eq!(
+                        g.object(aura_id).unwrap().attached_to,
+                        Some(AttachmentTarget::Object(source))
+                    );
+                    assert!(g.object_has_static_ability_id(
+                        source,
+                        ironsmith::static_abilities::StaticAbilityId::Infect
+                    ));
+                    priority(&mut g, &mut q, &mut d);
+                    let action = ironsmith::compute_legal_actions(&g, actor)
+                        .unwrap()
+                        .into_iter()
+                        .find(
+                            |a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source),
+                        )
+                        .unwrap();
+                    cr_audit_complete_priority_action_with_dm(
+                        &mut g, actor, action, &mut d, &mut q,
+                    )
+                    .unwrap();
+                    activations += 1;
+                    assert_eq!(g.stack.len(), 1);
+                    let ability_id = g.stack.last().unwrap().object_id;
+                    assert!(g.stack.last().unwrap().is_ability);
+                    assert_eq!(g.stack.last().unwrap().targets, vec![target]);
+                    if remove_aura {
+                        response(&mut g, &mut q, &mut d, aura_spell, other, aura_id);
+                        aura_casts += 1;
+                        settle_responses_only(&mut g, &mut q, &mut d, ability_id);
+                    }
+                    if remove_source {
+                        response(&mut g, &mut q, &mut d, source_spell, other, source);
+                        source_casts += 1;
+                        settle_responses_only(&mut g, &mut q, &mut d, ability_id);
+                    }
+                    assert_eq!(g.stack.len(), 1);
+                    assert_eq!(g.stack.last().unwrap().object_id, ability_id);
+                    assert_eq!(g.stack.last().unwrap().targets, vec![target]);
+                    assert_eq!(g.stack.last().unwrap().controller, actor);
+                    let current = g.find_object_by_stable_id(source_physical).unwrap();
+                    assert_eq!(g.object(current).unwrap().owner, actor);
+                    assert_eq!(
+                        g.object(current).unwrap().zone,
+                        if remove_source {
+                            Zone::Graveyard
+                        } else {
+                            Zone::Battlefield
+                        }
+                    );
+                    assert_eq!(current == source, !remove_source);
+                    let current_aura = g.find_object_by_stable_id(aura_physical).unwrap();
+                    assert_eq!(
+                        g.object(current_aura).unwrap().zone,
+                        if remove_source || remove_aura {
+                            Zone::Graveyard
+                        } else {
+                            Zone::Battlefield
+                        }
+                    );
+                    assert_eq!(g.object(current_aura).unwrap().owner, actor);
+                    assert_eq!(g.counter_count(victim, CounterType::MinusOneMinusOne), 0);
+                    assert_eq!(g.damage_on(victim), 0);
+                    assert_eq!(g.player(other).unwrap().life, 20);
+                    assert_eq!(g.player(other).unwrap().poison_counters, 0);
+                    d.actor = actor;
+                    d.target = target;
+                    priority(&mut g, &mut q, &mut d);
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let infect = !remove_aura;
+                    let count = g.counter_count(victim, CounterType::MinusOneMinusOne);
+                    let marks = g.damage_on(victim);
+                    let poison = g.player(other).unwrap().poison_counters;
+                    let life = g.player(other).unwrap().life;
+                    let expected_count = if infect && creature { 3 } else { 0 };
+                    let expected_marks = if !infect && creature { 3 } else { 0 };
+                    let expected_poison = if infect && !creature { 3 } else { 0 };
+                    let expected_life = if !infect && !creature { 17 } else { 20 };
+                    if (count, marks, poison, life)
+                        != (
+                            expected_count,
+                            expected_marks,
+                            expected_poison,
+                            expected_life,
+                        )
+                    {
+                        errors.push(format!("infect-dynamic-damage {label} counters={count} marks={marks} poison={poison} life={life} expected=({expected_count},{expected_marks},{expected_poison},{expected_life})"));
+                    }
+                    assert_eq!(
+                        (g.current_power(victim), g.current_toughness(victim)),
+                        (Some(5 - count as i32), Some(7 - count as i32))
+                    );
+                    assert_eq!(g.object(victim).unwrap().zone, Zone::Battlefield);
+                    assert_eq!(g.current_controller(victim), Some(other));
+                    assert_eq!(g.player(actor).unwrap().life, 20);
+                    assert_eq!(g.player(actor).unwrap().poison_counters, 0);
+                    for (stable, used) in [
+                        (aura_spell_physical, remove_aura),
+                        (source_spell_physical, remove_source),
+                    ] {
+                        let id = g.find_object_by_stable_id(stable).unwrap();
+                        assert_eq!(
+                            g.object(id).unwrap().zone,
+                            if used { Zone::Graveyard } else { Zone::Hand }
+                        );
+                        assert_eq!(g.object(id).unwrap().owner, other);
+                    }
+                    assert_eq!(
+                        g.turn_store.turn_history.spells_cast_by_player(other),
+                        u32::from(remove_aura) + u32::from(remove_source)
+                    );
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 0);
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected actual infect turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert_eq!(g.damage_on(victim), 0);
+                    assert_eq!(
+                        g.counter_count(victim, CounterType::MinusOneMinusOne),
+                        count
+                    );
+                    assert_eq!(g.player(other).unwrap().poison_counters, poison);
+                    assert_eq!(g.player(other).unwrap().life, life);
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert_eq!(g.turn.active_player, actor);
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                    }
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    games += 1;
+                    completed += 1;
+                    total_poison += poison;
+                    total_counters += count;
+                    total_marks += marks;
+                    eprintln!(
+                        "infect-dynamic-observed {label} expected_infect={infect} counters={count} marks={marks} poison={poison} life={life} completed=true"
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "infect-dynamic-summary games={games} activations={activations} aura_casts={aura_casts} source_casts={source_casts} poison={total_poison} counters={total_counters} marks={total_marks} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!(
+        (games, activations, aura_casts, source_casts, completed),
+        (16, 16, 8, 8, 16)
+    );
+    assert!(
+        errors.is_empty(),
+        "CR702.90a-d/120.3a-b,d-e/608.2h: real damage uses current infect or latest departure characteristics, including actual Aura removal after ability announcement and before source death. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_91a_b_battle_cry_pumps_each_other_attacker_in_real_shared_team_combat() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::combat_state::{AttackTarget, is_attacking};
+    use ironsmith::decision::AttackerDeclaration;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        PowerToughness, Step, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    struct Choices {
+        target: Target,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.requirements.len(), 1);
+            assert!(c.requirements[0].legal_targets.contains(&self.target));
+            vec![self.target]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        let top = g.stack.last().expect("actual stack entry").target_id();
+        let mut state = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..16 {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut state,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if !g.stack.iter().any(|e| e.target_id() == top) {
+                ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+                return;
+            }
+        }
+        panic!("actual shared-team passes must resolve top entry");
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual battle cry stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.team_has_priority(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert!(g.team_has_priority(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let full=ironsmith_compiler_runtime::compile_to_runtime_definition("Goblin Wardriver","Mana cost: {R}{R}\nType: Creature — Goblin Warrior\nFirst printed set: Mirrodin Besieged\nPower/Toughness: 2/2\nBattle cry (Whenever this creature attacks, each other attacking creature gets +1/+0 until end of turn.)",false).unwrap();
+    let destroy = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native battle cry actual source destruction",
+        "Mana cost: {0}\nType: Instant\nDestroy target creature.",
+        false,
+    )
+    .unwrap();
+    for def in [&full, &destroy] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native shared battle cry priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+    let ally_def = CardDefinitionBuilder::new(CardId::new(), "Native battle cry other attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 5))
+        .build();
+    let idle_def =
+        CardDefinitionBuilder::new(CardId::new(), "Native battle cry nonattacking control")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 6))
+            .build();
+    let mut errors = vec![];
+    let (
+        mut games,
+        mut completed,
+        mut declarations,
+        mut triggers,
+        mut removals,
+        mut buffs,
+        mut damage,
+    ) = (0, 0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let teammate = PlayerId::from_index(1 - seat);
+        let defenders = [PlayerId::from_index(2), PlayerId::from_index(3)];
+        for profile in 0usize..4 {
+            let n = if profile == 3 { 1 } else { profile };
+            let source_def = if profile == 3 {
+                full.clone()
+            } else {
+                let mut b = CardDefinitionBuilder::new(CardId::new(), "Native battle cry source")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 4));
+                for _ in 0..n {
+                    b = b.battle_cry();
+                }
+                b.build()
+            };
+            for borrowed in [false, true] {
+                let ally_controller = if borrowed { teammate } else { actor };
+                for head in 0usize..2 {
+                    let defender = defenders[head];
+                    for remove in [false, true] {
+                        let label = format!(
+                            "actor={seat} profile={profile} teammate_attacker={borrowed} head={head} remove={remove}"
+                        );
+                        let mut g = GameState::new(
+                            vec!["A".into(), "B".into(), "C".into(), "D".into()],
+                            20,
+                        );
+                        g.enable_two_headed_giant(vec![
+                            vec![PlayerId::from_index(0), PlayerId::from_index(1)],
+                            defenders.to_vec(),
+                        ])
+                        .unwrap();
+                        g.set_starting_player(PlayerId::from_index(1));
+                        g.turn.phase = Phase::FirstMain;
+                        g.turn.step = None;
+                        let turn = g.turn.turn_number;
+                        assert!(g.shared_team_turns_enabled());
+                        let ps = [actor, teammate, defenders[0], defenders[1]];
+                        let keepers: Vec<_> = ps
+                            .iter()
+                            .map(|p| {
+                                (
+                                    *p,
+                                    g.create_object_from_definition(&keeper, *p, Zone::Battlefield),
+                                )
+                            })
+                            .collect();
+                        let source =
+                            g.create_object_from_definition(&source_def, actor, Zone::Battlefield);
+                        let physical = g.object(source).unwrap().stable_id;
+                        let ally = g.create_object_from_definition(
+                            &ally_def,
+                            ally_controller,
+                            Zone::Battlefield,
+                        );
+                        let idles = [
+                            g.create_object_from_definition(&idle_def, actor, Zone::Battlefield),
+                            g.create_object_from_definition(&idle_def, teammate, Zone::Battlefield),
+                        ];
+                        for id in [source, ally, idles[0], idles[1]] {
+                            g.remove_summoning_sickness(id);
+                        }
+                        let responder = defenders[1];
+                        let removal =
+                            g.create_object_from_definition(&destroy, responder, Zone::Hand);
+                        let removal_physical = g.object(removal).unwrap().stable_id;
+                        let mut q = TriggerQueue::new();
+                        let mut d = Choices {
+                            target: Target::Object(source),
+                        };
+                        settle(&mut g, &mut q, &mut d);
+                        for p in ps {
+                            assert_eq!(g.player(p).unwrap().life, 30);
+                        }
+                        let mut runner =
+                            TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                        finish(&mut g, &mut q, &mut d);
+                        runner.priority_done();
+                        let (mut declared, mut checked, mut done) = (false, false, false);
+                        let (mut seen, mut actual_power) = (0, 1);
+                        for _ in 0..480 {
+                            match runner.advance(&mut g, &mut q).unwrap() {
+                                TurnAction::Continue => {}
+                                TurnAction::Decision(DecisionContext::Attackers(c)) => {
+                                    assert!(!declared);
+                                    assert_eq!(c.player, PlayerId::from_index(1));
+                                    for id in [source, ally] {
+                                        assert!(
+                                            c.attacker_options.iter().any(|o| o.creature == id
+                                                && o.valid_targets
+                                                    .contains(&AttackTarget::Player(defender))),
+                                            "real shared-team attacker must be offered {label}"
+                                        );
+                                    }
+                                    runner.respond_attackers(vec![
+                                        AttackerDeclaration {
+                                            creature: source,
+                                            target: AttackTarget::Player(defender),
+                                        },
+                                        AttackerDeclaration {
+                                            creature: ally,
+                                            target: AttackTarget::Player(defender),
+                                        },
+                                    ]);
+                                    declared = true;
+                                    declarations += 2;
+                                }
+                                TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                    assert!(defenders.contains(&c.player));
+                                    assert!(
+                                        c.blocker_options
+                                            .iter()
+                                            .all(|o| o.valid_blockers.is_empty())
+                                    );
+                                    runner.respond_blockers(vec![], c.player);
+                                }
+                                TurnAction::Decision(DecisionContext::Distribute(c)) => {
+                                    assert!(c.targets.len() <= 1);
+                                    runner.respond_distribute(if c.total == 0 {
+                                        vec![]
+                                    } else {
+                                        vec![(c.targets.first().unwrap().target.clone(), c.total)]
+                                    });
+                                }
+                                TurnAction::RunPriority => {
+                                    ironsmith::game_loop::advance_priority_with_dm(
+                                        &mut g, &mut q, &mut d,
+                                    )
+                                    .unwrap();
+                                    if declared
+                                        && !checked
+                                        && g.turn.step == Some(Step::DeclareAttackers)
+                                    {
+                                        assert!(
+                                            is_attacking(runner.combat(), source)
+                                                && is_attacking(runner.combat(), ally)
+                                        );
+                                        assert_eq!(g.current_controller(source), Some(actor));
+                                        assert_eq!(
+                                            g.current_controller(ally),
+                                            Some(ally_controller)
+                                        );
+                                        let ids: Vec<_> =
+                                            g.stack.iter().map(|e| e.target_id()).collect();
+                                        seen = ids.len();
+                                        let unique: std::collections::HashSet<_> =
+                                            ids.iter().copied().collect();
+                                        if seen != n
+                                            || unique.len() != seen
+                                            || !g.stack.iter().all(|e| {
+                                                e.is_ability
+                                                    && e.object_id == source
+                                                    && e.controller == actor
+                                                    && e.targets.is_empty()
+                                            })
+                                        {
+                                            errors.push(format!("battle-cry-trigger {label} actual={seen} expected={n}"));
+                                        }
+                                        assert_eq!(g.current_power(ally), Some(1));
+                                        if remove {
+                                            cast(&mut g, &mut q, &mut d, responder, removal);
+                                            assert_eq!(
+                                                g.stack.last().unwrap().targets,
+                                                vec![Target::Object(source)]
+                                            );
+                                            one(&mut g, &mut q, &mut d);
+                                            removals += 1;
+                                            let grave =
+                                                g.find_object_by_stable_id(physical).unwrap();
+                                            assert_ne!(grave, source);
+                                            assert_eq!(
+                                                g.object(grave).unwrap().zone,
+                                                Zone::Graveyard
+                                            );
+                                            for id in &ids {
+                                                assert!(
+                                                    g.stack.iter().any(|e| e.target_id() == *id)
+                                                );
+                                            }
+                                        }
+                                        settle(&mut g, &mut q, &mut d);
+                                        actual_power = g.current_power(ally).unwrap();
+                                        if (actual_power, g.current_toughness(ally))
+                                            != (1 + n as i32, Some(5))
+                                        {
+                                            errors.push(format!("battle-cry-other-attacker {label} power={actual_power} expected={} toughness={:?}",1+n,g.current_toughness(ally)));
+                                        }
+                                        buffs += (actual_power - 1).max(0) as usize;
+                                        for id in idles {
+                                            if (g.current_power(id), g.current_toughness(id))
+                                                != (Some(2), Some(6))
+                                            {
+                                                errors.push(format!("battle-cry-idle {label} id={id:?} power={:?} toughness={:?}",g.current_power(id),g.current_toughness(id)));
+                                            }
+                                            assert!(!is_attacking(runner.combat(), id));
+                                        }
+                                        if !remove
+                                            && (
+                                                g.current_power(source),
+                                                g.current_toughness(source),
+                                            ) != (
+                                                Some(2),
+                                                Some(if profile == 3 { 2 } else { 4 }),
+                                            )
+                                        {
+                                            errors.push(format!(
+                                                "battle-cry-self {label} power={:?} toughness={:?}",
+                                                g.current_power(source),
+                                                g.current_toughness(source)
+                                            ));
+                                        }
+                                        for p in ps {
+                                            assert_eq!(g.player(p).unwrap().life, 30);
+                                        }
+                                        checked = true;
+                                    } else {
+                                        settle(&mut g, &mut q, &mut d);
+                                    }
+                                    finish(&mut g, &mut q, &mut d);
+                                    runner.priority_done();
+                                }
+                                TurnAction::TurnComplete => {
+                                    done = true;
+                                    break;
+                                }
+                                other => {
+                                    panic!("unexpected actual shared battle cry turn {other:?}")
+                                }
+                            }
+                        }
+                        assert!(done && declared && checked);
+                        let source_current = g.find_object_by_stable_id(physical).unwrap();
+                        assert_eq!(
+                            g.object(source_current).unwrap().zone,
+                            if remove {
+                                Zone::Graveyard
+                            } else {
+                                Zone::Battlefield
+                            }
+                        );
+                        assert_eq!(g.object(source_current).unwrap().owner, actor);
+                        assert_eq!(g.object(ally).unwrap().zone, Zone::Battlefield);
+                        assert_eq!(g.object(ally).unwrap().owner, ally_controller);
+                        assert_eq!(g.current_controller(ally), Some(ally_controller));
+                        if (
+                            g.current_power(ally),
+                            g.current_toughness(ally),
+                            g.damage_on(ally),
+                        ) != (Some(1), Some(5), 0)
+                        {
+                            errors.push(format!(
+                                "battle-cry-cleanup {label} power={:?} toughness={:?} marks={}",
+                                g.current_power(ally),
+                                g.current_toughness(ally),
+                                g.damage_on(ally)
+                            ));
+                        }
+                        let expected_damage = 1 + n as i32 + if remove { 0 } else { 2 };
+                        let life = g.player(defender).unwrap().life;
+                        let dealt = 30 - life;
+                        if dealt != expected_damage {
+                            errors.push(format!("battle-cry-combat {label} damage={dealt} expected={expected_damage}"));
+                        }
+                        assert_eq!(g.player(defenders[1 - head]).unwrap().life, life);
+                        assert_eq!(g.player(actor).unwrap().life, 30);
+                        assert_eq!(g.player(teammate).unwrap().life, 30);
+                        for p in ps {
+                            assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                            assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                            assert_eq!(
+                                g.turn_store.turn_history.spells_cast_by_player(p),
+                                u32::from(p == responder && remove)
+                            );
+                        }
+                        let removal_current = g.find_object_by_stable_id(removal_physical).unwrap();
+                        assert_eq!(
+                            g.object(removal_current).unwrap().zone,
+                            if remove { Zone::Graveyard } else { Zone::Hand }
+                        );
+                        for (p, id) in keepers {
+                            assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                            assert_eq!(g.object(id).unwrap().owner, p);
+                        }
+                        for id in idles {
+                            assert_eq!(
+                                (g.current_power(id), g.current_toughness(id)),
+                                (Some(2), Some(6))
+                            );
+                        }
+                        assert_eq!(g.turn.turn_number, turn);
+                        assert_eq!(g.turn.active_player, PlayerId::from_index(1));
+                        assert!(g.stack.is_empty() && q.is_empty());
+                        g.validate_zone_consistency().unwrap();
+                        games += 1;
+                        completed += 1;
+                        triggers += seen;
+                        damage += dealt;
+                        eprintln!(
+                            "battle-cry-team-observed {label} triggers={seen} expected_triggers={n} ally_power={actual_power} expected_power={} damage={dealt} expected_damage={expected_damage} completed=true",
+                            1 + n
+                        );
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "battle-cry-team-summary games={games} declarations={declarations} triggers={triggers} removals={removals} buffs={buffs} damage={damage} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!(
+        (games, declarations, removals, completed),
+        (64, 128, 32, 64)
+    );
+    assert!(
+        errors.is_empty(),
+        "CR702.91a-b: each Battle Cry instance triggers separately, and each other attacking creature gets+1/+0untilendofturn, including teammate-controlled attackers in actual shared-team combat. Source is not pumped; independent abilities survive real source destruction. Native and full Goblin Wardriver origins; mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_90b_c_e_f_infect_damage_from_real_six_zone_abilities_and_redundant_instances() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    use ironsmith::{ChooseSpec, CounterType, ManaCost};
+    struct Choices {
+        actor: PlayerId,
+        target: Target,
+        targets: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(c.player, self.actor);
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.player, self.actor);
+            assert_eq!(c.requirements.len(), 1);
+            let t = self.target;
+            assert!(c.requirements[0].legal_targets.contains(&t));
+            self.targets += 1;
+            vec![t]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..64 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite real infect zone stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                return;
+            }
+        }
+        panic!("real priority window completes");
+    }
+
+    let mut errors = Vec::new();
+    let (mut games, mut completed, mut activations, mut counters, mut marked, mut poisons) =
+        (0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (zone_index, zone) in [
+            Zone::Battlefield,
+            Zone::Hand,
+            Zone::Graveyard,
+            Zone::Exile,
+            Zone::Command,
+            Zone::Library,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for instances in 0u8..3 {
+                for creature_target in [false, true] {
+                    games += 1;
+                    let label = format!(
+                        "actor={seat} zone={zone_index} instances={instances} creature_target={creature_target}"
+                    );
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keeper = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native Infect zone priority keeper",
+                    )
+                    .card_types(vec![CardType::Artifact])
+                    .with_ability(Ability::activated(
+                        ironsmith::cost::TotalCost::free(),
+                        vec![Effect::gain_life(0)],
+                    ))
+                    .build();
+                    for p in [actor, other] {
+                        g.create_object_from_definition(&keeper, p, Zone::Battlefield);
+                    }
+                    let victim = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native actual Infect damage recipient",
+                    )
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(4, 8))
+                    .build();
+                    let victim = g.create_object_from_definition(&victim, other, Zone::Battlefield);
+                    let mut source = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native Infect explicit-zone damage source",
+                    )
+                    .card_types(vec![CardType::Creature])
+                    .mana_cost(ManaCost::new())
+                    .power_toughness(PowerToughness::fixed(3, 5));
+                    for _ in 0..instances {
+                        source = source.infect();
+                    }
+                    let source = source
+                        .with_ability(
+                            Ability::activated(
+                                ironsmith::cost::TotalCost::free(),
+                                vec![Effect::deal_damage(
+                                    3,
+                                    ChooseSpec::target(ChooseSpec::AnyTarget),
+                                )],
+                            )
+                            .in_zones(vec![zone]),
+                        )
+                        .build();
+                    let source = g.create_object_from_definition(&source, actor, zone);
+                    let physical = g.object(source).unwrap().stable_id;
+                    let mut d = Choices {
+                        actor,
+                        target: if creature_target {
+                            Target::Object(victim)
+                        } else {
+                            Target::Player(other)
+                        },
+                        targets: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    let has_infect =
+                        g.object_has_static_ability_id(source, StaticAbilityId::Infect);
+                    eprintln!("infect-zone-keyword-observed {label} flag={has_infect}");
+                    assert_eq!(g.counter_count(victim, CounterType::MinusOneMinusOne), 0);
+                    assert_eq!(g.damage_on(victim), 0);
+                    let a = ironsmith::compute_legal_actions(&g, actor)
+                        .unwrap()
+                        .into_iter()
+                        .find(
+                            |a| matches!(a,LegalAction::ActivateAbility{source:s,..}if *s==source),
+                        );
+                    let Some(a) = a else {
+                        errors.push(format!("infect-zone-missing-action {label}"));
+                        eprintln!("infect-zone-error-observed {label} stage=missing-action");
+                        continue;
+                    };
+                    if let Err(e) =
+                        cr_audit_complete_priority_action_with_dm(&mut g, actor, a, &mut d, &mut q)
+                    {
+                        errors.push(format!("infect-zone-activation-error {label} error={e:?}"));
+                        continue;
+                    }
+                    activations += 1;
+                    assert_eq!(g.stack.len(), 1);
+                    assert!(g.stack.last().unwrap().is_ability);
+                    assert_eq!(g.stack.last().unwrap().targets, vec![d.target]);
+                    assert_eq!(g.counter_count(victim, CounterType::MinusOneMinusOne), 0);
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let count = g.counter_count(victim, CounterType::MinusOneMinusOne);
+                    let marks = g.damage_on(victim);
+                    let expected_count = if creature_target && instances > 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    let expected_marks = if creature_target && instances == 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    if count != expected_count || marks != expected_marks {
+                        errors.push(format!("infect-zone-damage {label} counters={count} marks={marks} expected_counters={expected_count} expected_marks={expected_marks}"));
+                    }
+                    counters += count;
+                    marked += marks;
+                    assert_eq!(
+                        (g.current_power(victim), g.current_toughness(victim)),
+                        (Some(4 - count as i32), Some(8 - count as i32))
+                    );
+                    let life = g.player(other).unwrap().life;
+                    let wanted_life = if creature_target || instances > 0 {
+                        20
+                    } else {
+                        17
+                    };
+                    if life != wanted_life {
+                        errors.push(format!(
+                            "infect-zone-life {label} actual={life} expected={wanted_life}"
+                        ));
+                    }
+                    assert_eq!(g.player(actor).unwrap().poison_counters, 0);
+                    let poison = g.player(other).unwrap().poison_counters;
+                    let wanted_poison = if !creature_target && instances > 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    if poison != wanted_poison {
+                        errors.push(format!(
+                            "infect-zone-poison {label} actual={poison} expected={wanted_poison}"
+                        ));
+                    }
+                    poisons += poison;
+                    assert_eq!(g.player(actor).unwrap().life, 20);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(source));
+                    assert_eq!(g.object(source).unwrap().zone, zone);
+                    assert_eq!(d.targets, 1);
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert_eq!(g.turn.phase, Phase::FirstMain);
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                    }
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected real infect zone turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert_eq!(g.damage_on(victim), 0);
+                    assert_eq!(
+                        g.counter_count(victim, CounterType::MinusOneMinusOne),
+                        count
+                    );
+                    assert_eq!(g.player(other).unwrap().poison_counters, poison);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(source));
+                    assert_eq!(g.object(source).unwrap().zone, zone);
+                    g.validate_zone_consistency().unwrap();
+                    completed += 1;
+                    eprintln!(
+                        "infect-zone-observed {label} counters={count} marks={marks} poison={poison} defender_life={}",
+                        g.player(other).unwrap().life
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "infect-zone-summary games={games} completed={completed} activations={activations} counters={counters} marked={marked} poison={poisons}"
+    );
+    for error in &errors {
+        eprintln!("{error}");
+    }
+    assert_eq!((games, completed, activations), (72, 72, 72));
+    assert!(
+        errors.is_empty(),
+        "CR702.90b-c,e-f: actual damage from explicit BF/Hand/GR/Exile/Command/Library abilities must use infect in every zone; multiple instances are redundant. Creature damage puts minus-one counters instead of marks; player damage gives poison instead of life loss. All fixtures precede public activation/targets/damage/cleanup; mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_90b_c_e_f_actual_stack_spell_infect_and_duplicate_instances() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    use ironsmith::{ChooseSpec, CounterType, ManaCost};
+    struct Choices {
+        actor: PlayerId,
+        target: Target,
+        targets: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(c.player, self.actor);
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.player, self.actor);
+            assert_eq!(c.requirements.len(), 1);
+            let t = self.target;
+            assert!(c.requirements[0].legal_targets.contains(&t));
+            self.targets += 1;
+            vec![t]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..64 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite real infect zone stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                return;
+            }
+        }
+        panic!("real priority window completes");
+    }
+
+    let mut errors = Vec::new();
+    let (mut games, mut completed, mut activations, mut counters, mut marked, mut poisons) =
+        (0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        {
+            let zone = Zone::Hand;
+            for instances in 0u8..3 {
+                for creature_target in [false, true] {
+                    games += 1;
+                    let label = format!(
+                        "actor={seat} instances={instances} creature_target={creature_target}"
+                    );
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keeper = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native Infect zone priority keeper",
+                    )
+                    .card_types(vec![CardType::Artifact])
+                    .with_ability(Ability::activated(
+                        ironsmith::cost::TotalCost::free(),
+                        vec![Effect::gain_life(0)],
+                    ))
+                    .build();
+                    for p in [actor, other] {
+                        g.create_object_from_definition(&keeper, p, Zone::Battlefield);
+                    }
+                    let victim = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native actual Infect damage recipient",
+                    )
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(4, 8))
+                    .build();
+                    let victim = g.create_object_from_definition(&victim, other, Zone::Battlefield);
+                    let mut source = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native Infect actual Stack damage spell",
+                    )
+                    .card_types(vec![CardType::Instant])
+                    .mana_cost(ManaCost::new());
+                    for _ in 0..instances {
+                        source = source.infect();
+                    }
+                    let source = source
+                        .with_spell_effect(vec![Effect::deal_damage(
+                            3,
+                            ChooseSpec::target(ChooseSpec::AnyTarget),
+                        )])
+                        .build();
+                    let source = g.create_object_from_definition(&source, actor, zone);
+                    let physical = g.object(source).unwrap().stable_id;
+                    let mut d = Choices {
+                        actor,
+                        target: if creature_target {
+                            Target::Object(victim)
+                        } else {
+                            Target::Player(other)
+                        },
+                        targets: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    let has_infect =
+                        g.object_has_static_ability_id(source, StaticAbilityId::Infect);
+                    eprintln!("infect-stack-keyword-observed {label} flag={has_infect}");
+                    assert_eq!(g.counter_count(victim, CounterType::MinusOneMinusOne), 0);
+                    assert_eq!(g.damage_on(victim), 0);
+                    let a = ironsmith::compute_legal_actions(&g, actor)
+                        .unwrap()
+                        .into_iter()
+                        .find(
+                            |a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source),
+                        );
+                    let Some(a) = a else {
+                        errors.push(format!("infect-stack-missing-action {label}"));
+                        eprintln!("infect-stack-error-observed {label} stage=missing-action");
+                        continue;
+                    };
+                    if let Err(e) =
+                        cr_audit_complete_priority_action_with_dm(&mut g, actor, a, &mut d, &mut q)
+                    {
+                        errors.push(format!("infect-stack-activation-error {label} error={e:?}"));
+                        continue;
+                    }
+                    activations += 1;
+                    assert_eq!(g.stack.len(), 1);
+                    assert!(!g.stack.last().unwrap().is_ability);
+                    let stack_source = g.find_object_by_stable_id(physical).unwrap();
+                    assert_eq!(g.object(stack_source).unwrap().zone, Zone::Stack);
+                    assert_eq!(
+                        g.object(stack_source).unwrap().mana_spent_to_cast.total(),
+                        0
+                    );
+                    assert_eq!(g.stack.last().unwrap().targets, vec![d.target]);
+                    assert_eq!(g.counter_count(victim, CounterType::MinusOneMinusOne), 0);
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let count = g.counter_count(victim, CounterType::MinusOneMinusOne);
+                    let marks = g.damage_on(victim);
+                    let expected_count = if creature_target && instances > 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    let expected_marks = if creature_target && instances == 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    if count != expected_count || marks != expected_marks {
+                        errors.push(format!("infect-stack-damage {label} counters={count} marks={marks} expected_counters={expected_count} expected_marks={expected_marks}"));
+                    }
+                    counters += count;
+                    marked += marks;
+                    assert_eq!(
+                        (g.current_power(victim), g.current_toughness(victim)),
+                        (Some(4 - count as i32), Some(8 - count as i32))
+                    );
+                    let life = g.player(other).unwrap().life;
+                    let wanted_life = if creature_target || instances > 0 {
+                        20
+                    } else {
+                        17
+                    };
+                    if life != wanted_life {
+                        errors.push(format!(
+                            "infect-stack-life {label} actual={life} expected={wanted_life}"
+                        ));
+                    }
+                    assert_eq!(g.player(actor).unwrap().poison_counters, 0);
+                    let poison = g.player(other).unwrap().poison_counters;
+                    let wanted_poison = if !creature_target && instances > 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    if poison != wanted_poison {
+                        errors.push(format!(
+                            "infect-stack-poison {label} actual={poison} expected={wanted_poison}"
+                        ));
+                    }
+                    poisons += poison;
+                    assert_eq!(g.player(actor).unwrap().life, 20);
+                    let grave = g.find_object_by_stable_id(physical).unwrap();
+                    assert_ne!(grave, source);
+                    assert_eq!(g.object(grave).unwrap().zone, Zone::Graveyard);
+                    assert_eq!(g.object(grave).unwrap().owner, actor);
+                    assert_eq!(d.targets, 1);
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert_eq!(g.turn.phase, Phase::FirstMain);
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                    }
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected real infect zone turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert_eq!(g.damage_on(victim), 0);
+                    assert_eq!(
+                        g.counter_count(victim, CounterType::MinusOneMinusOne),
+                        count
+                    );
+                    assert_eq!(g.player(other).unwrap().poison_counters, poison);
+                    let grave = g.find_object_by_stable_id(physical).unwrap();
+                    assert_ne!(grave, source);
+                    assert_eq!(g.object(grave).unwrap().zone, Zone::Graveyard);
+                    assert_eq!(g.object(grave).unwrap().owner, actor);
+                    g.validate_zone_consistency().unwrap();
+                    completed += 1;
+                    eprintln!(
+                        "infect-stack-observed {label} counters={count} marks={marks} poison={poison} defender_life={}",
+                        g.player(other).unwrap().life
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "infect-stack-summary games={games} completed={completed} casts={activations} counters={counters} marked={marked} poison={poisons}"
+    );
+    for error in &errors {
+        eprintln!("{error}");
+    }
+    assert_eq!((games, completed, activations), (12, 12, 12));
+    assert!(
+        errors.is_empty(),
+        "CR702.90b-c,e-f: an actual hand-cast spell deals infect damage while its source is on Stack, with identical outcomes for one or two printed instances. Creature damage puts minus-one counters instead of marks; player damage gives poison instead of life loss. Public casts, targets, resolution and cleanup; mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_90e_actual_spell_makes_the_library_card_deal_infect_damage() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::effects::ExecuteWithSourceEffect;
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ObjectId, Phase,
+        PowerToughness, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    use ironsmith::{ChooseSpec, CounterType, ManaCost, ObjectFilter};
+    struct Choices {
+        actor: PlayerId,
+        target: Target,
+        targets: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(c.player, self.actor);
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.player, self.actor);
+            assert_eq!(c.requirements.len(), 1);
+            let t = self.target;
+            assert!(c.requirements[0].legal_targets.contains(&t));
+            self.targets += 1;
+            vec![t]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..64 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite real infect zone stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                return;
+            }
+        }
+        panic!("real priority window completes");
+    }
+
+    let mut errors = Vec::new();
+    let (mut games, mut completed, mut activations, mut counters, mut marked, mut poisons) =
+        (0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        {
+            let zone = Zone::Library;
+            for instances in 0u8..3 {
+                for creature_target in [false, true] {
+                    games += 1;
+                    let label = format!(
+                        "actor={seat} instances={instances} creature_target={creature_target}"
+                    );
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keeper = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native Infect zone priority keeper",
+                    )
+                    .card_types(vec![CardType::Artifact])
+                    .with_ability(Ability::activated(
+                        ironsmith::cost::TotalCost::free(),
+                        vec![Effect::gain_life(0)],
+                    ))
+                    .build();
+                    for p in [actor, other] {
+                        g.create_object_from_definition(&keeper, p, Zone::Battlefield);
+                    }
+                    let victim = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native actual Infect damage recipient",
+                    )
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(4, 8))
+                    .build();
+                    let victim = g.create_object_from_definition(&victim, other, Zone::Battlefield);
+                    let mut source = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native library infect damage source",
+                    )
+                    .card_types(vec![CardType::Creature])
+                    .mana_cost(ManaCost::new())
+                    .power_toughness(PowerToughness::fixed(3, 5));
+                    for _ in 0..instances {
+                        source = source.infect();
+                    }
+                    let source = g.create_object_from_definition(&source.build(), actor, zone);
+                    let physical = g.object(source).unwrap().stable_id;
+                    let instruction = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native spell causes the library source to deal damage",
+                    )
+                    .card_types(vec![CardType::Instant])
+                    .mana_cost(ManaCost::new())
+                    .with_spell_effect(vec![Effect::new(ExecuteWithSourceEffect::new(
+                        ChooseSpec::Object(ObjectFilter::creature().in_zone(Zone::Library)),
+                        Effect::deal_damage(3, ChooseSpec::target(ChooseSpec::AnyTarget)),
+                    ))])
+                    .build();
+                    let hand = g.create_object_from_definition(&instruction, actor, Zone::Hand);
+                    let spell_physical = g.object(hand).unwrap().stable_id;
+                    let mut d = Choices {
+                        actor,
+                        target: if creature_target {
+                            Target::Object(victim)
+                        } else {
+                            Target::Player(other)
+                        },
+                        targets: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    let has_infect =
+                        g.object_has_static_ability_id(source, StaticAbilityId::Infect);
+                    eprintln!("infect-library-keyword-observed {label} flag={has_infect}");
+                    assert_eq!(g.counter_count(victim, CounterType::MinusOneMinusOne), 0);
+                    assert_eq!(g.damage_on(victim), 0);
+                    let a = ironsmith::compute_legal_actions(&g, actor)
+                        .unwrap()
+                        .into_iter()
+                        .find(
+                            |a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand),
+                        );
+                    let Some(a) = a else {
+                        errors.push(format!("infect-library-missing-action {label}"));
+                        eprintln!("infect-library-error-observed {label} stage=missing-action");
+                        continue;
+                    };
+                    if let Err(e) =
+                        cr_audit_complete_priority_action_with_dm(&mut g, actor, a, &mut d, &mut q)
+                    {
+                        errors.push(format!(
+                            "infect-library-activation-error {label} error={e:?}"
+                        ));
+                        continue;
+                    }
+                    activations += 1;
+                    assert_eq!(g.stack.len(), 1);
+                    assert!(!g.stack.last().unwrap().is_ability);
+                    let stack_source = g.find_object_by_stable_id(spell_physical).unwrap();
+                    assert_eq!(g.object(stack_source).unwrap().zone, Zone::Stack);
+                    assert_eq!(
+                        g.object(stack_source).unwrap().mana_spent_to_cast.total(),
+                        0
+                    );
+                    assert_eq!(g.stack.last().unwrap().targets, vec![d.target]);
+                    assert_eq!(g.counter_count(victim, CounterType::MinusOneMinusOne), 0);
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let observed_sources = g
+                        .turn_store
+                        .turn_history
+                        .event_records
+                        .iter()
+                        .filter_map(|r| r.event.downcast::<ironsmith::events::DamageEvent>())
+                        .filter(|e| e.amount == 3 && !e.is_combat)
+                        .map(|e| e.source)
+                        .collect::<Vec<_>>();
+                    eprintln!(
+                        "infect-library-source-observed {label} library_source_seen={} sources={observed_sources:?}",
+                        observed_sources.contains(&source)
+                    );
+                    let count = g.counter_count(victim, CounterType::MinusOneMinusOne);
+                    let marks = g.damage_on(victim);
+                    let expected_count = if creature_target && instances > 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    let expected_marks = if creature_target && instances == 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    if count != expected_count || marks != expected_marks {
+                        errors.push(format!("infect-library-damage {label} counters={count} marks={marks} expected_counters={expected_count} expected_marks={expected_marks}"));
+                    }
+                    counters += count;
+                    marked += marks;
+                    assert_eq!(
+                        (g.current_power(victim), g.current_toughness(victim)),
+                        (Some(4 - count as i32), Some(8 - count as i32))
+                    );
+                    let life = g.player(other).unwrap().life;
+                    let wanted_life = if creature_target || instances > 0 {
+                        20
+                    } else {
+                        17
+                    };
+                    if life != wanted_life {
+                        errors.push(format!(
+                            "infect-library-life {label} actual={life} expected={wanted_life}"
+                        ));
+                    }
+                    assert_eq!(g.player(actor).unwrap().poison_counters, 0);
+                    let poison = g.player(other).unwrap().poison_counters;
+                    let wanted_poison = if !creature_target && instances > 0 {
+                        3
+                    } else {
+                        0
+                    };
+                    if poison != wanted_poison {
+                        errors.push(format!(
+                            "infect-library-poison {label} actual={poison} expected={wanted_poison}"
+                        ));
+                    }
+                    poisons += poison;
+                    assert_eq!(g.player(actor).unwrap().life, 20);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(source));
+                    assert_eq!(g.object(source).unwrap().zone, Zone::Library);
+                    assert_eq!(g.object(source).unwrap().owner, actor);
+                    let grave = g.find_object_by_stable_id(spell_physical).unwrap();
+                    assert_ne!(grave, hand);
+                    assert_eq!(g.object(grave).unwrap().zone, Zone::Graveyard);
+                    assert_eq!(g.object(grave).unwrap().owner, actor);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 1);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    assert_eq!(d.targets, 1);
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert_eq!(g.turn.phase, Phase::FirstMain);
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                    }
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected real infect zone turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert_eq!(g.damage_on(victim), 0);
+                    assert_eq!(
+                        g.counter_count(victim, CounterType::MinusOneMinusOne),
+                        count
+                    );
+                    assert_eq!(g.player(other).unwrap().poison_counters, poison);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(source));
+                    assert_eq!(g.object(source).unwrap().zone, Zone::Library);
+                    assert_eq!(g.object(source).unwrap().owner, actor);
+                    let grave = g.find_object_by_stable_id(spell_physical).unwrap();
+                    assert_ne!(grave, hand);
+                    assert_eq!(g.object(grave).unwrap().zone, Zone::Graveyard);
+                    assert_eq!(g.object(grave).unwrap().owner, actor);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 1);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    g.validate_zone_consistency().unwrap();
+                    completed += 1;
+                    eprintln!(
+                        "infect-library-observed {label} counters={count} marks={marks} poison={poison} defender_life={}",
+                        g.player(other).unwrap().life
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "infect-library-summary games={games} completed={completed} casts={activations} counters={counters} marked={marked} poison={poisons}"
+    );
+    for error in &errors {
+        eprintln!("{error}");
+    }
+    assert_eq!((games, completed, activations), (12, 12, 12));
+    assert!(
+        errors.is_empty(),
+        "CR702.90e: a real hand-cast spell makes the sole library creature card deal damage with its own infect characteristics, even though that card neither activates nor leaves the library. One and two infect instances give poison/minus counters instead of life loss/marks. No direct effect execution or runtime source painting; mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_92a_living_weapon_actual_casts_keep_token_attachment_and_source_incarnations() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::object::{AttachmentTarget, ObjectKind};
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, ColorSet, Effect, GameProgress, LegalAction, ManaSymbol,
+        ObjectId, Phase, Subtype, Target, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    struct Choices {
+        target: Target,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.requirements.len(), 1);
+            assert!(c.requirements[0].legal_targets.contains(&self.target));
+            vec![self.target]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite real living weapon stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let husk=ironsmith_compiler_runtime::compile_to_runtime_definition("Flayer Husk","Mana cost: {1}\nType: Artifact — Equipment\nFirst printed set: Mirrodin Besieged\nLiving weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\nEquipped creature gets +1/+1.\nEquip {2}",false).unwrap();
+    let wing=ironsmith_compiler_runtime::compile_to_runtime_definition("Skinwing","Mana cost: {4}\nType: Artifact — Equipment\nFirst printed set: Mirrodin Besieged\nLiving weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\nEquipped creature gets +2/+2 and has flying.\nEquip {6}",false).unwrap();
+    let warden_def=ironsmith_compiler_runtime::compile_to_runtime_definition("Soul Warden","Mana cost: {W}\nType: Creature — Human Cleric\nFirst printed set: Exodus\nPower/Toughness: 1/1\nWhenever another creature enters, you gain 1 life.",false).unwrap();
+    let bounce = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native living weapon actual bounce",
+        "Mana cost: {0}\nType: Instant\nReturn target artifact to its owner's hand.",
+        false,
+    )
+    .unwrap();
+    let destroy = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native living weapon actual destroy",
+        "Mana cost: {0}\nType: Instant\nDestroy target artifact.",
+        false,
+    )
+    .unwrap();
+    let blink=ironsmith_compiler_runtime::compile_to_runtime_definition("Native living weapon actual blink","Mana cost: {0}\nType: Instant\nExile target artifact, then return it to the battlefield under its owner's control.",false).unwrap();
+    for def in [&husk, &wing, &warden_def, &bounce, &destroy, &blink] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native living weapon real priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+    let payer =
+        CardDefinitionBuilder::new(CardId::new(), "Native living weapon four colorless payer")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::mana(
+                ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::tap()),
+                vec![ManaSymbol::Colorless; 4],
+            ))
+            .build();
+    let mut errors = vec![];
+    let (
+        mut games,
+        mut completed,
+        mut casts,
+        mut responses,
+        mut paid,
+        mut living_triggers,
+        mut warden_triggers,
+        mut survivors,
+    ) = (0, 0, 0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, def, cost, bonus) in [(0usize, &husk, 1u32, 1i32), (1, &wing, 4, 2)] {
+            for mode in 0usize..4 {
+                let label = format!("actor={seat} profile={profile} mode={mode}");
+                let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                g.set_starting_player(actor);
+                g.turn.phase = Phase::FirstMain;
+                g.turn.step = None;
+                let turn = g.turn.turn_number;
+                let keepers = [
+                    g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                    g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                ];
+                let warden = g.create_object_from_definition(&warden_def, actor, Zone::Battlefield);
+                let payer_id = g.create_object_from_definition(&payer, actor, Zone::Battlefield);
+                let hand = g.create_object_from_definition(def, actor, Zone::Hand);
+                let physical = g.object(hand).unwrap().stable_id;
+                let response_hand = g.create_object_from_definition(
+                    match mode {
+                        1 => &bounce,
+                        2 => &destroy,
+                        _ => &blink,
+                    },
+                    other,
+                    Zone::Hand,
+                );
+                let response_physical = g.object(response_hand).unwrap().stable_id;
+                let mut q = TriggerQueue::new();
+                let mut d = Choices {
+                    target: Target::Object(hand),
+                };
+                settle(&mut g, &mut q, &mut d);
+                assert_eq!(g.player(actor).unwrap().life, 20);
+                let action=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}if *source==payer_id)).unwrap();
+                cr_audit_complete_priority_action_with_dm(&mut g, actor, action, &mut d, &mut q)
+                    .unwrap();
+                assert_eq!(g.player(actor).unwrap().mana_pool.total(), 4);
+                assert!(g.is_tapped(payer_id));
+                cast(&mut g, &mut q, &mut d, actor, hand);
+                casts += 1;
+                paid += cost;
+                let stack_source = g.find_object_by_stable_id(physical).unwrap();
+                assert_eq!(g.object(stack_source).unwrap().zone, Zone::Stack);
+                assert_eq!(
+                    g.object(stack_source).unwrap().mana_spent_to_cast.total(),
+                    cost
+                );
+                one(&mut g, &mut q, &mut d);
+                let source = g.find_object_by_stable_id(physical).unwrap();
+                assert_eq!(g.object(source).unwrap().zone, Zone::Battlefield);
+                assert_eq!(g.object(source).unwrap().attached_to, None);
+                assert_eq!(g.current_controller(source), Some(actor));
+                assert_eq!(g.stack.len(), 1);
+                assert!(
+                    g.stack.last().unwrap().is_ability
+                        && g.stack.last().unwrap().object_id == source
+                        && g.stack.last().unwrap().controller == actor
+                        && g.stack.last().unwrap().targets.is_empty()
+                );
+                let original = g.stack.last().unwrap().target_id();
+                living_triggers += 1;
+                if mode > 0 {
+                    d.target = Target::Object(source);
+                    cast(&mut g, &mut q, &mut d, other, response_hand);
+                    assert_eq!(
+                        g.stack.last().unwrap().targets,
+                        vec![Target::Object(source)]
+                    );
+                    one(&mut g, &mut q, &mut d);
+                    responses += 1;
+                    assert!(g.stack.iter().any(|e| e.target_id() == original));
+                }
+                let current = g.find_object_by_stable_id(physical).unwrap();
+                assert_eq!(g.object(current).unwrap().owner, actor);
+                assert_eq!(
+                    g.object(current).unwrap().zone,
+                    match mode {
+                        1 => Zone::Hand,
+                        2 => Zone::Graveyard,
+                        _ => Zone::Battlefield,
+                    }
+                );
+                assert_eq!(current == source, mode == 0);
+                let mut first_germ = None;
+                if mode == 3 {
+                    assert_eq!(g.stack.len(), 2);
+                    let top = g.stack.last().unwrap();
+                    assert!(
+                        top.is_ability
+                            && top.object_id == current
+                            && top.controller == actor
+                            && top.targets.is_empty()
+                            && top.target_id() != original
+                    );
+                    one(&mut g, &mut q, &mut d);
+                    living_triggers += 1;
+                    let tokens: Vec<_> = g
+                        .battlefield
+                        .iter()
+                        .copied()
+                        .filter(|id| g.object(*id).unwrap().kind == ObjectKind::Token)
+                        .collect();
+                    if tokens.len() != 1 {
+                        errors.push(format!(
+                            "living-weapon-new-incarnation {label} germs={}",
+                            tokens.len()
+                        ));
+                    }
+                    first_germ = tokens.first().copied();
+                    if let Some(id) = first_germ {
+                        if g.object(current).unwrap().attached_to
+                            != Some(AttachmentTarget::Object(id))
+                        {
+                            errors.push(format!(
+                                "living-weapon-new-attachment {label} actual={:?} germ={id:?}",
+                                g.object(current).unwrap().attached_to
+                            ));
+                        }
+                    }
+                    if g.stack.last().is_some_and(|e| {
+                        e.is_ability
+                            && e.object_id == warden
+                            && e.controller == actor
+                            && e.targets.is_empty()
+                    }) {
+                        one(&mut g, &mut q, &mut d);
+                        warden_triggers += 1;
+                    } else {
+                        errors.push(format!(
+                            "living-weapon-first-warden {label} missing_actual_entry_trigger"
+                        ));
+                    }
+                }
+                assert!(g.stack.iter().any(|e| e.target_id() == original));
+                assert_eq!(g.stack.last().unwrap().target_id(), original);
+                one(&mut g, &mut q, &mut d);
+                if g.stack.last().is_some_and(|e| {
+                    e.is_ability
+                        && e.object_id == warden
+                        && e.controller == actor
+                        && e.targets.is_empty()
+                }) {
+                    one(&mut g, &mut q, &mut d);
+                    warden_triggers += 1;
+                } else {
+                    errors.push(format!(
+                        "living-weapon-warden {label} missing_actual_entry_trigger"
+                    ));
+                }
+                settle(&mut g, &mut q, &mut d);
+                let tokens: Vec<_> = g
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|id| g.object(*id).unwrap().kind == ObjectKind::Token)
+                    .collect();
+                let expected_count = usize::from(mode == 0 || mode == 3);
+                if tokens.len() != expected_count {
+                    errors.push(format!(
+                        "living-weapon-germs {label} actual={} expected={expected_count}",
+                        tokens.len()
+                    ));
+                }
+                if mode == 3 && tokens.first().copied() != first_germ {
+                    errors.push(format!("living-weapon-old-incarnation {label} first={first_germ:?} final={tokens:?}"));
+                }
+                for id in &tokens {
+                    assert_eq!(g.object(*id).unwrap().owner, actor);
+                    assert_eq!(g.current_controller(*id), Some(actor));
+                    let types = g.current_subtypes(*id).unwrap();
+                    let pt = (g.current_power(*id), g.current_toughness(*id));
+                    let color = g.current_colors(*id);
+                    let flying = g.object_has_static_ability_id(*id, StaticAbilityId::Flying);
+                    if !types.contains(&Subtype::Phyrexian)
+                        || !types.contains(&Subtype::Germ)
+                        || pt != (Some(bonus), Some(bonus))
+                        || color != Some(ColorSet::BLACK)
+                        || flying != (profile == 1)
+                    {
+                        errors.push(format!("living-weapon-traits {label} types={types:?} pt={pt:?} color={color:?} flying={flying}"));
+                    }
+                    if g.object(current).unwrap().attached_to != Some(AttachmentTarget::Object(*id))
+                        || !g.object(*id).unwrap().attachments.contains(&current)
+                    {
+                        errors.push(format!(
+                            "living-weapon-attachment {label} source={:?} germ={id:?}",
+                            g.object(current).unwrap().attached_to
+                        ));
+                    }
+                }
+                let life = g.player(actor).unwrap().life;
+                let expected_life = if mode == 3 { 22 } else { 21 };
+                if life != expected_life {
+                    errors.push(format!(
+                        "living-weapon-entry-witness {label} life={life} expected={expected_life}"
+                    ));
+                }
+                assert_eq!(g.player(other).unwrap().life, 20);
+                assert_eq!(g.player(actor).unwrap().mana_pool.total(), 4 - cost);
+                let prototypes = g
+                    .turn_store
+                    .turn_history
+                    .event_records
+                    .iter()
+                    .filter_map(|r| r.event.downcast::<ironsmith::events::CreateTokensEvent>())
+                    .filter(|e| e.controller == actor)
+                    .collect::<Vec<_>>();
+                eprintln!(
+                    "living-weapon-creation-events {label} records={} prototypes={:?}",
+                    prototypes.len(),
+                    prototypes
+                        .iter()
+                        .map(|e| e.token.as_ref().map(|o| (
+                            o.power(),
+                            o.toughness(),
+                            o.colors(),
+                            o.subtypes.to_vec()
+                        )))
+                        .collect::<Vec<_>>()
+                );
+                let stable_germs: Vec<_> = tokens
+                    .iter()
+                    .map(|id| g.object(*id).unwrap().stable_id)
+                    .collect();
+                survivors += tokens.len();
+                let mut runner =
+                    TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                finish(&mut g, &mut q, &mut d);
+                runner.priority_done();
+                let mut done = false;
+                for _ in 0..320 {
+                    match runner.advance(&mut g, &mut q).unwrap() {
+                        TurnAction::Continue => {}
+                        TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                            runner.respond_attackers(vec![])
+                        }
+                        TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                            runner.respond_blockers(vec![], c.player)
+                        }
+                        TurnAction::RunPriority => {
+                            ironsmith::game_loop::advance_priority_with_dm(&mut g, &mut q, &mut d)
+                                .unwrap();
+                            settle(&mut g, &mut q, &mut d);
+                            finish(&mut g, &mut q, &mut d);
+                            runner.priority_done();
+                        }
+                        TurnAction::TurnComplete => {
+                            done = true;
+                            break;
+                        }
+                        other => panic!("unexpected actual living weapon turn {other:?}"),
+                    }
+                }
+                assert!(done);
+                for stable in stable_germs {
+                    let id = g.find_object_by_stable_id(stable).unwrap();
+                    assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    assert_eq!(g.damage_on(id), 0);
+                }
+                assert_eq!(g.player(actor).unwrap().life, life);
+                for p in [actor, other] {
+                    assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                    assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                }
+                assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 1);
+                assert_eq!(
+                    g.turn_store.turn_history.spells_cast_by_player(other),
+                    u32::from(mode > 0)
+                );
+                let response_current = g.find_object_by_stable_id(response_physical).unwrap();
+                assert_eq!(
+                    g.object(response_current).unwrap().zone,
+                    if mode == 0 {
+                        Zone::Hand
+                    } else {
+                        Zone::Graveyard
+                    }
+                );
+                for id in keepers {
+                    assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                }
+                assert_eq!(g.object(warden).unwrap().zone, Zone::Battlefield);
+                assert!(g.is_tapped(payer_id));
+                assert_eq!(g.turn.turn_number, turn);
+                assert_eq!(g.turn.active_player, actor);
+                assert!(g.stack.is_empty() && q.is_empty());
+                g.validate_zone_consistency().unwrap();
+                games += 1;
+                completed += 1;
+                eprintln!(
+                    "living-weapon-observed {label} germs={} actor_life={life} expected_life={expected_life} first_germ={first_germ:?} completed=true",
+                    tokens.len()
+                );
+            }
+        }
+    }
+    eprintln!(
+        "living-weapon-summary games={games} casts={casts} paid={paid} responses={responses} living_triggers={living_triggers} warden_triggers={warden_triggers} surviving_germs={survivors} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!(
+        (games, casts, paid, responses, completed),
+        (16, 16, 40, 12, 16)
+    );
+    assert!(
+        errors.is_empty(),
+        "CR702.92a/400.7/113.7a: actual full Equipment casts create and attach their Germ after ETB; living weapon creates a Germ even after source removal, but an old trigger cannot attach the new Equipment incarnation after a real blink. Full Soul Warden observes actual token entry even when the Germ dies before board inspection. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_93a_400_7_undying_does_not_follow_a_card_out_of_and_back_into_the_graveyard() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::effects::MoveToZoneEffect;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, ChooseSpec, CounterType, Effect, GameProgress, LegalAction,
+        ManaCost, ObjectFilter, ObjectId, Phase, Target, TurnAction, TurnRunner, TurnRunnerState,
+        Zone,
+    };
+    struct Choices {
+        target: Target,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.requirements.len(), 1);
+            assert!(c.requirements[0].legal_targets.contains(&self.target));
+            vec![self.target]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual undying stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let wolf=ironsmith_compiler_runtime::compile_to_runtime_definition("Young Wolf","Mana cost: {G}\nType: Creature — Wolf\nFirst printed set: Dark Ascension\nPower/Toughness: 1/1\nUndying (When this creature dies, if it had no +1/+1 counters on it, return it to the battlefield under its owner's control with a +1/+1 counter on it.)",false).unwrap();
+    let geist=ironsmith_compiler_runtime::compile_to_runtime_definition("Strangleroot Geist","Mana cost: {G}{G}\nType: Creature — Spirit\nFirst printed set: Dark Ascension Promos\nPower/Toughness: 2/1\nHaste\nUndying (When this creature dies, if it had no +1/+1 counters on it, return it to the battlefield under its owner's control with a +1/+1 counter on it.)",false).unwrap();
+    let theft = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native undying actual control change",
+        "Mana cost: {0}\nType: Instant\nGain control of target creature.",
+        false,
+    )
+    .unwrap();
+    let destroy = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native undying actual death",
+        "Mana cost: {0}\nType: Instant\nDestroy target creature.",
+        false,
+    )
+    .unwrap();
+    let counter = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Native undying actual second-trigger counter",
+        "Mana cost: {0}\nType: Instant\nCounter target triggered ability.",
+        false,
+    )
+    .unwrap();
+    for def in [&wolf, &geist, &theft, &destroy, &counter] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let response = |through: Zone, back: bool| {
+        let tag = "native_undying_real_roundtrip";
+        let first = Effect::new(
+            MoveToZoneEffect::new(
+                ChooseSpec::target(ChooseSpec::Object(
+                    ObjectFilter::creature().in_zone(Zone::Graveyard),
+                )),
+                through,
+                true,
+            )
+            .under_owner_control(),
+        )
+        .tag(tag);
+        let mut effects = vec![first];
+        if back {
+            effects.push(Effect::new(MoveToZoneEffect::new(
+                ChooseSpec::Tagged(tag.into()),
+                Zone::Graveyard,
+                true,
+            )));
+        }
+        CardDefinitionBuilder::new(
+            CardId::new(),
+            "Native undying actual graveyard departure response",
+        )
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::new())
+        .with_spell_effect(effects)
+        .build()
+    };
+    let exile = response(Zone::Exile, false);
+    let exile_back = response(Zone::Exile, true);
+    let battlefield_back = response(Zone::Battlefield, true);
+    let keeper = CardDefinitionBuilder::new(CardId::new(), "Native undying real priority keeper")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::activated(
+            ironsmith::cost::TotalCost::free(),
+            vec![Effect::gain_life(0)],
+        ))
+        .build();
+    let mut errors = vec![];
+    let (
+        mut games,
+        mut completed,
+        mut thefts,
+        mut deaths,
+        mut responses,
+        mut seen_triggers,
+        mut actual_returns,
+        mut new_triggers,
+        mut counters,
+    ) = (0, 0, 0, 0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, def, base_power) in [(0usize, &wolf, 1i32), (1, &geist, 2)] {
+            for borrowed in [false, true] {
+                let owner = if borrowed { other } else { actor };
+                for mode in 0usize..4 {
+                    let label =
+                        format!("actor={seat} profile={profile} borrowed={borrowed} mode={mode}");
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let source = g.create_object_from_definition(def, owner, Zone::Battlefield);
+                    g.remove_summoning_sickness(source);
+                    let physical = g.object(source).unwrap().stable_id;
+                    let theft_hand = g.create_object_from_definition(&theft, actor, Zone::Hand);
+                    let theft_physical = g.object(theft_hand).unwrap().stable_id;
+                    let death_hand = g.create_object_from_definition(&destroy, other, Zone::Hand);
+                    let death_physical = g.object(death_hand).unwrap().stable_id;
+                    let response_hand = g.create_object_from_definition(
+                        match mode {
+                            2 => &exile_back,
+                            3 => &battlefield_back,
+                            _ => &exile,
+                        },
+                        other,
+                        Zone::Hand,
+                    );
+                    let response_physical = g.object(response_hand).unwrap().stable_id;
+                    let counter_hand = g.create_object_from_definition(&counter, other, Zone::Hand);
+                    let counter_physical = g.object(counter_hand).unwrap().stable_id;
+                    let mut q = TriggerQueue::new();
+                    let mut d = Choices {
+                        target: Target::Object(source),
+                    };
+                    settle(&mut g, &mut q, &mut d);
+                    if borrowed {
+                        cast(&mut g, &mut q, &mut d, actor, theft_hand);
+                        one(&mut g, &mut q, &mut d);
+                        settle(&mut g, &mut q, &mut d);
+                        thefts += 1;
+                    }
+                    assert_eq!(g.current_controller(source), Some(actor));
+                    assert_eq!(g.object(source).unwrap().owner, owner);
+                    assert_eq!(g.counter_count(source, CounterType::PlusOnePlusOne), 0);
+                    cast(&mut g, &mut q, &mut d, other, death_hand);
+                    one(&mut g, &mut q, &mut d);
+                    deaths += 1;
+                    let grave = g.find_object_by_stable_id(physical).unwrap();
+                    assert_ne!(grave, source);
+                    assert_eq!(g.object(grave).unwrap().zone, Zone::Graveyard);
+                    assert_eq!(g.object(grave).unwrap().owner, owner);
+                    assert_eq!(g.counter_count(grave, CounterType::PlusOnePlusOne), 0);
+                    assert_eq!(g.stack.len(), 1);
+                    let ability = g.stack.last().unwrap();
+                    assert!(
+                        ability.is_ability
+                            && ability.object_id == source
+                            && ability.controller == actor
+                            && ability.targets.is_empty()
+                    );
+                    let original = ability.target_id();
+                    seen_triggers += 1;
+                    if mode > 0 {
+                        d.target = Target::Object(grave);
+                        cast(&mut g, &mut q, &mut d, other, response_hand);
+                        assert_eq!(g.stack.last().unwrap().targets, vec![Target::Object(grave)]);
+                        one(&mut g, &mut q, &mut d);
+                        responses += 1;
+                    }
+                    let after = g.find_object_by_stable_id(physical).unwrap();
+                    assert_eq!(g.object(after).unwrap().owner, owner);
+                    assert_eq!(
+                        g.object(after).unwrap().zone,
+                        if mode == 1 {
+                            Zone::Exile
+                        } else {
+                            Zone::Graveyard
+                        }
+                    );
+                    assert_eq!(after == grave, mode == 0);
+                    let mut middle_id = None;
+                    if mode > 0 {
+                        let through = if mode == 3 {
+                            Zone::Battlefield
+                        } else {
+                            Zone::Exile
+                        };
+                        let departed = g
+                            .turn_store
+                            .turn_history
+                            .event_records
+                            .iter()
+                            .filter_map(|r| {
+                                r.event.downcast::<ironsmith::events::ZoneChangeEvent>()
+                            })
+                            .find(|e| {
+                                e.from == Zone::Graveyard
+                                    && e.to == through
+                                    && e.snapshots().iter().any(|s| s.object_id == grave)
+                            })
+                            .expect("actual first graveyard departure receipt");
+                        let middle = *departed
+                            .destination_objects()
+                            .first()
+                            .expect("actual intermediate incarnation");
+                        assert_ne!(middle, grave);
+                        middle_id = Some(middle);
+                        if mode >= 2 {
+                            assert_ne!(middle, after);
+                            assert!(
+                                g.turn_store
+                                    .turn_history
+                                    .event_records
+                                    .iter()
+                                    .filter_map(|r| r
+                                        .event
+                                        .downcast::<ironsmith::events::ZoneChangeEvent>())
+                                    .any(|e| e.from == through
+                                        && e.to == Zone::Graveyard
+                                        && e.snapshots().iter().any(|s| s.object_id == middle)
+                                        && e.destination_objects().contains(&after))
+                            );
+                        } else {
+                            assert_eq!(middle, after);
+                        }
+                    }
+                    if mode == 3 {
+                        assert_eq!(g.stack.len(), 2);
+                        let new = g.stack.last().unwrap();
+                        assert!(
+                            new.is_ability
+                                && new.object_id == middle_id.unwrap()
+                                && new.controller == owner
+                                && new.targets.is_empty()
+                                && new.target_id() != original
+                        );
+                        let new_id = new.target_id();
+                        new_triggers += 1;
+                        d.target = Target::Object(new_id);
+                        cast(&mut g, &mut q, &mut d, other, counter_hand);
+                        assert_eq!(
+                            g.stack.last().unwrap().targets,
+                            vec![Target::Object(new_id)]
+                        );
+                        one(&mut g, &mut q, &mut d);
+                        counters += 1;
+                        assert!(!g.stack.iter().any(|e| e.target_id() == new_id));
+                    }
+                    assert_eq!(g.stack.len(), 1);
+                    assert_eq!(g.stack.last().unwrap().target_id(), original);
+                    assert_eq!(g.stack.last().unwrap().controller, actor);
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let final_id = g.find_object_by_stable_id(physical).unwrap();
+                    let zone = g.object(final_id).unwrap().zone;
+                    let plus = g.counter_count(final_id, CounterType::PlusOnePlusOne);
+                    let expected_zone = match mode {
+                        0 => Zone::Battlefield,
+                        1 => Zone::Exile,
+                        _ => Zone::Graveyard,
+                    };
+                    let expected_plus = u32::from(mode == 0);
+                    if zone != expected_zone || plus != expected_plus {
+                        errors.push(format!("undying-incarnation-return {label} zone={zone:?} plus={plus} expected_zone={expected_zone:?} expected_plus={expected_plus} grave={grave:?} after_response={after:?} final_id={final_id:?}"));
+                    }
+                    assert_eq!(g.object(final_id).unwrap().owner, owner);
+                    if zone == Zone::Battlefield {
+                        actual_returns += 1;
+                        assert_eq!(g.current_controller(final_id), Some(owner));
+                        assert_eq!(
+                            (g.current_power(final_id), g.current_toughness(final_id)),
+                            (Some(base_power + plus as i32), Some(1 + plus as i32))
+                        );
+                        assert_ne!(final_id, after);
+                    } else {
+                        assert_eq!(final_id, after);
+                    }
+                    assert_eq!(g.counter_count(final_id, CounterType::MinusOneMinusOne), 0);
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected real undying incarnation turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(final_id));
+                    assert_eq!(g.object(final_id).unwrap().zone, zone);
+                    assert_eq!(g.counter_count(final_id, CounterType::PlusOnePlusOne), plus);
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().life, 20);
+                        assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                    }
+                    assert_eq!(
+                        g.turn_store.turn_history.spells_cast_by_player(actor),
+                        u32::from(borrowed)
+                    );
+                    assert_eq!(
+                        g.turn_store.turn_history.spells_cast_by_player(other),
+                        1 + u32::from(mode > 0) + u32::from(mode == 3)
+                    );
+                    for (stable, used) in [
+                        (theft_physical, borrowed),
+                        (death_physical, true),
+                        (response_physical, mode > 0),
+                        (counter_physical, mode == 3),
+                    ] {
+                        let id = g.find_object_by_stable_id(stable).unwrap();
+                        assert_eq!(
+                            g.object(id).unwrap().zone,
+                            if used { Zone::Graveyard } else { Zone::Hand }
+                        );
+                    }
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert_eq!(g.turn.active_player, actor);
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    games += 1;
+                    completed += 1;
+                    eprintln!(
+                        "undying-incarnation-observed {label} zone={zone:?} plus={plus} expected_zone={expected_zone:?} expected_plus={expected_plus} completed=true"
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "undying-incarnation-summary games={games} thefts={thefts} deaths={deaths} responses={responses} triggers={seen_triggers} actual_returns={actual_returns} new_triggers={new_triggers} countered_new_triggers={counters} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!(
+        (
+            games,
+            thefts,
+            deaths,
+            responses,
+            seen_triggers,
+            new_triggers,
+            counters,
+            completed
+        ),
+        (32, 16, 32, 24, 32, 8, 8, 32)
+    );
+    assert!(
+        errors.is_empty(),
+        "CR702.93a/400.7: Undying may return the card from the original death's graveyard destination under its owner's control with one counter, but must not follow a later object after it actually leaves and reenters the graveyard while the old ability is pending. Targetlessabilityidentity/controller and actual two-stage public-zone movement receipts preserved. Battlefield roundtrips genuinely trigger a second Undying, which is actually countered before the old ability resolves; no hidden-zone following is assumed. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_94a_actual_first_draw_links_reveal_trigger_and_miracle_cast() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, ViewCardsContext};
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaCost, ManaSymbol,
+        ObjectId, Phase, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    struct Choices {
+        actor: PlayerId,
+        physical: ironsmith::ids::StableId,
+        mode: usize,
+        reveals: usize,
+        offers: usize,
+        views: std::collections::HashSet<PlayerId>,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, g: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            if c.description == "Choose a Miracle reveal" {
+                assert_eq!(c.player, self.actor);
+                let id = c.source.unwrap();
+                assert_eq!(g.object(id).unwrap().stable_id, self.physical);
+                assert_eq!(g.object(id).unwrap().zone, Zone::Hand);
+                self.reveals += 1;
+                let i = usize::from(self.mode > 0);
+                assert!(c.options.iter().any(|o| o.index == i && o.legal));
+                vec![i]
+            } else {
+                c.options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .take(c.min)
+                    .map(|o| o.index)
+                    .collect()
+            }
+        }
+        fn decide_boolean(&mut self, g: &GameState, c: &BooleanContext) -> bool {
+            assert!(
+                c.description.contains("miracle cost"),
+                "unexpected real miracle choice {}",
+                c.description
+            );
+            assert_eq!(c.player, self.actor);
+            assert_eq!(
+                g.object(c.source.unwrap()).unwrap().stable_id,
+                self.physical
+            );
+            self.offers += 1;
+            self.mode == 2
+        }
+        fn view_cards(
+            &mut self,
+            g: &GameState,
+            p: PlayerId,
+            cards: &[ObjectId],
+            c: &ViewCardsContext,
+        ) {
+            if c.description.contains("Miracle") {
+                assert!(c.public);
+                assert_eq!(c.subject, self.actor);
+                assert_eq!(c.zone, Zone::Hand);
+                assert_eq!(cards.len(), 1);
+                assert_eq!(g.object(cards[0]).unwrap().stable_id, self.physical);
+                self.views.insert(p);
+            }
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite real miracle stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+
+    let keeper = CardDefinitionBuilder::new(CardId::new(), "Native Miracle real priority keeper")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::activated(
+            ironsmith::cost::TotalCost::free(),
+            vec![Effect::gain_life(0)],
+        ))
+        .build();
+    let source_def =
+        CardDefinitionBuilder::new(CardId::new(), "Native first draw Miracle life spell")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+            .miracle(ManaCost::new())
+            .with_spell_effect(vec![Effect::gain_life(2)])
+            .build();
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Native ordinary Miracle draw control")
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(9)]))
+        .build();
+    let draw = |n: i32| {
+        CardDefinitionBuilder::new(CardId::new(), "Native actual draw spell for Miracle")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
+            .with_spell_effect(vec![Effect::draw(n)])
+            .build()
+    };
+    let mut errors = vec![];
+    let (mut games, mut spells, mut reveals, mut triggers, mut casts, mut completed) =
+        (0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for inactive in [false, true] {
+            for prior in [false, true] {
+                for n in [1i32, 3] {
+                    for mode in 0usize..3 {
+                        let label = format!(
+                            "actor={seat} inactive={inactive} prior={prior} draw={n} mode={mode}"
+                        );
+                        let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                        let active = if inactive { other } else { actor };
+                        g.set_starting_player(active);
+                        g.turn.phase = Phase::FirstMain;
+                        g.turn.step = None;
+                        let turn = g.turn.turn_number;
+                        let keepers = [
+                            g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                            g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                        ];
+                        let mut bottoms = vec![];
+                        for _ in 0..6 {
+                            let id = g.create_object_from_definition(&filler, actor, Zone::Library);
+                            bottoms.push(g.object(id).unwrap().stable_id);
+                        }
+                        let original =
+                            g.create_object_from_definition(&source_def, actor, Zone::Library);
+                        let physical = g.object(original).unwrap().stable_id;
+                        let earlier = if prior {
+                            Some(g.create_object_from_definition(&filler, actor, Zone::Library))
+                        } else {
+                            None
+                        };
+                        let early_hand =
+                            g.create_object_from_definition(&draw(1), actor, Zone::Hand);
+                        let early_stable = g.object(early_hand).unwrap().stable_id;
+                        let hand = g.create_object_from_definition(&draw(n), actor, Zone::Hand);
+                        let draw_stable = g.object(hand).unwrap().stable_id;
+                        let mut d = Choices {
+                            actor,
+                            physical,
+                            mode,
+                            reveals: 0,
+                            offers: 0,
+                            views: std::collections::HashSet::new(),
+                        };
+                        let mut q = TriggerQueue::new();
+                        settle(&mut g, &mut q, &mut d);
+                        if prior {
+                            cast(&mut g, &mut q, &mut d, actor, early_hand);
+                            spells += 1;
+                            one(&mut g, &mut q, &mut d);
+                            assert!(g.stack.is_empty());
+                            assert_eq!(d.reveals, 0);
+                            assert_eq!(g.object(earlier.unwrap()).is_some(), false);
+                            assert_eq!(g.object(original).unwrap().zone, Zone::Library);
+                        }
+                        cast(&mut g, &mut q, &mut d, actor, hand);
+                        spells += 1;
+                        one(&mut g, &mut q, &mut d);
+                        let drawn = g.find_object_by_stable_id(physical).unwrap();
+                        assert_ne!(drawn, original);
+                        assert_eq!(g.object(drawn).unwrap().zone, Zone::Hand);
+                        assert_eq!(g.object(drawn).unwrap().owner, actor);
+                        let wanted_reveal = usize::from(!prior);
+                        let wanted_trigger = !prior && mode > 0;
+                        let wanted_cast = !prior && mode == 2;
+                        if d.reveals != wanted_reveal {
+                            errors.push(format!(
+                                "miracle-first-reveal {label} actual={} expected={wanted_reveal}",
+                                d.reveals
+                            ));
+                        }
+                        if g.stack.len() != usize::from(wanted_trigger) {
+                            errors.push(format!(
+                                "miracle-first-trigger {label} actual={} expected={}",
+                                g.stack.len(),
+                                usize::from(wanted_trigger)
+                            ));
+                        }
+                        if !g.stack.is_empty() {
+                            assert_eq!(g.stack.len(), 1);
+                            let top = g.stack.last().unwrap();
+                            assert!(
+                                top.is_ability
+                                    && top.object_id == drawn
+                                    && top.controller == actor
+                                    && top.targets.is_empty()
+                            );
+                            triggers += 1;
+                            one(&mut g, &mut q, &mut d);
+                        }
+                        let mut did_cast = false;
+                        if !g.stack.is_empty() {
+                            assert_eq!(g.stack.len(), 1);
+                            let entry = g.stack.last().unwrap();
+                            assert!(
+                                !entry.is_ability
+                                    && entry.controller == actor
+                                    && entry.targets.is_empty()
+                            );
+                            let spell = g.object(entry.object_id).unwrap();
+                            assert_eq!(spell.stable_id, physical);
+                            assert_eq!(spell.zone, Zone::Stack);
+                            assert_eq!(spell.mana_spent_to_cast.total(), 0);
+                            did_cast = true;
+                            casts += 1;
+                            spells += 1;
+                            one(&mut g, &mut q, &mut d);
+                        }
+                        settle(&mut g, &mut q, &mut d);
+                        let final_id = g.find_object_by_stable_id(physical).unwrap();
+                        let zone = g.object(final_id).unwrap().zone;
+                        let life = g.player(actor).unwrap().life;
+                        if did_cast != wanted_cast
+                            || zone
+                                != if wanted_cast {
+                                    Zone::Graveyard
+                                } else {
+                                    Zone::Hand
+                                }
+                            || life != if wanted_cast { 22 } else { 20 }
+                        {
+                            errors.push(format!("miracle-first-cast {label} actual={did_cast} wanted={wanted_cast} zone={zone:?} life={life}"));
+                        }
+                        if d.offers != usize::from(wanted_trigger) {
+                            errors.push(format!(
+                                "miracle-first-offer {label} actual={} expected={}",
+                                d.offers,
+                                usize::from(wanted_trigger)
+                            ));
+                        }
+                        if wanted_trigger
+                            && d.views != std::collections::HashSet::from([actor, other])
+                        {
+                            errors.push(format!("miracle-first-view {label} actual={:?}", d.views));
+                        }
+                        if !wanted_trigger && !d.views.is_empty() {
+                            errors.push(format!(
+                                "miracle-first-declined-view {label} actual={:?}",
+                                d.views
+                            ));
+                        }
+                        reveals += d.reveals;
+                        assert_eq!(
+                            g.player(actor).unwrap().hand.len(),
+                            n as usize + usize::from(prior) + usize::from(!prior)
+                                - usize::from(did_cast)
+                        );
+                        assert_eq!(g.player(actor).unwrap().library.len(), 7 - n as usize);
+                        assert_eq!(g.player(other).unwrap().life, 20);
+                        assert!(!g.miracle_cast_is_authorized(final_id));
+                        for stable in [draw_stable] {
+                            let id = g.find_object_by_stable_id(stable).unwrap();
+                            assert_eq!(g.object(id).unwrap().zone, Zone::Graveyard);
+                        }
+                        let ei = g.find_object_by_stable_id(early_stable).unwrap();
+                        assert_eq!(
+                            g.object(ei).unwrap().zone,
+                            if prior { Zone::Graveyard } else { Zone::Hand }
+                        );
+                        let mut runner =
+                            TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                        finish(&mut g, &mut q, &mut d);
+                        runner.priority_done();
+                        let mut done = false;
+                        for _ in 0..320 {
+                            match runner.advance(&mut g, &mut q).unwrap() {
+                                TurnAction::Continue => {}
+                                TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                    runner.respond_attackers(vec![])
+                                }
+                                TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                    runner.respond_blockers(vec![], c.player)
+                                }
+                                TurnAction::RunPriority => {
+                                    ironsmith::game_loop::advance_priority_with_dm(
+                                        &mut g, &mut q, &mut d,
+                                    )
+                                    .unwrap();
+                                    settle(&mut g, &mut q, &mut d);
+                                    finish(&mut g, &mut q, &mut d);
+                                    runner.priority_done();
+                                }
+                                TurnAction::TurnComplete => {
+                                    done = true;
+                                    break;
+                                }
+                                other => panic!("unexpected actual miracle turn {other:?}"),
+                            }
+                        }
+                        assert!(done);
+                        assert_eq!(g.turn.active_player, active);
+                        assert_eq!(g.turn.turn_number, turn);
+                        assert_eq!(g.player(actor).unwrap().life, life);
+                        assert_eq!(
+                            g.turn_store.turn_history.spells_cast_by_player(actor),
+                            1 + u32::from(prior) + u32::from(did_cast)
+                        );
+                        assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                        for p in [actor, other] {
+                            assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                            assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                        }
+                        for id in keepers {
+                            assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                        }
+                        assert!(g.stack.is_empty() && q.is_empty());
+                        g.validate_zone_consistency().unwrap();
+                        games += 1;
+                        completed += 1;
+                        eprintln!(
+                            "miracle-first-observed {label} reveals={} offers={} cast={did_cast} zone={zone:?} life={life} completed=true",
+                            d.reveals, d.offers
+                        );
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "miracle-first-summary games={games} spells={spells} reveals={reveals} triggers={triggers} casts={casts} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!((games, completed), (48, 48));
+    assert!(
+        errors.is_empty(),
+        "CR702.94a: only the actual first card drawn this turn can be revealed using its Miracle instance, which produces a linked trigger and permits the real cast for the Miracle cost on resolution. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_700_7_this_creature_still_refers_to_the_same_object_after_actual_type_loss() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::continuous::Modification;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::effects::ApplyContinuousEffect;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, AbilityKind, CardId, CardType, ChooseSpec, CounterType, Effect, GameProgress,
+        LegalAction, ManaCost, ManaSymbol, ObjectFilter, ObjectId, Phase, PowerToughness, Target,
+        TurnAction, TurnRunner, TurnRunnerState, Until, Zone,
+    };
+    struct Choices {
+        target: Target,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            c.options
+                .iter()
+                .filter(|o| o.legal)
+                .take(c.min)
+                .map(|o| o.index)
+                .collect()
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.requirements.len(), 1);
+            assert!(c.requirements[0].legal_targets.contains(&self.target));
+            vec![self.target]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual this-quality stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let full=ironsmith_compiler_runtime::compile_to_runtime_definition("Walking Ballista","Mana cost: {X}{X}\nType: Artifact Creature — Construct\nFirst printed set: Aether Revolt\nPower/Toughness: 0/0\nThis creature enters with X +1/+1 counters on it.\n{4}: Put a +1/+1 counter on this creature.\nRemove a +1/+1 counter from this creature: It deals 1 damage to any target.",false).unwrap();
+    let parsed=ironsmith_compiler_runtime::compile_to_runtime_definition("Native this creature counter source","Mana cost: {0}\nType: Artifact Creature — Construct\nPower/Toughness: 0/0\n{4}: Put a +1/+1 counter on this creature.",false).unwrap();
+    for def in [&full, &parsed] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let four = ManaCost::from_symbols(vec![ManaSymbol::Generic(4)]);
+    let native = CardDefinitionBuilder::new(CardId::new(), "Native source counter ability")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .with_ability(Ability::activated(
+            ironsmith::cost::TotalCost::mana(four.clone()),
+            vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
+        ))
+        .build();
+    let keeper = CardDefinitionBuilder::new(CardId::new(), "Native this-quality priority keeper")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::activated(
+            ironsmith::cost::TotalCost::free(),
+            vec![Effect::gain_life(0)],
+        ))
+        .build();
+    let payer = CardDefinitionBuilder::new(CardId::new(), "Native this-quality four mana payer")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::mana(
+            ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::tap()),
+            vec![ManaSymbol::Colorless; 4],
+        ))
+        .build();
+    let bystander =
+        CardDefinitionBuilder::new(CardId::new(), "Native this-quality unchanged creature")
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 5))
+            .build();
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+    let theft =
+        CardDefinitionBuilder::new(CardId::new(), "Native actual this-quality control spell")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
+            .with_spell_effect(vec![Effect::gain_control_with_duration(
+                target.clone(),
+                Until::Forever,
+            )])
+            .build();
+    let remove =
+        CardDefinitionBuilder::new(CardId::new(), "Native actual creature type removal spell")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
+            .with_spell_effect(vec![Effect::new(ApplyContinuousEffect::with_spec(
+                target,
+                Modification::RemoveCardTypes(vec![CardType::Creature]),
+                Until::EndOfTurn,
+            ))])
+            .build();
+    let (mut games, mut spells, mut mana, mut activations, mut completed) = (0, 0, 0, 0, 0);
+    let mut errors = vec![];
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, def) in [&native, &parsed, &full].into_iter().enumerate() {
+            for borrowed in [false, true] {
+                for removed in [false, true] {
+                    let label = format!(
+                        "actor={seat} profile={profile} borrowed={borrowed} removed={removed}"
+                    );
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let owner = if borrowed { other } else { actor };
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let payer_id =
+                        g.create_object_from_definition(&payer, actor, Zone::Battlefield);
+                    let idle =
+                        g.create_object_from_definition(&bystander, other, Zone::Battlefield);
+                    let source = g.create_object_from_definition(def, owner, Zone::Battlefield);
+                    g.add_counters(source, CounterType::PlusOnePlusOne, 1);
+                    g.remove_summoning_sickness(source);
+                    let physical = g.object(source).unwrap().stable_id;
+                    let th = g.create_object_from_definition(&theft, actor, Zone::Hand);
+                    let th_stable = g.object(th).unwrap().stable_id;
+                    let rh = g.create_object_from_definition(&remove, actor, Zone::Hand);
+                    let rh_stable = g.object(rh).unwrap().stable_id;
+                    let mut d = Choices {
+                        target: Target::Object(source),
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    assert_eq!(g.current_power(source), Some(1));
+                    assert_eq!(g.current_toughness(source), Some(1));
+                    assert_eq!(g.counter_count(source, CounterType::PlusOnePlusOne), 1);
+                    if borrowed {
+                        cast(&mut g, &mut q, &mut d, actor, th);
+                        spells += 1;
+                        one(&mut g, &mut q, &mut d);
+                        assert_eq!(g.current_controller(source), Some(actor));
+                    }
+                    if removed {
+                        cast(&mut g, &mut q, &mut d, actor, rh);
+                        spells += 1;
+                        one(&mut g, &mut q, &mut d);
+                    }
+                    assert_eq!(g.current_is_creature(source), !removed);
+                    assert!(
+                        g.current_card_types(source)
+                            .unwrap()
+                            .contains(&CardType::Artifact)
+                    );
+                    assert_eq!(g.object(source).unwrap().owner, owner);
+                    assert_eq!(g.current_controller(source), Some(actor));
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(source));
+                    let action=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}if *source==payer_id)).unwrap();
+                    cr_audit_complete_priority_action_with_dm(
+                        &mut g, actor, action, &mut d, &mut q,
+                    )
+                    .unwrap();
+                    assert!(g.is_tapped(payer_id));
+                    assert_eq!(g.player(actor).unwrap().mana_pool.total(), 4);
+                    let abilities = g.current_abilities(source).unwrap();
+                    let indices = abilities
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, a)| {
+                            if let AbilityKind::Activated(a) = &a.kind {
+                                a.mana_cost
+                                    .mana_cost()
+                                    .filter(|c| c.generic_mana_total() == 4)
+                                    .map(|_| i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(indices.len(), 1);
+                    let index = indices[0];
+                    let action=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index));
+                    let admitted = action.is_some();
+                    if let Some(a) = action {
+                        cr_audit_complete_priority_action_with_dm(&mut g, actor, a, &mut d, &mut q)
+                            .unwrap();
+                        activations += 1;
+                        mana += 4;
+                        assert_eq!(g.stack.len(), 1);
+                        let e = g.stack.last().unwrap();
+                        assert!(
+                            e.is_ability
+                                && e.object_id == source
+                                && e.controller == actor
+                                && e.targets.is_empty()
+                        );
+                        assert_eq!(e.mana_spent_on_activation.total(), 4);
+                        assert_eq!(g.player(actor).unwrap().mana_pool.total(), 0);
+                        one(&mut g, &mut q, &mut d);
+                    } else {
+                        errors.push(format!(
+                            "this-quality-admission {label} missing paid-capable legal activation"
+                        ));
+                    }
+                    settle(&mut g, &mut q, &mut d);
+                    let count = g.counter_count(source, CounterType::PlusOnePlusOne);
+                    if count != 2 {
+                        errors.push(format!(
+                            "this-quality-counter {label} actual={count} expected=2"
+                        ));
+                    }
+                    assert_eq!(g.current_is_creature(source), !removed);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(source));
+                    assert_eq!(g.object(source).unwrap().owner, owner);
+                    assert_eq!(g.current_controller(source), Some(actor));
+                    assert_eq!(g.counter_count(idle, CounterType::PlusOnePlusOne), 0);
+                    assert_eq!(g.current_power(idle), Some(1));
+                    assert_eq!(g.current_toughness(idle), Some(5));
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected actual this-quality turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert!(g.current_is_creature(source));
+                    assert_eq!(g.current_power(source), Some(count as i32));
+                    assert_eq!(g.current_toughness(source), Some(count as i32));
+                    assert_eq!(g.counter_count(source, CounterType::PlusOnePlusOne), count);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(source));
+                    assert_eq!(g.object(source).unwrap().owner, owner);
+                    assert_eq!(g.current_controller(source), Some(actor));
+                    for (stable, used) in [(th_stable, borrowed), (rh_stable, removed)] {
+                        let id = g.find_object_by_stable_id(stable).unwrap();
+                        assert_eq!(
+                            g.object(id).unwrap().zone,
+                            if used { Zone::Graveyard } else { Zone::Hand }
+                        );
+                    }
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().life, 20);
+                        assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                    }
+                    assert_eq!(
+                        g.turn_store.turn_history.spells_cast_by_player(actor),
+                        u32::from(borrowed) + u32::from(removed)
+                    );
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    assert_eq!(g.turn.active_player, actor);
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    games += 1;
+                    completed += 1;
+                    eprintln!(
+                        "this-quality-observed {label} admitted={admitted} counters={count} restored_power={:?} completed=true",
+                        g.current_power(source)
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "this-quality-summary games={games} spells={spells} activations={activations} paid={mana} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!((games, completed), (24, 24));
+    assert!(
+        errors.is_empty(),
+        "CR700.7: this creature identifies the particular source object even after it stops being a creature. Actual paid self-counter activation must still put its counter on that artifact. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_95e_actual_pair_cannot_return_after_type_loss_during_one_resolving_spell() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::continuous::Modification;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::effects::ApplyContinuousEffect;
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, ChooseSpec, Effect, GameProgress, LegalAction, ManaCost,
+        ObjectFilter, ObjectId, Phase, PowerToughness, Target, TurnAction, TurnRunner,
+        TurnRunnerState, Until, Value, Zone,
+    };
+    struct Choices {
+        source: ObjectId,
+        subject: ObjectId,
+        pair_choices: usize,
+        targets: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            if c.source == Some(self.source)
+                && c.options
+                    .iter()
+                    .any(|o| o.description == "Native actual soulbond entering partner")
+            {
+                let o = c
+                    .options
+                    .iter()
+                    .find(|o| o.legal && o.description == "Native actual soulbond entering partner")
+                    .unwrap();
+                self.pair_choices += 1;
+                vec![o.index]
+            } else {
+                c.options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .take(c.min)
+                    .map(|o| o.index)
+                    .collect()
+            }
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            let t = Target::Object(self.subject);
+            let mut out = vec![];
+            for r in &c.requirements {
+                assert_eq!(r.min_targets, 1);
+                assert!(r.legal_targets.contains(&t));
+                out.push(t);
+            }
+            self.targets += out.len();
+            out
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual soulbond stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let blade=ironsmith_compiler_runtime::compile_to_runtime_definition("Silverblade Paladin","Mana cost: {1}{W}{W}\nType: Creature — Human Knight\nFirst printed set: Avacyn Restored Promos\nPower/Toughness: 2/2\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, both creatures have double strike.",false).unwrap();
+    let wolf=ironsmith_compiler_runtime::compile_to_runtime_definition("Wolfir Silverheart","Mana cost: {3}{G}{G}\nType: Creature — Wolf Warrior\nFirst printed set: Avacyn Restored\nPower/Toughness: 4/4\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures gets +4/+4.",false).unwrap();
+    for def in [&blade, &wolf] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let native = CardDefinitionBuilder::new(CardId::new(), "Native actual soulbond source")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .soulbond()
+        .build();
+    let partner_def =
+        CardDefinitionBuilder::new(CardId::new(), "Native actual soulbond entering partner")
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .mana_cost(ManaCost::new())
+            .power_toughness(PowerToughness::fixed(1, 5))
+            .build();
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native Soulbond actual priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+    let idle_def = CardDefinitionBuilder::new(CardId::new(), "Native opposing Soulbond bystander")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 6))
+        .build();
+    let mut errors = vec![];
+    let (
+        mut games,
+        mut completed,
+        mut casts,
+        mut pair_triggers,
+        mut paired_final,
+        mut double_strikers,
+        mut source_power_total,
+        mut partner_power_total,
+        mut target_choices,
+        mut witness_total,
+    ) = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, def, base_power) in [(0usize, &native, 3i32), (1, &blade, 2), (2, &wolf, 4)] {
+            for subject_source in [false, true] {
+                for mode in 0usize..4 {
+                    let label = format!(
+                        "actor={seat} profile={profile} subject_source={subject_source} mode={mode}"
+                    );
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let idle = g.create_object_from_definition(&idle_def, other, Zone::Battlefield);
+                    let source = g.create_object_from_definition(def, actor, Zone::Battlefield);
+                    g.remove_summoning_sickness(source);
+                    let source_stable = g.object(source).unwrap().stable_id;
+                    let hand = g.create_object_from_definition(&partner_def, actor, Zone::Hand);
+                    let partner_stable = g.object(hand).unwrap().stable_id;
+                    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent()));
+                    let changed_tag = "native_soulbond_changed_subject";
+                    let changed = ChooseSpec::Tagged(changed_tag.into());
+                    let remove = || {
+                        Effect::new(
+                            ApplyContinuousEffect::with_spec(
+                                target.clone(),
+                                Modification::RemoveCardTypes(vec![CardType::Creature]),
+                                Until::Forever,
+                            )
+                            .with_additional_modification(
+                                Modification::AddCardTypes(vec![CardType::Artifact]),
+                            ),
+                        )
+                        .tag(changed_tag)
+                    };
+                    let witness =
+                        || Effect::gain_life(Value::Count(ObjectFilter::creature().you_control()));
+                    let effects = match mode {
+                        0 => vec![witness()],
+                        1 => vec![remove(), witness()],
+                        2 => vec![
+                            remove(),
+                            witness(),
+                            Effect::new(ApplyContinuousEffect::with_spec(
+                                changed.clone(),
+                                Modification::AddCardTypes(vec![CardType::Creature]),
+                                Until::Forever,
+                            )),
+                        ],
+                        _ => vec![
+                            Effect::new(ApplyContinuousEffect::with_spec(
+                                target.clone(),
+                                Modification::ChangeController(other),
+                                Until::Forever,
+                            ))
+                            .tag(changed_tag),
+                            witness(),
+                            Effect::new(ApplyContinuousEffect::with_spec(
+                                changed,
+                                Modification::ChangeController(actor),
+                                Until::Forever,
+                            )),
+                        ],
+                    };
+                    let utility_def = CardDefinitionBuilder::new(
+                        CardId::new(),
+                        "Native actual Soulbond type and control instruction",
+                    )
+                    .card_types(vec![CardType::Instant])
+                    .mana_cost(ManaCost::new())
+                    .with_spell_effect(effects)
+                    .build();
+                    let utility = g.create_object_from_definition(&utility_def, actor, Zone::Hand);
+                    let utility_stable = g.object(utility).unwrap().stable_id;
+                    let mut d = Choices {
+                        source,
+                        subject: source,
+                        pair_choices: 0,
+                        targets: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    assert_eq!(g.soulbond_partner(source), None);
+                    assert_eq!(g.current_power(source), Some(base_power));
+                    assert_eq!(g.current_toughness(source), Some(base_power));
+                    assert!(!g.object_has_static_ability_id(source, StaticAbilityId::DoubleStrike));
+                    cast(&mut g, &mut q, &mut d, actor, hand);
+                    casts += 1;
+                    one(&mut g, &mut q, &mut d);
+                    let partner = g.find_object_by_stable_id(partner_stable).unwrap();
+                    assert_ne!(partner, hand);
+                    assert_eq!(g.object(partner).unwrap().zone, Zone::Battlefield);
+                    assert_eq!(g.stack.len(), 1);
+                    let pending = g.stack.last().unwrap();
+                    assert!(
+                        pending.is_ability
+                            && pending.object_id == source
+                            && pending.controller == actor
+                            && pending.targets.is_empty()
+                    );
+                    pair_triggers += 1;
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    assert_eq!(d.pair_choices, 1);
+                    assert_eq!(g.soulbond_partner(source), Some(partner));
+                    assert_eq!(g.soulbond_partner(partner), Some(source));
+                    let bonus = if profile == 2 { 4 } else { 0 };
+                    assert_eq!(g.current_power(source), Some(base_power + bonus));
+                    assert_eq!(g.current_toughness(source), Some(base_power + bonus));
+                    assert_eq!(g.current_power(partner), Some(1 + bonus));
+                    assert_eq!(g.current_toughness(partner), Some(5 + bonus));
+                    for id in [source, partner] {
+                        assert_eq!(
+                            g.object_has_static_ability_id(id, StaticAbilityId::DoubleStrike),
+                            profile == 1
+                        );
+                    }
+                    let subject = if subject_source { source } else { partner };
+                    d.subject = subject;
+                    cast(&mut g, &mut q, &mut d, actor, utility);
+                    casts += 1;
+                    assert_eq!(g.stack.len(), 1);
+                    let entry = g.stack.last().unwrap();
+                    assert!(!entry.is_ability && entry.controller == actor);
+                    assert_eq!(entry.targets.is_empty(), mode == 0);
+                    assert!(entry.targets.iter().all(|t| *t == Target::Object(subject)));
+                    assert_eq!(
+                        g.object(entry.object_id)
+                            .unwrap()
+                            .mana_spent_to_cast
+                            .total(),
+                        0
+                    );
+                    one(&mut g, &mut q, &mut d);
+                    assert!(
+                        g.stack.is_empty() && q.is_empty(),
+                        "type/control instructions create no new entry trigger"
+                    );
+                    settle(&mut g, &mut q, &mut d);
+                    assert_eq!(d.pair_choices, 1);
+                    let life = g.player(actor).unwrap().life;
+                    let expected_life = if mode == 0 { 22 } else { 21 };
+                    assert_eq!(
+                        life, expected_life,
+                        "actual middle instruction counts own creatures after the first type/control change and before restoration"
+                    );
+                    witness_total += life - 20;
+                    let wanted_paired = mode == 0;
+                    let actual_paired = g.soulbond_partner(source) == Some(partner)
+                        && g.soulbond_partner(partner) == Some(source);
+                    if actual_paired != wanted_paired {
+                        errors.push(format!("soulbond-transient-pair {label} actual={actual_paired} expected={wanted_paired} source_pair={:?} partner_pair={:?}",g.soulbond_partner(source),g.soulbond_partner(partner)));
+                    }
+                    let wanted_bonus = if profile == 2 && wanted_paired { 4 } else { 0 };
+                    let actual_source_power = g.current_power(source);
+                    let actual_partner_power = g.current_power(partner);
+                    let source_creature = !(mode == 1 && subject_source);
+                    let partner_creature = !(mode == 1 && !subject_source);
+                    assert_eq!(g.current_is_creature(source), source_creature);
+                    assert_eq!(g.current_is_creature(partner), partner_creature);
+                    if source_creature
+                        && (actual_source_power != Some(base_power + wanted_bonus)
+                            || g.current_toughness(source) != Some(base_power + wanted_bonus))
+                    {
+                        errors.push(format!("soulbond-transient-source-bonus {label} actual={actual_source_power:?}/{:?} expected={}",g.current_toughness(source),base_power+wanted_bonus));
+                    }
+                    if partner_creature
+                        && (actual_partner_power != Some(1 + wanted_bonus)
+                            || g.current_toughness(partner) != Some(5 + wanted_bonus))
+                    {
+                        errors.push(format!("soulbond-transient-partner-bonus {label} actual={actual_partner_power:?}/{:?} expected={}/{}",g.current_toughness(partner),1+wanted_bonus,5+wanted_bonus));
+                    }
+                    for (id, creature) in [(source, source_creature), (partner, partner_creature)] {
+                        let double =
+                            g.object_has_static_ability_id(id, StaticAbilityId::DoubleStrike);
+                        let wanted = profile == 1 && wanted_paired;
+                        if double != wanted {
+                            errors.push(format!("soulbond-transient-double-strike {label} object={id:?} creature={creature} actual={double} expected={wanted}"));
+                        }
+                        double_strikers += usize::from(double);
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                        assert_eq!(g.object(id).unwrap().owner, actor);
+                        assert_eq!(g.current_controller(id), Some(actor));
+                    }
+                    paired_final += usize::from(actual_paired);
+                    source_power_total += if source_creature {
+                        actual_source_power.unwrap()
+                    } else {
+                        0
+                    };
+                    partner_power_total += if partner_creature {
+                        actual_partner_power.unwrap()
+                    } else {
+                        0
+                    };
+                    target_choices += d.targets;
+                    assert_eq!(g.find_object_by_stable_id(source_stable), Some(source));
+                    assert_eq!(g.find_object_by_stable_id(partner_stable), Some(partner));
+                    assert_eq!(g.soulbond_partner(idle), None);
+                    assert_eq!(g.current_power(idle), Some(2));
+                    assert_eq!(g.current_toughness(idle), Some(6));
+                    assert_eq!(g.current_controller(idle), Some(other));
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected actual soulbond turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert_eq!(g.soulbond_partner(source) == Some(partner), actual_paired);
+                    assert_eq!(g.soulbond_partner(partner) == Some(source), actual_paired);
+                    assert_eq!(g.current_is_creature(source), source_creature);
+                    assert_eq!(g.current_is_creature(partner), partner_creature);
+                    assert_eq!(g.find_object_by_stable_id(source_stable), Some(source));
+                    assert_eq!(g.find_object_by_stable_id(partner_stable), Some(partner));
+                    let ended_utility = g.find_object_by_stable_id(utility_stable).unwrap();
+                    assert_eq!(g.object(ended_utility).unwrap().zone, Zone::Graveyard);
+                    for p in [actor, other] {
+                        assert_eq!(
+                            g.player(p).unwrap().life,
+                            if p == actor { life } else { 20 }
+                        );
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                        assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                    }
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 2);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    assert_eq!(g.turn.active_player, actor);
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    games += 1;
+                    completed += 1;
+                    eprintln!(
+                        "soulbond-transient-observed {label} paired={actual_paired} expected_paired={wanted_paired} source_power={actual_source_power:?} partner_power={actual_partner_power:?} source_creature={source_creature} partner_creature={partner_creature} life={life} completed=true"
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "soulbond-transient-summary games={games} casts={casts} triggers={pair_triggers} paired={paired_final} double_strikers={double_strikers} source_power={source_power_total} partner_power={partner_power_total} target_choices={target_choices} witness_life={witness_total} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!((games, casts, pair_triggers, completed), (48, 96, 48, 48));
+    assert!(
+        errors.is_empty(),
+        "CR702.95e: a real Soulbond pair ends when one creature ceases to be a creature or another player gains control; restoring its type or control later in the same resolving spell cannot recreate a pair without another Soulbond resolution. Full Silverblade Paladin and Wolfir Silverheart verify actual shared ability and power/toughness consequences. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_95a_c_actual_soulbond_casts_recheck_both_objects_before_pairing() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::continuous::Modification;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::effects::ApplyContinuousEffect;
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, ChooseSpec, Effect, GameProgress, LegalAction, ManaCost,
+        ManaSymbol, ObjectFilter, ObjectId, Phase, PowerToughness, Target, TurnAction, TurnRunner,
+        TurnRunnerState, Until, Zone,
+    };
+    struct Choices {
+        source: ObjectId,
+        subject: ObjectId,
+        accept: bool,
+        pair_choices: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            if c.source == Some(self.source)
+                && c.options
+                    .iter()
+                    .any(|o| o.description == "Native Soulbond own-cast partner")
+            {
+                self.pair_choices += 1;
+                if self.accept {
+                    vec![
+                        c.options
+                            .iter()
+                            .find(|o| {
+                                o.legal && o.description == "Native Soulbond own-cast partner"
+                            })
+                            .unwrap()
+                            .index,
+                    ]
+                } else {
+                    vec![]
+                }
+            } else {
+                c.options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .take(c.min)
+                    .map(|o| o.index)
+                    .collect()
+            }
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.requirements.len(), 1);
+            let t = Target::Object(self.subject);
+            assert!(c.requirements[0].legal_targets.contains(&t));
+            vec![t]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual soulbond own-cast stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let blade=ironsmith_compiler_runtime::compile_to_runtime_definition("Silverblade Paladin","Mana cost: {1}{W}{W}\nType: Creature — Human Knight\nFirst printed set: Avacyn Restored Promos\nPower/Toughness: 2/2\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, both creatures have double strike.",false).unwrap();
+    let wolf=ironsmith_compiler_runtime::compile_to_runtime_definition("Wolfir Silverheart","Mana cost: {3}{G}{G}\nType: Creature — Wolf Warrior\nFirst printed set: Avacyn Restored\nPower/Toughness: 4/4\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures gets +4/+4.",false).unwrap();
+    for def in [&blade, &wolf] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native Soulbond own-cast priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+    let partner_def = CardDefinitionBuilder::new(CardId::new(), "Native Soulbond own-cast partner")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 5))
+        .build();
+    let payer = CardDefinitionBuilder::new(CardId::new(), "Native Soulbond seven-mana payer")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::mana(
+            ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::tap()),
+            vec![
+                ManaSymbol::White,
+                ManaSymbol::White,
+                ManaSymbol::Green,
+                ManaSymbol::Green,
+                ManaSymbol::Colorless,
+                ManaSymbol::Colorless,
+                ManaSymbol::Colorless,
+            ],
+        ))
+        .build();
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+    let destroy = CardDefinitionBuilder::new(
+        CardId::new(),
+        "Native actual Soulbond pre-resolution destruction",
+    )
+    .card_types(vec![CardType::Instant])
+    .mana_cost(ManaCost::new())
+    .with_spell_effect(vec![Effect::destroy(target.clone())])
+    .build();
+    let theft =
+        CardDefinitionBuilder::new(CardId::new(), "Native actual Soulbond pre-resolution theft")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
+            .with_spell_effect(vec![Effect::gain_control_with_duration(
+                target.clone(),
+                Until::Forever,
+            )])
+            .build();
+    let remove = CardDefinitionBuilder::new(
+        CardId::new(),
+        "Native actual Soulbond pre-resolution creature type loss",
+    )
+    .card_types(vec![CardType::Instant])
+    .mana_cost(ManaCost::new())
+    .with_spell_effect(vec![Effect::new(
+        ApplyContinuousEffect::with_spec(
+            target,
+            Modification::RemoveCardTypes(vec![CardType::Creature]),
+            Until::Forever,
+        )
+        .with_additional_modification(Modification::AddCardTypes(vec![CardType::Artifact])),
+    )])
+    .build();
+    let mut errors = vec![];
+    let (
+        mut games,
+        mut completed,
+        mut source_casts,
+        mut responses,
+        mut paid,
+        mut triggers,
+        mut paired_count,
+        mut offers,
+    ) = (0, 0, 0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, def, cost, base_power) in [(0usize, &blade, 3u32, 2i32), (1, &wolf, 5, 4)] {
+            for accept in [false, true] {
+                for mode in 0usize..7 {
+                    let label =
+                        format!("actor={seat} profile={profile} accept={accept} mode={mode}");
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let partner =
+                        g.create_object_from_definition(&partner_def, actor, Zone::Battlefield);
+                    let partner_stable = g.object(partner).unwrap().stable_id;
+                    let payer_id =
+                        g.create_object_from_definition(&payer, actor, Zone::Battlefield);
+                    let hand = g.create_object_from_definition(def, actor, Zone::Hand);
+                    let source_stable = g.object(hand).unwrap().stable_id;
+                    let response = g.create_object_from_definition(
+                        match mode {
+                            3 | 4 => &theft,
+                            5 | 6 => &remove,
+                            _ => &destroy,
+                        },
+                        other,
+                        Zone::Hand,
+                    );
+                    let response_stable = g.object(response).unwrap().stable_id;
+                    let mut d = Choices {
+                        source: hand,
+                        subject: partner,
+                        accept,
+                        pair_choices: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    assert_eq!(g.soulbond_partner(partner), None);
+                    let a=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}if *source==payer_id)).unwrap();
+                    cr_audit_complete_priority_action_with_dm(&mut g, actor, a, &mut d, &mut q)
+                        .unwrap();
+                    assert_eq!(g.player(actor).unwrap().mana_pool.total(), 7);
+                    assert!(g.is_tapped(payer_id));
+                    cast(&mut g, &mut q, &mut d, actor, hand);
+                    source_casts += 1;
+                    paid += cost;
+                    let stack_source = g.find_object_by_stable_id(source_stable).unwrap();
+                    assert_eq!(g.object(stack_source).unwrap().zone, Zone::Stack);
+                    assert_eq!(
+                        g.object(stack_source).unwrap().mana_spent_to_cast.total(),
+                        cost
+                    );
+                    one(&mut g, &mut q, &mut d);
+                    let source = g.find_object_by_stable_id(source_stable).unwrap();
+                    assert_ne!(source, hand);
+                    assert_eq!(g.object(source).unwrap().zone, Zone::Battlefield);
+                    d.source = source;
+                    assert_eq!(g.stack.len(), 1);
+                    let e = g.stack.last().unwrap();
+                    assert!(
+                        e.is_ability
+                            && e.object_id == source
+                            && e.controller == actor
+                            && e.targets.is_empty()
+                    );
+                    let original = e.target_id();
+                    triggers += 1;
+                    if mode > 0 {
+                        d.subject = if mode % 2 == 1 { source } else { partner };
+                        cast(&mut g, &mut q, &mut d, other, response);
+                        assert_eq!(
+                            g.stack.last().unwrap().targets,
+                            vec![Target::Object(d.subject)]
+                        );
+                        one(&mut g, &mut q, &mut d);
+                        responses += 1;
+                        assert!(g.stack.iter().any(|e| e.target_id() == original));
+                    }
+                    let current = g.find_object_by_stable_id(source_stable).unwrap();
+                    assert_eq!(
+                        g.object(current).unwrap().zone,
+                        if mode == 1 {
+                            Zone::Graveyard
+                        } else {
+                            Zone::Battlefield
+                        }
+                    );
+                    assert_eq!(g.object(partner).is_some(), mode != 2);
+                    let current_partner = g.find_object_by_stable_id(partner_stable).unwrap();
+                    assert_eq!(
+                        g.object(current_partner).unwrap().zone,
+                        if mode == 2 {
+                            Zone::Graveyard
+                        } else {
+                            Zone::Battlefield
+                        }
+                    );
+                    assert_eq!(g.object(current_partner).unwrap().owner, actor);
+                    assert_eq!(current_partner == partner, mode != 2);
+                    assert_eq!(g.object(current).unwrap().owner, actor);
+                    if mode != 1 {
+                        assert_eq!(
+                            g.current_controller(current),
+                            Some(if mode == 3 { other } else { actor })
+                        );
+                        assert_eq!(g.current_is_creature(current), mode != 5);
+                    }
+                    if mode != 2 {
+                        assert_eq!(
+                            g.current_controller(partner),
+                            Some(if mode == 4 { other } else { actor })
+                        );
+                        assert_eq!(g.current_is_creature(partner), mode != 6);
+                    }
+                    assert_eq!(g.stack.len(), 1);
+                    assert_eq!(g.stack.last().unwrap().target_id(), original);
+                    assert_eq!(g.stack.last().unwrap().controller, actor);
+                    assert!(g.stack.last().unwrap().targets.is_empty());
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let expected = mode == 0 && accept;
+                    let paired = g.soulbond_partner(source) == Some(partner)
+                        && g.soulbond_partner(partner) == Some(source);
+                    if paired != expected {
+                        errors.push(format!("soulbond-own-cast-pair {label} actual={paired} expected={expected} source_pair={:?} partner_pair={:?}",g.soulbond_partner(source),g.soulbond_partner(partner)));
+                    }
+                    if mode == 0 {
+                        assert_eq!(d.pair_choices, 1);
+                    }
+                    offers += d.pair_choices;
+                    paired_count += usize::from(paired);
+                    let bonus = if profile == 1 && expected { 4 } else { 0 };
+                    if mode != 1 && mode != 5 {
+                        if g.current_power(source) != Some(base_power + bonus)
+                            || g.current_toughness(source) != Some(base_power + bonus)
+                        {
+                            errors.push(format!("soulbond-own-cast-source-bonus {label} actual={:?}/{:?} expected={}",g.current_power(source),g.current_toughness(source),base_power+bonus));
+                        }
+                    }
+                    if mode != 2 && mode != 6 {
+                        if g.current_power(partner) != Some(1 + bonus)
+                            || g.current_toughness(partner) != Some(5 + bonus)
+                        {
+                            errors.push(format!("soulbond-own-cast-partner-bonus {label} actual={:?}/{:?} expected={}/{}",g.current_power(partner),g.current_toughness(partner),1+bonus,5+bonus));
+                        }
+                    }
+                    for id in [source, partner] {
+                        if g.object(id).is_some_and(|o| o.zone == Zone::Battlefield) {
+                            let double =
+                                g.object_has_static_ability_id(id, StaticAbilityId::DoubleStrike);
+                            if double != (profile == 0 && expected) {
+                                errors.push(format!("soulbond-own-cast-double-strike {label} object={id:?} actual={double} expected={}",profile==0&&expected));
+                            }
+                        }
+                    }
+                    assert_eq!(g.player(actor).unwrap().mana_pool.total(), 7 - cost);
+                    assert_eq!(g.find_object_by_stable_id(source_stable), Some(current));
+                    let mut runner =
+                        TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                    finish(&mut g, &mut q, &mut d);
+                    runner.priority_done();
+                    let mut done = false;
+                    for _ in 0..320 {
+                        match runner.advance(&mut g, &mut q).unwrap() {
+                            TurnAction::Continue => {}
+                            TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                runner.respond_attackers(vec![])
+                            }
+                            TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                runner.respond_blockers(vec![], c.player)
+                            }
+                            TurnAction::RunPriority => {
+                                ironsmith::game_loop::advance_priority_with_dm(
+                                    &mut g, &mut q, &mut d,
+                                )
+                                .unwrap();
+                                settle(&mut g, &mut q, &mut d);
+                                finish(&mut g, &mut q, &mut d);
+                                runner.priority_done();
+                            }
+                            TurnAction::TurnComplete => {
+                                done = true;
+                                break;
+                            }
+                            other => panic!("unexpected actual Soulbond own-cast turn {other:?}"),
+                        }
+                    }
+                    assert!(done);
+                    assert_eq!(g.soulbond_partner(source) == Some(partner), paired);
+                    assert_eq!(g.soulbond_partner(partner) == Some(source), paired);
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().life, 20);
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                        assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                    }
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    let response_id = g.find_object_by_stable_id(response_stable).unwrap();
+                    assert_eq!(
+                        g.object(response_id).unwrap().zone,
+                        if mode == 0 {
+                            Zone::Hand
+                        } else {
+                            Zone::Graveyard
+                        }
+                    );
+                    assert!(g.is_tapped(payer_id));
+                    assert_eq!(
+                        g.find_object_by_stable_id(partner_stable),
+                        Some(current_partner)
+                    );
+                    assert_eq!(g.object(current_partner).unwrap().owner, actor);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 1);
+                    assert_eq!(
+                        g.turn_store.turn_history.spells_cast_by_player(other),
+                        u32::from(mode > 0)
+                    );
+                    assert_eq!(g.turn.active_player, actor);
+                    assert_eq!(g.turn.turn_number, turn);
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    games += 1;
+                    completed += 1;
+                    eprintln!(
+                        "soulbond-own-cast-observed {label} paired={paired} expected={expected} offers={} source_zone={:?} completed=true",
+                        d.pair_choices,
+                        g.object(current).unwrap().zone
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "soulbond-own-cast-summary games={games} source_casts={source_casts} responses={responses} paid={paid} triggers={triggers} paired={paired_count} offers={offers} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!(
+        (games, source_casts, responses, paid, triggers, completed),
+        (56, 56, 48, 224, 56, 56)
+    );
+    assert!(
+        errors.is_empty(),
+        "CR702.95a/c: actual complete Soulbond creature casts permit an optional pair on their own entry, but the original trigger must recheck both exact objects for current battlefield presence, creature type and control before pairing. Actual opposing responses invalidate each of those six object/condition branches. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_95a_d_competing_entry_triggers_cannot_replace_a_real_pair() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, OrderContext};
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaCost, ObjectId, Phase,
+        PowerToughness, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    struct Choices {
+        sources: Vec<ObjectId>,
+        wanted: ObjectId,
+        accept: bool,
+        preferred_top: Option<ObjectId>,
+        offers: usize,
+        orders: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, g: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            if c.source.is_some_and(|s| self.sources.contains(&s)) && c.min == 0 && c.max == 1 {
+                let expected = g.object(self.wanted).unwrap().name.to_string();
+                let names = c
+                    .options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .map(|o| o.description.clone())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    names,
+                    vec![expected.clone()],
+                    "another-entry Soulbond pairs only with that entrant, not an old idle creature"
+                );
+                self.offers += 1;
+                if self.accept {
+                    vec![
+                        c.options
+                            .iter()
+                            .find(|o| o.legal && o.description == expected)
+                            .unwrap()
+                            .index,
+                    ]
+                } else {
+                    vec![]
+                }
+            } else {
+                c.options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .take(c.min)
+                    .map(|o| o.index)
+                    .collect()
+            }
+        }
+        fn decide_order(&mut self, _: &GameState, c: &OrderContext) -> Vec<ObjectId> {
+            assert_eq!(c.item_sources.len(), c.items.len());
+            assert!(
+                c.item_sources
+                    .iter()
+                    .all(|s| s.is_some_and(|s| self.sources.contains(&s)))
+            );
+            let mut items = c
+                .items
+                .iter()
+                .enumerate()
+                .map(|(i, (id, _))| (*id, c.item_sources[i].unwrap()))
+                .collect::<Vec<_>>();
+            if let Some(top) = self.preferred_top {
+                items.sort_by_key(|(_, source)| usize::from(*source != top));
+            }
+            self.orders += 1;
+            items.into_iter().map(|(id, _)| id).collect()
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual competing Soulbond stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+
+    fn complete(
+        g: &mut GameState,
+        q: &mut TriggerQueue,
+        d: &mut Choices,
+        actor: PlayerId,
+        turn: u32,
+    ) {
+        let mut runner = TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+        finish(g, q, d);
+        runner.priority_done();
+        let mut done = false;
+        for _ in 0..320 {
+            match runner.advance(g, q).unwrap() {
+                TurnAction::Continue => {}
+                TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                    runner.respond_attackers(vec![])
+                }
+                TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                    runner.respond_blockers(vec![], c.player)
+                }
+                TurnAction::RunPriority => {
+                    ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+                    settle(g, q, d);
+                    finish(g, q, d);
+                    runner.priority_done();
+                }
+                TurnAction::TurnComplete => {
+                    done = true;
+                    break;
+                }
+                other => panic!("unexpected actual competing Soulbond turn {other:?}"),
+            }
+        }
+        assert!(done);
+        assert_eq!(g.turn.active_player, actor);
+        assert_eq!(g.turn.turn_number, turn);
+        for p in [actor, PlayerId::from_index(1 - actor.0)] {
+            assert_eq!(g.player(p).unwrap().life, 20);
+            assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+            assert_eq!(g.player(p).unwrap().poison_counters, 0);
+        }
+        assert!(g.stack.is_empty() && q.is_empty());
+        g.validate_zone_consistency().unwrap();
+    }
+    fn traits(g: &GameState, id: ObjectId, p: i32, t: i32, double: bool) {
+        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+        assert!(g.current_is_creature(id));
+        assert_eq!(g.current_power(id), Some(p));
+        assert_eq!(g.current_toughness(id), Some(t));
+        assert_eq!(
+            g.object_has_static_ability_id(id, StaticAbilityId::DoubleStrike),
+            double
+        );
+    }
+    let blade=ironsmith_compiler_runtime::compile_to_runtime_definition("Silverblade Paladin","Mana cost: {1}{W}{W}\nType: Creature — Human Knight\nFirst printed set: Avacyn Restored Promos\nPower/Toughness: 2/2\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, both creatures have double strike.",false).unwrap();
+    let wolf=ironsmith_compiler_runtime::compile_to_runtime_definition("Wolfir Silverheart","Mana cost: {3}{G}{G}\nType: Creature — Wolf Warrior\nFirst printed set: Avacyn Restored\nPower/Toughness: 4/4\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures gets +4/+4.",false).unwrap();
+    for def in [&blade, &wolf] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let native = CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond source A")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .soulbond()
+        .build();
+    let native_b = CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond source B")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .soulbond()
+        .build();
+    let entrant = |name: &str, p: i32, t: i32| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .mana_cost(ManaCost::new())
+            .power_toughness(PowerToughness::fixed(p, t))
+            .flash()
+            .build()
+    };
+    let ea = entrant("Native exclusive Soulbond entrant A", 1, 5);
+    let eb = entrant("Native exclusive Soulbond entrant B", 2, 6);
+    let idle_def =
+        CardDefinitionBuilder::new(CardId::new(), "Native older unpaired Soulbond bystander")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 7))
+            .build();
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+
+    let mut errors = vec![];
+    let (mut games, mut casts, mut triggers, mut offers, mut completed) = (0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, def, base_power) in [(0usize, &native, 3i32), (1, &blade, 2), (2, &wolf, 4)] {
+            for reverse in [false, true] {
+                for decline_top in [false, true] {
+                    let label = format!(
+                        "actor={seat} profile={profile} reverse={reverse} decline_top={decline_top}"
+                    );
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let source = g.create_object_from_definition(def, actor, Zone::Battlefield);
+                    let idle = g.create_object_from_definition(&idle_def, actor, Zone::Battlefield);
+                    let ha = g.create_object_from_definition(&ea, actor, Zone::Hand);
+                    let hb = g.create_object_from_definition(&eb, actor, Zone::Hand);
+                    let sa = g.object(ha).unwrap().stable_id;
+                    let sb = g.object(hb).unwrap().stable_id;
+                    let (first_hand, second_hand) = if reverse { (hb, ha) } else { (ha, hb) };
+                    let mut d = Choices {
+                        sources: vec![source],
+                        wanted: source,
+                        accept: true,
+                        preferred_top: None,
+                        offers: 0,
+                        orders: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    cast(&mut g, &mut q, &mut d, actor, first_hand);
+                    casts += 1;
+                    one(&mut g, &mut q, &mut d);
+                    assert_eq!(g.stack.len(), 1);
+                    let old = g.stack.last().unwrap().target_id();
+                    assert!(
+                        g.stack.last().unwrap().is_ability
+                            && g.stack.last().unwrap().object_id == source
+                            && g.stack.last().unwrap().controller == actor
+                            && g.stack.last().unwrap().targets.is_empty()
+                    );
+                    cast(&mut g, &mut q, &mut d, actor, second_hand);
+                    casts += 1;
+                    assert_eq!(g.stack.len(), 2);
+                    one(&mut g, &mut q, &mut d);
+                    assert_eq!(g.stack.len(), 2);
+                    let new = g.stack.last().unwrap().target_id();
+                    assert_ne!(new, old);
+                    assert_eq!(g.stack[0].target_id(), old);
+                    assert!(g.stack.iter().all(|e| e.is_ability
+                        && e.object_id == source
+                        && e.controller == actor
+                        && e.targets.is_empty()));
+                    triggers += 2;
+                    let a = g.find_object_by_stable_id(sa).unwrap();
+                    let b = g.find_object_by_stable_id(sb).unwrap();
+                    assert_ne!(a, ha);
+                    assert_ne!(b, hb);
+                    let (first, second) = if reverse { (b, a) } else { (a, b) };
+                    assert_eq!(g.soulbond_partner(source), None);
+                    d.wanted = second;
+                    d.accept = !decline_top;
+                    one(&mut g, &mut q, &mut d);
+                    assert_eq!(g.stack.len(), 1);
+                    assert_eq!(g.stack.last().unwrap().target_id(), old);
+                    if decline_top {
+                        assert_eq!(g.soulbond_partner(source), None);
+                        assert_eq!(g.soulbond_partner(second), None);
+                    } else {
+                        assert_eq!(g.soulbond_partner(source), Some(second));
+                        assert_eq!(g.soulbond_partner(second), Some(source));
+                    }
+                    d.wanted = first;
+                    d.accept = true;
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let selected = if decline_top { first } else { second };
+                    let unused = if decline_top { second } else { first };
+                    if g.soulbond_partner(source) != Some(selected)
+                        || g.soulbond_partner(selected) != Some(source)
+                        || g.soulbond_partner(unused).is_some()
+                        || g.soulbond_partner(idle).is_some()
+                    {
+                        errors.push(format!("soulbond-one-source-pair {label} source={:?} selected={:?} unused={:?} idle={:?}",g.soulbond_partner(source),g.soulbond_partner(selected),g.soulbond_partner(unused),g.soulbond_partner(idle)));
+                    }
+                    let bonus = if profile == 2 { 4 } else { 0 };
+                    traits(
+                        &g,
+                        source,
+                        base_power + bonus,
+                        base_power + bonus,
+                        profile == 1,
+                    );
+                    traits(
+                        &g,
+                        a,
+                        1 + if a == selected { bonus } else { 0 },
+                        5 + if a == selected { bonus } else { 0 },
+                        profile == 1 && a == selected,
+                    );
+                    traits(
+                        &g,
+                        b,
+                        2 + if b == selected { bonus } else { 0 },
+                        6 + if b == selected { bonus } else { 0 },
+                        profile == 1 && b == selected,
+                    );
+                    traits(&g, idle, 1, 7, false);
+                    offers += d.offers;
+                    complete(&mut g, &mut q, &mut d, actor, turn);
+                    assert_eq!(g.soulbond_partner(source), Some(selected));
+                    assert_eq!(g.soulbond_partner(selected), Some(source));
+                    assert_eq!(g.soulbond_partner(unused), None);
+                    assert_eq!(g.soulbond_partner(idle), None);
+                    assert_eq!(g.find_object_by_stable_id(sa), Some(a));
+                    assert_eq!(g.find_object_by_stable_id(sb), Some(b));
+                    for id in [source, idle, a, b] {
+                        assert_eq!(g.object(id).unwrap().owner, actor);
+                        assert_eq!(g.current_controller(id), Some(actor));
+                    }
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 2);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    games += 1;
+                    completed += 1;
+                    eprintln!(
+                        "soulbond-one-source-observed {label} selected_a={} offers={} completed=true",
+                        selected == a,
+                        d.offers
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "soulbond-one-source-summary games={games} casts={casts} triggers={triggers} offers={offers} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!((games, casts, triggers, completed), (24, 48, 48, 24));
+    assert!(
+        errors.is_empty(),
+        "CR702.95a/d: two actual flash entrants queue distinct triggers; after the first accepted pair the older trigger cannot replace it. Declining the top trigger preserves the older trigger's own entrant choice. Each non-entering idle creature remains ineligible. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_95a_d_two_sources_cannot_share_or_steal_one_actual_entrant() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, OrderContext};
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, Effect, GameProgress, LegalAction, ManaCost, ObjectId, Phase,
+        PowerToughness, TurnAction, TurnRunner, TurnRunnerState, Zone,
+    };
+    struct Choices {
+        sources: Vec<ObjectId>,
+        wanted: ObjectId,
+        accept: bool,
+        preferred_top: Option<ObjectId>,
+        offers: usize,
+        orders: usize,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, g: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            if c.source.is_some_and(|s| self.sources.contains(&s)) && c.min == 0 && c.max == 1 {
+                let expected = g.object(self.wanted).unwrap().name.to_string();
+                let names = c
+                    .options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .map(|o| o.description.clone())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    names,
+                    vec![expected.clone()],
+                    "another-entry Soulbond pairs only with that entrant, not an old idle creature"
+                );
+                self.offers += 1;
+                if self.accept {
+                    vec![
+                        c.options
+                            .iter()
+                            .find(|o| o.legal && o.description == expected)
+                            .unwrap()
+                            .index,
+                    ]
+                } else {
+                    vec![]
+                }
+            } else {
+                c.options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .take(c.min)
+                    .map(|o| o.index)
+                    .collect()
+            }
+        }
+        fn decide_order(&mut self, _: &GameState, c: &OrderContext) -> Vec<ObjectId> {
+            assert_eq!(c.item_sources.len(), c.items.len());
+            assert!(
+                c.item_sources
+                    .iter()
+                    .all(|s| s.is_some_and(|s| self.sources.contains(&s)))
+            );
+            let mut items = c
+                .items
+                .iter()
+                .enumerate()
+                .map(|(i, (id, _))| (*id, c.item_sources[i].unwrap()))
+                .collect::<Vec<_>>();
+            if let Some(top) = self.preferred_top {
+                items.sort_by_key(|(_, source)| usize::from(*source != top));
+            }
+            self.orders += 1;
+            items.into_iter().map(|(id, _)| id).collect()
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual competing Soulbond stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+
+    fn complete(
+        g: &mut GameState,
+        q: &mut TriggerQueue,
+        d: &mut Choices,
+        actor: PlayerId,
+        turn: u32,
+    ) {
+        let mut runner = TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+        finish(g, q, d);
+        runner.priority_done();
+        let mut done = false;
+        for _ in 0..320 {
+            match runner.advance(g, q).unwrap() {
+                TurnAction::Continue => {}
+                TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                    runner.respond_attackers(vec![])
+                }
+                TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                    runner.respond_blockers(vec![], c.player)
+                }
+                TurnAction::RunPriority => {
+                    ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+                    settle(g, q, d);
+                    finish(g, q, d);
+                    runner.priority_done();
+                }
+                TurnAction::TurnComplete => {
+                    done = true;
+                    break;
+                }
+                other => panic!("unexpected actual competing Soulbond turn {other:?}"),
+            }
+        }
+        assert!(done);
+        assert_eq!(g.turn.active_player, actor);
+        assert_eq!(g.turn.turn_number, turn);
+        for p in [actor, PlayerId::from_index(1 - actor.0)] {
+            assert_eq!(g.player(p).unwrap().life, 20);
+            assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+            assert_eq!(g.player(p).unwrap().poison_counters, 0);
+        }
+        assert!(g.stack.is_empty() && q.is_empty());
+        g.validate_zone_consistency().unwrap();
+    }
+    fn traits(g: &GameState, id: ObjectId, p: i32, t: i32, double: bool) {
+        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+        assert!(g.current_is_creature(id));
+        assert_eq!(g.current_power(id), Some(p));
+        assert_eq!(g.current_toughness(id), Some(t));
+        assert_eq!(
+            g.object_has_static_ability_id(id, StaticAbilityId::DoubleStrike),
+            double
+        );
+    }
+    let blade=ironsmith_compiler_runtime::compile_to_runtime_definition("Silverblade Paladin","Mana cost: {1}{W}{W}\nType: Creature — Human Knight\nFirst printed set: Avacyn Restored Promos\nPower/Toughness: 2/2\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, both creatures have double strike.",false).unwrap();
+    let wolf=ironsmith_compiler_runtime::compile_to_runtime_definition("Wolfir Silverheart","Mana cost: {3}{G}{G}\nType: Creature — Wolf Warrior\nFirst printed set: Avacyn Restored\nPower/Toughness: 4/4\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures gets +4/+4.",false).unwrap();
+    for def in [&blade, &wolf] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let native = CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond source A")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .soulbond()
+        .build();
+    let native_b = CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond source B")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .soulbond()
+        .build();
+    let entrant = |name: &str, p: i32, t: i32| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .mana_cost(ManaCost::new())
+            .power_toughness(PowerToughness::fixed(p, t))
+            .flash()
+            .build()
+    };
+    let ea = entrant("Native exclusive Soulbond entrant A", 1, 5);
+    let eb = entrant("Native exclusive Soulbond entrant B", 2, 6);
+    let idle_def =
+        CardDefinitionBuilder::new(CardId::new(), "Native older unpaired Soulbond bystander")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 7))
+            .build();
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native exclusive Soulbond priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+
+    let mut errors = vec![];
+    let (mut games, mut casts, mut triggers, mut offers, mut completed) = (0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for full in [false, true] {
+            for top_a in [false, true] {
+                for decline_top in [false, true] {
+                    let label =
+                        format!("actor={seat} full={full} top_a={top_a} decline_top={decline_top}");
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let turn = g.turn.turn_number;
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let a = g.create_object_from_definition(
+                        if full { &blade } else { &native },
+                        actor,
+                        Zone::Battlefield,
+                    );
+                    let b = g.create_object_from_definition(
+                        if full { &wolf } else { &native_b },
+                        actor,
+                        Zone::Battlefield,
+                    );
+                    let idle = g.create_object_from_definition(&idle_def, actor, Zone::Battlefield);
+                    let hand = g.create_object_from_definition(&ea, actor, Zone::Hand);
+                    let physical = g.object(hand).unwrap().stable_id;
+                    let top = if top_a { a } else { b };
+                    let bottom = if top_a { b } else { a };
+                    let mut d = Choices {
+                        sources: vec![a, b],
+                        wanted: hand,
+                        accept: true,
+                        preferred_top: Some(top),
+                        offers: 0,
+                        orders: 0,
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    cast(&mut g, &mut q, &mut d, actor, hand);
+                    casts += 1;
+                    one(&mut g, &mut q, &mut d);
+                    let entrant = g.find_object_by_stable_id(physical).unwrap();
+                    assert_ne!(entrant, hand);
+                    assert_eq!(g.stack.len(), 2);
+                    assert_eq!(g.stack.last().unwrap().object_id, top);
+                    assert_eq!(g.stack[0].object_id, bottom);
+                    assert!(
+                        g.stack
+                            .iter()
+                            .all(|e| e.is_ability && e.controller == actor && e.targets.is_empty())
+                    );
+                    assert_ne!(g.stack[0].target_id(), g.stack[1].target_id());
+                    triggers += 2;
+                    d.wanted = entrant;
+                    d.accept = !decline_top;
+                    one(&mut g, &mut q, &mut d);
+                    assert_eq!(g.stack.len(), 1);
+                    assert_eq!(g.stack.last().unwrap().object_id, bottom);
+                    if decline_top {
+                        assert_eq!(g.soulbond_partner(entrant), None);
+                    } else {
+                        assert_eq!(g.soulbond_partner(entrant), Some(top));
+                        assert_eq!(g.soulbond_partner(top), Some(entrant));
+                    }
+                    d.accept = true;
+                    one(&mut g, &mut q, &mut d);
+                    settle(&mut g, &mut q, &mut d);
+                    let winner = if decline_top { bottom } else { top };
+                    let loser = if decline_top { top } else { bottom };
+                    if g.soulbond_partner(winner) != Some(entrant)
+                        || g.soulbond_partner(entrant) != Some(winner)
+                        || g.soulbond_partner(loser).is_some()
+                        || g.soulbond_partner(idle).is_some()
+                    {
+                        errors.push(format!("soulbond-two-source-pair {label} winner={:?} entrant={:?} loser={:?} idle={:?}",g.soulbond_partner(winner),g.soulbond_partner(entrant),g.soulbond_partner(loser),g.soulbond_partner(idle)));
+                    }
+                    let wolf_pair = full && winner == b;
+                    let blade_pair = full && winner == a;
+                    traits(
+                        &g,
+                        a,
+                        if full { 2 } else { 3 },
+                        if full { 2 } else { 3 },
+                        blade_pair,
+                    );
+                    traits(
+                        &g,
+                        b,
+                        if wolf_pair { 8 } else { 4 },
+                        if wolf_pair { 8 } else { 4 },
+                        false,
+                    );
+                    traits(
+                        &g,
+                        entrant,
+                        if wolf_pair { 5 } else { 1 },
+                        if wolf_pair { 9 } else { 5 },
+                        blade_pair,
+                    );
+                    traits(&g, idle, 1, 7, false);
+                    offers += d.offers;
+                    complete(&mut g, &mut q, &mut d, actor, turn);
+                    assert_eq!(g.soulbond_partner(winner), Some(entrant));
+                    assert_eq!(g.soulbond_partner(entrant), Some(winner));
+                    assert_eq!(g.soulbond_partner(loser), None);
+                    assert_eq!(g.soulbond_partner(idle), None);
+                    assert_eq!(g.find_object_by_stable_id(physical), Some(entrant));
+                    for id in [a, b, idle, entrant] {
+                        assert_eq!(g.object(id).unwrap().owner, actor);
+                        assert_eq!(g.current_controller(id), Some(actor));
+                    }
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(actor), 1);
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    games += 1;
+                    completed += 1;
+                    eprintln!(
+                        "soulbond-two-source-observed {label} winner_a={} offers={} orders={} completed=true",
+                        winner == a,
+                        d.offers,
+                        d.orders
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "soulbond-two-source-summary games={games} casts={casts} triggers={triggers} offers={offers} completed={completed}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!((games, casts, triggers, completed), (16, 16, 32, 16));
+    assert!(
+        errors.is_empty(),
+        "CR702.95a/d: two real Soulbond sources independently trigger for one entering creature; their controller really orders them, and only the first accepted pairing may survive. An ineligible second trigger cannot steal the entrant or choose an older unrelated creature. mismatches={}",
+        errors.len()
+    );
+}
+
+#[test]
+fn cr_702_26b_d_702_95a_c_new_soulbond_pairs_cannot_use_phased_out_objects() {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::decisions::context::{DecisionContext, TargetsContext};
+    use ironsmith::static_abilities::StaticAbilityId;
+    use ironsmith::triggers::TriggerQueue;
+    use ironsmith::{
+        Ability, CardId, CardType, ChooseSpec, Effect, GameProgress, LegalAction, ManaCost,
+        ManaSymbol, ObjectFilter, ObjectId, Phase, PowerToughness, Target, TurnAction, TurnRunner,
+        TurnRunnerState, Zone,
+    };
+    struct Choices {
+        source: ObjectId,
+        subject: ObjectId,
+        wanted: Option<ObjectId>,
+        accept: bool,
+        allowed: bool,
+        offers: usize,
+        label: String,
+        errors: Vec<String>,
+    }
+    impl DecisionMaker for Choices {
+        fn decide_options(&mut self, g: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+            if c.source == Some(self.source) && c.min == 0 && c.max == 1 {
+                self.offers += 1;
+                if !self.allowed && c.options.iter().any(|o| o.legal) {
+                    self.errors.push(format!("soulbond-phase-illegal-offer {} source_phased={} candidate_phased={:?} options={:?}",self.label,g.is_phased_out(self.source),self.wanted.map(|id|g.is_phased_out(id)),c.options.iter().filter(|o|o.legal).map(|o|o.description.clone()).collect::<Vec<_>>()));
+                }
+                if self.accept {
+                    if let Some(id) = self.wanted {
+                        let name = g.object(id).unwrap().name.to_string();
+                        return c
+                            .options
+                            .iter()
+                            .find(|o| o.legal && o.description == name)
+                            .map(|o| vec![o.index])
+                            .unwrap_or_default();
+                    }
+                }
+                vec![]
+            } else {
+                c.options
+                    .iter()
+                    .filter(|o| o.legal)
+                    .take(c.min)
+                    .map(|o| o.index)
+                    .collect()
+            }
+        }
+        fn decide_targets(&mut self, _: &GameState, c: &TargetsContext) -> Vec<Target> {
+            assert_eq!(c.requirements.len(), 1);
+            let t = Target::Object(self.subject);
+            assert!(c.requirements[0].legal_targets.contains(&t));
+            vec![t]
+        }
+    }
+    fn one(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        assert!(!g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+    }
+    fn settle(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) {
+        for _ in 0..160 {
+            ironsmith::game_loop::advance_priority_with_dm(g, q, d).unwrap();
+            if g.stack.is_empty() {
+                return;
+            }
+            one(g, q, d);
+        }
+        panic!("finite actual phased Soulbond stack");
+    }
+    fn finish(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices) -> usize {
+        assert!(g.stack.is_empty());
+        let mut s = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for n in 1..=16 {
+            let p = ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut s,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+            if matches!(p, GameProgress::Continue) {
+                assert!(g.stack.is_empty());
+                return n;
+            }
+        }
+        panic!("ordinary priority window finishes through real passes");
+    }
+
+    fn cast(g: &mut GameState, q: &mut TriggerQueue, d: &mut Choices, p: PlayerId, id: ObjectId) {
+        let mut st = ironsmith::PriorityLoopState::new(g.players_in_game());
+        for _ in 0..g.players_in_game() {
+            if g.turn.priority_player == Some(p) {
+                break;
+            }
+            ironsmith::game_loop::apply_priority_response_with_dm(
+                g,
+                q,
+                &mut st,
+                &ironsmith::PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                d,
+            )
+            .unwrap();
+        }
+        assert_eq!(g.turn.priority_player, Some(p));
+        let a = ironsmith::compute_legal_actions(g, p)
+            .unwrap()
+            .into_iter()
+            .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
+            .unwrap();
+        cr_audit_complete_priority_action_with_dm(g, p, a, d, q).unwrap();
+    }
+    let blade=ironsmith_compiler_runtime::compile_to_runtime_definition("Silverblade Paladin","Mana cost: {1}{W}{W}\nType: Creature — Human Knight\nFirst printed set: Avacyn Restored Promos\nPower/Toughness: 2/2\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, both creatures have double strike.",false).unwrap();
+    let wolf=ironsmith_compiler_runtime::compile_to_runtime_definition("Wolfir Silverheart","Mana cost: {3}{G}{G}\nType: Creature — Wolf Warrior\nFirst printed set: Avacyn Restored\nPower/Toughness: 4/4\nSoulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures gets +4/+4.",false).unwrap();
+    for def in [&blade, &wolf] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(def));
+    }
+    let keeper =
+        CardDefinitionBuilder::new(CardId::new(), "Native phased Soulbond priority keeper")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::activated(
+                ironsmith::cost::TotalCost::free(),
+                vec![Effect::gain_life(0)],
+            ))
+            .build();
+    let partner_def = CardDefinitionBuilder::new(CardId::new(), "Native phased Soulbond candidate")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 6))
+        .build();
+    let filler =
+        CardDefinitionBuilder::new(CardId::new(), "Native phased Soulbond real draw filler")
+            .card_types(vec![CardType::Artifact])
+            .mana_cost(ManaCost::new())
+            .build();
+    let payer =
+        CardDefinitionBuilder::new(CardId::new(), "Native phased Soulbond seven-mana payer")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::mana(
+                ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::tap()),
+                vec![
+                    ManaSymbol::White,
+                    ManaSymbol::White,
+                    ManaSymbol::Green,
+                    ManaSymbol::Green,
+                    ManaSymbol::Colorless,
+                    ManaSymbol::Colorless,
+                    ManaSymbol::Colorless,
+                ],
+            ))
+            .build();
+    let phase =
+        CardDefinitionBuilder::new(CardId::new(), "Native actual phase-out spell for Soulbond")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::new())
+            .with_spell_effect(vec![Effect::phase_out(ChooseSpec::target(
+                ChooseSpec::Object(ObjectFilter::creature()),
+            ))])
+            .build();
+    let mut errors = vec![];
+    let (
+        mut games,
+        mut source_casts,
+        mut phase_casts,
+        mut paid,
+        mut triggers,
+        mut raw_pairs,
+        mut final_pairs,
+        mut future_triggers,
+        mut turns,
+        mut draws,
+    ) = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    for seat in 0u8..2 {
+        let actor = PlayerId::from_index(seat);
+        let other = PlayerId::from_index(1 - seat);
+        for (profile, def, cost, base_power) in [(0usize, &blade, 3u32, 2i32), (1, &wolf, 5, 4)] {
+            for accept in [false, true] {
+                for mode in 0usize..6 {
+                    let label =
+                        format!("actor={seat} profile={profile} accept={accept} mode={mode}");
+                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    g.set_starting_player(actor);
+                    g.turn.phase = Phase::FirstMain;
+                    g.turn.step = None;
+                    let initial_turn = g.turn.turn_number;
+                    let keepers = [
+                        g.create_object_from_definition(&keeper, actor, Zone::Battlefield),
+                        g.create_object_from_definition(&keeper, other, Zone::Battlefield),
+                    ];
+                    let payer_id =
+                        g.create_object_from_definition(&payer, actor, Zone::Battlefield);
+                    let partner = if mode == 0 {
+                        None
+                    } else {
+                        Some(g.create_object_from_definition(
+                            &partner_def,
+                            if mode == 2 { other } else { actor },
+                            Zone::Battlefield,
+                        ))
+                    };
+                    let partner_stable = partner.map(|id| g.object(id).unwrap().stable_id);
+                    let hand = g.create_object_from_definition(def, actor, Zone::Hand);
+                    let source_stable = g.object(hand).unwrap().stable_id;
+                    let phase_hand = g.create_object_from_definition(&phase, actor, Zone::Hand);
+                    let phase_stable = g.object(phase_hand).unwrap().stable_id;
+                    for p in [actor, other] {
+                        for _ in 0..4 {
+                            g.create_object_from_definition(&filler, p, Zone::Library);
+                        }
+                    }
+                    let mut d = Choices {
+                        source: hand,
+                        subject: partner.unwrap_or(payer_id),
+                        wanted: partner,
+                        accept,
+                        allowed: mode == 1,
+                        offers: 0,
+                        label: label.clone(),
+                        errors: vec![],
+                    };
+                    let mut q = TriggerQueue::new();
+                    settle(&mut g, &mut q, &mut d);
+                    let a=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}if *source==payer_id)).unwrap();
+                    cr_audit_complete_priority_action_with_dm(&mut g, actor, a, &mut d, &mut q)
+                        .unwrap();
+                    assert_eq!(g.player(actor).unwrap().mana_pool.total(), 7);
+                    if mode == 3 {
+                        d.subject = partner.unwrap();
+                        cast(&mut g, &mut q, &mut d, actor, phase_hand);
+                        assert_eq!(
+                            g.stack.last().unwrap().targets,
+                            vec![Target::Object(d.subject)]
+                        );
+                        one(&mut g, &mut q, &mut d);
+                        phase_casts += 1;
+                        assert!(g.is_phased_out(partner.unwrap()));
+                        assert_eq!(g.object(partner.unwrap()).unwrap().zone, Zone::Battlefield);
+                        assert_eq!(g.find_object_by_stable_id(partner_stable.unwrap()), partner);
+                        assert!(g.stack.is_empty());
+                    }
+                    cast(&mut g, &mut q, &mut d, actor, hand);
+                    source_casts += 1;
+                    paid += cost;
+                    let stack_source = g.find_object_by_stable_id(source_stable).unwrap();
+                    assert_eq!(g.object(stack_source).unwrap().zone, Zone::Stack);
+                    assert_eq!(
+                        g.object(stack_source).unwrap().mana_spent_to_cast.total(),
+                        cost
+                    );
+                    one(&mut g, &mut q, &mut d);
+                    let source = g.find_object_by_stable_id(source_stable).unwrap();
+                    assert_eq!(g.object(source).unwrap().zone, Zone::Battlefield);
+                    assert_ne!(source, hand);
+                    d.source = source;
+                    let seen = g.stack.len();
+                    let expected_trigger = usize::from(matches!(mode, 1 | 4 | 5));
+                    triggers += seen;
+                    if seen != expected_trigger {
+                        errors.push(format!("soulbond-phase-trigger {label} actual={seen} expected={expected_trigger}"));
+                    }
+                    assert!(g.stack.iter().all(|e| e.is_ability
+                        && e.object_id == source
+                        && e.controller == actor
+                        && e.targets.is_empty()));
+                    let ids = g.stack.iter().map(|e| e.target_id()).collect::<Vec<_>>();
+                    if mode >= 4 {
+                        d.subject = if mode == 4 { source } else { partner.unwrap() };
+                        cast(&mut g, &mut q, &mut d, actor, phase_hand);
+                        assert_eq!(
+                            g.stack.last().unwrap().targets,
+                            vec![Target::Object(d.subject)]
+                        );
+                        one(&mut g, &mut q, &mut d);
+                        phase_casts += 1;
+                        assert!(g.is_phased_out(d.subject));
+                        assert_eq!(g.object(d.subject).unwrap().zone, Zone::Battlefield);
+                        assert!(
+                            ids.iter()
+                                .all(|id| g.stack.iter().any(|e| e.target_id() == *id))
+                        );
+                    }
+                    settle(&mut g, &mut q, &mut d);
+                    let raw_pair = partner.is_some_and(|id| {
+                        g.soulbond_partner(source) == Some(id)
+                            && g.soulbond_partner(id) == Some(source)
+                    });
+                    raw_pairs += usize::from(raw_pair);
+                    let source_out = g.is_phased_out(source);
+                    let partner_out = partner.is_some_and(|id| g.is_phased_out(id));
+                    assert_eq!(source_out, mode == 4);
+                    assert_eq!(partner_out, matches!(mode, 3 | 5));
+                    assert_eq!(g.find_object_by_stable_id(source_stable), Some(source));
+                    if let Some(stable) = partner_stable {
+                        assert_eq!(g.find_object_by_stable_id(stable), partner);
+                    }
+                    assert_eq!(g.object(source).unwrap().owner, actor);
+                    let phase_id = g.find_object_by_stable_id(phase_stable).unwrap();
+                    assert_eq!(
+                        g.object(phase_id).unwrap().zone,
+                        if mode >= 3 {
+                            Zone::Graveyard
+                        } else {
+                            Zone::Hand
+                        }
+                    );
+                    assert_eq!(g.player(actor).unwrap().mana_pool.total(), 7 - cost);
+                    assert_eq!(
+                        g.turn_store.turn_history.spells_cast_by_player(actor),
+                        1 + u32::from(mode >= 3)
+                    );
+                    assert_eq!(g.turn_store.turn_history.spells_cast_by_player(other), 0);
+                    let initial_hand = g.player(actor).unwrap().hand.len();
+                    d.accept = false;
+                    d.allowed = false;
+                    for round in 0usize..3 {
+                        let mut runner = if round == 0 {
+                            let mut r =
+                                TurnRunner::from_state_for_sync(TurnRunnerState::FirstMainPriority);
+                            finish(&mut g, &mut q, &mut d);
+                            r.priority_done();
+                            r
+                        } else {
+                            g.next_turn();
+                            TurnRunner::new()
+                        };
+                        let mut done = false;
+                        for _ in 0..400 {
+                            match runner.advance(&mut g, &mut q).unwrap() {
+                                TurnAction::Continue => {}
+                                TurnAction::Decision(DecisionContext::Attackers(_)) => {
+                                    runner.respond_attackers(vec![])
+                                }
+                                TurnAction::Decision(DecisionContext::Blockers(c)) => {
+                                    runner.respond_blockers(vec![], c.player)
+                                }
+                                TurnAction::RunPriority => {
+                                    ironsmith::game_loop::advance_priority_with_dm(
+                                        &mut g, &mut q, &mut d,
+                                    )
+                                    .unwrap();
+                                    let extra = g
+                                        .stack
+                                        .iter()
+                                        .filter(|e| e.is_ability && e.object_id == source)
+                                        .count();
+                                    if extra > 0 {
+                                        errors.push(format!("soulbond-phase-future-trigger {label} round={round} triggers={extra}"));
+                                        future_triggers += extra;
+                                    }
+                                    settle(&mut g, &mut q, &mut d);
+                                    finish(&mut g, &mut q, &mut d);
+                                    runner.priority_done();
+                                }
+                                TurnAction::TurnComplete => {
+                                    done = true;
+                                    break;
+                                }
+                                other => panic!("unexpected actual Soulbond phase cycle {other:?}"),
+                            }
+                        }
+                        assert!(done);
+                        turns += 1;
+                        if round == 0 {
+                            assert_eq!(g.turn.active_player, actor);
+                            assert_eq!(g.turn.turn_number, initial_turn);
+                            assert_eq!(g.is_phased_out(source), mode == 4);
+                        } else if round == 1 {
+                            assert_eq!(g.turn.active_player, other);
+                            assert_eq!(g.is_phased_out(source), mode == 4);
+                            assert_eq!(
+                                partner.is_some_and(|id| g.is_phased_out(id)),
+                                matches!(mode, 3 | 5)
+                            );
+                            assert_eq!(g.player(other).unwrap().hand.len(), 1);
+                            assert_eq!(g.player(other).unwrap().library.len(), 3);
+                            draws += 1;
+                        } else {
+                            assert_eq!(g.turn.active_player, actor);
+                            assert_eq!(g.turn.turn_number, initial_turn + 2);
+                            assert_eq!(g.player(actor).unwrap().hand.len(), initial_hand + 1);
+                            assert_eq!(g.player(actor).unwrap().library.len(), 3);
+                            draws += 1;
+                        }
+                    }
+                    assert!(!g.is_phased_out(source));
+                    if let Some(id) = partner {
+                        assert!(!g.is_phased_out(id));
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                        assert_eq!(
+                            g.object(id).unwrap().owner,
+                            if mode == 2 { other } else { actor }
+                        );
+                        assert_eq!(
+                            g.current_controller(id),
+                            Some(if mode == 2 { other } else { actor })
+                        );
+                        assert_eq!(
+                            g.find_object_by_stable_id(partner_stable.unwrap()),
+                            Some(id)
+                        );
+                    }
+                    let paired = partner.is_some_and(|id| {
+                        g.soulbond_partner(source) == Some(id)
+                            && g.soulbond_partner(id) == Some(source)
+                    });
+                    let wanted = mode == 1 && accept;
+                    final_pairs += usize::from(paired);
+                    if paired != wanted {
+                        errors.push(format!("soulbond-phase-final-pair {label} actual={paired} expected={wanted} initial_raw_pair={raw_pair}"));
+                    }
+                    let bonus = if profile == 1 && wanted { 4 } else { 0 };
+                    if g.current_power(source) != Some(base_power + bonus)
+                        || g.current_toughness(source) != Some(base_power + bonus)
+                    {
+                        errors.push(format!(
+                            "soulbond-phase-source-bonus {label} actual={:?}/{:?} expected={}",
+                            g.current_power(source),
+                            g.current_toughness(source),
+                            base_power + bonus
+                        ));
+                    }
+                    let ds = g.object_has_static_ability_id(source, StaticAbilityId::DoubleStrike);
+                    if ds != (profile == 0 && wanted) {
+                        errors.push(format!(
+                            "soulbond-phase-source-double {label} actual={ds} expected={}",
+                            profile == 0 && wanted
+                        ));
+                    }
+                    if let Some(id) = partner {
+                        if g.current_power(id) != Some(2 + bonus)
+                            || g.current_toughness(id) != Some(6 + bonus)
+                        {
+                            errors.push(format!("soulbond-phase-partner-bonus {label} actual={:?}/{:?} expected={}/{}",g.current_power(id),g.current_toughness(id),2+bonus,6+bonus));
+                        }
+                        let pd = g.object_has_static_ability_id(id, StaticAbilityId::DoubleStrike);
+                        if pd != (profile == 0 && wanted) {
+                            errors.push(format!(
+                                "soulbond-phase-partner-double {label} actual={pd} expected={}",
+                                profile == 0 && wanted
+                            ));
+                        }
+                    }
+                    errors.append(&mut d.errors);
+                    assert_eq!(g.object(source).unwrap().owner, actor);
+                    assert_eq!(g.current_controller(source), Some(actor));
+                    assert_eq!(g.find_object_by_stable_id(source_stable), Some(source));
+                    assert!(!g.is_tapped(payer_id));
+                    for id in keepers {
+                        assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+                    }
+                    for p in [actor, other] {
+                        assert_eq!(g.player(p).unwrap().life, 20);
+                        assert_eq!(g.player(p).unwrap().mana_pool.total(), 0);
+                        assert_eq!(g.player(p).unwrap().poison_counters, 0);
+                        assert_eq!(g.turn_store.turn_history.spells_cast_by_player(p), 0);
+                    }
+                    assert!(g.stack.is_empty() && q.is_empty());
+                    g.validate_zone_consistency().unwrap();
+                    games += 1;
+                    eprintln!(
+                        "soulbond-phase-observed {label} triggers={seen} expected_triggers={expected_trigger} initial_raw_pair={raw_pair} final_pair={paired} expected_pair={wanted} offers={} source_power={:?} completed_turns=3",
+                        d.offers,
+                        g.current_power(source)
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "soulbond-phase-summary games={games} source_casts={source_casts} phase_casts={phase_casts} paid={paid} triggers={triggers} initial_raw_pairs={raw_pairs} final_pairs={final_pairs} future_triggers={future_triggers} turns={turns} draws={draws}"
+    );
+    for e in &errors {
+        eprintln!("{e}");
+    }
+    assert_eq!(
+        (games, source_casts, phase_casts, paid, turns, draws),
+        (48, 48, 24, 192, 144, 96)
+    );
+    assert!(
+        errors.is_empty(),
+        "CR702.26b/d and702.95a/c: phased-out permanents must be ignored for new Soulbond eligibility and pairing. Actual source/candidate phasing before entry or before trigger resolution cannot create a new pair; real next-own-turn phase-in is not an entry and cannot resurrect such an illegal pair. Visible named-card abilities/P/T checked after phase-in, not only raw ignored-state flags. mismatches={}",
+        errors.len()
+    );
+}

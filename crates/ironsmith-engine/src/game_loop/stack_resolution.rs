@@ -1837,7 +1837,7 @@ fn resolve_stack_entry_full_inner(
             .turn_store
             .resolved_spell_names
             .insert((entry.controller, obj.name.to_string()));
-        if spell_has_keyword_marker(obj, "paradigm") {
+        if spell_has_keyword_marker(obj, ironsmith_core::KeywordMarkerMechanic::Paradigm) {
             if first_with_name {
                 let delayed = crate::effects::delayed::DelayedTriggerConfig::new(
                     Trigger::beginning_of_precombat_main_phase(
@@ -2790,20 +2790,18 @@ fn install_epic_resolution_effects(
 }
 
 fn spell_has_epic_ability(obj: &crate::object::Object) -> bool {
-    spell_has_keyword_marker(obj, "epic")
+    spell_has_keyword_marker(obj, ironsmith_core::KeywordMarkerMechanic::Epic)
 }
 
-fn spell_has_keyword_marker(obj: &crate::object::Object, keyword: &str) -> bool {
+fn spell_has_keyword_marker(
+    obj: &crate::object::Object,
+    mechanic: ironsmith_core::KeywordMarkerMechanic,
+) -> bool {
     obj.abilities.iter().any(|ability| {
         let AbilityKind::Static(static_ability) = &ability.kind else {
             return false;
         };
-        static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
-            && static_ability
-                .display()
-                .trim()
-                .trim_end_matches('.')
-                .eq_ignore_ascii_case(keyword)
+        static_ability.keyword_marker_mechanic() == Some(mechanic)
     })
 }
 

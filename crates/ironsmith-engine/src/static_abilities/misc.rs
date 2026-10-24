@@ -1515,6 +1515,10 @@ impl StaticAbilityKind for MustAttackDraftNotedPlayers {
         StaticAbilityId::MustAttackDraftNotedPlayers
     }
 
+    fn must_attack_draft_noted_card_name(&self) -> Option<String> {
+        Some(self.card_name.clone())
+    }
+
     fn display(&self) -> String {
         format!(
             "{MUST_ATTACK_DRAFT_NOTED_PREFIX}{}{MUST_ATTACK_DRAFT_NOTED_SUFFIX}",

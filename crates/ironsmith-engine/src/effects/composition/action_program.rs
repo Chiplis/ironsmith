@@ -11,6 +11,7 @@ use crate::game_state::{GameState, TargetAssignment};
 /// and completion without retaining a borrowed execution context between phases.
 #[derive(Debug, Clone, Default)]
 pub struct ProgramActionScope {
+    pub(crate) preselected_objects: Option<Vec<crate::ids::ObjectId>>,
     /// A selected payment clause retains its payer/cause/reason owner across
     /// every child phase. Absence inherits the enclosing execution purpose.
     pub(crate) payment: Option<crate::costs::PaymentScope>,
@@ -27,6 +28,13 @@ pub struct ProgramActionScope {
 }
 
 impl ProgramActionScope {
+    // The selected input belongs to admission only, never to replacement or
+    // completion actions which may themselves ask for objects.
+    fn clear_preselected_objects(&mut self) {
+        self.preselected_objects = None;
+        if let Some(outer) = &mut self.outer { outer.clear_preselected_objects(); }
+    }
+
     pub(crate) fn run<T>(
         &self,
         game: &mut GameState,
@@ -41,6 +49,9 @@ impl ProgramActionScope {
         let mut effective = ProgramActionScope::default();
         let mut scope = Some(self);
         while let Some(current) = scope {
+            if effective.preselected_objects.is_none() {
+                effective.preselected_objects = current.preselected_objects.clone();
+            }
             if effective.payment.is_none() {
                 effective.payment = current.payment.clone();
             }
@@ -103,6 +114,8 @@ impl ProgramActionScope {
         ctx: &mut ExecutionContext,
         body: impl FnOnce(&mut GameState, &mut ExecutionContext) -> Result<T, ExecutionError>,
     ) -> Result<T, ExecutionError> {
+        let preselected = self.preselected_objects.as_ref()
+            .map(|value| std::mem::replace(&mut ctx.preselected_objects, Some(value.clone())));
         let optional = self
             .optional_action
             .map(|value| std::mem::replace(&mut ctx.optional_action, value));
@@ -127,6 +140,9 @@ impl ProgramActionScope {
         } else {
             self.run_player_scope(game, ctx, body)
         };
+        if let Some(preselected) = preselected {
+            ctx.preselected_objects = preselected;
+        }
         if let Some(label) = label {
             game.replace_resolving_mode_context(label);
         }
@@ -1113,6 +1129,7 @@ impl ActionProgramCursor for NestedProgramCursor {
                             "completed nested program selection has no cursor".into(),
                         )
                     })?;
+                    action.scope.clear_preselected_objects();
                     let parent = std::mem::replace(&mut self.active, selected);
                     self.parents.push(NestedProgramParent {
                         cursor: parent,
@@ -1802,6 +1819,7 @@ fn run_action_programs(
                 if local.decision_maker.awaiting_choice() {
                     return Ok(None);
                 }
+                action.declaration.action.scope.clear_preselected_objects();
                 participant.frame.context = ExecutionContextCheckpoint::capture(&local);
                 let stopped = local.resolution_stopped();
                 drop(local);

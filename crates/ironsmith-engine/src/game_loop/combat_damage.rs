@@ -1209,9 +1209,6 @@ pub(super) fn combat_damage_stat_for_creature(
 /// "If this creature's power is negative, it assigns combat damage as though
 /// its power were positive" (Loot, the Anomaly): the creature's keyword
 /// marker makes a negative power assign its absolute value.
-pub(crate) const ASSIGNS_AS_THOUGH_POWER_POSITIVE_MARKER: &str =
-    "this creature assigns combat damage as though its power were positive";
-
 pub(super) fn combat_power_as_though_positive(game: &GameState, creature: ObjectId, power: i32) -> i32 {
     if power >= 0 {
         return power;
@@ -1223,14 +1220,11 @@ pub(super) fn combat_power_as_though_positive(game: &GameState, creature: Object
     });
     let positive = abilities.iter().any(|ability| match &ability.kind {
         AbilityKind::Static(static_ability)
-            if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+            if static_ability.keyword_marker_mechanic()
+                == Some(ironsmith_core::KeywordMarkerMechanic::AssignsCombatDamageAsThoughPowerPositive)
                 && static_ability.is_active(game, creature) =>
         {
-            static_ability
-                .display()
-                .to_ascii_lowercase()
-                .trim_end_matches('.')
-                == ASSIGNS_AS_THOUGH_POWER_POSITIVE_MARKER
+            true
         }
         _ => false,
     });

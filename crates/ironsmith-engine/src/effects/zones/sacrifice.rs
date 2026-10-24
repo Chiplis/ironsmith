@@ -142,7 +142,9 @@ fn choose_objects_to_sacrifice(
         return Ok(Vec::new());
     }
 
-    let chosen = if required == matching.len() {
+    let chosen = if let Some(selected) = ctx.preselected_objects.take() {
+        selected.clone()
+    } else if required == matching.len() {
         matching.clone()
     } else {
         let spec = ChooseObjectsSpec::new(
@@ -509,7 +511,9 @@ impl EffectExecutor for SacrificeEffect {
                         crate::effects::ResolvedTarget::Player(_) => None,
                     })
                     .collect();
-                let to_sacrifice = if count == 0 {
+                let to_sacrifice = if let Some(selected) = ctx.preselected_objects.take() {
+                    selected
+                } else if count == 0 {
                     Vec::new()
                 } else if !explicit_targets.is_empty() {
                     let filter_ctx = ctx.filter_context(game);
@@ -674,7 +678,9 @@ impl SacrificeEffect {
             .map(|(id, _)| id)
             .collect();
         let required = count.min(matching.len());
-        let chosen = if required == 0 {
+        let chosen = if let Some(selected) = ctx.preselected_objects.take() {
+            selected.clone()
+        } else if required == 0 {
             Vec::new()
         } else if required == matching.len() {
             matching.clone()

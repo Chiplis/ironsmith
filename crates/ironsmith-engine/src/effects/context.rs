@@ -406,6 +406,9 @@ pub struct ExecutionContext<'a> {
     /// True when `targets` carries preselected cost-payment choices rather than
     /// spell or ability targets.
     pub targets_are_cost_choices: bool,
+    /// Input already admitted by an enclosing alternative choice. Consumed by
+    /// its first native selection, before replacements or completion run.
+    pub(crate) preselected_objects: Option<Vec<ObjectId>>,
     /// Internal cloned cost-admission simulation; never a completed payment.
     pub(crate) prospective_cost_payment: bool,
     /// Active target requirement assignments for the current execution scope.
@@ -623,6 +626,7 @@ execution_context_checkpoint! {
     announced_targets: Option<Vec<ResolvedTarget>>,
     payment_target_reference: Option<PaymentTargetReference>,
     targets_are_cost_choices: bool,
+    preselected_objects: Option<Vec<ObjectId>>,
     prospective_cost_payment: bool,
     target_assignments: Vec<TargetAssignment>,
     target_distributions: Vec<TargetDistribution>,
@@ -698,6 +702,7 @@ macro_rules! payment_execution_inputs {
 
 payment_execution_inputs! {
     inherited {
+        preselected_objects: Option<Vec<ObjectId>>,
         payment_target_reference: Option<PaymentTargetReference>,
         linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
         source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
@@ -837,6 +842,7 @@ impl<'a> ExecutionContext<'a> {
             announced_targets: None,
             payment_target_reference: None,
             targets_are_cost_choices: false,
+            preselected_objects: None,
             prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
@@ -910,6 +916,7 @@ impl<'a> ExecutionContext<'a> {
             announced_targets: None,
             payment_target_reference: None,
             targets_are_cost_choices: false,
+            preselected_objects: None,
             prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
@@ -973,6 +980,7 @@ impl<'a> ExecutionContext<'a> {
             announced_targets: self.announced_targets,
             payment_target_reference: self.payment_target_reference,
             targets_are_cost_choices: self.targets_are_cost_choices,
+            preselected_objects: self.preselected_objects.clone(),
             prospective_cost_payment: self.prospective_cost_payment,
             target_assignments: self.target_assignments,
             target_distributions: self.target_distributions,

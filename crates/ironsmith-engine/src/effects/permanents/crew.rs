@@ -40,14 +40,11 @@ fn crew_candidates(game: &GameState, source: ObjectId, controller: PlayerId) -> 
 fn crew_value(game: &GameState, object_id: ObjectId) -> i32 {
     super::contributor_selection::contribution_value(game,object_id,true)
 }
-use super::contributor_selection::{keyword_marker_texts, object_power};
+use super::contributor_selection::{keyword_marker_mechanics, object_power};
 
 fn source_has_loyalty_crew_alternative(game: &GameState, source: ObjectId) -> bool {
-    keyword_marker_texts(game, source).iter().any(|marker| {
-        marker.starts_with(
-            "you may remove a loyalty counter from a planeswalker you control rather than pay ",
-        ) && marker.ends_with("'s crew cost.")
-    })
+    keyword_marker_mechanics(game, source)
+        .contains(&ironsmith_core::KeywordMarkerMechanic::LoyaltyCounterPaysCrewCost)
 }
 
 fn loyalty_planeswalker_for_crew(game: &GameState, controller: PlayerId) -> Option<ObjectId> {

@@ -1600,6 +1600,24 @@ pub(super) fn resolve_priority_action(
     Ok(action)
 }
 
+/// Preserve the engine decision variant across the shared select_options wire UI.
+/// Option labels, source names and quoted rules text are never discriminants.
+pub(super) fn option_choice_kind(ctx: &DecisionContext) -> &'static str {
+    match ctx {
+        DecisionContext::Boolean(_) => "boolean",
+        DecisionContext::Modes(_) => "modes",
+        DecisionContext::HybridChoice(_) => "hybrid_payment",
+        DecisionContext::Order(order) if order.description.starts_with("Order triggered abilities.") => "trigger_order",
+        DecisionContext::Order(_) => "order",
+        DecisionContext::Distribute(_) => "distribution",
+        DecisionContext::Colors(_) => "colors",
+        DecisionContext::Proliferate(_) => "proliferate",
+        DecisionContext::SelectOptions(options) if matches!(options.description.to_ascii_lowercase().as_str(),
+            "choose which replacement effect to apply" | "choose a draw replacement effect to apply") => "replacement_effect",
+        _ => "options",
+    }
+}
+
 /// Derive a short structured reason label from a DecisionContext.
 pub(super) fn decision_reason(ctx: &DecisionContext) -> Option<String> {
     match ctx {
@@ -2210,7 +2228,7 @@ pub(super) fn normalize_select_object_choice_ids(
     stable_ids: &[Option<u64>],
     hidden_refs: &[Option<HiddenObjectRef>],
 ) -> Result<Vec<u64>, JsValue> {
-    selected
+    let normalized = selected
         .iter()
         .enumerate()
         .map(|(choice_index, selected_id)| {
@@ -2244,7 +2262,12 @@ pub(super) fn normalize_select_object_choice_ids(
 
             Ok(*selected_id)
         })
-        .collect()
+        .collect::<Result<Vec<_>, JsValue>>()?;
+    let ids = normalized.iter().copied().map(ObjectId::from_raw).collect::<Vec<_>>();
+    if !ctx.selection_satisfies_alternatives(&ids) {
+        return Err(JsValue::from_str("selection does not satisfy any offered alternative"));
+    }
+    Ok(normalized)
 }
 
 /// Convert and validate target inputs against the requirements in a TargetsContext.
@@ -2294,6 +2317,29 @@ pub(super) fn convert_and_validate_targets(
 #[cfg(test)]
 mod text_replacement_reason_tests {
     use super::*;
+
+    #[test]
+    fn choice_kind_survives_snapshot_without_reading_option_text() {
+        let _guard = crate::test_id_counter_guard();
+        use ironsmith::decisions::context::{SelectOptionsContext, SelectableOption, OrderContext, DistributeContext};
+        let player = PlayerId::from_index(0);
+        let game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let contexts = [
+            (DecisionContext::SelectOptions(SelectOptionsContext::new(player, None,
+                "Choose a card name", vec![SelectableOption::new(0, "Pay No Heed")], 1, 1)), "options"),
+            (DecisionContext::Order(OrderContext::new(player, None,
+                "Order cards", vec![(ObjectId::from_raw(1), "Trigger Happy\nStack text".into())])), "order"),
+            (DecisionContext::Order(OrderContext::new(player, None,
+                "Order triggered abilities. The leftmost item becomes the top of your stack.", Vec::new())), "trigger_order"),
+            (DecisionContext::Distribute(DistributeContext::new(player, None,
+                "An arbitrary display label", 3, Vec::new(), 0)), "distribution"),
+        ];
+        for (context, expected) in contexts {
+            let view = DecisionView::from_context(&game, &context, player, None, None);
+            let wire = serde_json::to_value(view).unwrap();
+            assert_eq!(wire["choice_kind"], expected);
+        }
+    }
 
     #[test]
     fn replacement_word_choices_are_not_effect_ordering() {

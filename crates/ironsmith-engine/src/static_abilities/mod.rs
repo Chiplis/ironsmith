@@ -343,6 +343,31 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Colors its owner circles while building the deck (Cryptic Spires).
+    fn deck_color_choice_count(&self) -> Option<u32> {
+        None
+    }
+
+    /// The toxic value of a Toxic N ability (CR 702.164b).
+    fn toxic_amount(&self) -> Option<u32> {
+        None
+    }
+
+    /// The implemented mechanic of a keyword-marker line.
+    fn keyword_marker_mechanic(&self) -> Option<ironsmith_core::KeywordMarkerMechanic> {
+        None
+    }
+
+    /// What a conspiracy's draft-time rule does to the draft.
+    fn draft_rule(&self) -> Option<ironsmith_core::DraftRule> {
+        None
+    }
+
+    /// The card family whose noted players this creature must attack.
+    fn must_attack_draft_noted_card_name(&self) -> Option<String> {
+        None
+    }
+
     /// Retain the compiler's typed static-ability model for structural
     /// rendering passes. Hand-authored runtime abilities return `None`.
     fn is_source_only_graveyard_replacement(&self) -> bool {
@@ -1938,6 +1963,18 @@ impl StaticAbility {
         self.0.deck_copy_limit()
     }
 
+    pub fn deck_color_choice_count(&self) -> Option<u32> {
+        self.0.deck_color_choice_count()
+    }
+
+    pub fn keyword_marker_mechanic(&self) -> Option<ironsmith_core::KeywordMarkerMechanic> {
+        self.0.keyword_marker_mechanic()
+    }
+
+    pub fn draft_rule(&self) -> Option<ironsmith_core::DraftRule> {
+        self.0.draft_rule()
+    }
+
     /// The typed commander pairing; plain "Partner" is a bare keyword kind.
     pub fn commander_pairing(&self) -> Option<CommanderPairing> {
         self.0.commander_pairing().or_else(|| {
@@ -2851,15 +2888,7 @@ impl StaticAbility {
 
     /// The toxic value of a Toxic N ability (CR 702.164b).
     pub fn toxic_amount(&self) -> Option<u32> {
-        if self.id() != StaticAbilityId::Toxic {
-            return None;
-        }
-        let display = self.display();
-        display
-            .trim()
-            .to_ascii_lowercase()
-            .strip_prefix("toxic ")
-            .and_then(|amount| amount.trim().parse::<u32>().ok())
+        self.0.toxic_amount()
     }
 
     pub fn start_your_engines() -> Self {
@@ -3342,14 +3371,8 @@ impl StaticAbility {
     }
 
     /// The noted card family of a [`MustAttackDraftNotedPlayers`] ability.
-    pub(crate) fn must_attack_draft_noted_card_name(&self) -> Option<String> {
-        if self.id() != StaticAbilityId::MustAttackDraftNotedPlayers {
-            return None;
-        }
-        self.display()
-            .strip_prefix(misc::MUST_ATTACK_DRAFT_NOTED_PREFIX)?
-            .strip_suffix(misc::MUST_ATTACK_DRAFT_NOTED_SUFFIX)
-            .map(str::to_string)
+    pub fn must_attack_draft_noted_card_name(&self) -> Option<String> {
+        self.0.must_attack_draft_noted_card_name()
     }
 
     pub fn power_up_abilities_additional_time() -> Self {
@@ -5524,6 +5547,9 @@ impl StaticAbility {
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
         let text = text.into();
+        if let Some(count) = ironsmith_core::deck_construction_color_choice_count(&text) {
+            return Self::new(DeckConstructionRuleText::with_color_choices(text, count));
+        }
         match ironsmith_core::static_ability_model::deck_construction_copy_limit(&text) {
             Some(maximum) => Self::new(DeckConstructionRuleText::with_copy_limit(text, maximum)),
             None => Self::new(DeckConstructionRuleText::new(text)),

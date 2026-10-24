@@ -675,7 +675,8 @@ impl WasmGame {
     }
 
     fn is_known_card_name_query(&mut self, query: &str) -> bool {
-        if query.trim().is_empty() {
+        let query = Self::decklist_card_name(query);
+        if query.is_empty() {
             return false;
         }
         self.ensure_card_definitions_loaded([query]);
@@ -940,12 +941,15 @@ impl WasmGame {
             let Some(definition) = self.find_card_definition(name).cloned() else {
                 return Err(format!("unknown card name: {name}"));
             };
-            self.game.create_object_from_catalog_definition(
+            let object_id = self.game.create_object_from_catalog_definition(
                 &definition,
                 &self.registry,
                 player_id,
                 ironsmith::zone::Zone::Library,
             );
+            // Match validation requires a fitting note; a list that
+            // bypassed it keeps the card's default colors.
+            let _ = self.game.apply_deck_construction_color_note(object_id, name);
         }
 
         self.game.shuffle_player_library(player_id);
@@ -955,7 +959,7 @@ impl WasmGame {
     fn ensure_card_definitions_loaded<'a>(&mut self, names: impl IntoIterator<Item = &'a str>) {
         let names = names
             .into_iter()
-            .map(str::trim)
+            .map(Self::decklist_card_name)
             .filter(|name| !name.is_empty())
             .map(ToOwned::to_owned)
             .collect::<Vec<_>>();
@@ -998,7 +1002,15 @@ impl WasmGame {
         }
     }
 
+    /// The card a decklist entry names: a circled-color note after the name
+    /// ("Cryptic Spires ({W}{B})") is deck-construction information, not part
+    /// of the card's name.
+    pub(super) fn decklist_card_name(query: &str) -> &str {
+        ironsmith::game_state::split_deck_construction_color_note(query).0
+    }
+
     fn find_card_definition(&self, query: &str) -> Option<&CardDefinition> {
+        let query = Self::decklist_card_name(query);
         self.registry.get(query).or_else(|| {
             self.registry
                 .all()
@@ -2320,7 +2332,19 @@ impl WasmGame {
 
         self.ensure_card_definitions_loaded([trimmed]);
         if let Some(definition) = self.find_card_definition(trimmed).cloned() {
-            return ironsmith::cards::unsupported_generated_definition_error(&definition);
+            return ironsmith::cards::unsupported_generated_definition_error(&definition).or_else(
+                || {
+                    // A card that circles colors as its owner builds the deck
+                    // must carry exactly that many after its name.
+                    let (_, note) =
+                        ironsmith::game_state::split_deck_construction_color_note(trimmed);
+                    ironsmith::game_state::deck_construction_color_note_error(
+                        definition.name(),
+                        &definition.abilities,
+                        note,
+                    )
+                },
+            );
         }
 
         if let Some(error) = self.external_compile_error_for_name(trimmed) {
@@ -2345,6 +2369,7 @@ impl WasmGame {
         &mut self,
         query: &str,
     ) -> Result<ironsmith::cards::CardDefinition, String> {
+        let query = Self::decklist_card_name(query);
         self.ensure_card_definitions_loaded([query]);
         if let Some(definition) = self.find_card_definition(query).cloned() {
             if let Some(error) =

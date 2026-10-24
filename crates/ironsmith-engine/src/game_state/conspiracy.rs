@@ -68,49 +68,35 @@ pub struct ConspiracyDraftState {
 /// "Reveal this card as you draft it and note the player who passed it to
 /// you." (Cogwork Tracker): the noted information is the passing seat itself.
 fn notes_passing_player(definition: &crate::cards::CardDefinition) -> bool {
-    draft_rule_labels(definition)
-        .iter()
-        .any(|label| label.contains("note the player who passed it to you"))
+    draft_rules(definition).any(|rule| rule.notes_passing_player)
 }
 
-fn draft_rule_labels(definition: &crate::cards::CardDefinition) -> Vec<String> {
+fn draft_rules(
+    definition: &crate::cards::CardDefinition,
+) -> impl Iterator<Item = ironsmith_core::DraftRule> + '_ {
     definition
         .abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
-            AbilityKind::Static(ability) if ability.id() == StaticAbilityId::DraftRuleText => {
-                Some(ability.display().to_ascii_lowercase())
-            }
+            AbilityKind::Static(ability) => ability.draft_rule(),
             _ => None,
         })
-        .collect()
 }
 
 fn is_drafted_face_up(definition: &crate::cards::CardDefinition) -> bool {
-    draft_rule_labels(definition)
-        .iter()
-        .any(|label| label.trim_end_matches('.') == "draft this card face up")
+    draft_rules(definition).any(|rule| rule.face_up)
 }
 
 fn is_revealed_and_noted(definition: &crate::cards::CardDefinition) -> bool {
-    draft_rule_labels(definition)
-        .iter()
-        .any(|label| label.starts_with("reveal this card as you draft it"))
+    draft_rules(definition).any(|rule| rule.revealed)
 }
 
 /// How many colors a reveal-as-drafted card has players choose while it is
 /// drafted (Paliano, the High City: three, each different). Zero when the
 /// card's draft text chooses no colors.
 fn draft_color_choice_count(definition: &crate::cards::CardDefinition) -> usize {
-    draft_rule_labels(definition)
-        .iter()
-        .filter(|label| label.contains("choose"))
-        .map(|label| {
-            label
-                .split(|c: char| !c.is_ascii_alphabetic())
-                .filter(|word| *word == "color")
-                .count()
-        })
+    draft_rules(definition)
+        .map(|rule| rule.chosen_colors as usize)
         .sum()
 }
 
@@ -142,10 +128,7 @@ fn parse_draft_chosen_colors(note: &str, count: usize) -> Option<crate::color::C
 }
 
 fn grants_exchange_pick(definition: &crate::cards::CardDefinition) -> bool {
-    draft_rule_labels(definition).iter().any(|label| {
-        label.contains("draft an additional card from that booster pack")
-            && label.contains("put this card into that booster pack")
-    })
+    draft_rules(definition).any(|rule| rule.exchange_pick)
 }
 
 impl ConspiracyDraftState {
@@ -562,39 +545,97 @@ fn agenda_name_count(definition: &crate::cards::CardDefinition) -> usize {
 
 /// How many colors a card has its owner circle as they build their deck
 /// ("As you create your deck, circle two of the colors below.", Cryptic
-/// Spires), read from its deck-construction rule text. `None` when the card
-/// makes no such choice.
+/// Spires). `None` when the card makes no such choice.
 pub fn deck_construction_color_choice_count(abilities: &[crate::ability::Ability]) -> Option<usize> {
-    abilities.iter().find_map(|ability| {
-        let AbilityKind::Static(ability) = &ability.kind else {
-            return None;
-        };
-        if ability.id() != StaticAbilityId::DeckConstructionRuleText {
-            return None;
-        }
-        let label = ability.display().to_ascii_lowercase();
-        let words: Vec<&str> = label
-            .split(|c: char| !c.is_ascii_alphanumeric())
-            .filter(|word| !word.is_empty())
-            .collect();
-        if !words.windows(2).any(|pair| matches!(pair, ["your", "deck"])) {
-            return None;
-        }
-        let circle = words
-            .iter()
-            .position(|word| matches!(*word, "circle" | "choose"))?;
-        if !words[circle..].contains(&"colors") {
-            return None;
-        }
-        match *words.get(circle + 1)? {
-            "one" | "1" => Some(1),
-            "two" | "2" => Some(2),
-            "three" | "3" => Some(3),
-            "four" | "4" => Some(4),
-            "five" | "5" => Some(5),
-            _ => None,
-        }
+    abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Static(ability) => ability.deck_color_choice_count().map(|count| count as usize),
+        _ => None,
     })
+}
+
+/// The colors written after a card's name in a decklist for a card that has
+/// its owner circle colors as they build the deck: "Cryptic Spires ({W}{B})".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeckConstructionColorNote {
+    pub colors: crate::color::ColorSet,
+    /// Mana symbols written, so a repeated color ("({W}{W})") is detectable.
+    pub symbols: usize,
+}
+
+/// Split a decklist card name into the card's name and its circled-color
+/// note, if it ends in one: `"Cryptic Spires ({W}{B})"` →
+/// `("Cryptic Spires", Some(W+B))`. Any other name is returned unchanged.
+pub fn split_deck_construction_color_note(
+    name: &str,
+) -> (&str, Option<DeckConstructionColorNote>) {
+    let trimmed = name.trim();
+    let Some(open) = trimmed.strip_suffix(')').and_then(|rest| rest.rfind('(')) else {
+        return (trimmed, None);
+    };
+    let inner = &trimmed[open + 1..trimmed.len() - 1];
+    let mut colors = crate::color::ColorSet::COLORLESS;
+    let mut symbols = 0;
+    let mut rest = inner.trim();
+    while !rest.is_empty() {
+        let Some(symbol) = rest
+            .strip_prefix('{')
+            .and_then(|tail| tail.split_once('}'))
+            .filter(|(symbol, _)| symbol.chars().count() == 1)
+        else {
+            return (trimmed, None);
+        };
+        let Some(color) =
+            crate::color::Color::from_mana_code_or_name(&symbol.0.to_ascii_lowercase())
+        else {
+            return (trimmed, None);
+        };
+        colors = colors.with(color);
+        symbols += 1;
+        rest = symbol.1.trim_start();
+    }
+    if symbols == 0 {
+        return (trimmed, None);
+    }
+    let base = trimmed[..open].trim_end();
+    if base.is_empty() {
+        return (trimmed, None);
+    }
+    (base, Some(DeckConstructionColorNote { colors, symbols }))
+}
+
+/// Why a decklist entry's circled-color note does not fit its card, if it
+/// does not: a card that circles N colors needs exactly N different colors,
+/// and any other card must not carry a note.
+pub fn deck_construction_color_note_error(
+    card_name: &str,
+    abilities: &[crate::ability::Ability],
+    note: Option<DeckConstructionColorNote>,
+) -> Option<String> {
+    let required = deck_construction_color_choice_count(abilities);
+    let example = || {
+        let symbols = ["{W}", "{U}", "{B}", "{R}", "{G}"];
+        let count = required.unwrap_or(2).min(symbols.len());
+        format!("{card_name} ({})", symbols[..count].concat())
+    };
+    match (required, note) {
+        (None, None) => None,
+        (None, Some(_)) => Some(format!(
+            "{card_name} doesn't choose colors as you build your deck; remove the colors after its name"
+        )),
+        (Some(count), None) => Some(format!(
+            "{card_name} needs the {count} colors circled for it, written after its name, e.g. {}",
+            example()
+        )),
+        (Some(count), Some(note))
+            if note.symbols != count || note.colors.count() as usize != count =>
+        {
+            Some(format!(
+                "{card_name} needs exactly {count} different colors after its name, e.g. {}",
+                example()
+            ))
+        }
+        (Some(_), Some(_)) => None,
+    }
 }
 
 /// The deterministic choice used when no deck-construction note was recorded
@@ -641,6 +682,30 @@ impl GameState {
         let colors = parse_draft_chosen_colors(note, count)
             .ok_or_else(|| format!("card {card:?} requires {count} different chosen colors"))?;
         self.set_deck_construction_chosen_colors(stable_id, colors);
+        Ok(())
+    }
+
+    /// Record the circled colors written after a decklist card's name for the
+    /// object created from that entry. A note that does not fit the card is
+    /// rejected; the card then keeps its deterministic default.
+    pub fn apply_deck_construction_color_note(
+        &mut self,
+        card: ObjectId,
+        decklist_name: &str,
+    ) -> Result<(), String> {
+        let (base, note) = split_deck_construction_color_note(decklist_name);
+        let object = self
+            .object(card)
+            .ok_or_else(|| format!("deck-construction note for unknown card {card:?}"))?;
+        if let Some(error) =
+            deck_construction_color_note_error(base, &object.abilities, note)
+        {
+            return Err(error);
+        }
+        if let Some(note) = note {
+            let stable_id = object.stable_id;
+            self.set_deck_construction_chosen_colors(stable_id, note.colors);
+        }
         Ok(())
     }
 

@@ -105,6 +105,7 @@ mod tagging_runtime;
 mod target_metadata;
 mod target_only;
 mod unless_action;
+mod combined_object_choices;
 mod unless_pays;
 mod villainous_choice;
 mod vote;

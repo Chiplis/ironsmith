@@ -32,6 +32,7 @@ fn first_legal_object_selection(
     let legal = |selected: &[ObjectId]| {
         if selected.len() < min
             || selected.len() > max
+            || !ctx.selection_satisfies_alternatives(selected)
             || !ctx.selection_satisfies_relation_filter(game, selected)
         {
             return false;
@@ -45,6 +46,9 @@ fn first_legal_object_selection(
             total >= minimum && total <= maximum
         })
     };
+    if let Some(selected) = ctx.default_alternative_selection() && legal(&selected) {
+        return Some(selected);
+    }
     let initial = candidates.iter().copied().take(ctx.min).collect::<Vec<_>>();
     if legal(&initial) {
         return Some(initial);

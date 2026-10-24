@@ -6,7 +6,6 @@ use crate::effects::stack::copy_spell::create_stack_copy_from_object;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::object::Object;
-use crate::static_abilities::StaticAbilityId;
 
 /// Copies the spell characteristics captured when an Epic spell resolved.
 ///
@@ -76,12 +75,7 @@ fn is_epic_ability(ability: &Ability) -> bool {
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return false;
     };
-    static_ability.id() == StaticAbilityId::KeywordMarker
-        && static_ability
-            .display()
-            .trim()
-            .trim_end_matches('.')
-            .eq_ignore_ascii_case("epic")
+    static_ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::Epic)
 }
 
 #[cfg(test)]

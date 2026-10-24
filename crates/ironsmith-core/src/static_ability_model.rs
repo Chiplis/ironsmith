@@ -728,6 +728,152 @@ pub fn deck_construction_copy_limit(text: &str) -> Option<Option<u32>> {
     Some(Some(limit))
 }
 
+/// How many colors a deck-construction rule has its owner circle ("As you
+/// create your deck, circle two of the colors below." → 2, Cryptic Spires).
+pub fn deck_construction_color_choice_count(text: &str) -> Option<u32> {
+    let normalized = text.trim().to_ascii_lowercase();
+    let rest = normalized.strip_prefix("as you create your deck, ")?;
+    let rest = rest.strip_prefix("circle ").or_else(|| rest.strip_prefix("choose "))?;
+    let (amount, rest) = rest.split_once(' ')?;
+    if !rest.starts_with("of the colors") {
+        return None;
+    }
+    amount.parse().ok().or(match amount {
+        "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        _ => None,
+    })
+}
+
+/// A keyword-marker line whose game effect the engine implements. It is
+/// classified once, when the marker is built, so runtime checks read the
+/// kind instead of the marker's text.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum KeywordMarkerMechanic {
+    /// CR 702.44 sunburst.
+    Sunburst,
+    /// CR 702.150 compleated.
+    Compleated,
+    /// CR 702.50 epic.
+    Epic,
+    /// Paradigm (Secrets of Strixhaven).
+    Paradigm,
+    /// "If this creature's power is negative, it assigns combat damage as
+    /// though its power were positive" (Loot, the Anomaly).
+    AssignsCombatDamageAsThoughPowerPositive,
+    /// "This creature stations permanents using its toughness rather than
+    /// its power."
+    StationsUsingToughness,
+    /// "This creature crews vehicles using its toughness rather than its
+    /// power"; with `saddles`, it also saddles mounts that way.
+    ContributesToughness { saddles: bool },
+    /// "This creature crews vehicles as though its power were N greater";
+    /// with `saddles`, it also saddles mounts that way.
+    ContributesExtraPower { saddles: bool, amount: u32 },
+    /// "You may remove a loyalty counter from a planeswalker you control
+    /// rather than pay this Vehicle's crew cost."
+    LoyaltyCounterPaysCrewCost,
+}
+
+/// The mechanic a keyword-marker line carries, if the engine implements one.
+pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
+    use KeywordMarkerMechanic as M;
+    let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
+    match normalized.as_str() {
+        "sunburst" => return Some(M::Sunburst),
+        "compleated" => return Some(M::Compleated),
+        "epic" => return Some(M::Epic),
+        "paradigm" => return Some(M::Paradigm),
+        "this creature assigns combat damage as though its power were positive" => {
+            return Some(M::AssignsCombatDamageAsThoughPowerPositive);
+        }
+        "this creature stations permanents using its toughness rather than its power" => {
+            return Some(M::StationsUsingToughness);
+        }
+        "this creature crews vehicles using its toughness rather than its power" => {
+            return Some(M::ContributesToughness { saddles: false });
+        }
+        "this creature saddles mounts and crews vehicles using its toughness rather than its power" => {
+            return Some(M::ContributesToughness { saddles: true });
+        }
+        _ => {}
+    }
+    if normalized
+        .starts_with("you may remove a loyalty counter from a planeswalker you control rather than pay ")
+        && normalized.ends_with("'s crew cost")
+    {
+        return Some(M::LoyaltyCounterPaysCrewCost);
+    }
+    [
+        ("this creature crews vehicles as though its power were ", false),
+        ("this creature saddles mounts and crews vehicles as though its power were ", true),
+        ("this token saddles mounts and crews vehicles as though its power were ", true),
+    ]
+    .into_iter()
+    .find_map(|(prefix, saddles)| {
+        let amount = normalized.strip_prefix(prefix)?.strip_suffix(" greater")?.parse().ok()?;
+        Some(M::ContributesExtraPower { saddles, amount })
+    })
+}
+
+/// What a conspiracy's draft-time rule does to the draft (CR 905):
+/// whether the card is drafted face up or revealed, whether its drafter
+/// notes who passed it, and how many colors players choose for it.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub struct DraftRule {
+    /// "Draft this card face up."
+    pub face_up: bool,
+    /// "Reveal this card as you draft it ..."
+    pub revealed: bool,
+    /// "... and note the player who passed it to you" (Cogwork Tracker).
+    pub notes_passing_player: bool,
+    /// Colors chosen as it's drafted (Paliano, the High City: three).
+    pub chosen_colors: u32,
+    /// "You may draft an additional card from that booster pack. If you do,
+    /// put this card into that booster pack." (Cogwork Librarian)
+    pub exchange_pick: bool,
+    /// The text says more than these fields model (Lore Seeker's added
+    /// booster pack), so a reading of the fields is not the whole rule.
+    pub unmodeled: bool,
+}
+
+/// Classify a conspiracy's draft-time rule text.
+pub fn draft_rule(text: &str) -> DraftRule {
+    let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
+    let chosen_colors = if normalized.contains("choose") {
+        normalized
+            .split(|c: char| !c.is_ascii_alphabetic())
+            .filter(|word| *word == "color")
+            .count() as u32
+    } else {
+        0
+    };
+    DraftRule {
+        face_up: normalized == "draft this card face up",
+        revealed: normalized.starts_with("reveal this card as you draft it"),
+        notes_passing_player: normalized.contains("note the player who passed it to you"),
+        chosen_colors,
+        exchange_pick: normalized.contains("draft an additional card from that booster pack")
+            && normalized.contains("put this card into that booster pack"),
+        unmodeled: !normalized.split(". ").all(|sentence| {
+            matches!(
+                sentence,
+                "draft this card face up"
+                    | "reveal this card as you draft it"
+                    | "reveal this card as you draft it and note the player who passed it to you"
+                    | "the player to your right chooses a color, you choose another color, then the player to your left chooses a third color"
+                    | "as you draft a card, you may draft an additional card from that booster pack"
+                    | "if you do, put this card into that booster pack"
+            )
+        }),
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
@@ -1973,6 +2119,17 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// "A deck can have any number of / up to N cards named ~": the copy
     /// limit deck validation enforces (`None` = any number). Appended.
     DeckConstructionCopyLimit { maximum: Option<u32> },
+    /// "As you create your deck, circle N of the colors below." Appended.
+    DeckConstructionColorChoice { count: u32 },
+    /// A keyword-marker line with an implemented mechanic. Appended.
+    KeywordMarkerMechanic { mechanic: KeywordMarkerMechanic },
+    /// Toxic N (CR 702.164). Appended.
+    Toxic { amount: u32 },
+    /// A conspiracy's draft-time rule. Appended.
+    DraftRule { rule: DraftRule },
+    /// "This creature attacks a player you noted for cards named <name>
+    /// each combat if able" (Cogwork Tracker). Appended.
+    MustAttackDraftNotedPlayers { card_name: String },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2635,6 +2792,17 @@ where
             },
             StaticAbilityPayload::DeckConstructionCopyLimit { maximum } => {
                 StaticAbilityPayload::DeckConstructionCopyLimit { maximum }
+            }
+            StaticAbilityPayload::DeckConstructionColorChoice { count } => {
+                StaticAbilityPayload::DeckConstructionColorChoice { count }
+            }
+            StaticAbilityPayload::KeywordMarkerMechanic { mechanic } => {
+                StaticAbilityPayload::KeywordMarkerMechanic { mechanic }
+            }
+            StaticAbilityPayload::Toxic { amount } => StaticAbilityPayload::Toxic { amount },
+            StaticAbilityPayload::DraftRule { rule } => StaticAbilityPayload::DraftRule { rule },
+            StaticAbilityPayload::MustAttackDraftNotedPlayers { card_name } => {
+                StaticAbilityPayload::MustAttackDraftNotedPlayers { card_name }
             }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
@@ -4529,7 +4697,14 @@ impl<
         if let Some(ability) = Self::known_keyword_marker(&text) {
             return ability;
         }
-        Self::identified(StaticAbilityId::KeywordMarker, text)
+        match keyword_marker_mechanic(&text) {
+            Some(mechanic) => Self {
+                id: Some(StaticAbilityId::KeywordMarker),
+                label: text,
+                payload: StaticAbilityPayload::KeywordMarkerMechanic { mechanic },
+            },
+            None => Self::identified(StaticAbilityId::KeywordMarker, text),
+        }
     }
 
     /// Preserve that multiple keyword abilities were authored together on one
@@ -4642,7 +4817,12 @@ impl<
     }
 
     pub fn draft_rule_text(text: impl Into<String>) -> Self {
-        Self::identified(StaticAbilityId::DraftRuleText, text)
+        let text = text.into();
+        Self {
+            id: Some(StaticAbilityId::DraftRuleText),
+            payload: StaticAbilityPayload::DraftRule { rule: draft_rule(&text) },
+            label: text,
+        }
     }
 
     pub fn hidden_agenda() -> Self {
@@ -4655,6 +4835,13 @@ impl<
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
         let text = text.into();
+        if let Some(count) = deck_construction_color_choice_count(&text) {
+            return Self {
+                id: Some(StaticAbilityId::DeckConstructionRuleText),
+                label: text,
+                payload: StaticAbilityPayload::DeckConstructionColorChoice { count },
+            };
+        }
         let Some(maximum) = deck_construction_copy_limit(&text) else {
             return Self::identified(StaticAbilityId::DeckConstructionRuleText, text);
         };
@@ -5425,7 +5612,11 @@ impl<
     }
 
     pub fn toxic(amount: u32) -> Self {
-        Self::identified(StaticAbilityId::Toxic, format!("toxic {amount}"))
+        Self {
+            id: Some(StaticAbilityId::Toxic),
+            label: format!("toxic {amount}"),
+            payload: StaticAbilityPayload::Toxic { amount },
+        }
     }
 
     pub fn unleash() -> Self {
@@ -6435,7 +6626,12 @@ impl<
     }
     /// The label is the noted card family's name.
     pub fn must_attack_draft_noted_players(card_name: impl Into<String>) -> Self {
-        Self::identified(StaticAbilityId::MustAttackDraftNotedPlayers, card_name)
+        let card_name = card_name.into();
+        Self {
+            id: Some(StaticAbilityId::MustAttackDraftNotedPlayers),
+            label: card_name.clone(),
+            payload: StaticAbilityPayload::MustAttackDraftNotedPlayers { card_name },
+        }
     }
     pub fn may_discard_source_any_time_you_could_cast_instant() -> Self {
         Self::identified(

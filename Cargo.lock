@@ -1472,6 +1472,7 @@ dependencies = [
  "criterion",
  "getrandom 0.4.2",
  "im",
+ "ironsmith-compiler-runtime",
  "ironsmith-core",
  "ironsmith-semantic-compare",
  "rand 0.10.1",

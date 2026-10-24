@@ -157,3 +157,11 @@ path = "tests/wymi_layers.rs"
 [[test]]
 name = "cr_complete_audit"
 path = "tests/cr_complete_audit.rs"
+
+[[test]]
+name = "combined_object_choices"
+path = "tests/combined_object_choices.rs"
+
+[[test]]
+name = "cr_audit_pending"
+path = "tests/cr_audit_pending/main.rs"

@@ -603,7 +603,11 @@ impl DiscardEffect {
             .filter(|id| ctx.targets_are_cost_choices || hand_cards.contains(id))
             .collect();
 
-        let cards_to_discard = if !self.random
+        let cards_to_discard = if let Some(selected) = ctx.preselected_objects.take() {
+            validate_discard_payment_selection(game, &selected, &hand_cards, required, required, ctx.prospective_cost_payment)?;
+            if reveal_chosen_publicly { game.mark_hidden_cards_publicly_revealed(&selected); }
+            selected.clone()
+        } else if !self.random
             && !self.any_number
             && required == hand_cards.len()
             && tracks_same_selected_objects(&self.count, self.card_filter.as_ref())
@@ -1698,7 +1702,10 @@ impl EffectExecutor for DiscardEffect {
             .collect::<Vec<_>>();
         let reveal_chosen_publicly = hand.iter().any(|id| game.hidden_identity_is_private(*id));
         let mut revealed_by_choice = Vec::new();
-        let selected = if count == 0 {
+        let selected = if let Some(selected) = ctx.preselected_objects.take() {
+            if reveal_chosen_publicly { revealed_by_choice = selected.clone(); }
+            selected
+        } else if count == 0 {
             Vec::new()
         } else if !explicit.is_empty() {
             normalize_object_selection(explicit, &hand, count)

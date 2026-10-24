@@ -101,6 +101,7 @@ pub trait DecisionMaker {
         game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if let Some(selected) = ctx.default_alternative_selection() { return selected; }
         if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.min).unwrap_or_default(); }
         // Default: select minimum required from legal candidates
         ctx.candidates
@@ -908,6 +909,7 @@ impl DecisionMaker for AutoPassDecisionMaker {
         game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if let Some(selected) = ctx.default_alternative_selection() { return selected; }
         if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.min).unwrap_or_default(); }
         // Auto-pass: select minimum required, using first legal candidates
         let legal: Vec<ObjectId> = ctx
@@ -1099,6 +1101,7 @@ impl DecisionMaker for SelectFirstDecisionMaker {
         game: &GameState,
         ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
+        if let Some(selected) = ctx.default_alternative_selection() { return selected; }
         if ctx.relation_filter.is_some() { return ctx.legal_relation_selection(game, ctx.max.unwrap_or(1).max(ctx.min)).unwrap_or_default(); }
         // Select first: select first legal option (up to max)
         let legal: Vec<ObjectId> = ctx

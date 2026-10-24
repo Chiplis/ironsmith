@@ -93,6 +93,55 @@ fn p51_cryptic_spires_adds_only_the_colors_circled_for_that_card() {
     );
 }
 
+/// A decklist writes the circled colors after the card's name: "Cryptic
+/// Spires ({U}{R})". The note splits off the name, must fit the card's
+/// circle count, and is recorded for the physical card it was written for.
+#[test]
+fn p51_decklist_color_note_records_the_circles_for_that_card() {
+    use ironsmith::color::{Color, ColorSet};
+    use ironsmith::game_state::{
+        deck_construction_color_note_error, split_deck_construction_color_note,
+    };
+    let spires = compile_to_runtime_definition("Cryptic Spires", CRYPTIC_SPIRES_TEXT, false)
+        .expect("Cryptic Spires should compile");
+    let blue_red = ColorSet::from_color(Color::Blue).union(ColorSet::from_color(Color::Red));
+
+    let (name, note) = split_deck_construction_color_note(" Cryptic Spires ({u} {R}) ");
+    assert_eq!(name, "Cryptic Spires");
+    assert_eq!(note.map(|note| (note.colors, note.symbols)), Some((blue_red, 2)));
+    for plain in ["Cryptic Spires", "Cryptic Spires (MKM)", "({W}{B})", "Spires ({W}{X})"] {
+        assert_eq!(split_deck_construction_color_note(plain).1, None, "{plain}");
+    }
+
+    let check = |written: &str, abilities: &[ironsmith::ability::Ability]| {
+        let (name, note) = split_deck_construction_color_note(written);
+        deck_construction_color_note_error(name, abilities, note)
+    };
+    assert_eq!(check("Cryptic Spires ({U}{R})", &spires.abilities), None);
+    for bad in [
+        "Cryptic Spires",
+        "Cryptic Spires ({U})",
+        "Cryptic Spires ({U}{U})",
+        "Cryptic Spires ({W}{U}{B})",
+    ] {
+        assert!(check(bad, &spires.abilities).is_some(), "{bad}");
+    }
+    // Any other card must not carry a note.
+    assert!(check("Plains ({W}{B})", &[]).is_some());
+    assert_eq!(check("Plains", &[]), None);
+
+    let alice = PlayerId::from_index(0);
+    let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let in_library = game.create_object_from_definition(&spires, alice, Zone::Library);
+    assert!(game.apply_deck_construction_color_note(in_library, "Cryptic Spires").is_err());
+    game.apply_deck_construction_color_note(in_library, "Cryptic Spires ({U}{R})")
+        .unwrap();
+    let source = game
+        .move_object(in_library, Zone::Battlefield, ironsmith::events::EventCause::effect())
+        .expect("land moves to the battlefield");
+    assert_eq!(game.deck_construction_chosen_colors(source), blue_red);
+}
+
 const CYCLOPEAN_TOMB_TEXT: &str = "Mana cost: {4}\nType: Artifact\n{2}, {T}: Put a mire counter on target non-Swamp land. That land is a Swamp for as long as it has a mire counter on it. Activate only during your upkeep.\nWhen this artifact is put into a graveyard from the battlefield, at the beginning of each of your upkeeps for the rest of the game, remove all mire counters from a land that a mire counter was put onto with this artifact but that a mire counter has not been removed from with this artifact.";
 
 /// The tomb's counters are a lasting per-source record that survives the
@@ -196,4 +245,92 @@ fn p51_cyclopean_tomb_clears_one_land_it_mired_each_upkeep_forever() {
     assert_eq!(upkeep(&mut game), [0, 0]);
     assert_eq!(game.counter_count(untouched, CounterType::Mire), 1);
     assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+}
+
+/// Rule text the engine acts on is typed when the card compiles: draft
+/// rules, the deck-construction circle count, keyword-marker mechanics,
+/// Toxic N and Cogwork Tracker's noted card family. Runtime never reads
+/// the printed wording back.
+#[test]
+fn p51_label_driven_rules_compile_to_typed_values() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith_core::{DraftRule, KeywordMarkerMechanic as M};
+    let statics = |name: &str, text: &str| {
+        compile_to_runtime_definition(name, text, false)
+            .unwrap_or_else(|err| panic!("{name} should compile: {err:?}"))
+            .abilities
+            .into_iter()
+            .filter_map(|ability| match ability.kind {
+                AbilityKind::Static(ability) => Some(ability),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let tracker = statics(
+        "Cogwork Tracker",
+        "Type: Artifact Creature — Dog Construct\nPower/Toughness: 4/4\nReveal this card as you draft it and note the player who passed it to you.\nThis creature attacks each combat if able.\nThis creature attacks a player you noted for cards named Cogwork Tracker each combat if able.",
+    );
+    assert!(tracker.iter().any(|ability| ability.draft_rule()
+        == Some(DraftRule { revealed: true, notes_passing_player: true, ..DraftRule::default() })));
+    let lore_seeker = statics(
+        "Lore Seeker",
+        "Type: Artifact Creature — Construct\nPower/Toughness: 2/2\nReveal this card as you draft it. After you draft this card, you may add a booster pack to the draft. (Your next pick is from that booster pack. Pass it to the next player and it's drafted this draft round.)",
+    );
+    assert!(lore_seeker.iter().any(|ability| ability
+        .draft_rule()
+        .is_some_and(|rule| rule.revealed && rule.unmodeled)));
+    // Draft notes are looked up case-insensitively.
+    assert!(tracker.iter().any(|ability| ability
+        .must_attack_draft_noted_card_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("Cogwork Tracker"))));
+    let paliano = statics(
+        "Paliano, the High City",
+        "Type: Legendary Land\nReveal this card as you draft it. The player to your right chooses a color, you choose another color, then the player to your left chooses a third color.\n{T}: Add one mana of any color chosen as you drafted cards named Paliano, the High City.",
+    );
+    assert!(paliano.iter().any(|ability| ability
+        .draft_rule()
+        .is_some_and(|rule| rule.revealed && rule.chosen_colors == 3)));
+    let librarian = statics(
+        "Cogwork Librarian",
+        "Type: Artifact Creature — Construct\nPower/Toughness: 3/3\nDraft this card face up.\nAs you draft a card, you may draft an additional card from that booster pack. If you do, put this card into that booster pack.",
+    );
+    assert!(librarian.iter().any(|ability| ability.draft_rule().is_some_and(|rule| rule.face_up)));
+    assert!(librarian.iter().any(|ability| ability.draft_rule().is_some_and(|rule| rule.exchange_pick)));
+
+    let spires = statics("Cryptic Spires", CRYPTIC_SPIRES_TEXT);
+    assert!(spires.iter().any(|ability| ability.deck_color_choice_count() == Some(2)));
+
+    let toxic = statics("Toxic Probe", "Type: Creature — Phyrexian\nPower/Toughness: 1/1\nToxic 2");
+    assert!(toxic.iter().any(|ability| ability.toxic_amount() == Some(2)));
+    let epic = statics(
+        "Enduring Ideal",
+        "Type: Sorcery\nSearch your library for an enchantment card, put it onto the battlefield, then shuffle.\nEpic (For the rest of the game, you can't cast spells. At the beginning of each of your upkeeps, copy this spell except for its epic ability.)",
+    );
+    assert!(epic.iter().any(|ability| ability.keyword_marker_mechanic() == Some(M::Epic)));
+
+    for (marker, mechanic) in [
+        ("Sunburst", M::Sunburst),
+        ("Compleated", M::Compleated),
+        ("Paradigm", M::Paradigm),
+        (
+            "This creature crews Vehicles as though its power were 2 greater.",
+            M::ContributesExtraPower { saddles: false, amount: 2 },
+        ),
+        (
+            "This creature saddles Mounts and crews Vehicles using its toughness rather than its power.",
+            M::ContributesToughness { saddles: true },
+        ),
+        (
+            "You may remove a loyalty counter from a planeswalker you control rather than pay this Vehicle's crew cost.",
+            M::LoyaltyCounterPaysCrewCost,
+        ),
+    ] {
+        let ability = ironsmith::static_abilities::StaticAbility::keyword_marker(marker);
+        assert_eq!(ability.keyword_marker_mechanic(), Some(mechanic), "{marker}");
+    }
+    assert_eq!(
+        ironsmith::static_abilities::StaticAbility::keyword_marker("decayed").keyword_marker_mechanic(),
+        None
+    );
 }

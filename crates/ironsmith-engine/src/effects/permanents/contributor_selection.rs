@@ -1,10 +1,10 @@
 //! Shared constrained contributor selection, independent of the action paid.
 use crate::effects::ExecutionContext;
+use ironsmith_core::KeywordMarkerMechanic;
 use crate::{
     ability::AbilityKind,
     game_state::GameState,
     ids::{ObjectId, PlayerId},
-    static_abilities::StaticAbilityId,
 };
 
 pub(super) fn candidates(
@@ -131,7 +131,10 @@ fn object_toughness(game: &GameState, object_id: ObjectId) -> i32 {
         .unwrap_or(0)
 }
 
-pub(super) fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec<String> {
+pub(super) fn keyword_marker_mechanics(
+    game: &GameState,
+    object_id: ObjectId,
+) -> Vec<KeywordMarkerMechanic> {
     let abilities = game.current_abilities(object_id).unwrap_or_else(|| {
         game.object(object_id)
             .map(|obj| obj.abilities_vec())
@@ -140,66 +143,46 @@ pub(super) fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec
     abilities
         .into_iter()
         .filter_map(|ability| match ability.kind {
-            AbilityKind::Static(static_ability)
-                if static_ability.id() == StaticAbilityId::KeywordMarker
-                    && static_ability.is_active(game, object_id) =>
-            {
-                Some(static_ability.display().to_ascii_lowercase())
+            AbilityKind::Static(static_ability) if static_ability.is_active(game, object_id) => {
+                static_ability.keyword_marker_mechanic()
             }
             _ => None,
         })
         .collect()
 }
 
-fn power_bonus_from_marker(marker: &str, crew: bool) -> Option<i32> {
-    let prefixes = [
-        "this creature crews vehicles as though its power were ",
-        "this creature saddles mounts and crews vehicles as though its power were ",
-        "this token saddles mounts and crews vehicles as though its power were ",
-    ];
-    prefixes
-        .iter()
-        .skip(if crew { 0 } else { 1 })
-        .find_map(|prefix| {
-            marker
-                .strip_prefix(prefix)
-                .and_then(|rest| rest.strip_suffix(" greater."))
-                .and_then(|amount| amount.parse::<i32>().ok())
-        })
-}
-
 /// "Each creature you control with toughness greater than its power
 /// stations permanents using its toughness rather than its power" (Tapestry
 /// Warden) grants this marker; a creature with it contributes its toughness
 /// when it is tapped to station a permanent (CR 702.184a).
-pub(crate) const STATIONS_USING_TOUGHNESS_MARKER: &str =
-    "this creature stations permanents using its toughness rather than its power";
-
 pub(crate) fn stations_using_toughness(game: &GameState, object_id: ObjectId) -> bool {
     game.effect_store.cant_effects.object_has_rule(
         object_id,
         &ironsmith_core::ObjectRule::StationsUsingToughness,
-    ) || keyword_marker_texts(game, object_id)
-        .iter()
-        .any(|marker| marker.trim_end_matches('.') == STATIONS_USING_TOUGHNESS_MARKER)
+    ) || keyword_marker_mechanics(game, object_id)
+        .contains(&KeywordMarkerMechanic::StationsUsingToughness)
 }
 
 pub(super) fn contribution_value(game: &GameState, object_id: ObjectId, crew: bool) -> i32 {
-    let markers = keyword_marker_texts(game, object_id);
-    let use_toughness = markers.iter().any(|marker| {
-        let marker = marker.trim_end_matches('.');
-        (crew && marker == "this creature crews vehicles using its toughness rather than its power")
-            || marker
-                == "this creature saddles mounts and crews vehicles using its toughness rather than its power"
+    let mechanics = keyword_marker_mechanics(game, object_id);
+    // A crew-only marker never changes how a creature saddles.
+    let applies = |saddles: bool| crew || saddles;
+    let use_toughness = mechanics.iter().any(|mechanic| {
+        matches!(mechanic, KeywordMarkerMechanic::ContributesToughness { saddles } if applies(*saddles))
     });
     let base = if use_toughness {
         object_toughness(game, object_id)
     } else {
         object_power(game, object_id)
     };
-    base + markers
+    base + mechanics
         .iter()
-        .filter_map(|marker| power_bonus_from_marker(marker, crew))
+        .filter_map(|mechanic| match mechanic {
+            KeywordMarkerMechanic::ContributesExtraPower { saddles, amount } if applies(*saddles) => {
+                i32::try_from(*amount).ok()
+            }
+            _ => None,
+        })
         .sum::<i32>()
 }
 

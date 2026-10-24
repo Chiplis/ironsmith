@@ -615,7 +615,13 @@ fn counter_type_from_preview_name(raw_name: &str) -> ironsmith::object::CounterT
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeckColorNoteIssue {
+    card_name: String,
+    error: String,
+}
+
 struct ValidatedHiddenPositionReveal {
     input: RevealHiddenPositionInput,
     owner: PlayerId,
@@ -1368,6 +1374,43 @@ impl WasmGame {
                 .checkpoint
                 .game
                 .reveal_hidden_card_with_definition(object_id, definition);
+        }
+    }
+
+    /// A committed deck entry may carry the colors circled for the card as
+    /// its owner built the deck ("Cryptic Spires ({W}{B})"). The choice is
+    /// keyed by the card's stable identity, so record it in the live game and
+    /// in every pending checkpoint copy: a rollback must not lose it. A note
+    /// that does not fit the card is ignored (match validation rejects it).
+    fn record_revealed_decklist_color_note(&mut self, object_id: ObjectId, decklist_name: &str) {
+        let (_, Some(note)) = ironsmith::game_state::split_deck_construction_color_note(decklist_name)
+        else {
+            return;
+        };
+        if self
+            .game
+            .apply_deck_construction_color_note(object_id, decklist_name)
+            .is_err()
+        {
+            return;
+        }
+        let Some(stable_id) = self.game.object(object_id).map(|object| object.stable_id) else {
+            return;
+        };
+        if let Some(replay) = self.pending_replay_action.as_mut() {
+            replay.checkpoint.game.set_deck_construction_chosen_colors(stable_id, note.colors);
+        }
+        if let Some(continuation) = self.pending_live_continuation.as_mut() {
+            continuation
+                .checkpoint
+                .game
+                .set_deck_construction_chosen_colors(stable_id, note.colors);
+        }
+        if let Some(checkpoint) = self.pending_action_checkpoint.as_mut() {
+            checkpoint.game.set_deck_construction_chosen_colors(stable_id, note.colors);
+        }
+        if let Some(checkpoint) = self.priority_epoch_checkpoint.as_mut() {
+            checkpoint.game.set_deck_construction_chosen_colors(stable_id, note.colors);
         }
     }
 
@@ -2466,6 +2509,7 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.record_revealed_decklist_color_note(object_id, &input.card_name);
         self.reveal_hidden_card_in_live_continuation_checkpoint(
             info.owner,
             &[info.slot],
@@ -2534,6 +2578,7 @@ impl WasmGame {
         self.game
             .reveal_hidden_card_with_definition(object_id, &definition)
             .ok_or_else(|| JsValue::from_str("failed to reveal hidden card"))?;
+        self.record_revealed_decklist_color_note(object_id, &input.card_name);
         self.reveal_hidden_card_in_live_continuation_checkpoint(
             owner,
             &[input.slot],
@@ -2775,6 +2820,7 @@ impl WasmGame {
             .ok_or_else(|| JsValue::from_str("opened object identity does not match reveal"))?;
         self.game
             .set_hidden_card_info(reveal.object_id, reveal.updated_info.clone());
+        self.record_revealed_decklist_color_note(reveal.object_id, &reveal.input.card_name);
         self.preserve_verified_position_reveal_in_replay_checkpoints(reveal)?;
         self.reveal_hidden_position_in_live_continuation_checkpoint(
             reveal.owner,
@@ -3823,6 +3869,41 @@ impl WasmGame {
 
         serde_wasm_bindgen::to_value(&suggestions)
             .map_err(|e| JsValue::from_str(&format!("autocompleteCardNames encode failed: {e}")))
+    }
+
+    /// Decklist entries whose circled-color note does not fit their card: a
+    /// card that circles colors as its owner builds the deck ("Cryptic Spires
+    /// ({W}{B})") needs exactly that many, and no other card takes a note.
+    /// Unknown names are not reported here; card loading reports them.
+    #[wasm_bindgen(js_name = deckColorNoteIssues)]
+    pub fn deck_color_note_issues(&mut self, names: JsValue) -> Result<JsValue, JsValue> {
+        let names: Vec<String> = serde_wasm_bindgen::from_value(names)
+            .map_err(|e| JsValue::from_str(&format!("invalid card name list: {e}")))?;
+        self.ensure_card_definitions_loaded(names.iter().map(String::as_str));
+        let mut seen = HashSet::new();
+        let mut issues = Vec::new();
+        for name in &names {
+            let written = name.trim();
+            if !seen.insert(written.to_ascii_lowercase()) {
+                continue;
+            }
+            let Some(definition) = self.find_card_definition(written) else {
+                continue;
+            };
+            let (_, note) = ironsmith::game_state::split_deck_construction_color_note(written);
+            if let Some(error) = ironsmith::game_state::deck_construction_color_note_error(
+                definition.name(),
+                &definition.abilities,
+                note,
+            ) {
+                issues.push(DeckColorNoteIssue {
+                    card_name: written.to_string(),
+                    error,
+                });
+            }
+        }
+        serde_wasm_bindgen::to_value(&issues)
+            .map_err(|e| JsValue::from_str(&format!("failed to serialize deck note issues: {e}")))
     }
 
     /// Return whether the query resolves to a locally known card name.

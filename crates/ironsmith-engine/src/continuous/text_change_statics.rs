@@ -118,6 +118,11 @@ pub(crate) fn rewrite_static_model_words(
         P::DevotionIncrease { .. } => {}
         P::CommanderPairing { .. } => {}
         P::DeckConstructionCopyLimit { .. } => {}
+        P::DeckConstructionColorChoice { .. } => {}
+        P::KeywordMarkerMechanic { .. } => {}
+        P::Toxic { .. } => {}
+        P::DraftRule { .. } => {}
+        P::MustAttackDraftNotedPlayers { .. } => {}
         P::MorphCostIncrease { .. } => {}
         P::UnlockCostReduction { .. } => {}
         P::OpponentDiscardThisToBattlefieldWithCounters { .. } => {}

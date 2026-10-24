@@ -2999,6 +2999,15 @@ struct BlockerOptionView {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ObjectSelectionAlternativeView {
+    pub description: String,
+    pub min: usize,
+    pub max: usize,
+    /// Indices into the rendered candidate array, including redacted candidates.
+    pub candidate_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum DecisionView {
     Priority {
@@ -3031,6 +3040,7 @@ enum DecisionView {
         reason: Option<String>,
     },
     SelectOptions {
+        choice_kind: &'static str,
         player: u8,
         description: String,
         min: usize,
@@ -3061,6 +3071,7 @@ enum DecisionView {
         max: Option<usize>,
         allow_partial_completion: bool,
         automatic_public_reveal: bool,
+        selection_alternatives: Vec<ObjectSelectionAlternativeView>,
         selection_identity: String,
         reveal_policy: String,
         candidates: Vec<ObjectChoiceView>,
@@ -3300,6 +3311,7 @@ impl DecisionView {
                 request_hash: payment.plan.request_hash.to_string(),
             },
             DecisionContext::Boolean(boolean) => DecisionView::SelectOptions {
+                choice_kind: option_choice_kind(ctx),
                 player: decision_player_for(boolean.player).0,
                 description: Self::text_with_visible_hidden_cards(
                     game,
@@ -3416,6 +3428,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::SelectOptions(options) => DecisionView::SelectOptions {
+                choice_kind: option_choice_kind(ctx),
                 player: decision_player_for(options.player).0,
                 description: Self::text_with_visible_hidden_cards(
                     game,
@@ -3487,6 +3500,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Modes(modes) => DecisionView::SelectOptions {
+                choice_kind: option_choice_kind(ctx),
                 player: decision_player_for(modes.player).0,
                 description: format!("Choose mode for {}", modes.spell_name),
                 min: modes.spec.min_modes,
@@ -3517,6 +3531,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::HybridChoice(hybrid) => DecisionView::SelectOptions {
+                choice_kind: option_choice_kind(ctx),
                 player: decision_player_for(hybrid.player).0,
                 description: format!(
                     "Choose how to pay pip {} of {}",
@@ -3546,6 +3561,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Order(order) => DecisionView::SelectOptions {
+                choice_kind: option_choice_kind(ctx),
                 player: decision_player_for(order.player).0,
                 description: order.description.clone(),
                 min: order.items.len(),
@@ -3594,6 +3610,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Distribute(distribute) => DecisionView::SelectOptions {
+                choice_kind: option_choice_kind(ctx),
                 player: decision_player_for(distribute.player).0,
                 description: format!(
                     "{} (assign exactly {} total)",
@@ -3646,6 +3663,7 @@ impl DecisionView {
                 let choices = colors_for_context(colors);
                 let repeatable_colors = !colors.same_color && colors.count > 1;
                 DecisionView::SelectOptions {
+                    choice_kind: option_choice_kind(ctx),
                     player: decision_player_for(colors.player).0,
                     description: colors.description.clone(),
                     min: if colors.count == 0 { 0 } else { 1 },
@@ -3719,6 +3737,7 @@ impl DecisionView {
                 max: Some(partition.cards.len()),
                 allow_partial_completion: false,
                 automatic_public_reveal: false,
+                selection_alternatives: Vec::new(),
                 selection_identity: selection_identity_name(SelectionIdentity::ObjectId),
                 reveal_policy: selection_reveal_policy_name(SelectionRevealPolicy::None),
                 candidates: partition
@@ -3745,6 +3764,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Proliferate(proliferate) => DecisionView::SelectOptions {
+                choice_kind: option_choice_kind(ctx),
                 player: decision_player_for(proliferate.player).0,
                 description: "Choose permanents and/or players to proliferate".to_string(),
                 min: 0,
@@ -3801,6 +3821,16 @@ impl DecisionView {
                 max: objects.max,
                 allow_partial_completion: objects.allow_partial_completion,
                 automatic_public_reveal: objects.automatic_public_reveal,
+                selection_alternatives: objects.alternatives.iter()
+                    // Membership can reveal a hidden card's type. Only the chooser
+                    // or a viewer who can see the whole pool may receive it.
+                    .filter(|_| decision_player_for(objects.player) == perspective
+                        || objects.candidates.iter().all(|c| decision_object_visible(c.id)))
+                    .map(|rule| ObjectSelectionAlternativeView {
+                    description: rule.description.clone(), min: rule.min, max: rule.max,
+                    candidate_indices: objects.candidates.iter().enumerate()
+                        .filter_map(|(i, c)| (c.legal && rule.candidates.contains(&c.id)).then_some(i)).collect(),
+                }).collect(),
                 selection_identity: selection_identity_name(objects.selection_identity),
                 reveal_policy: selection_reveal_policy_name(objects.reveal_policy),
                 candidates: objects
@@ -5842,6 +5872,22 @@ mod native_tests {
         );
     }
 
+    // CR audit (reports/cr-complete-audit, rule 103.5): intentionally fails
+    // while two-player Commander keeps its free mulligan as a product choice.
+    #[test]
+    fn cr_103_5c_two_player_commander_first_mulligan_is_not_free() {
+        let two_players = [PlayerId::from_index(0), PlayerId::from_index(1)];
+        for format in [MatchFormatInput::Commander, MatchFormatInput::PauperCommander] {
+            let mut pregame = PregameState::new(&two_players, 7, format);
+            pregame.mulligans_taken.insert(two_players[0], 1);
+            assert_eq!(
+                pregame.cards_to_bottom(two_players[0]),
+                1,
+                "CR 103.5/103.5c: a two-player non-Brawl game has no free mulligan, so the first mulligan bottoms one card"
+            );
+        }
+    }
+
     #[test]
     fn pregame_stops_mulligans_only_after_the_opening_hand_reaches_zero() {
         let alice = PlayerId::from_index(0);
@@ -7406,5 +7452,41 @@ mod exact_permission_action_reference_tests {
         }
         assert_ne!(second, first);
         assert_eq!(wasm_game_impl::casting_method_ref(&second), reference);
+    }
+}
+
+#[cfg(test)]
+mod combined_object_choice_view_tests {
+    use super::*;
+    use ironsmith::decisions::context::{ObjectSelectionAlternative, SelectObjectsContext, SelectableObject};
+
+    #[test]
+    fn combined_object_choice_view_uses_candidate_indices_for_hidden_identities() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = game.create_hidden_card_placeholder(alice, Zone::Hand, 0, "first".into());
+        let second = game.create_hidden_card_placeholder(alice, Zone::Hand, 1, "second".into());
+        let mut objects = SelectObjectsContext::new(alice, None, "Discard one or two cards",
+            vec![SelectableObject::new(first, "Hidden Card"), SelectableObject::new(second, "Hidden Card")], 1, Some(2));
+        objects.alternatives = vec![
+            ObjectSelectionAlternative { description: "One qualifying card".into(), candidates: vec![second], min: 1, max: 1 },
+            ObjectSelectionAlternative { description: "Two cards".into(), candidates: vec![first, second], min: 2, max: 2 },
+        ];
+        assert!(!objects.selection_satisfies_alternatives(&[first]));
+        assert!(objects.selection_satisfies_alternatives(&[second]));
+        assert!(objects.selection_satisfies_alternatives(&[first, second]));
+        let decision = DecisionContext::SelectObjects(objects);
+        let snapshot = GameSnapshot::from_game(&game, alice, Some(&decision), None, None, None, None,
+            Vec::new(), None, false, None, 0);
+        let DecisionView::SelectObjects { selection_alternatives, candidates, .. } = snapshot.decision.unwrap() else { panic!("expected object selection") };
+        assert_eq!(selection_alternatives[0].candidate_indices, vec![1]);
+        assert_eq!(selection_alternatives[1].candidate_indices, vec![0, 1]);
+        assert!(candidates.iter().all(|candidate| candidate.name.eq_ignore_ascii_case("hidden card")));
+        assert_eq!(selection_alternatives[0].min, 1);
+        assert_eq!(selection_alternatives[1].min, 2);
+        let opponent = DecisionView::from_context(&game, &decision, bob, None, None);
+        let DecisionView::SelectObjects { selection_alternatives, .. } = opponent else { panic!("expected object selection") };
+        assert!(selection_alternatives.is_empty(), "eligibility must not reveal hidden card types to opponents");
     }
 }

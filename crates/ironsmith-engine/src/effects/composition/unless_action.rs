@@ -11,16 +11,17 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
 
-struct SelectedUnlessBranch {
-    effects: Vec<Effect>,
-    identity: Vec<usize>,
-    scope: crate::effects::ProgramActionScope,
+pub(super) struct SelectedUnlessBranch {
+    pub(super) selected: Option<Vec<ObjectId>>,
+    pub(super) effects: Vec<Effect>,
+    pub(super) identity: Vec<usize>,
+    pub(super) scope: crate::effects::ProgramActionScope,
     /// Any-player clauses own this target override for the complete body.
-    targets: Option<Vec<ResolvedTarget>>,
+    pub(super) targets: Option<Vec<ResolvedTarget>>,
 }
 impl SelectedUnlessBranch {
     fn into_cursor(self) -> Box<dyn crate::effects::ActionProgramCursor> {
-        super::branch_program::selected_clause_cursor(&self.effects, self.identity, self.scope)
+        super::branch_program::selected_clause_cursor_with_selection(&self.effects, self.identity, self.scope, self.selected)
     }
 }
 
@@ -71,7 +72,7 @@ impl UnlessActionEffect {
     /// it (Avatar of Discord: discarding one card of two doesn't keep it).
     /// Only alternatives whose feasibility can be checked are gated; an
     /// unknown shape stays offerable.
-    fn alternative_is_infeasible(
+    pub(super) fn alternative_is_infeasible(
         &self,
         game: &GameState,
         ctx: &ExecutionContext,
@@ -202,6 +203,7 @@ impl UnlessActionEffect {
 /// alternative or the main effects happen at commit.
 #[derive(Debug)]
 struct UnlessActionProposal {
+    selected: Option<Vec<ObjectId>>,
     prepared: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
     effects: Vec<Effect>,
     alternative: Vec<Effect>,
@@ -330,10 +332,11 @@ impl UnlessActionProposal {
                     ..Default::default()
                 };
                 super::action_program::execute_action_program_with_outputs(
-                    super::branch_program::selected_clause_cursor(
+                    super::branch_program::selected_clause_cursor_with_selection(
                         effects,
                         vec![usize::from(proposal.wants_alternative)],
                         scope,
+                        proposal.selected,
                     ),
                     game,
                     ctx,
@@ -392,7 +395,13 @@ impl EffectExecutor for UnlessActionEffect {
             ));
         }
         let deciding_player = resolve_player_filter(game, &self.player, ctx)?;
-        let wants_alternative = self.choose_alternative(game, ctx, deciding_player);
+        let combined = super::combined_object_choices::combine(self, game, ctx)?;
+        let (wants_alternative, selected) = if let Some(combined) = combined {
+            match combined.select(self, game, ctx)? {
+                Some(plan) => (plan.scope.payment.is_some(), plan.selected),
+                None => (false, None),
+            }
+        } else { (self.choose_alternative(game, ctx, deciding_player), None) };
         let payment_scope = wants_alternative.then(|| {
             crate::costs::PaymentScope::new(
                 ctx,
@@ -420,12 +429,16 @@ impl EffectExecutor for UnlessActionEffect {
                 },
             )
         };
+        let previous_selection = std::mem::replace(&mut ctx.preselected_objects, selected.clone());
         let prepared = if let Some(payment) = &payment_scope {
             payment.run(ctx, prepare)
         } else {
             prepare(ctx)
-        }?;
+        };
+        ctx.preselected_objects = previous_selection;
+        let prepared = prepared?;
         Ok(Box::new(UnlessActionProposal {
+            selected,
             payment_scope,
             prepared,
             effects: self.effects.clone(),
@@ -518,6 +531,16 @@ impl UnlessActionEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<SelectedUnlessBranch>, ExecutionError> {
+        if self.player != PlayerFilter::Any {
+            let player = resolve_player_filter(game, &self.player, ctx)?;
+            let bound = ctx.iteration.iterated_player.or(Some(player));
+            let combined = ctx.with_temp_iterated_player(bound, |ctx| {
+                super::combined_object_choices::combine(self, game, ctx)
+            })?;
+            if let Some(combined) = combined {
+                return ctx.with_temp_iterated_player(bound, |ctx| combined.select(self, game, ctx));
+            }
+        }
         let deciding_players = if matches!(self.player, PlayerFilter::Any) {
             players_in_turn_order(game)
         } else {
@@ -538,6 +561,7 @@ impl UnlessActionEffect {
                 }
                 // Accepted alternatives remain payment after replacements.
                 return Ok(Some(SelectedUnlessBranch {
+                    selected: None,
                     effects: self.alternative.clone(),
                     identity: vec![1, index],
                     scope: crate::effects::ProgramActionScope {
@@ -554,6 +578,7 @@ impl UnlessActionEffect {
                 }));
             }
             Ok(Some(SelectedUnlessBranch {
+                selected: None,
                 effects: self.effects.clone(),
                 identity: vec![0],
                 scope: crate::effects::ProgramActionScope {

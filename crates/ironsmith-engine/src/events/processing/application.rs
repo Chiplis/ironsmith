@@ -2273,8 +2273,8 @@ fn sunburst_entry_counter_type(
     }
     let is_sunburst_marker = |ability: &crate::ability::Ability| {
         matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
-            if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
-                && static_ability.display().trim().eq_ignore_ascii_case("sunburst"))
+            if static_ability.keyword_marker_mechanic()
+                == Some(ironsmith_core::KeywordMarkerMechanic::Sunburst))
     };
     if !game
         .object(entering_object)

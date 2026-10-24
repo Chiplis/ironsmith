@@ -317,6 +317,10 @@ impl StaticAbilityKind for Toxic {
         StaticAbilityId::Toxic
     }
 
+    fn toxic_amount(&self) -> Option<u32> {
+        Some(self.amount)
+    }
+
     fn display(&self) -> String {
         format!("Toxic {}", self.amount)
     }

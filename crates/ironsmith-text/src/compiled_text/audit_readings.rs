@@ -601,6 +601,65 @@ pub(crate) fn audit_payload_reading(
             None => "A deck can have any number of copies of this card".to_string(),
             Some(limit) => format!("A deck can have up to {limit} copies of this card"),
         },
+        P::DeckConstructionColorChoice { count } => format!(
+            "As its owner creates their deck, they choose {count} different colors for this card"
+        ),
+        P::Toxic { amount } => format!("Toxic {amount}"),
+        P::MustAttackDraftNotedPlayers { card_name } => format!(
+            "This creature attacks a player you noted for cards named {card_name} each combat if able"
+        ),
+        P::DraftRule { rule } => {
+            let mut parts = Vec::new();
+            if rule.face_up {
+                parts.push("this card is drafted face up".to_string());
+            }
+            if rule.revealed {
+                parts.push("this card is revealed as it's drafted".to_string());
+            }
+            if rule.notes_passing_player {
+                parts.push("its drafter notes the player who passed it".to_string());
+            }
+            if rule.chosen_colors > 0 {
+                parts.push(format!("{} colors are chosen as it's drafted", rule.chosen_colors));
+            }
+            if rule.exchange_pick {
+                parts.push("its drafter may draft an additional card by putting this card into that booster pack".to_string());
+            }
+            if parts.is_empty() || rule.unmodeled {
+                return Some(ironsmith_core::semantic_audit::unverified_marker(
+                    "LabelDependentStatic", model, &[]));
+            }
+            let mut text = parts.join("; ");
+            if let Some(first) = text.get_mut(..1) {
+                first.make_ascii_uppercase();
+            }
+            text
+        }
+        P::KeywordMarkerMechanic { mechanic } => {
+            use ironsmith_core::KeywordMarkerMechanic as M;
+            let action = |saddles: bool| if saddles { "saddles Mounts and crews Vehicles" } else { "crews Vehicles" };
+            match mechanic {
+                M::Sunburst => "Sunburst".to_string(),
+                M::Compleated => "Compleated".to_string(),
+                M::Epic => "Epic".to_string(),
+                M::Paradigm => "Paradigm".to_string(),
+                M::AssignsCombatDamageAsThoughPowerPositive => {
+                    "This creature assigns combat damage as though its power were positive".to_string()
+                }
+                M::StationsUsingToughness => {
+                    "This creature stations permanents using its toughness rather than its power".to_string()
+                }
+                M::ContributesToughness { saddles } => format!(
+                    "This creature {} using its toughness rather than its power", action(*saddles)
+                ),
+                M::ContributesExtraPower { saddles, amount } => format!(
+                    "This creature {} as though its power were {amount} greater", action(*saddles)
+                ),
+                M::LoyaltyCounterPaysCrewCost => {
+                    "You may remove a loyalty counter from a planeswalker you control rather than pay this Vehicle's crew cost".to_string()
+                }
+            }
+        }
         _ => return None,
     })
 }

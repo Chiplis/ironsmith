@@ -76,8 +76,9 @@ pub use attack_direction::AttackDirection;
 pub use attractions::AttractionVisitProfile;
 pub use commander_draft::{CommanderDraftBooster, CommanderDraftProduct, CommanderDraftState};
 pub use conspiracy::{
-    ConspiracyDraftState, DraftCard, DraftCardView, DraftSelection, DraftVisibility,
-    deck_construction_color_choice_count,
+    ConspiracyDraftState, DeckConstructionColorNote, DraftCard, DraftCardView, DraftSelection,
+    DraftVisibility, deck_construction_color_choice_count, deck_construction_color_note_error,
+    split_deck_construction_color_note,
 };
 pub use emperor::EmperorState;
 pub use free_for_all::{FreeForAllAttackOption, FreeForAllState};

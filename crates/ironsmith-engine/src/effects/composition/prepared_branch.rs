@@ -199,6 +199,7 @@ impl BranchScope {
 }
 
 struct PreparedBranch {
+    preselected_objects: Option<Vec<crate::ids::ObjectId>>,
     purpose: crate::effects::EffectExecutionPurpose,
     scope: BranchScope,
     inner: Option<Box<dyn SimultaneousEffectProposal>>,
@@ -522,6 +523,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
             return result;
         }
         let before = ChoiceState::capture(ctx);
+        let previous_selection = std::mem::replace(&mut ctx.preselected_objects, self.preselected_objects.take());
         let result = self.scope.clone().run(ctx, |ctx| {
             for (index, effect) in self.selection.iter().enumerate() {
                 let mut outcome = self.purpose.execute(game, effect, ctx)?;
@@ -555,6 +557,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
             self.inner = Some(inner);
             Ok(())
         });
+        ctx.preselected_objects = previous_selection;
         self.bindings = ChoiceChanges::capture(&before, ctx);
         self.bindings.retain_selection_outputs(&self.selection, ctx);
         before.restore(ctx);
@@ -937,6 +940,7 @@ pub(super) fn prepare_branch_for_purpose(
         None
     };
     Ok(Some(Box::new(PreparedBranch {
+        preselected_objects: if selection.is_empty() { None } else { ctx.preselected_objects.take() },
         purpose,
         scope,
         inner,

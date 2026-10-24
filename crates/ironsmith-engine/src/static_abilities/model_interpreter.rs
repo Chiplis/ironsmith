@@ -1061,6 +1061,25 @@ impl StaticAbilityModelInterpreter {
                     *maximum,
                 ))
             }
+            ironsmith_core::StaticAbilityPayload::DeckConstructionColorChoice { count } => {
+                StaticAbility::new(super::DeckConstructionRuleText::with_color_choices(
+                    model.label.clone(),
+                    *count,
+                ))
+            }
+            ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic } => {
+                StaticAbility::new(super::KeywordMarker::typed(
+                    model.label.clone(),
+                    Some(*mechanic),
+                ))
+            }
+            ironsmith_core::StaticAbilityPayload::Toxic { amount } => StaticAbility::toxic(*amount),
+            ironsmith_core::StaticAbilityPayload::DraftRule { rule } => {
+                StaticAbility::new(super::DraftRuleText::typed(model.label.clone(), *rule))
+            }
+            ironsmith_core::StaticAbilityPayload::MustAttackDraftNotedPlayers { card_name } => {
+                StaticAbility::must_attack_draft_noted_players(card_name.clone())
+            }
             ironsmith_core::StaticAbilityPayload::CommanderPairing {
                 partner_with,
                 group,
@@ -2747,6 +2766,29 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn deck_copy_limit(&self) -> Option<Option<u32>> {
         self.leaf_static_ability().and_then(StaticAbility::deck_copy_limit)
+    }
+
+    fn toxic_amount(&self) -> Option<u32> {
+        self.leaf_static_ability().and_then(StaticAbility::toxic_amount)
+    }
+
+    fn deck_color_choice_count(&self) -> Option<u32> {
+        self.leaf_static_ability()
+            .and_then(StaticAbility::deck_color_choice_count)
+    }
+
+    fn keyword_marker_mechanic(&self) -> Option<ironsmith_core::KeywordMarkerMechanic> {
+        self.leaf_static_ability()
+            .and_then(StaticAbility::keyword_marker_mechanic)
+    }
+
+    fn draft_rule(&self) -> Option<ironsmith_core::DraftRule> {
+        self.leaf_static_ability().and_then(StaticAbility::draft_rule)
+    }
+
+    fn must_attack_draft_noted_card_name(&self) -> Option<String> {
+        self.leaf_static_ability()
+            .and_then(StaticAbility::must_attack_draft_noted_card_name)
     }
 
     fn commander_pairing(&self) -> Option<super::CommanderPairing> {

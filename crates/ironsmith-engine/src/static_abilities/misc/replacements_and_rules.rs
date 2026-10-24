@@ -4435,17 +4435,28 @@ impl StaticAbilityKind for KeywordText {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftRuleText {
     pub text: String,
+    pub rule: ironsmith_core::DraftRule,
 }
 
 impl DraftRuleText {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
+        let text = text.into();
+        let rule = ironsmith_core::draft_rule(&text);
+        Self::typed(text, rule)
+    }
+
+    pub fn typed(text: impl Into<String>, rule: ironsmith_core::DraftRule) -> Self {
+        Self { text: text.into(), rule }
     }
 }
 
 impl StaticAbilityKind for DraftRuleText {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::DraftRuleText
+    }
+
+    fn draft_rule(&self) -> Option<ironsmith_core::DraftRule> {
+        Some(self.rule)
     }
 
     fn display(&self) -> String {
@@ -4513,15 +4524,23 @@ pub struct DeckConstructionRuleText {
     pub text: String,
     /// `Some(None)`: any number of copies; `Some(Some(n))`: up to `n`.
     pub copy_limit: Option<Option<u32>>,
+    /// Colors its owner circles as they create their deck (Cryptic Spires).
+    pub color_choices: Option<u32>,
 }
 
 impl DeckConstructionRuleText {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), copy_limit: None }
+        let text = text.into();
+        let color_choices = ironsmith_core::deck_construction_color_choice_count(&text);
+        Self { text, copy_limit: None, color_choices }
     }
 
     pub fn with_copy_limit(text: impl Into<String>, maximum: Option<u32>) -> Self {
-        Self { text: text.into(), copy_limit: Some(maximum) }
+        Self { text: text.into(), copy_limit: Some(maximum), color_choices: None }
+    }
+
+    pub fn with_color_choices(text: impl Into<String>, count: u32) -> Self {
+        Self { text: text.into(), copy_limit: None, color_choices: Some(count) }
     }
 }
 
@@ -4534,8 +4553,17 @@ impl StaticAbilityKind for DeckConstructionRuleText {
         self.copy_limit
     }
 
+    fn deck_color_choice_count(&self) -> Option<u32> {
+        self.color_choices
+    }
+
     fn display(&self) -> String {
         if ironsmith_core::semantic_audit::semantic_audit_active() {
+            if let Some(count) = self.color_choices {
+                return format!(
+                    "As its owner creates their deck, they choose {count} different colors for this card"
+                );
+            }
             return match self.copy_limit {
                 Some(None) => "A deck can have any number of copies of this card".to_string(),
                 Some(Some(limit)) => format!("A deck can have up to {limit} copies of this card"),
@@ -4685,19 +4713,31 @@ impl StaticAbilityKind for EscalateAbility {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeywordMarker {
     pub marker: String,
+    pub mechanic: Option<ironsmith_core::KeywordMarkerMechanic>,
 }
 
 impl KeywordMarker {
     pub fn new(marker: impl Into<String>) -> Self {
-        Self {
-            marker: marker.into(),
-        }
+        let marker = marker.into();
+        let mechanic = ironsmith_core::keyword_marker_mechanic(&marker);
+        Self::typed(marker, mechanic)
+    }
+
+    pub fn typed(
+        marker: impl Into<String>,
+        mechanic: Option<ironsmith_core::KeywordMarkerMechanic>,
+    ) -> Self {
+        Self { marker: marker.into(), mechanic }
     }
 }
 
 impl StaticAbilityKind for KeywordMarker {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::KeywordMarker
+    }
+
+    fn keyword_marker_mechanic(&self) -> Option<ironsmith_core::KeywordMarkerMechanic> {
+        self.mechanic
     }
 
     fn display(&self) -> String {

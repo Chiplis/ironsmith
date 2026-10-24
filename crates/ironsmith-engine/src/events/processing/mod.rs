@@ -10797,8 +10797,8 @@ fn prepare_etb_replacements_inner(
                     abilities.iter().any(|ability| matches!(
                         &ability.kind,
                         crate::ability::AbilityKind::Static(marker)
-                            if marker.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
-                                && marker.display().eq_ignore_ascii_case("compleated")
+                            if marker.keyword_marker_mechanic()
+                                == Some(ironsmith_core::KeywordMarkerMechanic::Compleated)
                     ))
                 });
                 if !has_compleated {
