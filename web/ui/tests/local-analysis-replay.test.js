@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLocalAnalysisJournal, createLocalAnalysisReplica, releaseRestoredRuntimeSavepoints, seededLocalReplay, localReplayEnd } from '../src/lib/local-analysis-replay.js';
 
+test('shared-runtime sessions do not clone or retain analysis replay arguments', () => {
+  let calls = 0;
+  const runtime = { read(callback) { calls++; return callback(); } };
+  const journal = createLocalAnalysisJournal(runtime, 1, null, { enabled: false });
+  assert.equal(journal.game, runtime);
+  // A function argument would fail structuredClone in the recording proxy.
+  for (let i = 0; i < 10000; i++) assert.equal(journal.game.read(() => i), i);
+  assert.equal(calls, 10000);
+  assert.throws(() => journal.capture(), /replay is disabled/);
+});
+
 class Game {
   state = { objects: [], choices: {}, history: [], manaProvenance: [], temporaryPermissions: [] };
   handles = new Map();

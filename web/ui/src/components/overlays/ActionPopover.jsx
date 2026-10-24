@@ -34,6 +34,7 @@ export default function ActionPopover({
   title = null,
   subtitle = null,
   variant = "light",
+  tone = "default",
   collapseEquivalentActions = true,
   previewCards = true,
   highlightObjects = false,
@@ -133,6 +134,11 @@ export default function ActionPopover({
           rowHoverText: "#ffe3a3",
           tail: "var(--ui-surface-raised, #211f1c)",
           tailHover: "#383021",
+          ...(tone === "flat" ? {
+            panel: "#0e1013", titleText: "#e1e2e5", subtitleText: "#94979e",
+            rowText: "#c2c5cc", rowDivider: "#292c31", rowHoverBg: "#24272e",
+            rowHoverText: "#fff", tail: "#0e1013", tailHover: "#24272e",
+          } : {}),
         }
         : {
           panel: "#f0f0f0",
@@ -146,7 +152,7 @@ export default function ActionPopover({
           tailHover: "#1a1a1a",
         }
     ),
-    [variant]
+    [variant, tone]
   );
   const popoverWidth = Math.min(variant === "game" ? 292 : 260, window.innerWidth - 24);
   const rowHeight = 34;
@@ -226,7 +232,7 @@ export default function ActionPopover({
           overflowY: fitViewport ? "auto" : undefined,
           overscrollBehavior: fitViewport ? "contain" : undefined,
           background: palette.panel,
-          border: variant === "game" ? "1px solid var(--ui-border-strong, rgba(218, 188, 126, 0.42))" : "none",
+          border: tone === "flat" ? "1px solid #2c2e33" : variant === "game" ? "1px solid var(--ui-border-strong, rgba(218, 188, 126, 0.42))" : "none",
         }}
       >
         {(title || subtitle) && (

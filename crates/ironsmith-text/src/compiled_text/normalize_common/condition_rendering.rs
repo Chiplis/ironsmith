@@ -440,6 +440,15 @@ fn describe_turn_history_value_comparison(
 ) -> Option<String> {
     use crate::effect::ValueComparisonOperator::{Equal, GreaterThan, GreaterThanOrEqual};
 
+    // Presence-oriented prose can discard a higher threshold or a history
+    // qualifier (for example a counter type or an excluded source). Audit
+    // the complete query, comparator and threshold instead of that shorthand.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return Some(ironsmith_core::semantic_audit::structural_reading(
+            &(query, operator, right), &[],
+        ));
+    }
+
     if let Some((player, fragment)) = triggering_spell_ordinal_fragment(query, operator, right) {
         return Some(describe_triggering_spell_ordinal_sentence(
             &player,
@@ -1879,6 +1888,16 @@ pub(crate) fn describe_coin_result_comparison_for(
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        // Prose coalescing such as "you've done all three" loses the identity
+        // of the individual predicates. Preserve the logical tree in audits.
+        match condition {
+            Condition::And(a, b) => return format!("[{}] and [{}]", describe_condition(a), describe_condition(b)),
+            Condition::Or(a, b) => return format!("[{}] or [{}]", describe_condition(a), describe_condition(b)),
+            Condition::Not(inner) => return format!("not [{}]", describe_condition(inner)),
+            _ => {}
+        }
+    }
     let (result_condition, negated) = match condition {
         Condition::Not(inner) => (inner.as_ref(), true),
         condition => (condition, false),

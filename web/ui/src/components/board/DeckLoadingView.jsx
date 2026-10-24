@@ -1,10 +1,10 @@
+import useSavedDecks from "@/hooks/useSavedDecks";
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import {
   findSavedDeckPreset,
-  listSavedDeckPresets,
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
   parseCommanderList,
@@ -12,7 +12,6 @@ import {
   parseSideboardList,
   removeSavedDeckPreset,
   saveSavedDeckPreset,
-  SAVED_DECK_PRESETS_LIMIT,
 } from "@/lib/decklists";
 import { PUBLIC_FORMATS, usesCommanders } from "@/lib/relay/formats";
 import { deckFormatProblems, loadFormatCatalog } from "@/lib/relay/format-legality";
@@ -93,7 +92,7 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
   const [format, setFormat] = useState(MATCH_FORMAT_NORMAL);
   const [texts, setTexts] = useState(() => players.map(() => ""));
   const [deckLabels, setDeckLabels] = useState(() => players.map(() => ""));
-  const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
+  const { decks: savedPresets, setDecks: setSavedPresets } = useSavedDecks();
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
   const [presetFormats, setPresetFormats] = useState([]);
@@ -197,7 +196,7 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
       return false;
     }
 
-    const existingPreset = findSavedDeckPreset(normalizedPresetName);
+    const existingPreset = await findSavedDeckPreset(normalizedPresetName);
     const nextTexts = fitTextsToPlayers(players, texts);
     const shouldConfirmOverride =
       existingPreset && !samePresetTexts(existingPreset.texts, nextTexts);
@@ -208,7 +207,7 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
       return false;
     }
 
-    const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts, players.map((player) => player.name), presetFormats);
+    const saveResult = await saveSavedDeckPreset(normalizedPresetName, nextTexts, players.map((player) => player.name), presetFormats);
     if (saveResult.saved) {
       setSavedPresets(saveResult.entries);
       setSelectedPresetName(saveResult.entry.name);
@@ -220,11 +219,9 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
       showActionNotice(saveResult.replaced ? ui("Saved deck updated") : ui("Deck saved"));
       return true;
     }
-    if (saveResult.reason === "limit") {
-      setStatus(ui("Session limit reached ({0} decks). Delete one saved deck to add another.", { 0: SAVED_DECK_PRESETS_LIMIT }));
-    }
+    setStatus(ui("Could not save this deck. Check that browser storage is available and try again."));
     return false;
-  }, [players, presetFormats, setStatus, showActionNotice, texts, ui]);
+  }, [players, presetFormats, setSavedPresets, setStatus, showActionNotice, texts, ui]);
 
   const handleSavePreset = useCallback(async () => {
     if (await saveCurrentPreset(presetName)) setPresetName("");
@@ -345,14 +342,14 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
     showActionNotice(ui("Deck loaded into {0}", { 0: players[target]?.name || ui("the editor") }));
   }, [catalogTargetIndex, handleTextChange, maxPlayerCount, playerCountModes, players, showActionNotice, texts, ui, visiblePlayerCount, visiblePlayers.length]);
 
-  const handleDeleteSavedPreset = useCallback(() => {
+  const handleDeleteSavedPreset = useCallback(async () => {
     if (!selectedPreset) return;
     if (!window.confirm(ui('Delete saved deck "{0}"?', { 0: selectedPreset.name }))) return;
-    setSavedPresets(removeSavedDeckPreset(selectedPreset.name));
+    setSavedPresets(await removeSavedDeckPreset(selectedPreset.name));
     setSelectedPresetName("");
     setStatus(ui('Deleted saved deck "{0}"', { 0: selectedPreset.name }));
     showActionNotice(ui("Saved deck deleted"));
-  }, [selectedPreset, setStatus, showActionNotice, ui]);
+  }, [selectedPreset, setSavedPresets, setStatus, showActionNotice, ui]);
 
   const handleTestInGame = useCallback(() => {
     const decks = texts.map(parseDeckList);

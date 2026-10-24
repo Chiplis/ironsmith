@@ -1003,10 +1003,14 @@ impl CompilationSnapshot {
             let normalized_oracle_text = normalized_oracle.join("\n");
             let compiled = compiled_text_lines(definition);
             let compiled_text = compiled.join("\n");
+            // Presentation can retain correct Oracle prose beside an incorrect
+            // executable model. Score the independent structural reading;
+            // keep ordinary text only as the user-facing display snapshot.
+            let audit = ironsmith::compiled_text::semantic_audit_lines(definition);
             let mut comparison = compare_card_semantics_scored(
                 card_name,
                 &normalized_oracle_text,
-                &compiled,
+                &audit,
                 report_embedding_config(),
             );
             // Keyword expansions ("Renown 1", "Evoke {cost}") only match when
@@ -1018,7 +1022,7 @@ impl CompilationSnapshot {
                     let raw_comparison = compare_card_semantics_scored(
                         card_name,
                         &scoring_oracle_text,
-                        &compiled,
+                        &audit,
                         report_embedding_config(),
                     );
                     if raw_comparison.2 > comparison.2 {
@@ -1041,7 +1045,8 @@ impl CompilationSnapshot {
                 compiled_coverage,
                 similarity_score,
                 line_delta,
-                semantic_mismatch,
+                semantic_mismatch || audit.iter().any(|line| line.contains(
+                    "⟦unverified ")),
                 generated_definition_has_unimplemented_content(definition)
                     || compiled
                         .iter()
@@ -4596,7 +4601,7 @@ CardDefinition {
             false,
         )
         .expect("house cartographer should parse");
-        let compiled = debug_compiled_lines(&definition);
+        let compiled = ironsmith::compiled_text::semantic_audit_lines(&definition);
         let snapshot = CompilationSnapshot::from_definition_result(
             "House Cartographer",
             oracle,

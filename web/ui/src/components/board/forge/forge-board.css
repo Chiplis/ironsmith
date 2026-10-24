@@ -44,13 +44,7 @@
   text-shadow: 0 2px 4px #000, 0 0 12px #000;
 }
 
-/* Keep HUD and inspectors upright; only the physical card layers lie on the table.
-   Layout/hit boxes remain in screen space and the renderer unprojects them. */
-[data-forge-board="true"] .battlefield-arena-card { perspective: 900px; }
+/* Card faces stay in screen space at every quality for crisp text. */
 [data-forge-board="true"] .battlefield-arena-card > :is(.game-card-surface, .battlefield-group-stack, .card-inspector-source-glow) {
-  transform: rotateX(12deg);
-  transform-origin: center;
-}
-[data-forge-board="true"] .battlefield-arena-card.tapped > :is(.game-card-surface, .battlefield-group-stack, .card-inspector-source-glow) {
-  transform: rotateX(12deg) rotateZ(8deg) scale(.90);
+  transform: none;
 }

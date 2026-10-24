@@ -102,13 +102,26 @@ export function createLocalPriorityWorker({ capture, call, release, yieldTask = 
 // publication, and the owning run closure must restore its branch in finally.
 export function createLocalQueryWorker(run) {
   let destroyed = false;
+  const jobs = new Map();
   const api = {
     onmessage: null, onerror: null,
     terminate() { destroyed = true; },
     postMessage(input) {
-      Promise.resolve().then(() => destroyed ? null : run(input, () => destroyed))
-        .then(result => { if (!destroyed) api.onmessage?.({ data: { token: input.token, result } }); },
-          error => { if (!destroyed) api.onmessage?.({ data: { token: input.token, error: error?.message || String(error) } }); });
+      if (input.type === 'cancel') {
+        const job = jobs.get(input.token);
+        if (job) job.cancelled = true;
+        return;
+      }
+      const job = { cancelled: false };
+      jobs.set(input.token, job);
+      const cancelled = () => destroyed || job.cancelled;
+      const finish = data => {
+        jobs.delete(input.token);
+        if (!destroyed) api.onmessage?.({ data: { token: input.token,
+          ...(job.cancelled ? { cancelled: true } : data) } });
+      };
+      Promise.resolve().then(() => cancelled() ? null : run(input, cancelled))
+        .then(result => finish({ result }), error => finish({ error: error?.message || String(error) }));
     },
   };
   return api;

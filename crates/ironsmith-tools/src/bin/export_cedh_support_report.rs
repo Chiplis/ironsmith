@@ -574,7 +574,7 @@ fn populate_row_from_definition(row: &mut Row, payload: &CardPayload, definition
     row.compiled_lines_count = compiled.len();
     row.has_unimplemented = generated_definition_has_unimplemented_content(definition);
     let (oracle_cov, compiled_cov, similarity, line_delta, semantic_mismatch) =
-        compare_semantics_scored(&payload.oracle_text, &compiled, None);
+        compare_semantics_scored(&payload.oracle_text, &ironsmith::compiled_text::semantic_audit_lines(&definition), None);
     row.oracle_coverage = oracle_cov;
     row.compiled_coverage = compiled_cov;
     row.similarity_score = similarity;

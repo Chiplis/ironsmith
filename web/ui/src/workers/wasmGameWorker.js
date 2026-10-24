@@ -2,6 +2,7 @@ import { ANALYSIS_SEED_MIN_OPERATIONS, createLocalAnalysisJournal, localReplayCa
 import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
 import { replaceHandWithCustomCards } from "../lib/custom-card-pool.js";
+import { castingMethodChoiceForAction } from "../lib/casting-method-choice.js";
 import { inRuntimeBranch } from "../lib/runtime-branches.js";
 import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
 import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
@@ -13,6 +14,8 @@ import { publicCheckpointHash } from '../lib/multiplayer-audit.js';
 import * as engineBindings from '../../../wasm_demo/pkg/engine.js';
 import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
 import { createIsolatedPriorityAnalysis } from "../lib/isolated-priority-analysis.js";
+import { createLocalPriorityWorker, createLocalQueryWorker, collectLocalTargetPreviews } from "../lib/local-runtime-analysis.js";
+import { shouldShareAnalysisRuntime } from "../lib/analysis-memory-policy.js";
 import { createWorkerTaskDiagnostics } from "../lib/worker-task-diagnostics.js";
 import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
 import engineWasmUrl from "../../../wasm_demo/pkg/engine_bg.wasm?url";
@@ -137,6 +140,7 @@ const CARD_ZONE_KEYS = [
 const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|captureExactBuildSnapshot|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
+let sharedAnalysisRuntime = false;
 const workerTasks = createWorkerTaskDiagnostics({ publish: message => self.postMessage(message) });
 // Analysis replicas replay this session's engine calls. One that is far behind
 // (new, or idle for a long time) instead restores an exact image of the
@@ -152,15 +156,58 @@ function analysisReplay(replicaMark = null) {
   }
 }
 
+// Keep speculative state in native branches, entering and leaving each slice
+// in the serialized command queue. Only branch lifetimes enter the replay log.
+function localAnalysisBranch() {
+  const journal = localAnalysisJournal;
+  const onRuntime = operation => enqueueCall(() => {
+    if (journal !== localAnalysisJournal) throw new Error('Analysis runtime expired');
+    return operation();
+  });
+  return {
+    capture: () => onRuntime(() => journal.game.createRuntimeSavepoint()),
+    call: (handle, method, args) => onRuntime(() => inRuntimeBranch(
+      journal.runtime, handle, () => journal.runtime[method](...args),
+    )),
+    release: handle => enqueueCall(() => {
+      if (journal === localAnalysisJournal) journal.game.releaseRuntimeSavepoint(handle);
+    }),
+  };
+}
+
+function createLocalPaymentWorker() {
+  return createLocalQueryWorker(async (input, cancelled) => {
+    const branch = localAnalysisBranch();
+    const handle = await branch.capture();
+    try {
+      if (cancelled()) return null;
+      if (input.kind !== 'ranking') return await branch.call(handle, 'getPaymentActivationOptions', [input.request]);
+      const token = String(input.token);
+      if (!await branch.call(handle, 'beginPaymentAnalysis', [token])) return null;
+      while (!cancelled()) {
+        const result = await branch.call(handle, 'stepPaymentAnalysis', [token, 1]);
+        if (result != null) return result || null;
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      return null;
+    } finally { await branch.release(handle); }
+  });
+}
+
 const priorityAnalysis = createIsolatedPriorityAnalysis({
   identity: () => game?.priorityAnalysisIdentity(),
   pending: () => game?.priorityAnalysisPending?.() === true,
   eligible: () => game?.hasPriorityDecision?.() === true,
-  capture: ({ replicaMark = null } = {}) => enqueueCall(() => ({
-    localReplay: analysisReplay(replicaMark),
-    module: engineModule,
-  }), { kind: 'priority_analysis_capture' }),
-  createWorker: () => new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' }),
+  capture: ({ replicaMark = null } = {}) => enqueueCall(() => sharedAnalysisRuntime
+    ? { runtimeFallback: true }
+    : {
+      localReplay: analysisReplay(replicaMark),
+      module: engineModule,
+    }, { kind: 'priority_analysis_capture' }),
+  createWorker: input => {
+    if (!input.runtimeFallback) return new Worker(new URL('./priorityAnalysisWorker.js', import.meta.url), { type: 'module' });
+    return createLocalPriorityWorker(localAnalysisBranch());
+  },
   // Check results only after any temporary verification branch has exited.
   deliver: operation => enqueueCall(operation, { kind: 'priority_analysis_publish' }),
   publish: analysis => {
@@ -176,23 +223,28 @@ const paymentOptionsAnalysis = createPaymentOptionsAnalysis({
   capture: ([requestHash, planId], { replicaMark }) => enqueueCall(() => {
     const request = game.exportManaPaymentOptionsRequest(requestHash, planId);
     if (request === 'null') return null;
+    if (sharedAnalysisRuntime) return { request, runtimeFallback: true };
     return {
       request,
       localReplay: analysisReplay(replicaMark),
       module: engineModule,
     };
   }, { kind: 'payment_options_capture' }),
-  createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
+  createWorker: input => input.runtimeFallback ? createLocalPaymentWorker()
+    : new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
 });
 
 // Even a single resumable planner node can run synchronous replacement
-// simulation. Keep ranking off the authoritative queue, just like options.
+// simulation. Desktop isolates it in a worker; iOS yields between native
+// branch slices to avoid allocating another complete WASM heap.
 const paymentRankingAnalysis = createPaymentOptionsAnalysis({
   capture: (_, { replicaMark }) => enqueueCall(() => ({
     kind: 'ranking', request: 'ranking',
-    localReplay: analysisReplay(replicaMark), module: engineModule,
+    ...(sharedAnalysisRuntime ? { runtimeFallback: true }
+      : { localReplay: analysisReplay(replicaMark), module: engineModule }),
   }), { kind: 'payment_ranking_capture' }),
-  createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
+  createWorker: input => input.runtimeFallback ? createLocalPaymentWorker()
+    : new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
 });
 
 function nowMs() {
@@ -808,6 +860,7 @@ async function handleInit(msg = {}) {
     knownRuntimeCardNames.clear();
     registeredCardRoutes.clear();
     priorityAnalysis.dispose();
+    sharedAnalysisRuntime = shouldShareAnalysisRuntime() || msg.sharedAnalysisRuntime === true;
     previewCardSources.clear();
     missingCardRoutes.clear();
     transientMissingCardRoutes.clear();
@@ -825,8 +878,12 @@ async function handleInit(msg = {}) {
     // the one signal that separates "this call is expensive" from "this session
     // has grown expensive", which a single slow call cannot tell apart.
     engineExports = await initWasm({ engine: engineModule, compiler: false, verifier: false });
-    exactSnapshotRuntime = createAvailableExactBuildSnapshotRuntime({ exports: engineExports, bindings: engineBindings });
-    localAnalysisJournal = createLocalAnalysisJournal(new WasmGame(), ++localAnalysisEpoch);
+    // Exact snapshots copy the whole linear heap, then clone/hash/store it.
+    // iOS recovers through native savepoints or verified transcript replay.
+    exactSnapshotRuntime = sharedAnalysisRuntime ? null
+      : createAvailableExactBuildSnapshotRuntime({ exports: engineExports, bindings: engineBindings });
+    localAnalysisJournal = createLocalAnalysisJournal(new WasmGame(), ++localAnalysisEpoch, null,
+      { enabled: !sharedAnalysisRuntime });
     game = localAnalysisJournal.game;
     workerTasks.phase(task, 'catalog_load');
     if (typeof game.getEmbeddedCardCatalogIndexJson === "function") {
@@ -878,7 +935,36 @@ function enqueueCall(operation, metadata = { kind: 'background_analysis' }, reta
   return callQueue;
 }
 
+async function handleLocalTargetPreview(id, args) {
+  latestTargetPreview = id;
+  const journal = localAnalysisJournal;
+  try {
+    const identity = await enqueueCall(() => game.priorityAnalysisIdentity());
+    const current = () => latestTargetPreview === id && journal === localAnalysisJournal;
+    const result = await collectLocalTargetPreviews(args[0], args[1], action => enqueueCall(async () => {
+      if (!current() || game.priorityAnalysisIdentity() !== identity) return null;
+      const handle = journal.game.createRuntimeSavepoint();
+      try {
+        return await inRuntimeBranch(journal.runtime, handle, () => {
+          const preview = journal.runtime;
+          preview.setPerspective(args[1]);
+          let state = preview.dispatch({ type: 'priority_action', action_index: action.index, action_ref: action.action_ref });
+          const method = castingMethodChoiceForAction(state?.decision, action);
+          if (method) state = preview.dispatch(method);
+          return state?.decision?.kind === 'targets' ? state.decision.requirements : [];
+        });
+      } finally { journal.game.releaseRuntimeSavepoint(handle); }
+    }), current);
+    // Read the identity only inside the queue, after any speculative branch exits.
+    const valid = await enqueueCall(() => current() && game.priorityAnalysisIdentity() === identity);
+    postWorkerResult({ type: 'result', id, ok: true, result: valid ? result : null });
+  } catch (error) {
+    postWorkerResult({ type: 'result', id, ok: false, error: serializeError(error) });
+  }
+}
+
 function handleTargetPreview(id, args) {
+  if (sharedAnalysisRuntime) { void handleLocalTargetPreview(id, args); return; }
   const task = workerTasks.create({ kind: 'target_preview', requestId: id, method: 'previewCastTargets' });
   const respond = (task, message) => {
     workerTasks.phase(task, 'response_post'); postWorkerResult(message);
@@ -977,7 +1063,7 @@ function handleCall(msg) {
     const prepared = await preparation;
     if (prepared.error) throw prepared.error;
     if ((method === 'captureExactBuildSnapshot' || method === 'restoreExactBuildSnapshot') && !exactSnapshotRuntime) {
-      throw new Error('Exact-build snapshots are unavailable in this engine package');
+      throw new Error('Exact-build snapshots are unavailable for this runtime');
     }
     if (method === 'restoreExactBuildSnapshot') {
       if (msg.runtimeBranch != null) throw new Error('Cannot restore an instance inside a runtime branch');
@@ -998,7 +1084,8 @@ function handleCall(msg) {
       return { result, registryStatus: null };
     }
     if (method === 'restoreExactBuildSnapshot') {
-      priorityAnalysis.invalidate(); paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
+      // A local analyzer owns handles in this particular engine instance.
+      priorityAnalysis.invalidate(sharedAnalysisRuntime); paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
       latestTargetPreview = null; previewWorker?.postMessage({ type: 'cancel' });
       let result;
       try {

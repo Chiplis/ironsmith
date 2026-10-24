@@ -1,5 +1,17 @@
 // All interface copy for es. Preserve interpolation placeholders.
 export const messages = {
+  "Checking decks…": "Verificando mazos…",
+  "Sideboard adjusted · {0} removed": "Sideboard ajustado · {0} retiradas",
+  "Could not load saved decks. Try reopening this page.": "No se pudieron cargar los mazos guardados. Intenta volver a abrir esta página.",
+  "Save Deck": "Guardar mazo",
+  "Saved": "Guardado",
+  "You have no saved decks yet.": "Aún no tienes mazos guardados.",
+  "Deck name": "Nombre del mazo",
+  "Replace deck": "Reemplazar mazo",
+  "Saving will replace the deck named \"{0}\".": "Al guardar se reemplazará el mazo llamado \"{0}\".",
+  "Name your deck to keep it in My Decks on this browser between sessions.": "Ponle un nombre a tu mazo para conservarlo en Mis mazos en este navegador entre sesiones.",
+  "Could not save this deck. Check that browser storage is available and try again.": "No se pudo guardar el mazo. Comprueba que el almacenamiento del navegador esté disponible e inténtalo de nuevo.",
+
   "Find a card to add or edit": "Busca una carta para añadir o editar",
   "Find an existing card, edit its details, or start a new card. Preview the result and add it to your game.": "Busca una carta existente, edita sus detalles o crea una nueva. Revisa el resultado y añádela a tu partida.",
   "Editing: {0}": "Editando: {0}",
@@ -1927,6 +1939,10 @@ export const ui = {
   "Card counters": "Contadores de la carta",
   "Chat message": "Mensaje del chat",
   "Choose source for mana pip {0}": "Elige la fuente para el símbolo de maná {0}",
+  "Graphics": "Gráficos",
+  "Low": "Bajos",
+  "High": "Altos",
+  "Off: static board. Low: simple scenery. High: full effects. Card and text clarity stays the same.": "Desactivados: tablero estático. Bajos: escenario sencillo. Altos: todos los efectos. Las cartas y el texto mantienen su nitidez.",
   "Compact artwork": "Ilustración compacta",
   "Cost to pay": "Coste a pagar",
   "Floating mana": "Maná en la reserva",

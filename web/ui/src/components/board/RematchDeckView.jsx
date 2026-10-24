@@ -49,7 +49,7 @@ export default function RematchDeckView() {
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="lobby-sheet-active-grid">
           <div className="lobby-sheet-discovery">
-            <LobbyDeckCatalogPicker format={format} disabled={starting} onChange={onChange} />
+            <LobbyDeckCatalogPicker allowUnreleased={multiplayer?.allowUnreleased === true} format={format} disabled={starting} onChange={onChange} />
           </div>
           <div className="lobby-sheet-sidebar">
             <LobbyDeckEditor

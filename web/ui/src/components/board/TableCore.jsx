@@ -134,6 +134,7 @@ export default function TableCore({
     state?.decision?.source_name, surrenderRequested,
   ].join('|'));
   const [openDecklist, setOpenDecklist] = useState(null);
+  const [paymentFooterHost, setPaymentFooterHost] = useState(null);
   const [humanActionDockPosition, setHumanActionDockPosition] = useState(null);
   const {
     portraitCompactViewport,
@@ -234,6 +235,17 @@ export default function TableCore({
   // The brand and table tools float over the top-right of the opponent row;
   // the last opponent header pads itself by their measured width.
   const utilityControlsRef = useRef(null);
+  const phaseBrandRef = useRef(null);
+  useLayoutEffect(() => {
+    const brand = phaseBrandRef.current;
+    const table = tableRef.current;
+    if (!brand || !table) return;
+    const measure = () => table.style.setProperty('--middle-brand-width', `${brand.getBoundingClientRect().width}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(brand);
+    return () => observer.disconnect();
+  }, [focusedHudDesktop]);
   useLayoutEffect(() => {
     const controls = utilityControlsRef.current;
     const table = tableRef.current;
@@ -585,7 +597,7 @@ export default function TableCore({
       ref={humanActionDockRef}
       className="battlefield-human-action-dock"
       data-human-action-dock
-      data-mana-payment={decision?.kind === 'mana_payment' && !surrenderRequested ? 'true' : undefined}
+      data-mana-payment={decision?.kind === "mana_payment" && !surrenderRequested ? "true" : undefined}
       style={{
         "--decision-panel-content-width": decisionContentPreferredWidth(decision),
         "--decision-panel-compact-width": decisionCompactPreferredWidth(decision),
@@ -605,11 +617,9 @@ export default function TableCore({
     >
       <div className="battlefield-human-decision-dock">
         <div ref={decisionRolloutRef} className="table-action-bar battlefield-human-decision-panel">
-          {decision?.kind === 'mana_payment' && !surrenderRequested ? <ManaPaymentDecision
-            decision={decision}
-            quickControls={humanQuickControlsElement}
-            canAct={samePlayerId(decision.player, perspective) && !multiplayer?.submittingAction && !multiplayer?.peerWait}
-          /> : <DecisionPopupLayer
+          {decision?.kind === 'mana_payment' && !surrenderRequested ? (
+            <div ref={setPaymentFooterHost} className="desktop-mana-payment-actions" />
+          ) : <DecisionPopupLayer
             priorityInline
             dockSubmitFooter
             quickControls={humanQuickControlsElement}
@@ -684,17 +694,23 @@ export default function TableCore({
         setActiveOpponentIndex={setMobileOpponentIndex}
       />
       {focusedHudDesktop && (
-        <div className="table-phase-divider" style={{
-          // The tracker starts at the centre of the first opponent's field
-          // (a third of the way across with one opponent) and ends at the edge.
-          "--phase-track-start": opponents.length > 1 ? `${50 / opponents.length}%` : "33%",
-        }}>
+        <div className="table-phase-divider">
           {/* Reserve both tracker rows so combat never resizes either field. */}
-          <div className="topbar-phase-shell"><PhaseTrack compact reserveCombatSpace /></div>
+          <div className="topbar-phase-shell" inert={decision?.kind === "mana_payment" && !surrenderRequested}><PhaseTrack compact reserveCombatSpace /></div>
           {/* Brand (the menu), then the site links, at the row's right end. */}
-          {middleUtilityControls && <div className="navigation-utility-controls">
+          {middleUtilityControls && <div ref={phaseBrandRef} className="navigation-utility-controls" inert={decision?.kind === "mana_payment" && !surrenderRequested}>
             {cloneElement(middleUtilityControls, { brandMenu: true, showLearn: true })}
           </div>}
+          {decision?.kind === 'mana_payment' && !surrenderRequested && (
+            <div className="desktop-mana-payment" data-mana-payment="true">
+              <ManaPaymentDecision
+                decision={decision}
+                footerHost={paymentFooterHost}
+                quickControls={humanQuickControlsElement}
+                canAct={samePlayerId(decision.player, perspective) && !multiplayer?.submittingAction && !multiplayer?.peerWait}
+              />
+            </div>
+          )}
         </div>
       )}
       {planarZoneElement}

@@ -128,32 +128,4 @@ body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield
   opacity: 0.28;
 }
 
-/* A slight lean toward the pointer: foil permanents in Full cards, and every
-   card in the hand (without the foil's light) in both appearances. Only the
-   face leans; the card element keeps its own transforms (tap, hover lift,
-   drag). It is a 2D skew on purpose: a 3D rotation puts the face on its own
-   layer, rasterized at the card's unscaled size, which blurs a hovered hand
-   card's rules text. */
-body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) .game-card[data-foil="true"] > .game-card-surface {
-  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) .game-card[data-foil="true"][data-holo-active="true"] > .game-card-surface {
-  transform: skew(calc(var(--holo-tilt-y, 0deg) * -0.15), calc(var(--holo-tilt-x, 0deg) * 0.15));
-  transition: transform 90ms linear;
-}
-
-@media (min-width: 1024px) {
-  .game-card.hand-card > .game-card-surface {
-    transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease;
-  }
-
-  .game-card.hand-card[data-holo-active="true"] > .game-card-surface {
-    transform: skew(calc(var(--holo-tilt-y, 0deg) * -0.15), calc(var(--holo-tilt-x, 0deg) * 0.15));
-    transition: transform 90ms linear, box-shadow 180ms ease;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .game-card[data-holo-active="true"] > .game-card-surface { transform: none !important; }
-}
+/* Pointer highlights never transform the card face or its text. */

@@ -1,3 +1,4 @@
+import { effectPixelRatio } from '../../../lib/graphics-quality.js';
 import * as THREE from 'three';
 import { createTablePerspective } from './table-perspective.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -13,14 +14,14 @@ const noiseShader = `
   float fbm(vec2 p){return noise(p)*.55+noise(p*2.03)*.28+noise(p*4.11)*.17;}
 `;
 
-export function createForgeScene(host) {
-  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+export function createForgeScene(host, quality = 'high') {
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: quality === 'high', powerPreference: 'low-power' });
+  renderer.setPixelRatio(1);
   renderer.setClearColor(0x111a22, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
   renderer.shadowMap.needsUpdate = true;
@@ -32,7 +33,7 @@ export function createForgeScene(host) {
   scene.add(new THREE.HemisphereLight(0x7394c6, 0x080b17, 0.35));
   const daylight = new THREE.DirectionalLight(0xaecbff, 1.8);
   daylight.position.set(-300, 450, 700);
-  daylight.castShadow = true;
+  daylight.castShadow = quality === 'high';
   daylight.shadow.mapSize.set(1024, 1024);
   daylight.shadow.normalBias = 1;
   daylight.shadow.bias = -.0002;
@@ -52,7 +53,7 @@ export function createForgeScene(host) {
       let light = seatLights.get(spec.owner);
       if (!light) {
         light = new THREE.SpotLight();
-        light.penumbra = 1; light.decay = 2; light.castShadow = true;
+        light.penumbra = 1; light.decay = 2; light.castShadow = quality === 'high';
         light.shadow.mapSize.set(512, 512); light.shadow.bias = -.0002;
         light.shadow.normalBias = .6;
         seatLights.set(spec.owner, light); scene.add(light, light.target);
@@ -73,7 +74,7 @@ export function createForgeScene(host) {
     host.dataset.playerLights = specifications.map(spec => `${spec.owner}:${spec.color}`).join(',');
   }
   const resources = new Set();
-  let disposed = false, lost = false, width = 1, height = 1, combat = false;
+  let disposed = false, lost = false, width = 1, height = 1, combat = false, pixelRatio = 0;
   let pulseAt = -Infinity, previousTime = 0, placements = [], shadowLayout = "";
   const own = resource => { resources.add(resource); return resource; };
   const plane = own(new THREE.PlaneGeometry(1, 1));
@@ -163,17 +164,6 @@ export function createForgeScene(host) {
     const light = new THREE.PointLight(0x93c9ff, 0, 250, 1.5); scene.add(light);
     return { prop, mesh, material, light };
   });
-  const particleCount = 100;
-  const sparkGeometry = own(new THREE.BufferGeometry());
-  const sparkPositions = new Float32Array(particleCount * 3);
-  sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
-  const sparkMaterial = own(new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: 'attribute float size; varying float strength; void main(){strength=size/4.;gl_PointSize=size;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: 'varying float strength;void main(){float a=1.-smoothstep(.0,.5,length(gl_PointCoord-.5));gl_FragColor=vec4(.66,.82,1.,a*strength*.65);}',
-  }));
-  sparkGeometry.setAttribute('size', new THREE.BufferAttribute(Float32Array.from({ length: particleCount }, (_, i) => 1.5 + (i % 5) * 0.55), 1));
-  const sparks = new THREE.Points(sparkGeometry, sparkMaterial); sparks.frustumCulled = false; scene.add(sparks);
   const onLost = event => { event.preventDefault(); lost = true; host.dataset.renderer = 'fallback'; renderer.domElement.style.visibility = 'hidden'; };
   const onRestored = () => { lost = false; host.dataset.renderer = 'webgl'; renderer.domElement.style.visibility = ''; };
   renderer.domElement.addEventListener('webglcontextlost', onLost);
@@ -182,8 +172,11 @@ export function createForgeScene(host) {
   return {
     layout(layout, zones) {
       seatLayout = layout;
-      if (width !== layout.width || height !== layout.height) {
+      const nextPixelRatio = effectPixelRatio(layout.width, layout.height, window.devicePixelRatio || 1, quality);
+      if (width !== layout.width || height !== layout.height || pixelRatio !== nextPixelRatio) {
+        pixelRatio = nextPixelRatio;
         width = Math.max(1, layout.width); height = Math.max(1, layout.height);
+        renderer.setPixelRatio(pixelRatio);
         renderer.setSize(width, height); projection.resize(width, height);
         const terrain = projection.rect({left: -20, top: -20, right: width + 20, bottom: height + 20});
         floor.position.set((terrain.left + terrain.right) / 2, -(terrain.top + terrain.bottom) / 2, -60);
@@ -250,16 +243,10 @@ export function createForgeScene(host) {
         light.intensity = prop.group.visible ? 18 + pulse * 18 : 0;
       });
       sanctuary.draw(t, pulse);
-      sparks.visible = !reducedMotion;
-      for (let i = 0; i < particleCount; i++) {
-        const age = (t * (0.09 + (i % 3) * 0.025) + i * 0.618) % 1;
-        const side = i % 2, edge = side ? width * 0.96 : width * 0.04;
-        sparkPositions[i * 3] = edge + Math.sin(i * 12.3 + age * 4) * width * .025;
-        sparkPositions[i * 3 + 1] = -height * (1 - age) + Math.cos(i * 3.1) * 50;
-        sparkPositions[i * 3 + 2] = 120;
-      }
-      sparkGeometry.attributes.position.needsUpdate = true;
       renderer.render(scene, camera);
+      // Continue only while a game cue or scenery relocation is settling.
+      return !reducedMotion && (pulse > 0 || props.some((prop, index) =>
+        placements[index] && Math.abs(prop.size - placements[index].size) > .5));
     },
     dispose() {
       disposed = true;

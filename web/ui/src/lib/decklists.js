@@ -5,8 +5,7 @@ export const MATCH_FORMAT_PLANECHASE = "planechase";
 export const LOBBY_DECK_SIZE = 60;
 export const COMMANDER_DECK_SIZE = 99;
 export const PARTNER_DECK_SIZE = 98;
-const SAVED_DECK_PRESETS_STORAGE_KEY = "ironsmith.savedDeckPresets.v3";
-const SAVED_DECK_PRESETS_LIMIT = 5;
+export { listSavedDeckPresets, findSavedDeckPreset, saveSavedDeckPreset, removeSavedDeckPreset } from "./saved-decks.js";
 const DEFAULT_LOBBY_DECK_STORAGE_KEY = "ironsmith.defaultLobbyDeck.v1";
 
 const MAIN_DECK_HEADER = /^Deck$/i;
@@ -64,79 +63,8 @@ function parseCardPrintPreference(raw) {
   };
 }
 
-function normalizeDeckPresetName(raw) {
-  return String(raw || "").trim();
-}
-
-function sanitizeDeckPresetTexts(texts) {
-  if (!Array.isArray(texts)) return [];
-  return texts.map((text) => String(text || ""));
-}
-
-function sanitizeDeckPresetPlayerNames(names) {
-  if (!Array.isArray(names)) return [];
-  return names.map((name) => String(name || "").trim());
-}
-
-// The formats a saved deck was checked against, in the catalog's order.
-function sanitizeDeckPresetFormats(formats) {
-  if (!Array.isArray(formats)) return [];
-  const chosen = new Set(formats.map((format) => String(format || "")));
-  return Object.keys(PUBLIC_FORMATS).filter((format) => chosen.has(format));
-}
-
-function canUseSessionStorage() {
-  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
-}
-
 function canUseLocalStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
-function readSavedDeckPresets() {
-  if (!canUseSessionStorage()) return [];
-
-  try {
-    const raw = window.sessionStorage.getItem(SAVED_DECK_PRESETS_STORAGE_KEY);
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((entry) => {
-        const name = normalizeDeckPresetName(entry?.name);
-        if (!name) return null;
-        return {
-          name,
-          texts: sanitizeDeckPresetTexts(entry?.texts),
-          playerNames: sanitizeDeckPresetPlayerNames(entry?.playerNames),
-          formats: sanitizeDeckPresetFormats(entry?.formats),
-          updatedAt: Number(entry?.updatedAt) || 0,
-        };
-      })
-      .filter(Boolean)
-      .sort((left, right) => {
-        if (right.updatedAt !== left.updatedAt) return right.updatedAt - left.updatedAt;
-        return left.name.localeCompare(right.name);
-      });
-  } catch (error) {
-    console.warn("Failed to read saved deck presets:", error);
-    return [];
-  }
-}
-
-function writeSavedDeckPresets(entries) {
-  if (!canUseSessionStorage()) return;
-
-  try {
-    window.sessionStorage.setItem(
-      SAVED_DECK_PRESETS_STORAGE_KEY,
-      JSON.stringify(entries)
-    );
-  } catch (error) {
-    console.warn("Failed to write saved deck presets:", error);
-  }
 }
 
 function normalizeLobbyDeckDefault(entry) {
@@ -363,91 +291,6 @@ export function deckListText(deck = [], sideboard = []) {
   return side.length ? [...main, "", "Sideboard", ...side].join("\n") : main.join("\n");
 }
 
-export function listSavedDeckPresets() {
-  return readSavedDeckPresets();
-}
-
-export function findSavedDeckPreset(name) {
-  const normalizedName = normalizeDeckPresetName(name);
-  if (!normalizedName) return null;
-
-  const expectedKey = normalizedName.toLowerCase();
-  return (
-    readSavedDeckPresets().find(
-      (entry) => entry.name.toLowerCase() === expectedKey
-    ) || null
-  );
-}
-
-// Callers check the decks' legality in `formats` first (validateFormatDeck);
-// a deck is never saved without at least one format.
-export function saveSavedDeckPreset(name, texts, playerNames = [], formats = []) {
-  const normalizedName = normalizeDeckPresetName(name);
-  const normalizedFormats = sanitizeDeckPresetFormats(formats);
-  if (!normalizedName || !normalizedFormats.length) {
-    return {
-      saved: false,
-      replaced: false,
-      ...(normalizedName ? { reason: "format" } : {}),
-      entry: null,
-      entries: readSavedDeckPresets(),
-    };
-  }
-
-  const now = Date.now();
-  const nextEntry = {
-    name: normalizedName,
-    texts: sanitizeDeckPresetTexts(texts),
-    playerNames: sanitizeDeckPresetPlayerNames(playerNames),
-    formats: normalizedFormats,
-    updatedAt: now,
-  };
-  const normalizedKey = normalizedName.toLowerCase();
-  const entries = readSavedDeckPresets();
-  const existingIndex = entries.findIndex(
-    (entry) => entry.name.toLowerCase() === normalizedKey
-  );
-  const replaced = existingIndex >= 0;
-
-  if (!replaced && entries.length >= SAVED_DECK_PRESETS_LIMIT) {
-    return {
-      saved: false,
-      replaced: false,
-      reason: "limit",
-      limit: SAVED_DECK_PRESETS_LIMIT,
-      entry: null,
-      entries,
-    };
-  }
-
-  if (replaced) {
-    entries.splice(existingIndex, 1);
-  }
-  entries.unshift(nextEntry);
-  writeSavedDeckPresets(entries);
-
-  return {
-    saved: true,
-    replaced,
-    entry: nextEntry,
-    entries,
-  };
-}
-
-export function removeSavedDeckPreset(name) {
-  const normalizedName = normalizeDeckPresetName(name);
-  if (!normalizedName) return readSavedDeckPresets();
-
-  const expectedKey = normalizedName.toLowerCase();
-  const entries = readSavedDeckPresets().filter(
-    (entry) => entry.name.toLowerCase() !== expectedKey,
-  );
-  writeSavedDeckPresets(entries);
-  return entries;
-}
-
-export { SAVED_DECK_PRESETS_LIMIT };
-
 export function normalizeMatchFormat(raw) {
   if (typeof raw === 'string' && Object.hasOwn(PUBLIC_FORMATS, raw)) return raw;
   if (raw === MATCH_FORMAT_COMMANDER) return MATCH_FORMAT_COMMANDER;
@@ -499,4 +342,23 @@ export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
 
 export function isLobbyDeckReady(deck) {
   return Array.isArray(deck) && deck.length >= LOBBY_DECK_SIZE;
+}
+
+// Preserve section text (including print choices and sideboards) when saving a lobby deck.
+export function serializeLobbyDeck(deckText, commanderText) {
+  return commanderText.trim()
+    ? `Commander\n${commanderText.trim()}\n\nDeck\n${deckText}`
+    : deckText;
+}
+
+export function splitSavedLobbyDeck(text) {
+  const main = [];
+  const commanders = [];
+  let inCommanders = false;
+  for (const line of String(text || "").split("\n")) {
+    if (COMMANDER_HEADER.test(line.trim())) { inCommanders = true; continue; }
+    if (MAIN_DECK_HEADER.test(line.trim()) || EXTRA_DECK_HEADER.test(line.trim())) inCommanders = false;
+    (inCommanders ? commanders : main).push(line);
+  }
+  return { deckText: main.join("\n").trim(), commanderText: commanders.join("\n").trim() };
 }

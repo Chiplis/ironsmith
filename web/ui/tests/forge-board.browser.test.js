@@ -100,6 +100,7 @@ test('real WASM puzzle mounts the forge on desktop and mobile', async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => localStorage.setItem('ironsmith.showShortcutsOnStart', 'false'));
     const puzzle = { version: 1, players: [
       { name: 'Forge', life: 20, zones: { battlefield: ['Forest', 'Island', 'Llanowar Elves'], hand: ['Forest', 'Grizzly Bears'], library: ['Forest', 'Forest'] } },
       { name: 'Opponent', life: 20, zones: { battlefield: ['Mountain', 'Mountain', 'Grizzly Bears'], library: ['Mountain'] } },
@@ -122,13 +123,31 @@ test('real WASM puzzle mounts the forge on desktop and mobile', async () => {
     const firstLand = await ownLands.nth(0).boundingBox(), nextLand = await ownLands.nth(1).boundingBox();
     assert.ok(Math.abs(nextLand.x - firstLand.x - firstLand.width - 6) < 2, 'lands should pack with a six-pixel gap');
     assert.equal(await creature.locator('.arena-permanent-name').innerText(), 'Llanowar Elves');
-    await page.locator('.topbar-menu-trigger:visible').first().click();
+    const handSurface = page.locator('.hand-card > .game-card-surface').first();
+    await handSurface.hover({ position: { x: 20, y: 25 } });
+    assert.equal(await handSurface.evaluate(el => getComputedStyle(el).transform), 'none', 'hand text stays rectangular on hover');
+    assert.equal(await page.locator('.arena-ambience').count(), 0, 'no ambient particle background');
+    await page.locator('.topbar-menu-trigger:visible, .topbar-brand-menu-trigger:visible').first().click();
+    await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+    const graphics = page.getByLabel('Graphics', { exact: true });
+    await graphics.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: '/tmp/ironsmith-graphics-settings.png' });
+    assert.equal(await graphics.inputValue(), 'high', 'new users start on High');
+    for (const quality of ['off', 'low', 'high', 'off', 'high']) {
+      await graphics.selectOption(quality);
+      await page.waitForFunction(q => document.querySelector('[data-workspace-shell]').dataset.graphicsQuality === q, quality);
+      if (quality === 'off') assert.equal(await page.locator('.forge-board canvas').count(), 0);
+      else await page.waitForSelector('.forge-board[data-renderer="webgl"] canvas');
+      assert.equal(await page.evaluate(() => localStorage.getItem('ironsmith.graphicsQuality')), quality);
+      const surface = page.locator('.battlefield-arena-card > .game-card-surface').first();
+      if (await surface.count()) assert.equal(await surface.evaluate(el => getComputedStyle(el).transform), 'none');
+    }
     await page.getByLabel('Battlefield cards', { exact: true }).selectOption('full');
     await page.getByLabel('Noncreature lands', { exact: true }).selectOption('standard');
     assert.equal(await page.locator('.battlefield-artwork-card').count(), 0);
     assert.ok(await page.locator('.battlefield-portrait-card').count() >= 3);
     await page.getByLabel('Noncreature lands', { exact: true }).selectOption('compact');
-    assert.ok(await page.locator('.battlefield-small-land').count() >= 2);
+    assert.equal(await page.locator('.battlefield-small-land').count(), 0, 'full-card appearance keeps full land faces');
     assert.ok(await page.locator('.battlefield-portrait-card').count() >= 1);
     await page.getByLabel('Battlefield cards', { exact: true }).selectOption('compact');
     await page.keyboard.press('Escape');

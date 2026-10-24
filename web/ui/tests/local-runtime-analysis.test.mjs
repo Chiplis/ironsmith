@@ -1,4 +1,3 @@
-// Source-authored only; these scenarios have not been executed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLocalPriorityWorker, createLocalQueryWorker, collectLocalTargetPreviews } from '../src/lib/local-runtime-analysis.js';
@@ -109,4 +108,32 @@ test('cancellation during native branch acquisition releases exactly that branch
   worker.postMessage({ type: 'analyze', token: 1 }); await flush();
   worker.postMessage({ type: 'cancel', token: 1, serial: 1 }); captured(8); await flush();
   assert.equal(releases, 1); worker.terminate(); await flush(); assert.equal(releases, 1);
+});
+
+test('local query cancellation acknowledges the token without executing another query', async () => {
+  const messages = [];
+  let finish, cancelled, calls = 0;
+  const worker = createLocalQueryWorker((input, isCancelled) => {
+    calls++; cancelled = isCancelled;
+    return new Promise(resolve => { finish = resolve; });
+  });
+  worker.onmessage = ({ data }) => messages.push(data);
+  worker.postMessage({ token: 7 }); await flush();
+  worker.postMessage({ type: 'cancel', token: 7 });
+  assert.equal(cancelled(), true);
+  finish('obsolete'); await flush();
+  assert.equal(calls, 1);
+  assert.deepEqual(messages, [{ token: 7, cancelled: true }]);
+});
+
+test('local query cancelled before its first slice never acquires a branch', async () => {
+  let calls = 0;
+  const messages = [];
+  const worker = createLocalQueryWorker(() => { calls++; });
+  worker.onmessage = ({ data }) => messages.push(data);
+  worker.postMessage({ token: 8 });
+  worker.postMessage({ type: 'cancel', token: 8 });
+  await flush();
+  assert.equal(calls, 0);
+  assert.deepEqual(messages, [{ token: 8, cancelled: true }]);
 });

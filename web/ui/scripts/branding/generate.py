@@ -167,8 +167,8 @@ def generate(font_path, output, axes=None, letter_spacing=0, loading_screen=Fals
     wrapper.append(sparks)
     parent.insert(pos,wrapper)
     style = root.find(NS+'style')
-    style.text = style.text.replace('2s infinite','2s 3 forwards').replace('2s ease-in-out infinite','2s ease-in-out 3 forwards')
-    style.text += '\n#working:target .forged-letter { animation: forge-letter 6s linear forwards; }\n@keyframes forge-letter {\n'
+    style.text = style.text.replace('1.6s infinite','1.6s 3 forwards').replace('1.6s ease-in-out infinite','1.6s ease-in-out 3 forwards')
+    style.text += '\n#working:target .forged-letter { animation: forge-letter 4.8s linear 0.96s forwards; }\n@keyframes forge-letter {\n'
     for times,t in [('0%,14.66%',0),('20%,48%',.4),('54%,81.33%',.75),('88%,100%',1)]:
         style.text += f'{times} {{ d: path("{shape(t)}"); }}\n'
     style.text += '}\n@media (prefers-reduced-motion: reduce) { #working:target .forged-letter { animation:none; d:path("'+shape(1)+'"); } }\n'
@@ -181,8 +181,8 @@ def generate(font_path, output, axes=None, letter_spacing=0, loading_screen=Fals
         if rest is not None:
             next(e for e in root.iter() if rest in list(e)).remove(rest)
         left = word_start-24
-        top = min(top, .75*(210*rig_scale+dy))-24
-        right = 860+.75*(1054*rig_scale+dx)+24
+        top = min(top, .75*(60*rig_scale+dy))-24
+        right = 860+.75*(1160*rig_scale+dx)+24
         root.set('viewBox',f'{left:.3f} {top:.3f} {right-left:.3f} {777-top:.3f}')
         root.find(NS+'title').text = 'IronSmith — forging your table'
     metadata = {'font' :Path(font_path).name,'axes':axes or {},'strike':[strike_x,strike_y], 'smithOffset':[dx,dy], 'smithScale':rig_scale, 'glyphContours':len(contours),'scale':scale, 'letterSpacing':letter_spacing, 'loadingScreen':loading_screen}

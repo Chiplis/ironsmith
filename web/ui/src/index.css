@@ -19,6 +19,7 @@
 @import "./styles/card-stack-pile.css";
 @import "./styles/play-workspace.css";
 @import "./styles/zone-icons.css";
+@import "./styles/desktop-mana-strip.css";
 
 .surrender-button,
 .table-shell button.surrender-button.table-zone-action-button,

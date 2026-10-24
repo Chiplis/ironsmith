@@ -84,7 +84,7 @@ function objectFamilyIds(state, objectId) {
 
 // Include every expanded pile, not just the hovered card's source zone.
 function previewObstacleBounds() {
-  return [...document.querySelectorAll(".zone-pile-menu, .battlefield-human-action-dock, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions, .decision-main-button, .decision-submit-button, .decision-cancel-button, .combat-decision-actions, .mana-payment-editor, .mana-payment-warning-details")]
+  return [...document.querySelectorAll(".zone-pile-menu, .battlefield-human-action-dock, .desktop-mana-payment, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions, .decision-main-button, .decision-submit-button, .decision-cancel-button, .combat-decision-actions, .mana-payment-editor, .mana-payment-warning-details")]
     .filter(element => getComputedStyle(element).visibility !== "hidden")
     .map(element => element.getBoundingClientRect())
     .filter(rect => rect.width > 0 && rect.height > 0);

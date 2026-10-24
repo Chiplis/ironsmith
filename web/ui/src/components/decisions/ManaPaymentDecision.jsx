@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, LoaderCircle, RotateCcw, SlidersHorizontal } from "lucide-react";
@@ -99,7 +100,7 @@ function outputText(source) {
   return mana || sourceActionLabel(source);
 }
 
-export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null, quickControls = null }) {
+export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null, quickControls = null, footerHost = undefined }) {
   const ui = useUiText();
   const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision } = useGame();
   const { setPreviewLinkedObjects, clearPreviewLinkedObjects, showAnchoredCardPreview } = useHover();
@@ -180,9 +181,25 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
   ].filter(Boolean))];
   const additionalSources = sources.filter(source => !rows.some(row => row.source?.choice_key === source.choice_key && row.source?.occurrence === source.occurrence));
   const hasChoices = editor.edited || draft.required_source_ids.length || draft.required_activations.length || draft.required_alternatives.length || draft.required_life_pips.length || draft.preserved_source_ids.length || draft.excluded_source_ids.some(id => !payment.fixed_excluded_source_ids?.includes(id));
-  const busyLabel = dirty ? ui('Updating payment…') : !payment.planning_complete && !editor.edited ? ui('Improving') : null;
+  const busyLabel = dirty ? ui('Updating payment…') : null;
   const costPips = payment.pips || payment.payment_pips || [];
   const canConfigureSources = sources.length > 0 || paymentSourceOptions(payment).length > 0;
+  const footer = (
+    <div className="mana-plan-actions mana-payment-editor-footer">
+      {busyLabel && <span className="mana-payment-editor-busy" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
+      {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
+      <div className="mana-payment-submit-row">
+      <div className="mana-payment-secondary-controls">
+        <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
+        {inlineSubmit ? quickControls : null}
+      </div>
+      {inlineSubmit && <div className="mana-payment-pay-region">
+        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
+        {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
+      </div>}
+      </div>
+    </div>
+  );
   return <div ref={rolloutRef} className="mana-payment-editor">
     <div className="mana-payment-editor-header">
       <div className="mana-payment-editor-heading"><div className="mana-plan-eyebrow">{ui('Mana payment')}</div>{canConfigureSources && <button type="button" className="mana-payment-source-picker" disabled={!canAct || confirming} aria-label={ui('Advanced payment controls')} aria-expanded={menu?.mode === 'advanced'} onClick={openAdvancedMenu}><SlidersHorizontal size={15} /></button>}</div>
@@ -207,20 +224,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
       {payment.activation_options_complete === false && <div role="status">{ui('Loading payment options…')}</div>}
       {editor.error && <div role="alert">{editor.error}</div>}
     </div>
-    <div className="mana-plan-actions mana-payment-editor-footer">
-      {busyLabel && <span className="mana-payment-editor-busy" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
-      {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
-      <div className="mana-payment-submit-row">
-      <div className="mana-payment-secondary-controls">
-        <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
-        {inlineSubmit ? quickControls : null}
-      </div>
-      {inlineSubmit && <div className="mana-payment-pay-region">
-        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
-        {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
-      </div>}
-      </div>
-    </div>
-    {menu?.anchor.isConnected && <ActionPopover anchorElement={menu.anchor} anchorRect={menu.anchor.getBoundingClientRect()} actions={menu.actions} onAction={pickAction} onClose={closeMenu} variant="game" collapseEquivalentActions={false} previewCards={false} highlightObjects fitViewport focusOnOpen disabled={!canAct || confirming} ariaLabel={ui(menu.mode === 'advanced' ? 'Advanced payment controls' : 'Choose payment source')} />}
+    {footerHost === undefined ? footer : footerHost ? createPortal(footer, footerHost) : null}
+    {menu?.anchor.isConnected && <ActionPopover anchorElement={menu.anchor} anchorRect={menu.anchor.getBoundingClientRect()} actions={menu.actions} onAction={pickAction} onClose={closeMenu} variant="game" tone={footerHost === undefined ? "default" : "flat"} collapseEquivalentActions={false} previewCards={false} highlightObjects fitViewport focusOnOpen disabled={!canAct || confirming} ariaLabel={ui(menu.mode === 'advanced' ? 'Advanced payment controls' : 'Choose payment source')} />}
   </div>;
 }

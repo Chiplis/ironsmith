@@ -24,13 +24,14 @@ export async function createCardGlintLiveView(canvas,{onReady,onError}={}) {
   const {browser,magic} = await loadCardGlintLive();
   canvas.width = 732; canvas.height = 1020;
   let pointer = null, settings = normalizeCardPresentation(), revision = 0, faceKey = '';
+  let pointerFrame = 0;
   let frame = 0, last = 0, elapsed = 0, visible = true, disposed = false, controller;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const finish = () => CARD_GLINT_FINISHES.find(option => option.id === settings.finish);
   const paint = () => {
     if (disposed || !revision) return;
     const at = pointer ?? {x:.5,y:.5};
-    // Match the host's CSS tilt so the light follows the visible card.
+    // Move the simulated light without warping the rectangular card face.
     const rx = (at.y-.5)*CARD_GLINT_TILT.x, ry = (at.x-.5)*CARD_GLINT_TILT.y;
     renderer.updateScene([{id:1,card:1,finish:settings.finish,transform:QUAD,
       normal:[Math.sin(ry),-Math.sin(rx)*Math.cos(ry),Math.cos(rx)*Math.cos(ry)],
@@ -57,6 +58,20 @@ export async function createCardGlintLiveView(canvas,{onReady,onError}={}) {
   try {
     renderer = await browser.createRenderer({canvas,wasmUrl:cardGlintAsset('renderer_bg.wasm'),etching:'rust',invalidate:paint,onError});
   } catch (error) {unlisten(); throw error;}
+  // Match physical display pixels independently of decorative graphics quality.
+  // Bound extreme zoom while retaining at least the source face resolution.
+  const resize = () => {
+    const rect = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const scale = Math.min(2, Math.max(1, rect.width * dpr / 732, rect.height * dpr / 1020));
+    const width = Math.round(732 * scale), height = Math.round(1020 * scale);
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width; canvas.height = height; paint();
+    }
+  };
+  const sizeObserver = new ResizeObserver(resize);
+  sizeObserver.observe(canvas);
+  window.addEventListener('resize', resize);
+  resize();
   return {
     // Finish and print effects are instance options and never re-prepare the face.
     update(face,presentation) {
@@ -74,9 +89,13 @@ export async function createCardGlintLiveView(canvas,{onReady,onError}={}) {
       }
       paint(); wake();
     },
-    pointer(value) {pointer = value; paint();},
+    pointer(value) {
+      pointer = value;
+      if (!disposed && !pointerFrame) pointerFrame = requestAnimationFrame(() => {pointerFrame = 0; paint();});
+    },
     dispose() {
-      disposed = true; controller?.abort(); cancelAnimationFrame(frame); unlisten();
+      disposed = true; controller?.abort(); cancelAnimationFrame(frame); cancelAnimationFrame(pointerFrame); unlisten();
+      sizeObserver.disconnect(); window.removeEventListener('resize', resize);
       renderer.dispose(); canvas.width = canvas.height = 0;
     },
   };

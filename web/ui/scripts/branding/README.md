@@ -14,8 +14,10 @@ python3 -m venv .venv-branding
   --out output/branding/wordmark-plantin.svg
 ```
 
-Open the SVG with `#working` appended to animate. Three strikes reshape the
-anvil into the selected font's h, then hold the finished wordmark. Regenerate
+Open the SVG with `#working` appended to animate. A 0.96-second head nod lowers
+the welding mask, three strikes reshape the anvil over 4.8 seconds, then a
+final head tilt lifts the mask. The full sequence takes 6.72 seconds and holds
+the finished wordmark. Regenerate
 when changing font; this is a build-time generator, not runtime CSS font detection.
 The existing loading screen and favicon are not modified by this command.
 
@@ -52,3 +54,10 @@ The loading screen uses Matrix Bold. Regenerate the checked-in asset with:
 removes the preview caption. Optional `--letter-spacing 0.12` adds tracking
 in em. Both startup states use this asset with `#working`. The favicon remains
 `ironsmith-logo.svg`, without the animation fragment.
+
+The mask uses `mask_motion.py` to project a rigid shell rotating 0–80 degrees
+around a fixed temple hinge. Its camera elevation and depth remain constant;
+only the hinge angle changes. After editing this geometry, run
+`python3 web/ui/scripts/branding/mask_motion.py`, then regenerate the loading
+asset above. `test_mask_motion.py` checks 3D rigidity, front-face orientation,
+closed-pose alignment, and raised-face clearance.

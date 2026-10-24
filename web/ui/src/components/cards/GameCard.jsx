@@ -1577,7 +1577,7 @@ export default function GameCard({
         {variant === "battlefield" && !useTokenBattlefield && (
           <span className="battlefield-frame" aria-hidden="true" />
         )}
-        {(isFoil || variant === "hand") && <HoloFoil glow={isFoil} />}
+        {isFoil && <HoloFoil />}
         {showCircuitAnimation && (
           <div
             className={cn(

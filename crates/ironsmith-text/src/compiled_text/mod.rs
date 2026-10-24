@@ -141,6 +141,8 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 .and_then(audit_readings::audit_payload_reading)
                 .or_else(|| value.downcast_ref::<Ability>().map(ability_surface_text))
                 .or_else(|| value.downcast_ref::<crate::effect::Restriction>().map(describe_restriction))
+                .or_else(|| value.downcast_ref::<ironsmith_core::ThisSpellCostCondition>()
+                    .and_then(crate::static_abilities::describe_this_spell_cost_condition))
         },
         || {
             // Each ability renders alone: the ordinary pipeline merges and

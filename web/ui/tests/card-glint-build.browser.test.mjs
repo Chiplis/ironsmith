@@ -9,12 +9,12 @@ const settled = page => page.waitForFunction(() => {
 }, undefined, {timeout:150000});
 
 test('Build previews finish, print effects and printing styles with card-glint', {timeout:600000}, async () => {
-  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  const vite=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},logLevel:'error'});
   await vite.listen();
   const browser=await chromium.launch();
   try {
     const page=await browser.newPage({viewport:{width:500,height:1100}}), errors=[];
-    page.on('pageerror',error=>errors.push(error.message));
+    page.on('pageerror',error=>{errors.push(error.message);console.error(error.stack);});
     page.on('console',message=>{if(message.type()==='error') console.error(message.text());});
     const url=`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint-build.html`;
     await page.goto(url,{waitUntil:'domcontentloaded',timeout:200000});
@@ -41,6 +41,16 @@ test('Build previews finish, print effects and printing styles with card-glint',
     const box=await card.boundingBox();
     await page.mouse.move(box.x+box.width*.9,box.y+box.height*.15);await page.waitForTimeout(300);
     assert.notDeepEqual(await card.screenshot(),prismatic,'pointer moves the foil highlight');
+    assert.equal(await card.evaluate(el => getComputedStyle(el).transform), 'none', 'hover must not warp the card text');
+    for (const quality of ['off', 'low', 'high']) {
+      await page.evaluate(async q => {
+        const {setGraphicsQuality} = await import('/src/hooks/useGraphicsQuality.js');
+        setGraphicsQuality(q);
+      }, quality);
+      await page.waitForFunction(q => document.querySelector('[data-card-glint-live]')?.dataset.cardGlintLive === (q === 'high' ? 'live' : 'static'), quality);
+      await settled(page);
+      assert.equal(await card.evaluate(el => getComputedStyle(el).transform), 'none');
+    }
 
     await page.getByRole('group',{name:'Printing style'}).getByRole('button',{name:'Fourth Edition'}).click();
     await settled(page);

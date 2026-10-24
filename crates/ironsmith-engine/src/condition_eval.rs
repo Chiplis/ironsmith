@@ -6311,9 +6311,10 @@ fn evaluate_condition_in_context(
                 let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) = count else { return Ok(false); };
                 if !matches!(filter.zone, None | Some(Zone::Battlefield)) { return Ok(false); }
                 let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-                let exact = game.battlefield.iter().filter(|id| !game.is_phased_out(**id))
+                let matching = game.battlefield.iter().filter(|id| !game.is_phased_out(**id))
                     .filter_map(|id| game.object(*id))
-                    .filter(|object| filter.matches(object, &filter_ctx, game)).count();
+                    .filter(|object| filter.matches(object, &filter_ctx, game));
+                let exact = crate::static_abilities::set_constrained_count(filter, matching, game);
                 let value = crate::events::damage::checked_scalar_count(exact as u128, "cast-time battlefield count")?;
                 return Ok(comparison.evaluate(value));
             }

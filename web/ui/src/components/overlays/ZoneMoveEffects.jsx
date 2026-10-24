@@ -1,3 +1,5 @@
+import { effectPixelRatio } from '@/lib/graphics-quality.js';
+import useGraphicsQuality from '@/hooks/useGraphicsQuality';
 import {burst, shockwave} from "@/lib/motion/stack-fx";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -877,7 +879,7 @@ function findInspectorImageElement(effects) {
   return null;
 }
 
-function ShaderCanvas({ effects }) {
+function ShaderCanvas({ effects, quality }) {
   const canvasRef = useRef(null);
   const shaderEffects = useMemo(
     () => effects
@@ -1019,8 +1021,9 @@ function ShaderCanvas({ effects }) {
       corsImg.src = src;
     };
 
+    let renderDpr = 1;
     const resizeCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = renderDpr = effectPixelRatio(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1, quality);
       const width = window.innerWidth;
       const height = window.innerHeight;
       canvas.width = Math.max(1, Math.floor(width * dpr));
@@ -1055,7 +1058,7 @@ function ShaderCanvas({ effects }) {
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.useProgram(program);
       gl.uniform2f(resolutionLocation, window.innerWidth, window.innerHeight);
-      gl.uniform1f(dprLocation, window.devicePixelRatio || 1);
+      gl.uniform1f(dprLocation, renderDpr);
       gl.uniform1f(timeLocation, now / 1000);
       gl.uniform1i(countLocation, activeEffects.length);
       gl.uniform4fv(sourceRectsLocation, rectsToFloat32Array(sourceRects));
@@ -1102,7 +1105,7 @@ function ShaderCanvas({ effects }) {
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
     };
-  }, []);
+  }, [quality]);
 
   return <canvas ref={canvasRef} className="zone-move-effects-canvas zone-move-effects-canvas--shader" aria-hidden="true" />;
 }
@@ -1324,7 +1327,7 @@ function CounterShatterCard({ effect }) {
   );
 }
 
-export default function ZoneMoveEffects() {
+function ZoneMoveEffectsContent({ quality }) {
   const [effects, setEffects] = useState([]);
   const cleanupTimersRef = useRef([]);
   const pendingPollsRef = useRef(new Set());
@@ -1508,7 +1511,10 @@ export default function ZoneMoveEffects() {
 
   return (
     <div className="zone-move-effects-layer">
-      <ShaderCanvas effects={effects} />
+      {quality === 'high' && effects.some(effect =>
+        (effect.travelsToInspector && (effect.kind === EXILE_EFFECT_KIND || effect.kind === MARQUEE_STREAM_EFFECT_KIND))
+        || effect.kind === WIPE_WAVE_EFFECT_KIND
+      ) && <ShaderCanvas effects={effects} quality={quality} />}
       {effects.map((effect) => {
         if (effect.kind === DEATH_COLLAPSE_EFFECT_KIND) {
           return <DeathCollapseCard key={effect.id} effect={effect} />;
@@ -1523,4 +1529,9 @@ export default function ZoneMoveEffects() {
       })}
     </div>
   );
+}
+
+export default function ZoneMoveEffects(props) {
+  const [quality] = useGraphicsQuality();
+  return quality === 'off' ? null : <ZoneMoveEffectsContent {...props} quality={quality} />;
 }

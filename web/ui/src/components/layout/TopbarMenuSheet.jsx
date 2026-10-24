@@ -1,3 +1,4 @@
+import useGraphicsQuality from '@/hooks/useGraphicsQuality';
 import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useMemo, useState } from "react";
@@ -129,6 +130,7 @@ export default function TopbarMenuSheet({
   } = useGame();
   const [showShortcutsOnStart, setShowShortcutsOnStart] = useShowShortcutsOnStart();
   const { locale, locales, setLocale, t } = useI18n();
+  const [graphicsQuality, setGraphicsQuality] = useGraphicsQuality();
   const [battlefieldAppearance, setBattlefieldAppearance] = useBattlefieldAppearance();
 
   const players = useMemo(() => state?.players || [], [state?.players]);
@@ -502,6 +504,16 @@ export default function TopbarMenuSheet({
               title={t("settings.appearance.title")}
               description={t("settings.appearance.description")}
             >
+              <label className={labelClass}>
+                {ui("Graphics")}
+                <select className={inputClass} aria-label={ui("Graphics")}
+                  value={graphicsQuality} onChange={event => setGraphicsQuality(event.target.value)}>
+                  <option value="off">{ui("Off")}</option>
+                  <option value="low">{ui("Low")}</option>
+                  <option value="high">{ui("High")}</option>
+                </select>
+                <span>{ui("Off: static board. Low: simple scenery. High: full effects. Card and text clarity stays the same.")}</span>
+              </label>
               <label className={labelClass}>
                 {ui("Battlefield cards")}
                 <select className={inputClass} aria-label={ui("Battlefield cards")}

@@ -7,6 +7,7 @@ import { isGameRead } from '../lib/game-methods.js';
 import { clearCardPresentations } from '../lib/card-glint/printing-choices.mjs';
 import { installEmbeddedCardCatalog } from '../lib/embedded-card-catalog.js';
 import { attachRuntimeBranches } from '../lib/runtime-branches.js';
+import { shouldShareAnalysisRuntime, preferredVerifierWorkerCount } from '../lib/analysis-memory-policy.js';
 
 const WORKER_METHODS = [
   "addCardToHand",
@@ -133,15 +134,7 @@ function toError(raw) {
 }
 
 function preferredZiffleWorkerCount() {
-  const configured = Number(import.meta.env?.VITE_ZIFFLE_WORKER_POOL_SIZE);
-  if (Number.isFinite(configured) && configured > 0) {
-    return Math.max(1, Math.min(8, Math.floor(configured)));
-  }
-  const cores = Number(globalThis.navigator?.hardwareConcurrency || 2);
-  if (!Number.isFinite(cores) || cores <= 2) return 1;
-  if (cores <= 4) return 2;
-  if (cores <= 6) return 3;
-  return 4;
+  return preferredVerifierWorkerCount(globalThis.navigator, import.meta.env?.VITE_ZIFFLE_WORKER_POOL_SIZE);
 }
 
 function createGameProxy(callWorker, callZiffleWorker) {
@@ -184,6 +177,7 @@ export function useWasmGame() {
   // card-art requests. Those reads wait for readiness instead of fetching JSON.
   useLayoutEffect(() => {
     let disposed = false;
+    const sharedAnalysisRuntime = shouldShareAnalysisRuntime();
     let nextRequestId = 1;
     const pending = new Map();
     let nextZiffleRequestId = 1;
@@ -226,6 +220,10 @@ export function useWasmGame() {
     // session can be recorded without threading bookkeeping through each
     // caller. See lib/engine-journal.js.
     const callWorker = (method, args = [], runtimeBranch = null) => {
+      // Refuse before postMessage can structured-clone a full heap image.
+      if (sharedAnalysisRuntime && ['captureExactBuildSnapshot', 'restoreExactBuildSnapshot'].includes(method)) {
+        return Promise.reject(new Error('Exact-build snapshots are unavailable for this runtime'));
+      }
       const journalEntry = beginJournalEntry(method, args, { runtimeBranch });
       return new Promise((resolve, reject) => {
         if (disposed) {
@@ -271,16 +269,30 @@ export function useWasmGame() {
     const ensureZifflePool = () => {
       if (zifflePoolReady) return zifflePoolReady;
       const size = preferredZiffleWorkerCount();
+      const entries = [];
+      zifflePool = entries;
+      let failed = false;
+      const retirePool = () => {
+        if (failed) return;
+        failed = true;
+        for (const entry of entries) entry.worker.terminate();
+        if (zifflePool === entries) {
+          zifflePool = [];
+          zifflePoolReady = null;
+        }
+      };
       zifflePoolReady = new Promise((resolve, reject) => {
         let settled = false;
         let readyCount = 0;
         const fail = (err) => {
+          if (failed) return;
           rejectZifflePending(err);
+          retirePool();
           if (settled) return;
           settled = true;
           reject(err);
         };
-        zifflePool = Array.from({ length: size }, (_, workerIndex) => {
+        for (let workerIndex = 0; workerIndex < size && !failed; workerIndex++) {
           const ziffleWorker = new Worker(
             new URL("../workers/ziffleWorker.js", import.meta.url),
             { type: "module" }
@@ -291,8 +303,11 @@ export function useWasmGame() {
             pending: 0,
             ready: false,
           };
+          // Retain each worker immediately so a later constructor/init failure
+          // cannot leave an unreachable live WASM instance behind.
+          zifflePool.push(entry);
           ziffleWorker.addEventListener("message", (event) => {
-            if (disposed) return;
+            if (disposed || failed) return;
             const msg = event.data || {};
             if (msg.type === "ready") {
               if (!entry.ready) {
@@ -321,13 +336,20 @@ export function useWasmGame() {
             }
           });
           ziffleWorker.addEventListener("error", (event) => {
+            if (disposed || failed) return;
             const err = new Error(event.message || "Ziffle worker crashed");
             rejectZiffleWorkerPending(entry, err);
             fail(err);
           });
           ziffleWorker.postMessage({ type: "init", workerIndex });
-          return entry;
-        });
+        }
+      }).catch(error => {
+        // Also covers synchronous Worker construction/postMessage failures.
+        if (!failed) {
+          rejectZifflePending(error);
+          retirePool();
+        }
+        throw error;
       });
       return zifflePoolReady;
     };
@@ -515,9 +537,9 @@ export function useWasmGame() {
     const assetBaseUrl = resolveAssetBaseUrl();
     // A replay has to start the engine the same way this session did, so the
     // init message is part of the journal's preamble.
-    recordWorkerInit({ assetBaseUrl, startedAtWall: Date.now() });
+    recordWorkerInit({ assetBaseUrl, sharedAnalysisRuntime, startedAtWall: Date.now() });
     resetWorkerTaskDiagnostics();
-    worker.postMessage({ type: "init", assetBaseUrl });
+    worker.postMessage({ type: "init", assetBaseUrl, sharedAnalysisRuntime });
 
     return () => {
       disposed = true;

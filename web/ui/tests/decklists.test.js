@@ -8,10 +8,7 @@ import {
   parseDeckList,
   parseSideboardList,
   readDefaultLobbyDeck,
-  listSavedDeckPresets,
-  saveSavedDeckPreset,
   saveDefaultLobbyDeck,
-  SAVED_DECK_PRESETS_LIMIT,
 } from "../src/lib/decklists.js";
 
 test("non-Commander lobbies accept at least 60 main-deck cards", () => {
@@ -89,31 +86,6 @@ function withMockLocalStorage(fn) {
   }
 }
 
-function withMockSessionStorage(fn) {
-  const previousWindow = globalThis.window;
-  const store = new Map();
-  globalThis.window = {
-    sessionStorage: {
-      getItem(key) {
-        return store.has(key) ? store.get(key) : null;
-      },
-      setItem(key, value) {
-        store.set(key, String(value));
-      },
-    },
-  };
-
-  try {
-    return fn();
-  } finally {
-    if (previousWindow === undefined) {
-      delete globalThis.window;
-    } else {
-      globalThis.window = previousWindow;
-    }
-  }
-}
-
 test("parseDeckList strips common print metadata from card names", () => {
   assert.deepEqual(
     parseDeckList([
@@ -165,32 +137,5 @@ test("empty lobby deck submissions do not clear the saved default", () => {
     saveDefaultLobbyDeck({ deckText: "", commanderText: "" });
 
     assert.equal(readDefaultLobbyDeck().deckText, "4 Lightning Bolt");
-  });
-});
-
-test("saved deck presets stay in the browser session and stop at five", () => {
-  withMockSessionStorage(() => {
-    for (let index = 0; index < SAVED_DECK_PRESETS_LIMIT; index += 1) {
-      assert.equal(saveSavedDeckPreset(`Deck ${index}`, [`${index} Island`], index === 0 ? ["Alice", "Bob"] : [], ["modern"]).saved, true);
-    }
-
-    const rejected = saveSavedDeckPreset("Deck extra", ["1 Island"], [], ["modern"]);
-    assert.equal(rejected.saved, false);
-    assert.equal(rejected.reason, "limit");
-    assert.equal(listSavedDeckPresets().length, SAVED_DECK_PRESETS_LIMIT);
-    assert.deepEqual(listSavedDeckPresets().find((entry) => entry.name === "Deck 0")?.playerNames, ["Alice", "Bob"]);
-  });
-});
-
-test("saved deck presets need at least one format", () => {
-  withMockSessionStorage(() => {
-    const rejected = saveSavedDeckPreset("No format", ["1 Island"], [], []);
-    assert.equal(rejected.saved, false);
-    assert.equal(rejected.reason, "format");
-    assert.equal(listSavedDeckPresets().length, 0);
-
-    const saved = saveSavedDeckPreset("Pauper pile", ["1 Island"], [], ["paupercommander", "bogus", "pauper"]);
-    assert.equal(saved.saved, true);
-    assert.deepEqual(listSavedDeckPresets()[0].formats, ["pauper", "paupercommander"]);
   });
 });

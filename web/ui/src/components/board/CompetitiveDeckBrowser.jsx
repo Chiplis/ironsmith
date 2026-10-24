@@ -7,6 +7,7 @@ import { loadCatalogDeckDetail, loadCatalogIndex, searchCatalogEntries } from "@
 import { parseDeckList } from "@/lib/decklists";
 import { DeckArt, ManaPips } from "@/components/deck/DeckCatalogParts";
 import { completeManaProfile, entryColors } from "@/lib/deck-catalog-view";
+import useLegalDeckEntries from "@/hooks/useLegalDeckEntries";
 import { ManaSymbol } from "@/lib/mana-symbols";
 
 const fieldClass = "w-full bg-[#050607] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors focus:bg-[#101114] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35";
@@ -88,6 +89,27 @@ function matchesManaFilters(entry, activeMana, manaMatchMode) {
   return activeMana.every((color) => colors.includes(color));
 }
 
+function SideboardNotice({ removals = [] }) {
+  const ui = useUiText();
+  if (!removals.length) return null;
+  const count = removals.reduce((total, removal) => total + removal.count, 0);
+  return (
+    <details className="mt-1 min-w-0 text-[10px] leading-4 text-[#d8bf7a]" data-sideboard-notice="">
+      <summary className="cursor-pointer rounded-sm focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#d8bf7a]">
+        {ui("Sideboard adjusted · {0} removed", { 0: count })}
+      </summary>
+      <ul className="mt-1 grid gap-1 break-words text-[#b8aa8e]">
+        {removals.map((removal, index) => (
+          <li key={index}>
+            <span className="font-semibold text-[#e7d9bc]">{removal.count} × {removal.name}</span>
+            {" — "}{removal.reasons.map(reason => ui(reason)).join(" ")}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 // Played decks stay above the scrolling catalog; new players get three suggestions.
 const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCopied, targetName, onSelect, onCopy }) {
   const ui = useUiText();
@@ -98,6 +120,7 @@ const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCo
       <div className="grid min-w-0 flex-1 gap-1">
         <div className="truncate text-[13px] font-bold text-[#e7d9bc]" title={[entry.name || entry.archetype, entry.event].filter(Boolean).join(" · ")}>{entry.name || entry.archetype || ui("Unnamed deck")}</div>
         <ManaPips colors={entryColors(entry)} />
+        <SideboardNotice removals={entry.removedSideboard} />
         <div className="flex gap-1">
           <Button type="button" variant="ghost" size="sm" className="h-7 flex-1 px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
             {isBusy ? <ActionSpinner /> : ui("Use")}
@@ -140,6 +163,7 @@ const CatalogDeckRow = memo(function CatalogDeckRow({ entry, actionKey, isBusy, 
           <ManaPips colors={entryColors(entry)} size={11} />
           <span className="min-w-0 truncate text-[10px] text-[#8b806b]">{source}</span>
         </div>
+        <SideboardNotice removals={entry.removedSideboard} />
       </div>
       <Button type="button" variant="ghost" size="sm" className="h-7 w-[64px] max-w-[64px] shrink-0 truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
         {isBusy ? <ActionSpinner /> : ui("Use")}
@@ -153,7 +177,7 @@ const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targ
   return (
     <article className="flex min-w-0 items-center gap-2.5 rounded-sm p-1.5 transition-colors hover:bg-[#131418]" data-saved-deck={preset.key}>
       <div className="flex h-[40px] w-[56px] shrink-0 items-center justify-center rounded-sm bg-[#131418] text-[10px] font-bold uppercase tracking-wide text-[#6f6759]" aria-hidden="true">
-        {ui("Session")}
+        {ui("Saved")}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-2">
@@ -161,6 +185,7 @@ const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targ
           <span className="shrink-0 text-[10px] text-[#6f6759]">{ui("{0} cards", { 0: preset.cardCount })}</span>
         </div>
         <div className="truncate text-[10px] text-[#8b806b]">{preset.playerName}</div>
+        <SideboardNotice removals={preset.removedSideboard} />
       </div>
       <Button type="button" variant="ghost" size="sm" className="h-7 w-[64px] max-w-[64px] shrink-0 truncate px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy} onClick={() => onSelect(preset)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
         {ui("Use")}
@@ -171,7 +196,7 @@ const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targ
 
 // `lockFormat` pins the catalog to `initialFormat`: a lobby only offers decks
 // for the format its host picked.
-export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [], initialFormat = "modern", onFormatChange, lockFormat = false }) {
+export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [], initialFormat = "modern", onFormatChange, lockFormat = false, legalityFormat = null, allowUnreleased = false }) {
   const ui = useUiText();
   const [catalog, setCatalog] = useState(null);
   const [recentDecks] = useState(readRecentlyPlayedDecks);
@@ -223,7 +248,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
 
   // The workspace owns the session's saved decks, so saving or deleting one
   // there refreshes this tab without the browser re-reading storage.
-  const savedPresets = useMemo(
+  const allSavedPresets = useMemo(
     () => savedDecks.flatMap((preset) => (preset.texts || [])
       .map((text, playerIndex) => ({
         key: `${preset.name}:${playerIndex}`,
@@ -236,13 +261,9 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
     [savedDecks, ui],
   );
 
-  const searchResults = useMemo(
-    () => searchCatalogEntries(catalog?.decks, deferredQuery, { limit: catalog?.decks?.length || 500, searchIndex: catalog?.searchIndex }),
-    [catalog, deferredQuery],
-  );
-
+  // Rank against the complete index. Recomputing popularity or date windows
+  // from the growing validated subset would move already-visible rows.
   const recentIds = useMemo(() => buildRecentIds(catalog?.decks || []), [catalog]);
-
   const usageCounts = useMemo(() => {
     const counts = new Map();
     for (const entry of catalog?.decks || []) {
@@ -251,29 +272,36 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
     }
     return counts;
   }, [catalog]);
-
-  const manaFilteredResults = useMemo(
-    () => searchResults.filter((entry) => matchesManaFilters(entry, activeMana, manaMatchMode)),
-    [activeMana, manaMatchMode, searchResults],
+  const searchResults = useMemo(
+    () => searchCatalogEntries(catalog?.decks, deferredQuery, { limit: catalog?.decks?.length || 500, searchIndex: catalog?.searchIndex }),
+    [catalog, deferredQuery],
   );
-
-  const collectionResults = useMemo(() => {
-    if (view === FEATURED_COLLECTION) return manaFilteredResults.filter(isMajorCollectionEntry);
-    if (view === "last-20-events") return manaFilteredResults.filter((entry) => isRecentEntry(entry, recentIds));
-    if (view === "mono-color") return manaFilteredResults.filter((entry) => entry?.collections?.includes("mono-color"));
-    return manaFilteredResults;
-  }, [manaFilteredResults, recentIds, view]);
-
-  const listedResults = useMemo(
-    () => sortDeckEntries(collectionResults, sortMode, usageCounts),
-    [collectionResults, sortMode, usageCounts],
-  );
-
-  const featuredResults = useMemo(
-    () => pickFeaturedDecks(recentDecks, catalog?.decks || []),
-    [recentDecks, catalog],
-  );
-
+  const orderedCandidates = useMemo(() => {
+    const matches = searchResults.filter(entry => matchesManaFilters(entry, activeMana, manaMatchMode))
+      .filter(entry => {
+        if (view === FEATURED_COLLECTION) return isMajorCollectionEntry(entry);
+        if (view === "last-20-events") return isRecentEntry(entry, recentIds);
+        if (view === "mono-color") return entry?.collections?.includes("mono-color");
+        return true;
+      });
+    return sortDeckEntries(matches, sortMode, usageCounts);
+  }, [searchResults, activeMana, manaMatchMode, view, recentIds, sortMode, usageCounts]);
+  const orderedCatalog = useMemo(() => {
+    const visible = new Set(orderedCandidates);
+    return [...orderedCandidates, ...sortDeckEntries((catalog?.decks || []).filter(entry => !visible.has(entry)), sortMode, usageCounts)];
+  }, [orderedCandidates, catalog, sortMode, usageCounts]);
+  // Local lists need no detail requests. Settle them before catalog suggestions
+  // so recent decks never arrive late and displace an existing suggestion.
+  const legalityEntries = useMemo(() => [...allSavedPresets, ...recentDecks, ...orderedCatalog], [allSavedPresets, recentDecks, orderedCatalog]);
+  const { legal, checking, error: legalityError } = useLegalDeckEntries(legalityEntries, legalityFormat, allowUnreleased);
+  const legalCatalog = useMemo(() => orderedCatalog.flatMap(entry => legal ? (legal.get(entry) ? [legal.get(entry)] : []) : [entry]), [orderedCatalog, legal]);
+  const legalRecent = useMemo(() => recentDecks.flatMap(entry => legal ? (legal.get(entry) ? [legal.get(entry)] : []) : [entry]), [recentDecks, legal]);
+  const savedPresets = useMemo(() => allSavedPresets.flatMap(entry => legal ? (legal.get(entry) ? [legal.get(entry)] : []) : [entry]), [allSavedPresets, legal]);
+  const listedResults = useMemo(() => orderedCandidates.flatMap(entry => legal ? (legal.get(entry) ? [legal.get(entry)] : []) : [entry]), [orderedCandidates, legal]);
+  const featuredResults = useMemo(() => {
+    if (!legalityFormat) return pickFeaturedDecks(legalRecent, legalCatalog);
+    return [...legalRecent, ...legalCatalog.filter(entry => !legalRecent.some(recent => recent.catalogId === entry.id || recent.id === entry.id))].slice(0, 3);
+  }, [legalRecent, legalCatalog, legalityFormat]);
   const availableMana = useMemo(
     () => manaOptions.filter((color) => searchResults.some((entry) => entryColors(entry).includes(color))),
     [searchResults],
@@ -322,7 +350,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   }, [catalogFormat, onSelect, ui]);
 
   const handleSelectSaved = useCallback((preset) => {
-    onSelect({ deckText: preset.text, deckName: preset.name });
+    onSelect({ deckText: preset.deckText ?? preset.text, commanderText: preset.commanderText, deckName: preset.name });
   }, [onSelect]);
 
   const handleCopy = useCallback(async (entry, actionKey) => {
@@ -443,10 +471,10 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
         <span className="ml-auto text-[10px] uppercase tracking-wide text-[#6f6759]">{ui("{0} decks", { 0: visibleCount })}</span>
       </div>
 
-      {loading && !showingSaved ? <p className="text-[12px] text-[#b8aa8e]">{ui("Loading index…")}</p> : null}
-      {error && !showingSaved ? <p className="text-[12px] text-red-300">{error}</p> : null}
-      {!loading && !error && !visibleCount ? (
-        <p className="text-[12px] text-[#b8aa8e]">{showingSaved ? ui("You have no saved decks in this session.") : ui("No results for this search.")}</p>
+      <p className="min-h-4 text-[12px] text-[#b8aa8e]" role="status">{loading ? ui("Loading index…") : checking ? ui("Checking decks…") : ""}</p>
+      {(error || legalityError) ? <p className="text-[12px] text-red-300">{error || legalityError}</p> : null}
+      {!loading && !checking && !error && !legalityError && !visibleCount ? (
+        <p className="text-[12px] text-[#b8aa8e]">{showingSaved && !allSavedPresets.length ? ui("You have no saved decks yet.") : ui("No results for this search.")}</p>
       ) : null}
       <div ref={listRef} onScroll={(event) => { listScrollTopRef.current = event.currentTarget.scrollTop; }} className="grid min-h-0 flex-1 auto-rows-min gap-x-3 overflow-y-auto overflow-x-hidden pr-1 xl:grid-cols-2" data-deck-catalog-list="">
         {showingSaved

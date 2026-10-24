@@ -30,7 +30,7 @@
   overflow: hidden !important; gap: 12px !important;
 }
 .play-workspace .lobby-sheet-body { padding: 12px 20px 18px !important; }
-.play-workspace .fantasy-sheet-header { padding: 16px 52px 12px 20px !important; flex: none; }
+.play-workspace .fantasy-sheet-header { padding: 16px 144px 12px 20px !important; flex: none; }
 .play-workspace .lobby-sheet-setup > .flex:not(.deck-loading-screen) { flex: none; }
 .play-workspace .play-setup-grid {
   display: grid; grid-template-columns: minmax(210px, .75fr) minmax(420px, 2.2fr) minmax(260px, 1fr);
@@ -419,12 +419,16 @@
   gap: 4px;
 }
 .navigation-utility-controls .topbar-brand-menu-trigger {
+  font-family: "Matrix", serif !important;
+  font-weight: 700;
+  font-variant: normal;
+  text-transform: none;
   display: block;
   padding: 0 2px;
   border: 0;
   background: transparent;
-  font-size: 15px;
-  letter-spacing: .12em;
+  font-size: 22px;
+  letter-spacing: .01em;
   cursor: pointer;
   transition: filter 140ms, text-shadow 140ms;
 }

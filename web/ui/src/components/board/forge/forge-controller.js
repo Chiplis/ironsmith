@@ -1,11 +1,12 @@
 import { FORGE_MEASURE_SELECTOR, createForgeMeasurer } from './measure-forge.js';
 import { settleForgeZones } from '../../../lib/forge-board-layout.js';
 
-export function mountForgeBoard(root, host, scene, initialSignal) {
+export function mountForgeBoard(root, host, scene, initialSignal, quality = 'high') {
   const measure = createForgeMeasurer(root);
   const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let reduced = media.matches || !scene;
+  let reduced = media.matches || quality !== 'high' || !scene;
   let zones = new Map(), displayed = new Map(), layout, signal = initialSignal;
+  let sceneLayoutDirty = true, sceneAnimating = false;
   let dirty = true, reset = true, locked = false, frame = 0, lastMeasure = -Infinity, lastDraw = -Infinity;
   let disposed = false, contextLost = false, flightActive = false, lastSignal = initialSignal;
   const observed = new Set();
@@ -61,6 +62,7 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
       const nextLayout = measure();
       const resized = !layout || nextLayout.width !== layout.width || nextLayout.height !== layout.height;
       layout = nextLayout;
+      sceneLayoutDirty = true;
       flightActive = Boolean(root.querySelector('.zone-move-effects-layer, .game-fx-layer'));
       zones = settleForgeZones(zones, layout.zones, now, { reset: reset || resized, locked: locked || flightActive });
       if (reset || resized) displayed = new Map(zones);
@@ -86,10 +88,11 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
       updateFields();
       // Ornaments retreat immediately when any card, hand, or control needs
       // their space. They never participate in DOM layout or pointer capture.
-      scene?.layout(layout, displayed);
+      if (sceneLayoutDirty || moving) scene?.layout(layout, displayed);
+      sceneLayoutDirty = moving;
       scene?.signal(signal, lastSignal.turn !== signal.turn && !reset, now);
       lastSignal = signal;
-      try { scene?.draw(now, reduced); }
+      try { sceneAnimating = Boolean(scene?.draw(now, reduced)); }
       catch {
         scene?.dispose(); scene = null; reduced = true;
         host.dataset.renderer = 'fallback';
@@ -101,13 +104,13 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
 
     }
     const pending = [...zones.values()].some(zone => zone.removing || zone.rect !== zone.requested);
-    if (!reduced || dirty || (pending && !locked && !flightActive) || moving || !drew) wake();
+    if (sceneAnimating || dirty || (pending && !locked && !flightActive) || moving || !drew) wake();
   }
   function onVisibility() {
     if (document.hidden) { cancelAnimationFrame(frame); frame = 0; }
     else { reset = true; dirty = true; wake(); }
   }
-  function onMotion() { reduced = media.matches || !scene; dirty = true; wake(); }
+  function onMotion() { reduced = media.matches || quality !== 'high' || !scene; dirty = true; wake(); }
   function onContextLost() { contextLost = true; cancelAnimationFrame(frame); frame = 0; }
   function onContextRestored() { contextLost = false; reset = true; dirty = true; wake(); }
   function onScroll() { dirty = true; wake(); }
@@ -128,7 +131,10 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
   host.addEventListener('webglcontextrestored', onContextRestored, true);
   wake();
   return {
-    update(nextSignal, interactionLocked) { signal = nextSignal; locked = interactionLocked; dirty = true; wake(); },
+    update(nextSignal, interactionLocked) {
+      if (JSON.stringify(signal) === JSON.stringify(nextSignal) && locked === interactionLocked) return;
+      signal = nextSignal; locked = interactionLocked; dirty = true; wake();
+    },
     dispose() {
       disposed = true; cancelAnimationFrame(frame); resize.disconnect(); mutations.disconnect();
       document.removeEventListener('visibilitychange', onVisibility); media.removeEventListener('change', onMotion);

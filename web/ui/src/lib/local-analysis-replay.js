@@ -2,7 +2,12 @@
 // live programs and continuations. Never send this journal to another seat.
 const errorMessage = error => String(error?.message ?? error);
 
-export function createLocalAnalysisJournal(runtime, epoch, restored = null) {
+export function createLocalAnalysisJournal(runtime, epoch, restored = null, { enabled = true } = {}) {
+  // Shared-runtime analysis never replays a second engine. Do not retain every
+  // read, card source and command for the life of a mobile session.
+  if (!enabled) return { game: runtime, runtime, capture() {
+    throw new Error('Analysis replay is disabled for the shared runtime');
+  } };
   let identityOrigin = structuredClone(restored?.identityOrigin ?? runtime.getRuntimeIdentityOrigin());
   const operations = restored ? structuredClone(restored.operations) : [];
   const wrappers = new Map();
@@ -43,7 +48,7 @@ export function createLocalAnalysisJournal(runtime, epoch, restored = null) {
       return wrappers.get(method);
     },
   });
-  return { game, capture: () => ({ epoch, identityOrigin, operations: operations.slice() }) };
+  return { game, runtime, capture: () => ({ epoch, identityOrigin, operations: operations.slice() }) };
 }
 
 // Native branch handles still live after these operations.

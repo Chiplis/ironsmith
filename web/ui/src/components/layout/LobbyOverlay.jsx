@@ -1,4 +1,6 @@
+import SaveLobbyDeck from "./SaveLobbyDeck";
 import useUiText from "@/i18n/useUiText";
+import SocialLinks from "./SocialLinks";
 import PublicLobbySearch from './PublicLobbySearch';
 import { PUBLIC_FORMATS, isLegalityFormat, relayBaseUrl, usesCommanders } from '@/lib/relay/formats';
 import { validateFormatDeck, formatCatalogDate, loadFormatCatalog } from '@/lib/relay/format-legality';
@@ -429,6 +431,9 @@ export default function LobbyOverlay({
         data-play-mode={lobbyActive ? "active" : mode}
         style={{ width: "100dvw", maxWidth: "none", height: "100dvh", maxHeight: "100dvh" }}
       >
+        <div className="absolute top-[10px] right-14 z-10 flex h-9 items-center gap-2">
+          <SocialLinks size="icon" />
+        </div>
         <SheetHeader className="fantasy-sheet-header pr-12">
           <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Play")}</div>
           <SheetTitle>
@@ -628,6 +633,7 @@ export default function LobbyOverlay({
                       <CompetitiveDeckPicker
                         format={createFormat === MATCH_FORMAT_NORMAL || createFormat === MATCH_FORMAT_PLANECHASE ? "modern" : createFormat}
                         lockFormat={isLegalityFormat(createFormat)}
+                        allowUnreleased={allowUnreleased}
                         onApply={({ deckText, commanderText }) => {
                           setCreateDeckText(deckText);
                           setCreateCommanderText(commanderText);
@@ -692,13 +698,16 @@ export default function LobbyOverlay({
                       {createFormatChosen ? <span>{ui(formatDeckRequirement(createFormat))}</span> : null}
                       <span>{ui("The host can start the match once every seat is filled and ready.")}</span>
                     </div>
-                    <Button
-                      variant="secondary"
-                      className={`${pill} ui-primary-action`}
-                      disabled={!createFormatChosen}
-                      title={createFormatChosen ? undefined : ui("Choose a format first")}
-                      onClick={handleCreate}
-                    >{ui("Create Lobby")}</Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SaveLobbyDeck deckText={createDeckText} commanderText={usesCommanders(createFormat) || createFormat === MATCH_FORMAT_PLANECHASE ? createCommanderText : ""} format={createFormat} playerName={createName} />
+                      <Button
+                        variant="secondary"
+                        className={`${pill} ui-primary-action`}
+                        disabled={!createFormatChosen}
+                        title={createFormatChosen ? undefined : ui("Choose a format first")}
+                        onClick={handleCreate}
+                      >{ui("Create Lobby")}</Button>
+                    </div>
                   </div>
                   </div>
                 </div>
@@ -752,6 +761,7 @@ export default function LobbyOverlay({
                     deck, to one the host prepared, or to their own list. */}
                 <LobbyDeckCatalogPicker
                   format={activeFormat}
+                  allowUnreleased={lobbyAllowsUnreleased}
                   disabled={multiplayer.matchStarted || startPending}
                   onChange={updateLobbyDeck}
                 />

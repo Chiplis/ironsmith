@@ -1,0 +1,73 @@
+/* The desktop divider keeps its height while payment covers its chrome. */
+@media (min-width:1024px), (min-width:721px) and (min-height:541px) {
+  .table-shell[data-focused-hud="true"] > .table-phase-divider > .navigation-utility-controls {
+    left:auto !important;
+    right:14px !important;
+  }
+  .table-shell.table-shell[data-focused-hud="true"] > .table-phase-divider > .topbar-phase-shell {
+    --phase-track-start:clamp(28px, 2.8vw, 48px);
+    --phase-track-end:calc(var(--middle-brand-width, 121px) + clamp(100px, 7vw, 160px));
+    --phase-track-span:calc((100% - var(--phase-track-start) - var(--phase-track-end)) * 8 / 7);
+    width:var(--phase-track-span) !important;
+    margin-left:calc(var(--phase-track-start) - var(--phase-track-span) / 16);
+    margin-right:0;
+  }
+  .desktop-mana-payment {
+    position:absolute;
+    inset:0 8px -5px;
+    z-index:240;
+    display:flex;
+    align-items:flex-end;
+    justify-content:flex-end;
+    pointer-events:none;
+  }
+  .desktop-mana-payment .mana-payment-editor {
+    pointer-events:auto;
+    flex-direction:row;
+    align-items:center;
+    width:max-content;
+    max-width:100%;
+    height:min(100%, 94px);
+    max-height:none;
+    gap:12px;
+    padding:8px 12px;
+    border:1px solid #2c2e33;
+    border-radius:0;
+    background:#0e1013;
+    box-shadow:none;
+  }
+  .desktop-mana-payment .mana-payment-editor-header { width:190px; padding:0 12px 0 0; border-right:1px solid #292c31; }
+  .desktop-mana-payment .mana-payment-editor-heading { min-height:22px; }
+  .desktop-mana-payment .mana-plan-eyebrow { font-size:9px; letter-spacing:.12em; color:#94979e; }
+  .desktop-mana-payment .mana-payment-editor-title { margin:2px 0; font-size:16px; color:#e1e2e5; }
+  .desktop-mana-payment .mana-payment-editor-cost { border:0; padding:0; gap:3px; }
+  .desktop-mana-payment .mana-payment-editor-cost > span:first-child { display:none; }
+  .desktop-mana-payment .mana-payment-editor-cost > span { gap:1px; }
+  .desktop-mana-payment .mana-payment-editor-cost img { width:15px !important; height:15px !important; }
+  .desktop-mana-payment .mana-payment-editor-scroll { display:flex; align-items:center; gap:8px; flex:0 1 auto; padding:0; overflow:auto; max-height:100%; }
+  .desktop-mana-payment .mana-payment-pip-list { flex-direction:row; gap:0; }
+  .desktop-mana-payment .mana-payment-pip-row { position:relative; flex:0 0 108px; width:108px; min-height:64px; padding:6px 10px; border:0; border-right:1px solid #292c31; border-radius:0; display:grid; grid-template-columns:1fr 24px; gap:3px; background:transparent; }
+  .desktop-mana-payment .mana-payment-pip-row > div { grid-row:2; grid-column:1 / -1; }
+  .desktop-mana-payment .mana-payment-source-name { font-size:12px; line-height:1.2; color:#c2c5cc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .desktop-mana-payment .mana-payment-pip-row .mana-payment-source-picker { grid-column:2; grid-row:1; min-height:26px; }
+  .desktop-mana-payment .mana-payment-pip-row:last-child { border-right:0; }
+  .desktop-mana-payment .decision-card-name-trigger { text-decoration:none; }
+  .desktop-mana-payment .decision-card-name-trigger:hover { color:#fff; text-decoration:underline; }
+  .desktop-mana-payment .mana-plan-cost-context { font-size:11px; color:#94979e; }
+  .desktop-mana-payment .mana-payment-source-picker { color:#9fa4af; border-radius:0; }
+  .desktop-mana-payment .mana-payment-source-picker:hover:not(:disabled),
+  .desktop-mana-payment .mana-payment-source-picker[aria-expanded="true"] { background:#24272e; color:#f0f1f3; }
+  .desktop-mana-payment :is(button, [role="button"]):focus-visible { outline:2px solid #b6a0d8; outline-offset:2px; }
+  .desktop-mana-payment .mana-payment-editor-busy { font-size:10px; }
+  .desktop-mana-payment .mana-plan-pool { margin:0; flex:0 0 90px; }
+
+}
+
+@layer fc-dock-sizing {
+  @media (min-width:1024px), (min-width:721px) and (min-height:541px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .desktop-mana-payment-actions {
+      width:var(--decision-dock-lane-width, 266px) !important;
+      max-width:100% !important;
+    }
+  }
+}

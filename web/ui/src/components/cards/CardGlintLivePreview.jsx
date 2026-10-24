@@ -1,5 +1,4 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {CARD_GLINT_TILT} from '@/lib/card-glint/live.mjs';
 import {loadCardGlint,renderCardGlint} from '@/lib/card-glint/session.mjs';
 import useCardGlintLive from './useCardGlintLive';
 import './card-frame-presentation.css';
@@ -17,8 +16,7 @@ function useSettled(value,delay) {
   return settled;
 }
 
-// Build's preview: card-glint paints the card; this component owns the tilt
-// and the click targets.
+// Keep the preview face rectangular; only the finish follows the pointer.
 export default function CardGlintLivePreview({face,presentation,onBorderClick,onRarityClick,labels={}}) {
   const still = useRef(null), stage = useRef(null);
   const [api,setApi] = useState(null), [stillKey,setStillKey] = useState(null), [stillFailed,setStillFailed] = useState(false);
@@ -27,7 +25,7 @@ export default function CardGlintLivePreview({face,presentation,onBorderClick,on
   const settledKey = useSettled(key,140);
   const settled = useMemo(() => settledKey ? JSON.parse(settledKey) : null, [settledKey]);
   const [liveCanvas,live] = useCardGlintLive(settled,presentation);
-  const fallback = live.mode === 'unavailable';
+  const fallback = live.mode === 'unavailable' || live.mode === 'off';
 
   useEffect(() => {
     let cancelled = false;
@@ -48,21 +46,10 @@ export default function CardGlintLivePreview({face,presentation,onBorderClick,on
     return () => {cancelled = true;};
   },[fallback,settled,settledKey]);
 
-  const frame = useRef(0);
-  const tilt = point => {
-    cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(() => {
-      const node = stage.current;
-      if (!node) return;
-      node.style.setProperty('--card-glint-tilt-x',`${point ? -(point.y-.5)*CARD_GLINT_TILT.x : 0}rad`);
-      node.style.setProperty('--card-glint-tilt-y',`${point ? (point.x-.5)*CARD_GLINT_TILT.y : 0}rad`);
-      live.pointer(point);
-    });
-  };
-  useEffect(() => () => cancelAnimationFrame(frame.current),[]);
   const onPointerMove = event => {
+    if (fallback) return;
     const box = event.currentTarget.getBoundingClientRect();
-    tilt({x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height});
+    live.pointer({x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height});
   };
 
   const shown = fallback ? Boolean(stillKey) : live.shown;
@@ -71,7 +58,7 @@ export default function CardGlintLivePreview({face,presentation,onBorderClick,on
   const type = settled && api && !settled.faces?.length ? api.faceRects(settled).type : null;
   return <div ref={stage} className="card-glint-live" data-card-glint-live={status}
     data-card-glint-rendering={shown && !current ? 'true' : undefined}>
-    <div className="card-glint-live__tilt" onPointerMove={onPointerMove} onPointerLeave={() => tilt(null)}>
+    <div className="card-glint-live__tilt" onPointerMove={onPointerMove} onPointerLeave={() => live.pointer(null)}>
       <canvas ref={liveCanvas} className="card-glint-live__canvas" hidden={fallback}
         role="img" aria-label={face ? `${face.name}: ${face.typeLine}. ${face.rulesText}` : undefined}/>
       <canvas ref={still} className="card-glint-live__canvas" hidden={!fallback} aria-hidden="true"/>

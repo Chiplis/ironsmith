@@ -2015,6 +2015,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(definition) => {
                 let has_unimplemented = generated_definition_has_unimplemented_content(&definition);
                 let compiled = unprocessed_compiled_lines(&definition);
+                let audit = ironsmith::compiled_text::semantic_audit_lines(&definition);
                 let (
                     oracle_coverage,
                     compiled_coverage,
@@ -2024,7 +2025,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ) = compare_semantics(
                     &card_input.name,
                     &card_input.oracle_text,
-                    &compiled,
+                    &audit,
                     embedding_cfg,
                 );
                 CardAudit {

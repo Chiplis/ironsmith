@@ -1,3 +1,4 @@
+import useGraphicsQuality from '@/hooks/useGraphicsQuality';
 import { battlefieldKeywords, keywordGainEvents } from "@/lib/effect-palette";
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1300,7 +1301,7 @@ const EFFECT_COMPONENTS = {
   "mana-motes": ManaMotes,
 };
 
-export default function GameEffectAnimations({ suspended = false }) {
+function GameEffectAnimationsContent({ suspended = false }) {
   const { state } = useGame();
   const [effects, setEffects] = useState([]);
   const previousVitalsRef = useRef(null);
@@ -1402,4 +1403,9 @@ export default function GameEffectAnimations({ suspended = false }) {
       })}
     </div>
   );
+}
+
+export default function GameEffectAnimations(props) {
+  const [quality] = useGraphicsQuality();
+  return quality === 'off' ? null : <GameEffectAnimationsContent {...props} quality={quality} />;
 }

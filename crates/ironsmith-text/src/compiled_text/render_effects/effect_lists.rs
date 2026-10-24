@@ -19505,6 +19505,9 @@ fn describe_owned_exiled_and_lesser_mana_value_free_play(effects: &[Effect]) -> 
 /// parity branches over the same count, each a one-turn pump plus a one-turn
 /// mana rule.
 fn describe_count_parity_branch_pair(effects: &[Effect]) -> Option<String> {
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let [odd_effect, even_effect] = effects else {
         return None;
     };

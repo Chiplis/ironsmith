@@ -1629,7 +1629,10 @@ pub(super) fn decision_reason(ctx: &DecisionContext) -> Option<String> {
         DecisionContext::TextInput(_) => Some("Text entry".into()),
         DecisionContext::SelectOptions(o) => {
             let d = o.description.to_lowercase();
-            if d.contains("replacement") {
+            if matches!(
+                d.as_str(),
+                "choose which replacement effect to apply" | "choose a draw replacement effect to apply"
+            ) {
                 Some("Replacement effect".into())
             } else if d.contains("choose the next cost to pay") {
                 Some("Next cost".into())
@@ -2286,4 +2289,27 @@ pub(super) fn convert_and_validate_targets(
     }
 
     Ok(converted)
+}
+
+#[cfg(test)]
+mod text_replacement_reason_tests {
+    use super::*;
+
+    #[test]
+    fn replacement_word_choices_are_not_effect_ordering() {
+        use ironsmith::decisions::context::{SelectOptionsContext, SelectableOption};
+        for (description, expected) in [
+            ("Choose the word to replace", None),
+            ("Choose the replacement word", None),
+            ("Choose the replacement mana color", None),
+            ("Choose which replacement effect to apply", Some("Replacement effect")),
+            ("Choose a draw replacement effect to apply", Some("Replacement effect")),
+        ] {
+            let context = DecisionContext::SelectOptions(SelectOptionsContext::new(
+                PlayerId::from_index(0), None, description,
+                vec![SelectableOption::new(0, "First"), SelectableOption::new(1, "Second")], 1, 1,
+            ));
+            assert_eq!(decision_reason(&context).as_deref(), expected, "{description}");
+        }
+    }
 }

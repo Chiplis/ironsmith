@@ -1,3 +1,4 @@
+import useSavedDecks from "@/hooks/useSavedDecks";
 import { useMemo } from "react";
 import { PUBLIC_FORMATS, usesCommanders } from "@/lib/relay/formats";
 import {
@@ -6,8 +7,8 @@ import {
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_PLANECHASE,
   PARTNER_DECK_SIZE,
-  listSavedDeckPresets,
   normalizeMatchFormat,
+  splitSavedLobbyDeck,
 } from "@/lib/decklists";
 
 // Wording and deck choices shared by the lobby sheet and the rematch screen.
@@ -42,26 +43,26 @@ export function formatDeckRequirement(format) {
 // The host's prepared decks first, then the player's saved presets, without
 // repeating a list.
 export function useLobbyDeckOptions(preparedOptions) {
+  const { decks } = useSavedDecks();
   const savedDeckOptions = useMemo(
-    () => listSavedDeckPresets().flatMap((preset) => (Array.isArray(preset?.texts) ? preset.texts : [])
+    () => decks.flatMap((preset) => (Array.isArray(preset?.texts) ? preset.texts : [])
       .map((deckText, index) => ({
         id: `saved:${preset.name}:${index}`,
         label: `${preset.name}${preset.texts.length > 1 ? ` #${index + 1}` : ""} (${preset.playerNames?.[index] || `Jugador ${index + 1}`})`,
-        deckText: String(deckText || ""),
+        ...splitSavedLobbyDeck(deckText),
       }))
       .filter((option) => option.deckText.trim())),
-    [],
+    [decks],
   );
   return useMemo(() => {
     const seen = new Set();
     return [...(preparedOptions || []), ...savedDeckOptions]
       .filter((option) => {
-        const key = String(option?.deckText || "");
+        const key = String(option?.deckText || "") + "\n" + String(option?.commanderText || "");
         if (!key.trim() || seen.has(key)) return false;
         seen.add(key);
         return true;
-      })
-      .slice(0, 12);
+      });
   }, [preparedOptions, savedDeckOptions]);
 }
 

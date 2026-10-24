@@ -26,13 +26,14 @@ const lobbyCommanderTextareaClass =
   "fantasy-field lobby-sheet-commander-input min-h-[108px] w-full p-3 text-[14px] text-foreground outline-none font-mono resize-none";
 const lobbyInfoTextClass = "grid gap-1 text-[13px] leading-6 text-muted-foreground";
 
-export function LobbyDeckCatalogPicker({ format, disabled = false, onChange }) {
+export function LobbyDeckCatalogPicker({ format, disabled = false, allowUnreleased = false, onChange }) {
   const matchFormat = normalizeMatchFormat(format);
   if (disabled || matchFormat === MATCH_FORMAT_PLANECHASE) return null;
   return (
     <CompetitiveDeckPicker
       format={matchFormat === MATCH_FORMAT_COMMANDER ? "commander" : matchFormat === MATCH_FORMAT_NORMAL ? "modern" : matchFormat}
       lockFormat={isLegalityFormat(matchFormat)}
+      allowUnreleased={allowUnreleased}
       onApply={({ deckText, commanderText }) => {
         onChange({ deckText, commanderText: commanderText || "" });
       }}

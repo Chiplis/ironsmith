@@ -2733,6 +2733,12 @@ where
                     cost_text
                 )
             };
+            if let Some(condition) = condition
+                && let Some(condition_text) = describe_cast_condition(condition)
+            {
+                line.push_str(" as long as ");
+                line.push_str(&condition_text);
+            }
             line.push_str(&cast_this_way_suffix());
             if *exiles_after_resolution {
                 line.push_str(
@@ -2884,6 +2890,11 @@ where
 }
 
 fn describe_cast_condition(condition: &ThisSpellCostCondition) -> Option<String> {
+    if crate::semantic_audit::semantic_audit_active() {
+        return (!matches!(condition, ThisSpellCostCondition::Always)).then(|| {
+            crate::semantic_audit::audited_value("ThisSpellCostCondition", condition, condition)
+        });
+    }
     match condition {
         ThisSpellCostCondition::Always => None,
         ThisSpellCostCondition::ConditionExpr { display, condition }

@@ -1,5 +1,17 @@
 // All interface copy for en. Preserve interpolation placeholders.
 export const messages = {
+  "Checking decks…": "Checking decks…",
+  "Sideboard adjusted · {0} removed": "Sideboard adjusted · {0} removed",
+  "Could not load saved decks. Try reopening this page.": "Could not load saved decks. Try reopening this page.",
+  "Save Deck": "Save Deck",
+  "Saved": "Saved",
+  "You have no saved decks yet.": "You have no saved decks yet.",
+  "Deck name": "Deck name",
+  "Replace deck": "Replace deck",
+  "Saving will replace the deck named \"{0}\".": "Saving will replace the deck named \"{0}\".",
+  "Name your deck to keep it in My Decks on this browser between sessions.": "Name your deck to keep it in My Decks on this browser between sessions.",
+  "Could not save this deck. Check that browser storage is available and try again.": "Could not save this deck. Check that browser storage is available and try again.",
+
   "Find a card to add or edit": "Find a card to add or edit",
   "Find an existing card, edit its details, or start a new card. Preview the result and add it to your game.": "Find an existing card, edit its details, or start a new card. Preview the result and add it to your game.",
   "Editing: {0}": "Editing: {0}",
@@ -1752,6 +1764,10 @@ export const ui = {
   "Card counters": "Card counters",
   "Chat message": "Chat message",
   "Choose source for mana pip {0}": "Choose source for mana pip {0}",
+  "Graphics": "Graphics",
+  "Low": "Low",
+  "High": "High",
+  "Off: static board. Low: simple scenery. High: full effects. Card and text clarity stays the same.": "Off: static board. Low: simple scenery. High: full effects. Card and text clarity stays the same.",
   "Compact artwork": "Compact artwork",
   "Cost to pay": "Cost to pay",
   "Floating mana": "Floating mana",

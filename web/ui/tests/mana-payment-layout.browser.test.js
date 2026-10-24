@@ -3,41 +3,80 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('payment panel fits beside the hand and zones, below opponent cards, and scrolls long payments', async()=>{
-  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();const browser=await chromium.launch();
+test('desktop payment covers the middle strip, keeps controls visible and opens source choices', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
   try {
-    const page=await browser.newPage({viewport:{width:1600,height:1000},reducedMotion:'reduce'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/diagnostics-layout.html?kind=mana_payment&scenario=long-payment`);
-    const panel=page.locator('[data-mana-payment="true"]');await panel.waitFor({state:'visible'});
-    await page.waitForTimeout(600);
-    for(const width of [1600,1100]) {
-      await page.setViewportSize({width,height:1000});await page.waitForTimeout(300);
-      const geometry=await panel.evaluate(el=>{
-        const p=el.querySelector(".mana-payment-editor").getBoundingClientRect();
-        const childRects=[...el.querySelectorAll(".mana-payment-editor-header,.mana-payment-editor-cost,.mana-payment-pip-row,.mana-payment-editor-footer")].map(e=>e.getBoundingClientRect());
-        const zones=[...document.querySelectorAll('[data-local-zone-piles="true"] > .zone-pile-slot')].map(e=>e.getBoundingClientRect()).filter(r=>r.width>0);
-        const cards=[...document.querySelectorAll('.battlefield-panel--opponents [data-zone-anchor-player]')].flatMap(zone=>[...zone.querySelectorAll('.battlefield-row[data-bf-side="top"] .battlefield-row-card')]).map(e=>e.getBoundingClientRect());
-        const pay=el.querySelector('.mana-payment-pay-button'),cancel=el.querySelector('.decision-cancel-button'),payRect=pay.getBoundingClientRect(),cancelRect=cancel.getBoundingClientRect();
-        const scroll=el.querySelector('.mana-payment-editor-scroll'),s=scroll.getBoundingClientRect(),footer=el.querySelector('.mana-payment-editor-footer').getBoundingClientRect();
-        return {fixedHeight:Math.abs(p.height-parseFloat(getComputedStyle(el).getPropertyValue("--dock-max-height")))<1,sharedButtonStyle:pay.classList.contains('decision-main-button') && pay.classList.contains('decision-submit-button'),cancelLeft:cancelRect.right<=payRect.left && Math.abs(cancelRect.top-payRect.top)<1,buttonsFit:cancelRect.left>=p.left && payRect.right<=p.right,childrenFit:childRects.every(r=>r.left>=p.left && r.right<=p.right),left:p.left,right:p.right,top:p.top,bottom:p.bottom,zoneLeft:Math.min(...zones.map(r=>r.left)),opponentBottom:Math.max(...cards.map(r=>r.bottom)),scrolls:scroll.scrollHeight>scroll.clientHeight,footerBelow:footer.top>=s.bottom-1};
-      });
-      assert.equal(geometry.fixedHeight,true,JSON.stringify(geometry));assert.equal(geometry.sharedButtonStyle,true);assert.equal(geometry.cancelLeft,true,JSON.stringify(geometry));assert.equal(geometry.buttonsFit,true,JSON.stringify(geometry));
-      assert.equal(geometry.childrenFit,true,JSON.stringify(geometry));
-      assert.ok(geometry.right<=geometry.zoneLeft-11,JSON.stringify(geometry));
-      assert.ok(geometry.top>=geometry.opponentBottom+11,JSON.stringify(geometry));
-      assert.ok(geometry.bottom<=1000-13,JSON.stringify(geometry));
-      assert.equal(geometry.scrolls,true);assert.equal(geometry.footerBelow,true);
+    const page = await browser.newPage({viewport:{width:1600,height:1000},reducedMotion:'reduce'});
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const base = `http://127.0.0.1:${vite.httpServer.address().port}/tests/diagnostics-layout.html`;
+    for (const players of [2,4]) {
+      await page.goto(`${base}?kind=priority&players=${players}`);
+      await page.locator('.navigation-utility-controls').waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(250);
+      const brand = await page.locator('.navigation-utility-controls').boundingBox();
+      const untap = await page.locator('[data-phase-name="Untap"] .phase-track-step-marker').boundingBox();
+      assert.ok(brand.x > 1400);
+      assert.ok(Math.abs(untap.x + untap.width / 2 - 44.8) < 2);
+      const cleanup = await page.locator('[data-phase-name="Cleanup"]').boundingBox();
+      const label = await page.locator('[data-phase-name="Cleanup"] .phase-track-step-label').boundingBox();
+      assert.ok(brand.x - label.x - label.width >= 75);
+      assert.ok(cleanup.x > untap.x);
+      const wordmark = page.locator('.topbar-brand-menu-trigger');
+      assert.equal((await wordmark.textContent()).trim(), 'IronSmith');
+      assert.ok(await wordmark.evaluate(el => getComputedStyle(el).fontFamily.includes('Matrix')));
     }
-    await page.setViewportSize({width:1600,height:1000});await page.waitForTimeout(300);
-    await page.screenshot({path:'/private/tmp/mana-payment-implemented.png'});
-    const pay=await page.locator('.mana-payment-pay-button').boundingBox();
-    for(const kind of ['priority','targets']) {
-      await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/diagnostics-layout.html?kind=${kind}`);
-      await page.locator('[data-human-action-dock]').waitFor({state:'visible'});await page.waitForTimeout(650);
-      const main=await page.locator('[data-human-action-dock] .decision-main-button').boundingBox();
-      assert.ok(Math.abs(main.y-pay.y)<0.1, `${kind}: ${JSON.stringify({main,pay})}`);
-      assert.equal(main.height,pay.height);
+    for (const scenario of ['progenitus','long-payment','short-payment','kozilek-command']) {
+      await page.goto(`${base}?kind=mana_payment&scenario=${scenario}`);
+      const editor = page.locator('.desktop-mana-payment .mana-payment-editor');
+      await editor.waitFor();
+      if (scenario === 'kozilek-command') {
+        assert.equal(await editor.locator('.mana-payment-pip-row').count(), 4);
+        assert.equal(await editor.getByText("Ugin's Labyrinth", {exact:true}).count(), 2);
+        assert.ok(await editor.locator('.mana-payment-source-name').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth)));
+      }
+      for (const width of [1600,1100,800]) {
+        await page.setViewportSize({width,height:1000});
+        await page.waitForTimeout(250);
+        const bounds = await editor.boundingBox();
+        const strip = await page.locator('.table-phase-divider').boundingBox();
+        const pay = await page.locator('.desktop-mana-payment-actions .mana-payment-pay-button').boundingBox();
+        const brand = await page.locator('.navigation-utility-controls').boundingBox();
+        const cancel = await page.locator('.desktop-mana-payment-actions .decision-cancel-button').boundingBox();
+        assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width);
+        assert.ok(Math.abs(bounds.y - strip.y) < 1);
+        assert.ok(bounds.height <= strip.height + 6);
+        assert.ok(Math.abs(bounds.x + bounds.width - (width - 8)) < 1);
+        assert.ok(bounds.x <= brand.x && bounds.y <= brand.y && bounds.y + bounds.height >= brand.y + brand.height);
+        assert.ok(pay.y > strip.y + strip.height && pay.y > 900);
+        assert.ok(pay.x >= 0 && cancel.x + cancel.width <= width);
+        assert.ok(Math.abs(pay.y + pay.height / 2 - cancel.y - cancel.height / 2) < 1, JSON.stringify({scenario,width,pay,cancel}));
+        const scroll = editor.locator('.mana-payment-editor-scroll');
+        await scroll.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+        const last = await editor.locator('.mana-payment-pip-row').last().boundingBox();
+        const visible = await scroll.boundingBox();
+        assert.ok(last.x >= visible.x && last.x + last.width <= visible.x + visible.width + 1);
+        await scroll.evaluate(el => { el.scrollLeft = 0; });
+      }
+      await page.setViewportSize({width:1600,height:1000});
+      await editor.locator('.mana-payment-pip-row .mana-payment-source-picker').first().click();
+      await page.getByRole('dialog', {name:'Choose payment source'}).waitFor();
+      await page.keyboard.press('Escape');
+      await page.locator('.desktop-mana-payment-actions .mana-payment-pay-button').click();
+      await page.waitForTimeout(100);
+      assert.ok(await page.evaluate(() => window.__dispatched));
     }
-    assert.deepEqual(errors,[]);
-  } finally {await browser.close();await vite.close();}
+    await page.goto(`${base}?kind=mana_payment&scenario=progenitus&paymentReady=false`);
+    const pay = page.locator('.desktop-mana-payment-actions .mana-payment-pay-button');
+    await pay.waitFor();
+    assert.equal(await pay.isDisabled(), true);
+    const cancel = page.locator('.desktop-mana-payment-actions .decision-cancel-button');
+    assert.equal(await cancel.isEnabled(), true);
+    await cancel.click();
+    assert.equal(await page.evaluate(() => window.__cancelled), true);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); await vite.close(); }
 });

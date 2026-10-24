@@ -31,7 +31,6 @@ import TableActionControls from "./TableActionControls";
 import Workspace from "./Workspace";
 import TableErrorBoundary from "./TableErrorBoundary";
 import MobileLandscapeGate from "./MobileLandscapeGate";
-import ArenaAmbience from "./ArenaAmbience";
 import LogDrawer from "@/components/overlays/LogDrawer";
 import PerspectiveHandoffBanner from "@/components/overlays/PerspectiveHandoffBanner";
 import KeyboardShortcutsOverlay from "@/components/overlays/KeyboardShortcutsOverlay";
@@ -848,7 +847,6 @@ export default function Shell() {
       data-mobile-overlay-shell={landscapeMobileViewport ? "true" : "false"}
     >
       {topLevelNotices}
-      {!landscapeMobileViewport ? <ArenaAmbience /> : null}
       {!deckLoadingMode && !puzzleSetupMode && multiplayer?.rematch?.phase !== "sideboarding" && <MobileLandscapeGate />}
       {(!landscapeMobileViewport && (!dockToolbarsInTable || deckLoadingMode || puzzleSetupMode)) ? (
         <div className="table-persistent-diagnostics-fallback"><DiagnosticsSheet /></div>

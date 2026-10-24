@@ -28,6 +28,21 @@ test("replacement choices share trigger arrows and require explicit single-effec
     assert.equal(ordering.isReplacementOrderingDecision({ ...optional, options: [...optional.options, { index: 12, description: "Another replacement" }] }), true);
     assert.equal(ordering.isReplacementOrderingDecision({ ...optional, options: [optional.options[0], { ...optional.options[1], object_id: 41 }] }), true);
 
+    for (const description of ["Choose the replacement word", "Choose the replacement mana color"]) {
+      assert.equal(ordering.isEffectOrderingDecision({ ...replacement, description }), false);
+    }
+    for (const suffix of ["", "&mobile"]) {
+      const page = await browser.newPage({ viewport: { width: suffix ? 700 : 1100, height: 850 } });
+      await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/stack-replacement-ordering.html?text-change${suffix}`);
+      await page.getByText("Human", { exact: true }).first().waitFor({ state: "visible" });
+      assert.equal(await page.locator('.stack-card[data-pending-replacement="true"]').count(), 0);
+      assert.equal(await page.getByRole("button", { name: /Apply First/i }).count(), 0);
+      assert.deepEqual(await page.evaluate(() => window.__commands), []);
+      await page.getByText("Human", { exact: true }).first().click();
+      assert.deepEqual(await page.evaluate(() => window.__commands), [{ type: "select_options", option_indices: [2] }]);
+      await page.close();
+    }
+
     for (const suffix of ["", "&mobile", "&spectator"]) {
       const page = await browser.newPage({ viewport: { width: suffix.includes("mobile") ? 700 : 1100, height: 850 } });
       await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/stack-replacement-ordering.html?copy${suffix}`);

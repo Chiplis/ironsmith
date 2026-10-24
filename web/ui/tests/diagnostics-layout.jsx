@@ -10,6 +10,7 @@ import { buildEffectOrderingKey } from "../src/lib/effect-ordering";
 import useCardStackMode from "../src/hooks/useCardStackMode";
 import CardStackPile from "../src/components/right-rail/CardStackPile";
 import TableCore from "../src/components/board/TableCore";
+import TopbarUtilityControls from "../src/components/layout/TopbarUtilityControls";
 import Topbar from "../src/components/layout/Topbar";
 import "../src/index.css";
 const names = ["Ornithopter", "Myr Moonvessel", "Omniscience", "Mountain", "Forest", "Island", "Plains", "Swamp"];
@@ -81,6 +82,27 @@ function Fixture(){
  }
 
  const state={cancelable:scenario === 'optional-target',players,perspective:0,priority_player:0,active_player:scenario === 'opponent-turn' ? 1 : 0,decision: expanded ? decisions[kind] : null, mana_payment: kind === 'mana_payment' ? {source_name:'Grizzly Bears',can_confirm:true,planning_complete:true,request_hash:'test',plan_id:'test',pips:longPayment ? [['14']] : [['1'],['G']],pool_before:{green:longPayment ? 14 : 2},pool_after_activations:{green:longPayment ? 14 : 2},pool_after_payment:{},planned_sources:[],available_sources:[],allocations:[],warnings:[],life_to_pay:0} : null,stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
+ if (scenario === 'progenitus') {
+   const colors = ['white','white','blue','blue','black','black','red','red','green','green'];
+   const lands = ['Plains','Plains','Island','Island','Swamp','Swamp','Mountain','Mountain','Forest','Forest'];
+   const sources = colors.map((color,index)=>({source_id:String(6000+index),source_name:lands[index],ability_index:0,expected_mana:{[color]:1}}));
+   players[0].battlefield = sources.map(source=>({id:Number(source.source_id),stable_id:Number(source.source_id),name:source.source_name,controller:0,owner:0,lane:'lands',type_line:'Basic Land',oracle_text:''}));
+   if (kind === 'mana_payment') {
+     state.decision = {...decisions.mana_payment,source_name:'Progenitus',description:'Pay {W}{W}{U}{U}{B}{B}{R}{R}{G}{G}'};
+     state.mana_payment = {...state.mana_payment,source_name:'Progenitus',pips:['W','W','U','U','B','B','R','R','G','G'].map(color=>[color]),pool_before:{},pool_after_activations:{white:2,blue:2,black:2,red:2,green:2},planned_sources:sources,activation_options:[...sources,{source_id:'6100',source_name:'City of Brass',ability_index:0,expected_mana:{white:1}}],activation_options_complete:true};
+   }
+ }
+ if (scenario === 'kozilek-command' && kind === 'mana_payment') {
+   const sources = [
+     {source_id:'6000',source_name:'Eldrazi Temple',ability_index:1,expected_mana:{colorless:2}},
+     {source_id:'6001',source_name:"Ugin's Labyrinth",ability_index:1,expected_mana:{colorless:2}},
+   ];
+   players[0].battlefield = sources.map(source=>({id:Number(source.source_id),stable_id:Number(source.source_id),name:source.source_name,controller:0,owner:0,lane:'lands',type_line:'Land',oracle_text:''}));
+   players[0].battlefield.push({id:6002,stable_id:6002,name:'Glaring Fleshraker',controller:0,owner:0,lane:'creatures',type_line:'Creature — Eldrazi Drone',power:2,toughness:2});
+   state.decision = {...decisions.mana_payment,source_name:"Kozilek's Command",description:'Pay {C}{C}{1}{1}'};
+   state.mana_payment = {...state.mana_payment,source_name:"Kozilek's Command",pips:[['C'],['C'],['1'],['1']],cost_context:['Normal cost','X = 2'],pool_before:{},pool_after_activations:{colorless:4},planned_sources:sources,activation_options:[...sources,{source_id:'6003',source_name:'Wastes',ability_index:0,expected_mana:{colorless:1}}],activation_options_complete:true};
+ }
+ if (state.mana_payment && sizingParams.get('paymentReady') === 'false') state.mana_payment.can_confirm = false;
  if (sizingParams.has("stackLaneTest")) {
    state.stack_objects = Array.from({length:stackCount},(_,index)=>({...state.stack_objects[0],id:9000+index}));
    state.stack = state.stack_objects.map(entry=>entry.id);
@@ -95,9 +117,9 @@ function Fixture(){
    options: [0,1].map(index=>({index,description:`Object ${index}\nWhenever you cast a noncreature spell, this ability triggers.`,related_object_ids:[index+1],legal:true})),
  };
  const effectOrderingState = stackOrder ? {key:buildEffectOrderingKey(state.decision),order:[0,1]} : null;
- return <I18nProvider><GameContext.Provider value={{state,effectOrderingState,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,cancelDecision:async()=>{},holdRule,setHoldRule,autoResolveEnabled,setAutoResolveEnabled,phasePassing,priorityStops,cyclePriorityStop:(key)=>setPriorityStops(stops=>({...stops,[key]:stops[key]?undefined:"once"})),startPhaseAdvance:()=>{window.__phaseAdvance=true;setPhasePassing(true);},togglePhasePassing:()=>setPhasePassing(value=>!value),dispatch:async(action)=>{window.__dispatched=action;},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+ return <I18nProvider><GameContext.Provider value={{state,effectOrderingState,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,cancelDecision:async()=>{window.__cancelled=true;},holdRule,setHoldRule,autoResolveEnabled,setAutoResolveEnabled,phasePassing,priorityStops,cyclePriorityStop:(key)=>setPriorityStops(stops=>({...stops,[key]:stops[key]?undefined:"once"})),startPhaseAdvance:()=>{window.__phaseAdvance=true;setPhasePassing(true);},togglePhasePassing:()=>setPhasePassing(value=>!value),dispatch:async(action)=>{window.__dispatched=action;},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
  {sizingParams.has("stackLaneTest") && <StackFixture />}
- <main style={{height:"96vh"}}><button onClick={()=>setExpanded(value=>!value)}>Toggle decision</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore onChangePerspective={id=>{window.selectedPerspective=id;}} legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} middleUtilityControls={<div className="topbar-minor-controls--utility" />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
+ <main style={{height:"96vh"}}><button onClick={()=>setExpanded(value=>!value)}>Toggle decision</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore onChangePerspective={id=>{window.selectedPerspective=id;}} legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} middleUtilityControls={<TopbarUtilityControls />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);

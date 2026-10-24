@@ -28,13 +28,46 @@ fn on_big_stack(test: impl FnOnce() + Send + 'static) {
 }
 
 fn compile(name: &str) -> CardDefinition {
-    let payloads =
-        ironsmith_tools::load_card_payloads_by_names("../../cards.json", &[name.to_string()])
-            .unwrap();
-    ironsmith_tools::compile_runtime_definition_from_payload(
-        payloads.values().next().unwrap().first().unwrap(),
-    )
-    .unwrap()
+    // The audit family tests compile many named cards. Scan the catalog once
+    // for that shared set instead of reparsing it for every test case.
+    static PAYLOADS: std::sync::OnceLock<
+        std::collections::BTreeMap<String, Vec<ironsmith_tools::CardPayload>>,
+    > = std::sync::OnceLock::new();
+    let payloads = PAYLOADS.get_or_init(|| {
+        let names = AUDITED
+            .iter()
+            .chain(FAMILY_REPRESENTATIVES)
+            .chain(
+                [
+                    "Elephant Grass",
+                    "Earth",
+                    "Chaos Moon",
+                    "Surveillance Phantasm",
+                    "Shatterskull Charger",
+                    "Rhet-Crop Spearmaster",
+                    "Hammerhead Shark",
+                    "Embermaw Hellion",
+                    "Etching of Kumano",
+                    "Titania's Song",
+                    "Cogwork Tracker",
+                    "Plague Nurse",
+                    "Lore Seeker",
+                    "Elemental Time Flamingo",
+                ]
+                .iter(),
+            )
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
+        ironsmith_tools::load_card_payloads_by_names("../../cards.json", &names).unwrap()
+    });
+    if let Some(payload) = payloads
+        .get(&ironsmith_tools::normalize_lookup_name(name))
+        .and_then(|p| p.first())
+    {
+        return ironsmith_tools::compile_runtime_definition_from_payload(payload).unwrap();
+    }
+    let payloads = ironsmith_tools::load_card_payloads_by_name("../../cards.json", name).unwrap();
+    ironsmith_tools::compile_runtime_definition_from_payload(payloads.first().unwrap()).unwrap()
 }
 
 fn witness(name: &str, types: Vec<T>) -> CardDefinition {
@@ -81,9 +114,23 @@ fn keen_eyed_curator_counts_card_types_not_cards() {
     on_big_stack(|| {
         let def = compile("Keen-Eyed Curator");
         let cases: [(&[&[T]], bool); 3] = [
-            (&[&[T::Creature], &[T::Creature], &[T::Artifact], &[T::Land]], false),
-            (&[&[T::Creature], &[T::Creature], &[T::Creature], &[T::Creature]], false),
-            (&[&[T::Artifact, T::Creature], &[T::Enchantment], &[T::Land]], true),
+            (
+                &[&[T::Creature], &[T::Creature], &[T::Artifact], &[T::Land]],
+                false,
+            ),
+            (
+                &[
+                    &[T::Creature],
+                    &[T::Creature],
+                    &[T::Creature],
+                    &[T::Creature],
+                ],
+                false,
+            ),
+            (
+                &[&[T::Artifact, T::Creature], &[T::Enchantment], &[T::Land]],
+                true,
+            ),
         ];
         for (exiled, buffed) in cases {
             let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
@@ -166,7 +213,8 @@ fn brass_knuckles_counts_equipment_on_the_equipped_creature() {
             let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
             let p = PlayerId::from_index(0);
             let source = game.create_object_from_definition(&def, p, Zone::Battlefield);
-            let host = game.create_object_from_definition(&creature("Host", 2), p, Zone::Battlefield);
+            let host =
+                game.create_object_from_definition(&creature("Host", 2), p, Zone::Battlefield);
             assert!(game.attach_object_to_target(
                 source,
                 ironsmith::object::AttachmentTarget::Object(host)
@@ -234,7 +282,8 @@ fn same_name_gate(
     let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
     let p = PlayerId::from_index(0);
     let source = game.create_object_from_definition(def, p, Zone::Battlefield);
-    let reference = game.create_object_from_definition(&witness("Matching Card", vec![ty]), p, ref_zone);
+    let reference =
+        game.create_object_from_definition(&witness("Matching Card", vec![ty]), p, ref_zone);
     if ref_zone == Zone::Exile {
         game.add_exiled_with_source_link(source, reference);
     }
@@ -248,7 +297,10 @@ fn same_name_gate(
     for tag in extra_tags {
         ctx.tag_object(
             ironsmith::TagKey::from(*tag),
-            ironsmith::snapshot::ObjectSnapshot::from_object(game.object(reference).unwrap(), &game),
+            ironsmith::snapshot::ObjectSnapshot::from_object(
+                game.object(reference).unwrap(),
+                &game,
+            ),
         );
     }
     ironsmith::condition_eval::evaluate_condition_resolution(&game, condition, &ctx).unwrap()
@@ -258,9 +310,27 @@ fn same_name_gate(
 fn resolution_same_name_counts_keep_their_bound_reference() {
     on_big_stack(|| {
         for (name, ty, ref_zone, it_zone, negated) in [
-            ("Candles of Leng", T::Sorcery, Zone::Graveyard, Zone::Stack, false),
-            ("Retraced Image", T::Creature, Zone::Battlefield, Zone::Hand, false),
-            ("Guardian Project", T::Creature, Zone::Graveyard, Zone::Battlefield, true),
+            (
+                "Candles of Leng",
+                T::Sorcery,
+                Zone::Graveyard,
+                Zone::Stack,
+                false,
+            ),
+            (
+                "Retraced Image",
+                T::Creature,
+                Zone::Battlefield,
+                Zone::Hand,
+                false,
+            ),
+            (
+                "Guardian Project",
+                T::Creature,
+                Zone::Graveyard,
+                Zone::Battlefield,
+                true,
+            ),
         ] {
             let def = compile(name);
             let condition = resolution_conditions(&def)
@@ -283,9 +353,15 @@ fn resolution_same_name_counts_keep_their_bound_reference() {
 fn jesters_scepter_compares_target_spell_with_the_paid_card() {
     on_big_stack(|| {
         let def = compile("Jester's Scepter");
-        let condition = resolution_conditions(&def).into_iter().next().expect("gate");
+        let condition = resolution_conditions(&def)
+            .into_iter()
+            .next()
+            .expect("gate");
         let debug = format!("{condition:?}");
-        assert!(debug.contains("zone_cost_0"), "paid card is its own operand: {debug}");
+        assert!(
+            debug.contains("zone_cost_0"),
+            "paid card is its own operand: {debug}"
+        );
         for same in [true, false] {
             let it_name = if same { "Matching Card" } else { "Other Card" };
             assert_eq!(
@@ -308,167 +384,9 @@ fn audit_lines(def: &CardDefinition) -> Vec<String> {
     ironsmith::compiled_text::semantic_audit_lines(def)
 }
 
-/// Replace retained presentation prose in a condition with POISON.
-fn poison_condition(condition: &mut ConditionExpr) {
-    match condition {
-        ConditionExpr::CountComparison { display, .. }
-        | ConditionExpr::CountParity { display, .. } => {
-            if display.is_some() {
-                *display = Some(POISON.into());
-            }
-        }
-        ConditionExpr::AttachmentCount { display, .. } => *display = POISON.into(),
-        ConditionExpr::Not(inner) => poison_condition(inner),
-        ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) => {
-            poison_condition(left);
-            poison_condition(right);
-        }
-        _ => {}
-    }
-}
-
-const POISON: &str = "POISON";
-
-/// Replace retained presentation prose in every display-bearing static
-/// payload field (`display`, `*_surface`, and the displays of nested
-/// conditions). Arms were generated from every `StaticAbilityPayload` variant
-/// with such a field; extend them when a variant gains one.
-fn poison_model(model: &mut ironsmith::static_abilities::CompiledStaticAbility) -> bool {
-    // The label is kept: it carries ability words ("Coven —"), which have no
-    // rules meaning, and the unrendered-model fallback is already marked.
-    match &mut model.payload {
-        P::Anthem(anthem) => anthem.condition.iter_mut().for_each(poison_condition),
-        P::AttachedAbilityGrant(grant) => {
-            grant.display = POISON.into();
-            grant.condition.iter_mut().for_each(poison_condition);
-        }
-        P::GrantObjectAbilityForFilter(grant) => {
-            if !grant.derived_ability_display {
-                grant.display = POISON.into();
-            }
-            grant.condition.iter_mut().for_each(poison_condition);
-        }
-        P::Grants(grant) => {
-            if grant.filtered_zone_surface.is_some() {
-                grant.filtered_zone_surface = Some(POISON.into());
-            }
-        }
-        P::CountersRemainAcrossZoneChanges { display, .. } => { *display = POISON.into(); }
-        P::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn { display, .. } => { *display = POISON.into(); }
-        P::Conditional { condition, .. } => { poison_condition(condition); }
-        P::CostIncreaseLife { display, .. } => { *display = POISON.into(); }
-        P::ActivateAbilitiesAsThoughHaste { display, .. } => { *display = POISON.into(); }
-        P::ThisSpellCastRestriction { display, .. } => { *display = POISON.into(); }
-        P::ThisSpellXMaximum { display, .. } => { *display = POISON.into(); }
-        P::ThisSpellXMinimum { display, .. } => { *display = POISON.into(); }
-        P::RuleRestriction { display, .. } => { *display = POISON.into(); }
-        P::CounterLimit { display, .. } => { *display = POISON.into(); }
-        P::CantAttackUnlessCondition { display, .. } => { *display = POISON.into(); }
-        P::AttackCost { display, .. } => { *display = POISON.into(); }
-        P::BlockCost { display, .. } => { *display = POISON.into(); }
-        P::UntapDuringEachOtherPlayersUntapStep { display, .. } => { *display = POISON.into(); }
-        P::UntapStepLimit { display, .. } => { *display = POISON.into(); }
-        P::UntapStepChosenCardTypeOnly { display, .. } => { *display = POISON.into(); }
-        P::SearchLimitedToTopCards { display, .. } => { *display = POISON.into(); }
-        P::PlayerProtectionFrom { display, .. } => { *display = POISON.into(); }
-        P::AddChosenCreatureType { display, .. } => { *display = POISON.into(); }
-        P::AddChosenBasicLandType { display, .. } => { *display = POISON.into(); }
-        P::SourceHasAbilityStickerAbilitiesOf { display, .. } => { *display = POISON.into(); }
-        P::AddChosenColor { display, .. } => { *display = POISON.into(); }
-        P::SetChosenColor { display, .. } => { *display = POISON.into(); }
-        P::DuplicateMatchingTriggeredAbilities { display, .. } => { *display = POISON.into(); }
-        P::SuppressMatchingTriggeredAbilities { display, .. } => { *display = POISON.into(); }
-        P::ExertAttack { display, .. } => { *display = POISON.into(); }
-        P::EnlistAttack { display, .. } => { *display = POISON.into(); }
-        P::RemoveObjectAbilitiesForFilter { display, .. } => { *display = POISON.into(); }
-        P::RemoveCardTypes { condition, .. } => { condition.iter_mut().for_each(poison_condition); }
-        P::ActivatedAbilityCostIncrease { condition, display, .. } => { condition.iter_mut().for_each(poison_condition); if display.is_some() { *display = Some(POISON.into()); } }
-        P::ChooseColorAsEnters { display, .. } => { *display = POISON.into(); }
-        P::ChoosePlayerAsEnters { display, .. } => { *display = POISON.into(); }
-        P::RevealFromHandAsEnters { display, .. } => { *display = POISON.into(); }
-        P::ChooseCardNameAsEnters { display, .. } => { *display = POISON.into(); }
-        P::ChooseNamedOptionAsEnters { display, .. } => { *display = POISON.into(); }
-        P::ChoosePowerToughnessAsEntersOrTurnsFaceUp { display, .. } => { *display = POISON.into(); }
-        P::EnterAsCopyAsEnters { display, .. } => { *display = POISON.into(); }
-        P::RedirectDamageToSourceController { display, .. } => { *display = POISON.into(); }
-        P::ExileWouldDieInstead { damager_filter_surface, .. } => { if damager_filter_surface.is_some() { *damager_filter_surface = Some(POISON.into()); } }
-        P::ModifyDamageAmountReplacement { display, .. } => { *display = POISON.into(); }
-        P::MinimumDamageAmountReplacement { display, .. } => { *display = POISON.into(); }
-        P::DoubleDamageAmountReplacement { display, .. } => { *display = POISON.into(); }
-        P::PreventHalfDamageReplacement { display, .. } => { *display = POISON.into(); }
-        P::DoubleCountersReplacement { display, .. } => { *display = POISON.into(); }
-        P::AddCountersPlacementReplacement { display, .. } => { *display = POISON.into(); }
-        P::PlayerCounterPerTurnLimitReplacement { display, .. } => { *display = POISON.into(); }
-        P::DoubleTokenCreationReplacement { display, .. } => { *display = POISON.into(); }
-        P::MultiplyTokenCreationReplacement { display, .. } => { *display = POISON.into(); }
-        P::AddTokenCreationReplacement { display, .. } => { *display = POISON.into(); }
-        P::KeywordActionReplacement { display, .. } => { *display = POISON.into(); }
-        P::ConditionalDrawReplacement { condition, display, .. } => { poison_condition(condition); *display = POISON.into(); }
-        P::CreateOneOfEachTokenReplacement { display, .. } => { *display = POISON.into(); }
-        P::RedirectDrawReplacement { display, .. } => { *display = POISON.into(); }
-        P::DrawReplacementWithEffects { display, .. } => { *display = POISON.into(); }
-        P::DrawExtraCardsReplacement { display, .. } => { *display = POISON.into(); }
-        P::LoseGameReplacement { display, .. } => { *display = POISON.into(); }
-        P::DrawReplacementRevealTopMatchingToHandRestBottom { display, .. } => { *display = POISON.into(); }
-        P::RedirectWouldEnter { display, .. } => { *display = POISON.into(); }
-        P::ManaProductionReplacement { display, .. } => { *display = POISON.into(); }
-        P::ManaProductionMultiplierReplacement { display, .. } => { *display = POISON.into(); }
-        P::DoubleLifeChangeReplacement { display, .. } => { *display = POISON.into(); }
-        P::ManaSpendPermission { display, .. } => { *display = POISON.into(); }
-        P::PreventDamageToSelfPutCountersInstead { display, .. } => { *display = POISON.into(); }
-        P::HealDamageBeforeDamageToSelf { display, .. } => { *display = POISON.into(); }
-        P::PreventConstrainedDamageToSelfPutCountersInstead { display, .. } => { *display = POISON.into(); }
-        P::PreventDamageToYouFromSourceFilter { display, .. } => { *display = POISON.into(); }
-        P::ReplaceDamageWithCountersInstead { display, .. } => { *display = POISON.into(); }
-        P::EntersTappedUnlessCondition { condition, display, .. } => { poison_condition(condition); *display = POISON.into(); }
-        P::EntersWithCountersIfCondition { condition, display, .. } => { poison_condition(condition); *display = POISON.into(); }
-        P::EntersWithCounterChoice { condition, display, .. } => { condition.iter_mut().for_each(poison_condition); *display = POISON.into(); }
-        P::AddLifeGainReplacement { display, .. } => { *display = POISON.into(); }
-        P::TokenCreationTemplates { display, .. } => { *display = POISON.into(); }
-        P::ActorCountersAddition { display, .. } => { *display = POISON.into(); }
-        P::ManaProductionRewrite { display, .. } => { *display = POISON.into(); }
-        P::EventReplacementWithEffects { display, .. } => { *display = POISON.into(); }
-        P::EventAmountReplacement { display, .. } => { *display = POISON.into(); }
-        P::EchoCostAlternative { display, .. } => { *display = POISON.into(); }
-        P::SourceHasFullTextOfTopGraveyardCard { display, .. } => { *display = POISON.into(); }
-        P::MaySkipDrawStepWithFollowup { display, .. } => { *display = POISON.into(); }
-        P::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn { display, .. } => { *display = POISON.into(); }
-        P::CastTargetRestriction { display, .. } => { *display = POISON.into(); }
-        P::EntersAttachedToChosenObject { display, .. } => { *display = POISON.into(); }
-        P::AdditionalSacrificePerManaSymbol { display, .. } => { *display = POISON.into(); }
-        P::ControllerCounterExilePermission { display, .. } => { *display = POISON.into(); }
-        P::AttackingPlayerChoosesBlocks { display, .. } => { *display = POISON.into(); }
-        P::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn { display, .. } => { *display = POISON.into(); }
-        P::ChooseBasicLandTypesAsEnters { display, .. } => { *display = POISON.into(); }
-        P::FirstChosenLandTypeBecomesSecond { display, .. } => { *display = POISON.into(); }
-        P::DamageBetweenChosenPlayers { display, .. } => { *display = POISON.into(); }
-        P::AddSubtypesAndGrantAbilities { display, .. } => { *display = POISON.into(); }
-        _ => {}
-    }
-    true
-}
-
-fn map_static_models(
-    def: &CardDefinition,
-    mut f: impl FnMut(&mut ironsmith::static_abilities::CompiledStaticAbility) -> bool,
-) -> (CardDefinition, bool) {
-    let mut changed = def.clone();
-    let mut any = false;
-    for ability in &mut changed.abilities {
-        let AbilityKind::Static(s) = &ability.kind else {
-            continue;
-        };
-        let Some(model) = s.compiled_model() else {
-            continue;
-        };
-        let mut model = model.clone();
-        if f(&mut model) {
-            any = true;
-            ability.kind = AbilityKind::Static(StaticAbility::from_model(model));
-        }
-    }
-    (changed, any)
-}
+#[path = "support/semantic_audit_probes.rs"]
+mod semantic_audit_probes;
+use semantic_audit_probes::{POISON, map_static_models, poison_definition};
 
 const AUDITED: [&str; 8] = [
     "Keen-Eyed Curator",
@@ -572,73 +490,6 @@ const FAMILY_REPRESENTATIVES: &[&str] = &[
     "Wolverine, Fierce Fighter",
 ];
 
-fn poison_effect(effect: ironsmith::Effect) -> ironsmith::Effect {
-    use ironsmith::effects as fx;
-    let poison_all = |effects: &mut Vec<ironsmith::Effect>| {
-        *effects = std::mem::take(effects).into_iter().map(poison_effect).collect();
-    };
-    if let Some(conditional) = effect.downcast_ref::<fx::ConditionalEffect>() {
-        let mut conditional = conditional.clone();
-        poison_condition(&mut conditional.condition);
-        poison_all(&mut conditional.if_true);
-        poison_all(&mut conditional.if_false);
-        return ironsmith::Effect::new(conditional);
-    }
-    if let Some(with_id) = effect.downcast_ref::<fx::WithIdEffect>() {
-        let mut with_id = with_id.clone();
-        with_id.effect = Box::new(poison_effect(*with_id.effect));
-        return ironsmith::Effect::new(with_id);
-    }
-    if let Some(tagged) = effect.downcast_ref::<fx::TaggedEffect>() {
-        let mut tagged = tagged.clone();
-        tagged.effect = Box::new(poison_effect(*tagged.effect));
-        return ironsmith::Effect::new(tagged);
-    }
-    if let Some(sequence) = effect.downcast_ref::<fx::SequenceEffect>() {
-        let mut sequence = sequence.clone();
-        poison_all(&mut sequence.effects);
-        return ironsmith::Effect::new(sequence);
-    }
-    if let Some(may) = effect.downcast_ref::<fx::MayEffect>() {
-        let mut may = may.clone();
-        poison_all(&mut may.effects);
-        return ironsmith::Effect::new(may);
-    }
-    if let Some(for_players) = effect.downcast_ref::<fx::ForPlayersEffect>() {
-        let mut for_players = for_players.clone();
-        poison_all(&mut for_players.effects);
-        return ironsmith::Effect::new(for_players);
-    }
-    effect
-}
-
-fn poison_program(program: &mut ironsmith::resolution::ResolutionProgram) {
-    let original = std::mem::take(program);
-    *program = original
-        .try_map_effects(|effect| Ok::<_, std::convert::Infallible>(poison_effect(effect)))
-        .expect("infallible poison transform");
-}
-
-/// Poison every presentation field the audit renderer must not print:
-/// static payloads, intervening-if conditions, and resolution conditions.
-fn poison_definition(def: &CardDefinition) -> CardDefinition {
-    let (mut poisoned, _) = map_static_models(def, poison_model);
-    if let Some(program) = &mut poisoned.spell_effect {
-        poison_program(program);
-    }
-    for ability in &mut poisoned.abilities {
-        match &mut ability.kind {
-            AbilityKind::Triggered(triggered) => {
-                triggered.intervening_if.iter_mut().for_each(poison_condition);
-                poison_program(&mut triggered.effects);
-            }
-            AbilityKind::Activated(activated) => poison_program(&mut activated.effects),
-            AbilityKind::Static(_) => {}
-        }
-    }
-    poisoned
-}
-
 #[test]
 fn semantic_audit_rendering_ignores_poisoned_presentation_text() {
     on_big_stack(|| {
@@ -651,7 +502,11 @@ fn semantic_audit_rendering_ignores_poisoned_presentation_text() {
                 leaks.push(format!("{name}:\n  {before:?}\n  {after:?}"));
             }
         }
-        assert!(leaks.is_empty(), "audit rendering depends on presentation text:\n{}", leaks.join("\n"));
+        assert!(
+            leaks.is_empty(),
+            "audit rendering depends on presentation text:\n{}",
+            leaks.join("\n")
+        );
     });
 }
 
@@ -684,11 +539,10 @@ fn semantic_audit_rendering_reflects_executable_mutations() {
                     true
                 }
                 P::ActivatedAbilityCostIncrease { increase, .. } => {
-                    *increase = ironsmith_core::TotalCost::mana(
-                        ironsmith::mana::ManaCost::from_symbols(vec![
-                            ironsmith::mana::ManaSymbol::Generic(9),
-                        ]),
-                    );
+                    *increase =
+                        ironsmith_core::TotalCost::mana(ironsmith::mana::ManaCost::from_symbols(
+                            vec![ironsmith::mana::ManaSymbol::Generic(9)],
+                        ));
                     true
                 }
                 P::Grants(grant) if grant.filtered_zone_surface.is_some() => {
@@ -698,7 +552,11 @@ fn semantic_audit_rendering_reflects_executable_mutations() {
                 _ => false,
             });
             assert!(any, "{name}: no executable field was mutated");
-            assert_ne!(audit_lines(&mutated), before, "{name}: audit hid a semantic change");
+            assert_ne!(
+                audit_lines(&mutated),
+                before,
+                "{name}: audit hid a semantic change"
+            );
         }
     });
 }
@@ -779,9 +637,16 @@ mod jesters_scepter_lifecycle {
         let p = PlayerId::from_index(0);
         let mut queue = TriggerQueue::new();
         let source = game.create_object_from_definition(&scepter, p, Zone::Battlefield);
-        let exiled = game.create_object_from_definition(&witness(paid_name, vec![T::Instant]), p, Zone::Exile);
+        let exiled = game.create_object_from_definition(
+            &witness(paid_name, vec![T::Instant]),
+            p,
+            Zone::Exile,
+        );
         game.add_exiled_with_source_link(source, exiled);
-        for symbol in [ironsmith::mana::ManaSymbol::Blue, ironsmith::mana::ManaSymbol::Colorless] {
+        for symbol in [
+            ironsmith::mana::ManaSymbol::Blue,
+            ironsmith::mana::ManaSymbol::Colorless,
+        ] {
             game.player_mut(p).unwrap().mana_pool.add(symbol, 10);
         }
         game.turn.priority_player = Some(p);
@@ -798,7 +663,9 @@ mod jesters_scepter_lifecycle {
             .into_iter()
             .find(|a| matches!(a, LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id))
             .expect("spell castable");
-        drive(&mut game, &mut queue, cast, |g, s| s.pending_cast.is_none() && !g.stack.is_empty());
+        drive(&mut game, &mut queue, cast, |g, s| {
+            s.pending_cast.is_none() && !g.stack.is_empty()
+        });
         game.turn.priority_player = Some(p);
         let activate = compute_legal_actions(&game, p)
             .unwrap()
@@ -809,10 +676,10 @@ mod jesters_scepter_lifecycle {
             s.pending_activation.is_none() && g.stack.len() == 2
         });
         resolve_top(&mut game, &mut queue);
-        let on_stack = game
-            .stack
-            .iter()
-            .any(|entry| game.object(entry.object_id).is_some_and(|o| o.name == "Matching Card"));
+        let on_stack = game.stack.iter().any(|entry| {
+            game.object(entry.object_id)
+                .is_some_and(|o| o.name == "Matching Card")
+        });
         !on_stack
     }
 
@@ -820,7 +687,10 @@ mod jesters_scepter_lifecycle {
     fn jesters_scepter_counters_only_a_spell_named_like_the_paid_card() {
         on_big_stack(|| {
             assert!(run("Matching Card"), "same-named spell must be countered");
-            assert!(!run("Other Card"), "differently named spell must stay on the stack");
+            assert!(
+                !run("Other Card"),
+                "differently named spell must stay on the stack"
+            );
         });
     }
 }
@@ -841,12 +711,20 @@ fn commander_pairing_and_copy_limits_are_typed() {
                 .collect::<Vec<_>>()
         };
         let pairing = |name: &str| statics(name).iter().find_map(|s| s.commander_pairing());
-        assert_eq!(pairing("Thrasios, Triton Hero"), Some(CommanderPairing::Partner));
+        assert_eq!(
+            pairing("Thrasios, Triton Hero"),
+            Some(CommanderPairing::Partner)
+        );
         assert_eq!(
             pairing("Pir, Imaginative Rascal"),
-            Some(CommanderPairing::PartnerWith("toothy, imaginary friend".into()))
+            Some(CommanderPairing::PartnerWith(
+                "toothy, imaginary friend".into()
+            ))
         );
-        assert_eq!(pairing("Wilson, Refined Grizzly"), Some(CommanderPairing::ChooseBackground));
+        assert_eq!(
+            pairing("Wilson, Refined Grizzly"),
+            Some(CommanderPairing::ChooseBackground)
+        );
         assert!(matches!(
             pairing("Abby, Merciless Soldier"),
             Some(CommanderPairing::Group(group)) if group.contains("survivors")
@@ -854,5 +732,265 @@ fn commander_pairing_and_copy_limits_are_typed() {
         let limit = |name: &str| statics(name).iter().find_map(|s| s.deck_copy_limit());
         assert_eq!(limit("Relentless Rats"), Some(None));
         assert_eq!(limit("Seven Dwarves"), Some(Some(7)));
+    });
+}
+
+#[test]
+fn cast_time_counts_preserve_selection_set_constraints() {
+    on_big_stack(|| {
+        let def = compile("Augur of Autumn");
+        let condition = static_condition(&def);
+        for (powers, expected) in [([2, 2], false), ([1, 3], true)] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let player = PlayerId::from_index(0);
+            let source = game.create_object_from_definition(&def, player, Zone::Battlefield);
+            for (i, power) in powers.into_iter().enumerate() {
+                game.create_object_from_definition(
+                    &creature(&format!("Witness {i}"), power),
+                    player,
+                    Zone::Battlefield,
+                );
+            }
+            game.refresh_continuous_state().unwrap();
+            assert_eq!(
+                ironsmith::condition_eval::evaluate_condition_cast_time_checked(
+                    &game, &condition, player, source
+                )
+                .unwrap(),
+                expected,
+                "powers {powers:?}"
+            );
+        }
+    });
+}
+
+#[test]
+fn audit_graveyard_permissions_describe_nested_cost_conditions() {
+    use ironsmith_core::ThisSpellCostCondition as C;
+    on_big_stack(|| {
+        let base = witness("Conditional Permission", vec![T::Creature]);
+        let render = |condition, filter| {
+            let grant = ironsmith_core::GrantSpec::new(
+                ironsmith_core::Grantable::graveyard_cast_from_cards_mana_cost_with_condition(
+                    condition, false,
+                ),
+                filter,
+                Zone::Graveyard,
+            );
+            let mut def = base.clone();
+            def.abilities
+                .push(ironsmith::ability::Ability::static_ability(
+                    StaticAbility::from_model(
+                        ironsmith::static_abilities::CompiledStaticAbility::grants(grant),
+                    ),
+                ));
+            audit_lines(&def).join("\n")
+        };
+        for (before, after, first, second) in [
+            (
+                C::YouLifeTotalOrLess(5),
+                C::YouLifeTotalOrLess(15),
+                "5",
+                "15",
+            ),
+            (
+                C::All(vec![C::YourTurn, C::YouLifeTotalOrLess(5)]),
+                C::All(vec![C::YourTurn, C::YouLifeTotalOrLess(15)]),
+                "5",
+                "15",
+            ),
+            (
+                C::OpponentControlsLandsOrMore(3),
+                C::OpponentControlsLandsOrMore(7),
+                "3",
+                "7",
+            ),
+        ] {
+            for filter in [
+                ironsmith::target::ObjectFilter::source(),
+                ironsmith::target::ObjectFilter::creature(),
+            ] {
+                let a = render(before.clone(), filter.clone());
+                let b = render(after.clone(), filter);
+                assert_ne!(a, b);
+                assert!(a.contains(first), "{a}");
+                assert!(b.contains(second), "{b}");
+                assert!(!a.contains("the condition is true"));
+            }
+        }
+    });
+}
+
+#[test]
+fn snapshot_scoring_uses_semantics_even_when_display_hides_a_mutation() {
+    on_big_stack(|| {
+        let def = compile("Bruvac the Grandiloquent");
+        let (mutated, any) = map_static_models(&def, |model| {
+            if let P::EventAmountReplacement { modifier, .. } = &mut model.payload {
+                *modifier = ironsmith_core::AmountModifierSpec::SetTo(9);
+                true
+            } else {
+                false
+            }
+        });
+        assert!(any);
+        let display = ironsmith::compiled_text::compiled_text_lines(&def);
+        assert_eq!(
+            display,
+            ironsmith::compiled_text::compiled_text_lines(&mutated)
+        );
+        let oracle = display.join("\n");
+        let snapshot = ironsmith_tools::CompilationSnapshot::from_definition_result(
+            "Bruvac the Grandiloquent",
+            &oracle,
+            ironsmith_tools::ParseStatus::StrictCompiled,
+            None,
+            Some(&mutated),
+            &Default::default(),
+        );
+        let audit = audit_lines(&mutated);
+        let expected = ironsmith::semantic_compare::compare_card_semantics_scored(
+            "Bruvac the Grandiloquent",
+            &snapshot.normalized_oracle_text,
+            &audit,
+            ironsmith::semantic_compare::report_embedding_config(),
+        );
+        assert_eq!(snapshot.similarity_score, expected.2);
+        assert!(
+            snapshot.similarity_score < 1.0,
+            "stale correct-looking prose must not score exactly"
+        );
+        assert_eq!(snapshot.compiled_text.as_deref(), Some(oracle.as_str()));
+    });
+}
+
+#[test]
+fn corpus_discovered_static_prose_is_structural_or_explicitly_unverified() {
+    on_big_stack(|| {
+        for (name, unverified) in [
+            ("Elephant Grass", false),
+            ("Earth", false),
+            ("Chaos Moon", false),
+            ("Surveillance Phantasm", false),
+            ("Shatterskull Charger", false),
+            ("Rhet-Crop Spearmaster", false),
+            ("Hammerhead Shark", false),
+            ("Embermaw Hellion", false),
+            ("Etching of Kumano", false),
+            ("Titania's Song", false),
+            ("Cogwork Tracker", true),
+            ("Plague Nurse", true),
+            ("Lore Seeker", true),
+            ("Elemental Time Flamingo", true),
+        ] {
+            let def = compile(name);
+            let before = audit_lines(&def);
+            if unverified {
+                let snapshot = ironsmith_tools::CompilationSnapshot::from_definition_result(
+                    name,
+                    &def.canonical_text,
+                    ironsmith_tools::ParseStatus::StrictCompiled,
+                    None,
+                    Some(&def),
+                    &Default::default(),
+                );
+                assert!(
+                    snapshot.semantic_mismatch,
+                    "{name}: unverified must be flagged"
+                );
+            }
+            for (_, kind, changed) in semantic_audit_probes::executable_mutations(&def) {
+                assert_ne!(before, audit_lines(&changed), "{name}: hidden {kind}");
+            }
+            assert_eq!(before, audit_lines(&poison_definition(&def)), "{name}");
+            assert_eq!(
+                before.join("\n").contains(UNVERIFIED_MARKER_PREFIX),
+                unverified,
+                "{name}"
+            );
+        }
+    });
+}
+
+#[test]
+fn aftermath_audit_reads_the_permission_zone_instead_of_its_label() {
+    on_big_stack(|| {
+        let def = compile("Earth");
+        let before = audit_lines(&def);
+        let (after, changed) = map_static_models(&def, |model| {
+            if let P::Grants(grant) = &mut model.payload {
+                grant.zone = Zone::Exile;
+                true
+            } else {
+                false
+            }
+        });
+        assert!(changed);
+        assert_ne!(before, audit_lines(&after));
+    });
+}
+
+#[test]
+fn audit_turn_history_keeps_thresholds_and_counter_types() {
+    on_big_stack(|| {
+        use ironsmith_core::{CounterType, PlayerFilter, TurnHistoryCount as H, Value};
+        let base = compile("Surveillance Phantasm");
+        let render = |query: H, threshold: i32| {
+            let (changed, found) = map_static_models(&base, |model| {
+                let P::Conditional { condition, .. } = &mut model.payload else {
+                    return false;
+                };
+                *condition = ConditionExpr::ValueComparison {
+                    left: Value::TurnHistoryCount(query.clone()),
+                    operator: ironsmith::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(threshold),
+                };
+                true
+            });
+            assert!(found);
+            audit_lines(&changed)
+        };
+        let energy = H::PlayerCountersRemoved {
+            player: PlayerFilter::You,
+            counter_type: Some(CounterType::Energy),
+        };
+        let poison = H::PlayerCountersRemoved {
+            player: PlayerFilter::You,
+            counter_type: Some(CounterType::Poison),
+        };
+        assert_ne!(render(energy.clone(), 1), render(energy.clone(), 8));
+        assert_ne!(render(energy, 1), render(poison, 1));
+        let counters = H::CountersRemovedFrom {
+            counter_type: Some(CounterType::Oil),
+            filter: ironsmith::target::ObjectFilter::default(),
+        };
+        assert_ne!(render(counters.clone(), 1), render(counters, 8));
+        let composed = |action| {
+            let leaf = ConditionExpr::ValueComparison {
+                left: Value::TurnHistoryCount(H::KeywordActionsPerformed {
+                    player: PlayerFilter::You,
+                    actions: vec![action],
+                }),
+                operator: ironsmith::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            };
+            let logical_tree = ConditionExpr::And(
+                Box::new(leaf.clone()),
+                Box::new(ConditionExpr::And(Box::new(leaf.clone()), Box::new(leaf))),
+            );
+            let (changed, found) = map_static_models(&base, |model| {
+                let P::Conditional { condition, .. } = &mut model.payload else {
+                    return false;
+                };
+                *condition = logical_tree.clone();
+                true
+            });
+            assert!(found);
+            audit_lines(&changed)
+        };
+        assert_ne!(
+            composed(ironsmith_core::KeywordActionKind::Scry),
+            composed(ironsmith_core::KeywordActionKind::Surveil)
+        );
     });
 }

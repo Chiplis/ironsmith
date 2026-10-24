@@ -14,8 +14,11 @@ function isReplacementChoice(decision) {
   if (Number(decision.min ?? 1) !== 1 || Number(decision.max ?? 1) !== 1) return false;
   const reason = String(decision.reason || "").trim().toLowerCase();
   const description = String(decision.description || "").trim().toLowerCase();
-  return reason === "replacement effect"
-    || description.startsWith("choose which replacement effect to apply");
+  // Older snapshots also label text-change word and mana-color choices as
+  // replacement effects. A description must identify an effect-selection menu.
+  const effectChoice = description.startsWith("choose which replacement effect to apply")
+    || description === "choose a draw replacement effect to apply";
+  return effectChoice || (reason === "replacement effect" && !description);
 }
 
 // A replacement and its explicit decline are one optional action, not an order.

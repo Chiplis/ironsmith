@@ -69,6 +69,38 @@ pub(crate) fn audit_payload_reading(
     model: &crate::static_abilities::CompiledStaticAbility,
 ) -> Option<String> {
     Some(match &model.payload {
+        P::Grants(_) => crate::static_abilities::StaticAbility::from_model(model.clone())
+            .grant_spec()
+            .map(|grant| grant.display())
+            .unwrap_or_else(|| ironsmith_core::semantic_audit::unverified_marker(
+                "GrantSpec", model, &[])),
+        P::None if model.id == Some(crate::static_abilities::StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving) =>
+            "If this permanent leaves the battlefield, its static effects continue until end of turn".to_string(),
+        P::None if matches!(model.id, Some(
+            crate::static_abilities::StaticAbilityId::DraftRuleText
+            | crate::static_abilities::StaticAbilityId::KeywordMarker
+            | crate::static_abilities::StaticAbilityId::DeckConstructionRuleText
+            | crate::static_abilities::StaticAbilityId::MustAttackDraftNotedPlayers
+            | crate::static_abilities::StaticAbilityId::Toxic
+            | crate::static_abilities::StaticAbilityId::CountAsCardNamedForSpellEffect
+            | crate::static_abilities::StaticAbilityId::KeywordText
+            | crate::static_abilities::StaticAbilityId::KeywordFallbackText
+            | crate::static_abilities::StaticAbilityId::RuleFallbackText
+            | crate::static_abilities::StaticAbilityId::UnsupportedParserLine
+        )) => ironsmith_core::semantic_audit::unverified_marker(
+            "LabelDependentStatic", model, &[]),
+        // These families' ordinary displays can return the entire authored
+        // sentence. Include every typed scope and cost in the audit reading.
+        P::AttackCost { .. } | P::BlockCost { .. }
+        | P::CantAttackUnlessCondition { .. }
+        | P::ExertAttack { .. } | P::EnlistAttack { .. }
+        | P::ModifyDamageAmountReplacement { .. }
+        | P::ExileWouldDieInstead { .. }
+        | P::EntersWithCountersIfCondition { .. }
+        | P::EntersWithCounterChoice { .. }
+        | P::ActorCountersAddition { .. }
+        | P::EchoCostAlternative { .. }
+        | P::ChooseBasicLandTypesAsEnters { .. } => sr(&model.payload),
         P::CountersRemainAcrossZoneChanges { excluded_destinations, .. } => {
             let mut text = "Counters on this permanent remain on it as it changes zones".to_string();
             if !excluded_destinations.is_empty() {

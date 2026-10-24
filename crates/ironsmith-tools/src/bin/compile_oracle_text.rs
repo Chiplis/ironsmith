@@ -406,13 +406,14 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
 
     let display_def = compile_definition_for_job(job)?;
     let compiled_lines = compiled_text_lines(&display_def);
+    let audit_lines = ironsmith::compiled_text::semantic_audit_lines(&display_def);
     let (similarity, semantic_mismatch) =
         if let Some(snapshot) = job.authoritative_snapshot.as_ref() {
             (snapshot.similarity_score, snapshot.semantic_mismatch)
         } else {
             let (_, _, similarity, _, semantic_mismatch) = compare_semantics_scored(
                 &job.oracle_text,
-                &compiled_lines,
+                &audit_lines,
                 ironsmith::semantic_compare::report_embedding_config(),
             );
             (similarity, semantic_mismatch)
@@ -422,6 +423,7 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
     // Preserve the score at threshold boundaries for cohort verification.
     outln!("Similarity: {}", similarity);
     outln!("Semantic mismatch: {}", semantic_mismatch);
+    outln!("Scoring surface: semantic audit (executable model)");
     outln!("Original oracle text:");
     outln!("{}", job.oracle_text.trim());
     outln!("Compiled oracle text:");
@@ -430,6 +432,8 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
     } else {
         outln!("{}", compiled_lines.join("\n").trim());
     }
+    outln!("Semantic audit text:");
+    outln!("{}", audit_lines.join("\n"));
     Ok(())
 }
 
