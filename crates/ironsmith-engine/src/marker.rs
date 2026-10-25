@@ -243,6 +243,13 @@ impl MarkerFilter {
     }
 }
 
+/// The color of a "hexproof from [color]" keyword-variant counter (CR 122.1b).
+pub(crate) fn hexproof_from_counter_color(name: &str) -> Option<crate::color::Color> {
+    let rest = name.trim().to_ascii_lowercase();
+    let color = rest.strip_prefix("hexproof from ")?;
+    crate::color::Color::from_name(color.trim())
+}
+
 /// Runtime-only behavior for counter types that grant static abilities.
 pub trait CounterTypeExt {
     fn granted_ability(&self) -> Option<StaticAbilityId>;
@@ -266,6 +273,9 @@ impl CounterTypeExt for CounterType {
             CounterType::Vigilance => Some(StaticAbilityId::Vigilance),
             CounterType::Haste => Some(StaticAbilityId::Haste),
             CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => Some(StaticAbilityId::Shadow),
+            CounterType::Named(name) if hexproof_from_counter_color(name).is_some() => {
+                Some(StaticAbilityId::HexproofFrom)
+            }
             _ => None,
         }
     }

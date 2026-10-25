@@ -1713,6 +1713,29 @@ fn parse_choose_counter_on_target_then_put_additional_bundle(
 pub(super) fn parse_search_library_slots_to_hand_bundle(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(items) =
+        bundle_grammar::parse_search_library_slots_to_battlefield_tapped_shape(tokens)
+    {
+        let mut slots = Vec::new();
+        for item in items {
+            let mut filter = parse_object_filter_lexed(&item, false)?;
+            filter.zone = Some(Zone::Library);
+            if filter.owner.is_none() {
+                filter.owner = Some(PlayerFilter::You);
+            }
+            slots.push(crate::cards::builders::SearchLibrarySlotAst {
+                filter,
+                optional: true,
+            });
+        }
+        return Ok(Some(vec![
+            EffectAst::subject_verb_search_library_slots_to_battlefield_tapped(
+                PlayerAst::You,
+                slots,
+                crate::tag::CompilerReferenceTag::SearchLibrarySlotsProgress.bind(),
+            ),
+        ]));
+    }
     let Some(shape) = bundle_grammar::parse_search_library_slots_shape(tokens) else {
         return Ok(None);
     };

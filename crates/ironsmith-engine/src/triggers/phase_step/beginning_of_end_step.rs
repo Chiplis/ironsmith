@@ -132,7 +132,7 @@ pub(crate) fn player_filter_matches(
 ) -> bool {
     match filter {
         PlayerFilter::You => player == ctx.controller,
-        PlayerFilter::Opponent => player != ctx.controller,
+        PlayerFilter::Opponent => ctx.game.are_opponents(ctx.controller, player),
         PlayerFilter::Any => true,
         PlayerFilter::Specific(id) => player == *id,
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {

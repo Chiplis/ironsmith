@@ -92,6 +92,14 @@ pub(super) fn matches_subject(
         }) {
             return false;
         }
+        let source_incarnation = ctx
+            .source
+            .or_else(|| ctx.source_snapshot.as_ref().map(|source| source.object_id));
+        if source_incarnation.is_some_and(|source| {
+            !game.token_created_by_source_incarnation(source, subject.stable_id())
+        }) {
+            return false;
+        }
     }
 
     if let Some(constraint) = &filter.counters_put_on_this_turn
@@ -455,14 +463,24 @@ pub(super) fn matches_subject(
     let object_supertypes = subject.supertypes(calculated_chars_ref);
     let object_colors = subject.colors(calculated_chars_ref);
 
-    if filter.modified && subject.is_live() {
-        if subject.zone() != Zone::Battlefield || !object_card_types.contains(&CardType::Creature) {
+    // CR 700.9: a permanent is modified if it has one or more counters on it,
+    // is equipped, or is enchanted by an Aura controlled by its controller.
+    // Phased-out attachments don't exist (CR 702.26b). A last-known subject
+    // uses its recorded counters and the attachments it had.
+    if filter.modified {
+        if subject.zone() != Zone::Battlefield {
             return false;
         }
 
         let has_counters = subject.counters().values().any(|count| *count > 0);
+        let subject_controller = subject.controller(game);
+        let visible_attachment = |attachment_id: &ObjectId| {
+            game.object(*attachment_id).filter(|attachment| {
+                attachment.zone == Zone::Battlefield && !game.is_phased_out(*attachment_id)
+            })
+        };
         let has_equipment = subject.attachments().iter().any(|attachment_id| {
-            game.object(*attachment_id).is_some_and(|attachment| {
+            visible_attachment(attachment_id).is_some_and(|attachment| {
                 filter_object_has_subtype_with_view(
                     attachment,
                     Subtype::Equipment,
@@ -472,11 +490,11 @@ pub(super) fn matches_subject(
                 )
             })
         });
-        let has_controlled_aura = ctx.you.is_some_and(|you| {
+        let has_controlled_aura = subject_controller.is_some_and(|controller| {
             subject.attachments().iter().any(|attachment_id| {
-                game.object(*attachment_id).is_some_and(|attachment| {
+                visible_attachment(attachment_id).is_some_and(|attachment| {
                     game.current_controller(*attachment_id)
-                        .is_some_and(|controller| controller == you)
+                        .is_some_and(|aura_controller| aura_controller == controller)
                         && filter_object_has_subtype_with_view(
                             attachment,
                             Subtype::Aura,
@@ -676,6 +694,11 @@ pub(super) fn matches_subject(
             return false;
         }
     } else if !filter.card_types.is_empty()
+        // CR 110.4c: anything on the battlefield is a permanent, even when an
+        // effect removed all of its card types; the "permanent" noun's type
+        // list describes permanent cards elsewhere.
+        && !(subject.zone() == crate::zone::Zone::Battlefield
+            && is_permanent_card_type_set(&filter.card_types))
         && !filter
             .card_types
             .iter()
@@ -1084,6 +1107,10 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    // CR 110.5d: only permanents on the battlefield are tapped or untapped.
+    if (filter.tapped || filter.untapped) && subject.zone() != crate::zone::Zone::Battlefield {
+        return false;
+    }
     let is_tapped = subject.tapped(game);
     if filter.tapped && !is_tapped {
         return false;
@@ -1550,10 +1577,10 @@ pub(super) fn matches_subject(
         }
     }
     if let Some(budget) = &filter.mana_cost_payable_with
-        && subject.mana_cost(game).is_none_or(|cost| !budget.can_pay(cost))
+        && subject.mana_cost(game).is_none_or(|cost| !budget.can_pay(&cost))
     { return false; }
     if let Some(required_cost) = &filter.exact_mana_cost
-        && subject.mana_cost(game) != Some(required_cost)
+        && subject.mana_cost(game).as_deref() != Some(required_cost)
     {
         return false;
     }
@@ -1759,4 +1786,19 @@ fn destroy_spec_would_destroy_matching(
         }
         _ => false,
     }
+}
+
+fn is_permanent_card_type_set(card_types: &[crate::types::CardType]) -> bool {
+    use crate::types::CardType;
+    card_types.len() == 6
+        && [
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ]
+        .iter()
+        .all(|card_type| card_types.contains(card_type))
 }

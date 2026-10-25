@@ -356,6 +356,7 @@ impl Event {
                 prepared_choices: None,
                 pending_program: None,
                 program_choices: Default::default(),
+                prior_copy_exceptions: None,
             },
             ProvNodeId::default(),
         )

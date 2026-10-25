@@ -62,6 +62,7 @@ struct BattlefieldGroupKey {
     counter_signature: String,
     token: bool,
     force_single_object: Option<u64>,
+    chosen_values: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -84,6 +85,7 @@ struct PermanentObjectViewCacheKey {
     manifested: bool,
     phased_out: bool,
     counter_signature: String,
+    chosen_values: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +116,7 @@ struct PermanentObjectView {
     color_identity: Vec<&'static str>,
     card_types: Vec<&'static str>,
     colors: Vec<&'static str>,
+    chosen_values: Vec<String>,
 }
 
 /// Current colors by name ("green"), in WUBRG order; empty when colorless.
@@ -179,10 +182,18 @@ pub(super) struct SnapshotObjectViewCache {
     dependency_revisions: RefCell<HashMap<ObjectId, u64>>,
     groups: RefCell<IncrementalBattlefieldGroups>,
     hands: RefCell<HashMap<PlayerId, IncrementalZoneCards<HandCardSnapshot>>>,
+    hand_prices: RefCell<HashMap<PlayerId, HandManaCostCache>>,
     zones: RefCell<HashMap<(PlayerId, Zone), IncrementalZoneCards<ZoneCardSnapshot>>>,
     looks: RefCell<HashMap<(PlayerId, Zone), IncrementalZoneCards<ViewedCardSnapshot>>>,
     combined_looks: RefCell<HashMap<PlayerId, CombinedLookCards>>,
     grant_sources: RefCell<IncrementalGrantSources>,
+}
+
+#[derive(Debug)]
+struct HandManaCostCache {
+    key: ZoneRenderKey,
+    visible: Arc<Vec<Arc<HandCardSnapshot>>>,
+    prices: Arc<Vec<HandManaCostSnapshot>>,
 }
 
 #[derive(Debug, Default)]
@@ -557,6 +568,7 @@ impl IncrementalBattlefieldGroups {
             }
 
             let key = BattlefieldGroupKey {
+                chosen_values: view.chosen_values.clone(),
                 lane: view.lane,
                 name: view.name.clone(),
                 tapped: view.tapped,
@@ -771,6 +783,66 @@ impl SnapshotObjectViewCache {
         cached.output.clone()
     }
 
+    // Called separately after publishing the printed hand snapshot. Reuse only
+    // cards already admitted by that snapshot's visibility boundary.
+    pub(super) fn preview_visible_hand_mana_costs(
+        &self,
+        game: &GameState,
+        perspective: PlayerId,
+    ) -> Vec<HandManaCostSnapshot> {
+        let hands = self
+            .hands
+            .borrow()
+            .iter()
+            .filter(|(_, hand)| {
+                hand.key
+                    .as_ref()
+                    .is_some_and(|key| key.perspective == perspective)
+            })
+            .map(|(owner, hand)| (*owner, hand.output.clone()))
+            .collect::<Vec<_>>();
+        hands
+            .into_iter()
+            .flat_map(|(owner, cards)| {
+                self.hand_mana_costs(game, owner, perspective, &cards)
+                    .as_ref()
+                    .clone()
+            })
+            .collect()
+    }
+
+    fn hand_mana_costs(
+        &self,
+        game: &GameState,
+        owner: PlayerId,
+        perspective: PlayerId,
+        visible: &Arc<Vec<Arc<HandCardSnapshot>>>,
+    ) -> Arc<Vec<HandManaCostSnapshot>> {
+        let key = ZoneRenderKey::new(game, perspective, None, 0);
+        let mut cache = self.hand_prices.borrow_mut();
+        if let Some(cached) = cache.get(&owner)
+            && cached.key == key
+            && Arc::ptr_eq(&cached.visible, visible)
+        {
+            return cached.prices.clone();
+        }
+        let values = hand_mana_cost_previews(game, owner, visible);
+        let prices = cache
+            .get(&owner)
+            .filter(|cached| *cached.prices == values)
+            .map(|cached| cached.prices.clone())
+            .unwrap_or_else(|| Arc::new(values));
+        cache.insert(
+            owner,
+            HandManaCostCache {
+                key,
+                visible: visible.clone(),
+                prices: prices.clone(),
+            },
+        );
+        prices
+    }
+
     fn hand_cards(
         &self,
         game: &GameState,
@@ -900,6 +972,7 @@ impl SnapshotObjectViewCache {
         let damage = game.damage_on(obj.id);
         let counter_signature = counter_signature_for_group(obj);
         let key = PermanentObjectViewCacheKey {
+            chosen_values: public_chosen_values(game, obj.id),
             dependency_revision: self
                 .dependency_revisions
                 .borrow()
@@ -986,6 +1059,7 @@ impl SnapshotObjectViewCache {
                 .unwrap_or_else(|| obj.colors()),
         );
         let view = Arc::new(PermanentObjectView {
+            chosen_values: key.chosen_values.clone(),
             characteristics: current.clone(),
             id: obj.id.0,
             stable_id: obj.stable_id.0.0,
@@ -1112,6 +1186,7 @@ impl SnapshotJsEncodingCache {
         self.set_serde(&object, "snapshot_id", &snapshot.snapshot_id)?;
         self.set_serde(&object, "perspective", &snapshot.perspective)?;
         self.set_serde(&object, "turn_number", &snapshot.turn_number)?;
+        self.set_serde(&object, "storm_count", &snapshot.storm_count)?;
         self.set_serde(&object, "active_player", &snapshot.active_player)?;
         self.set_serde(&object, "active_players", &snapshot.active_players)?;
         self.set_serde(&object, "priority_player", &snapshot.priority_player)?;
@@ -1124,6 +1199,13 @@ impl SnapshotJsEncodingCache {
         self.set_serde(&object, "step", &snapshot.step)?;
         self.set_serde(&object, "combat_damage_step", &snapshot.combat_damage_step)?;
         self.set_serde(&object, "pass_intents", &snapshot.pass_intents)?;
+        self.set_serde(&object, "sticker_sheets", &snapshot.sticker_sheets)?;
+        // The recorded steps are arbitrary JSON; encode maps as plain objects.
+        let loop_shortcut = snapshot
+            .loop_shortcut
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|error| JsValue::from_str(&format!("snapshot field loop_shortcut encode failed: {error}")))?;
+        self.set_value(&object, "loop_shortcut", &loop_shortcut)?;
         self.set_serde(&object, "stack_size", &snapshot.stack_size)?;
         self.set_serde(&object, "stack_preview", &snapshot.stack_preview)?;
         self.set_serde(&object, "stack_objects", &snapshot.stack_objects)?;
@@ -1186,6 +1268,8 @@ impl SnapshotJsEncodingCache {
         self.set_serde(&object, "id", &player.id)?;
         self.set_serde(&object, "name", &player.name)?;
         self.set_serde(&object, "life", &player.life)?;
+        self.set_serde(&object, "poison_counters", &player.poison_counters)?;
+        self.set_serde(&object, "counters", &player.counters)?;
         self.set_serde(&object, "mana_pool", &player.mana_pool)?;
         self.set_serde(&object, "can_view_hand", &player.can_view_hand)?;
         self.set_serde(
@@ -1989,6 +2073,7 @@ fn grouped_battlefield_for_ids(
         // identical-looking one is not, so each stays its own entry.
         let force_single = (protected_ids.contains(&obj.id) || view.face_down).then_some(obj.id.0);
         let key = BattlefieldGroupKey {
+            chosen_values: view.chosen_values.clone(),
             lane: view.lane,
             name: view.name.clone(),
             tapped: view.tapped,
@@ -2062,6 +2147,7 @@ fn grouped_battlefield_for_ids(
                 .map(|view| view.colors.clone())
                 .unwrap_or_default();
             PermanentSnapshot {
+                chosen_values: key.chosen_values.clone(),
                 view_identity: PermanentViewIdentity(members.clone()),
                 id,
                 stable_id,
@@ -2318,8 +2404,80 @@ impl PartialEq for PermanentViewIdentity {
 }
 impl Eq for PermanentViewIdentity {}
 
+// Public choices only: secret choices are stored separately by the engine.
+fn public_chosen_values(game: &GameState, id: ObjectId) -> Vec<String> {
+    if game.is_face_down(id) {
+        return Vec::new();
+    }
+    let mut values = Vec::new();
+    if let Some(life) = game.noted_life_total_for_source(id) {
+        values.push(format!("Noted life: {life}"));
+    }
+    if let Some(colors) = game.chosen_colors(id) {
+        for color in color_names(colors) {
+            values.push(format!("Color: {color}"));
+        }
+    }
+    if let Some(types) = game.chosen_subtypes(id) {
+        let mut types: Vec<_> = types.iter().map(|kind| format!("Type: {kind}")).collect();
+        types.sort();
+        values.extend(types);
+    }
+    if let Some(kind) = game.chosen_creature_type(id) {
+        values.push(format!("Type: {kind}"));
+    }
+    if let Some(kind) = game.chosen_card_type(id) {
+        values.push(format!("Type: {}", kind.name()));
+    }
+    if let Some(kind) = game.chosen_basic_land_type(id) {
+        values.push(format!("Type: {kind}"));
+    }
+    if let Some(kind) = game.chosen_land_type(id) {
+        values.push(format!("Type: {kind}"));
+    }
+    if let Some(types) = game.chosen_basic_land_type_sequence(id) {
+        for (index, kind) in types.iter().enumerate() {
+            values.push(format!("Type {}: {kind}", index + 1));
+        }
+    }
+    for player in game.chosen_players(id) {
+        if let Some(player) = game.player(player) {
+            values.push(format!("Player: {}", player.name));
+        }
+    }
+    if let Some(object) = game.chosen_object(id) {
+        values.push(format!("Object: {}", object.name));
+    }
+    // Named options include parity (even/odd), card names, and arbitrary ETB modes.
+    if let Some(option) = game.chosen_named_option(id) {
+        for option in option.lines() {
+            values.push(format!("Choice: {option}"));
+        }
+    }
+    for (player, option) in game.player_named_option_choices(id) {
+        if let Some(player) = game.player(*player) {
+            values.push(format!("{}: {option}", player.name));
+        }
+    }
+    // Numeric acquisition records are also used by general choose-a-number effects.
+    let memory = game.numeric_choice_memory(id);
+    let mut records: Vec<_> = memory.values().collect();
+    records.sort_by_key(|record| record.public_group);
+    for record in records {
+        values.push(format!("Number: {}", record.number));
+    }
+    for number in game.numbers_chosen_by_source(id) {
+        values.push(format!("Number: {number}"));
+    }
+    let mut seen = HashSet::new();
+    values.retain(|value| seen.insert(value.clone()));
+    values
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(super) struct PermanentSnapshot {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(super) chosen_values: Vec<String>,
     #[serde(skip)]
     view_identity: PermanentViewIdentity,
     pub(super) id: u64,
@@ -2504,13 +2662,24 @@ pub(super) struct ObjectDetailsSnapshot {
     pub(super) compiled_text: Vec<String>,
     pub(super) abilities: Vec<String>,
     pub(super) chosen_color: Option<String>,
+    pub(super) chosen_values: Vec<String>,
     pub(super) raw_compilation: String,
     pub(super) semantic_score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(super) struct PlayerStickerSheetsView {
+    pub(super) player: u8,
+    pub(super) sheets: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(super) struct GameSnapshot {
     pub(super) pass_intents: Vec<u8>,
+    /// Sticker sheets each player chose; they stay revealed (CR 123.2c).
+    pub(super) sticker_sheets: Vec<PlayerStickerSheetsView>,
+    /// The CR 732.2 loop shortcut being agreed or replayed.
+    pub(super) loop_shortcut: Option<serde_json::Value>,
     pub(super) snapshot_id: u64,
     pub(super) perspective: u8,
     pub(super) turn_number: u32,
@@ -2759,6 +2928,7 @@ pub(super) struct PlayerSnapshot {
     pub(super) command_size: usize,
     pub(super) ante_size: usize,
     pub(super) hand_cards: Arc<Vec<Arc<HandCardSnapshot>>>,
+    /// Current normal-cast previews, kept separate from cached printed card data.
     pub(super) graveyard_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
     pub(super) exile_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
     pub(super) command_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
@@ -2838,6 +3008,41 @@ fn resolve_viewed_card(
     }
 
     (id, stable_id.0.0, format!("Card #{}", id.0), String::new())
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(super) struct HandManaCostSnapshot {
+    pub(super) id: u64,
+    pub(super) name: String,
+    pub(super) mana_cost: String,
+}
+
+// Derive prices only for cards already admitted by the hand visibility boundary.
+// Keep raw hand frames cached: a cost modifier can change without touching any
+// hand object, and printed mana cost still determines colors and mana value.
+fn hand_mana_cost_previews(
+    game: &GameState,
+    caster: PlayerId,
+    visible_cards: &[Arc<HandCardSnapshot>],
+) -> Vec<HandManaCostSnapshot> {
+    visible_cards
+        .iter()
+        .filter_map(|card| {
+            let object = game.object(ObjectId(card.id))?;
+            if object.zone != Zone::Hand || object.card_types.contains(&CardType::Land) {
+                return None;
+            }
+            let printed = object.mana_cost.as_ref()?;
+            let cost =
+                ironsmith::decision::calculate_effective_mana_cost(game, caster, object, printed);
+            let text = cost.to_oracle();
+            Some(HandManaCostSnapshot {
+                id: card.id,
+                name: card.name.clone(),
+                mana_cost: if text.is_empty() { "{0}".into() } else { text },
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -3007,6 +3212,8 @@ impl GameSnapshot {
             .hands
             .borrow_mut()
             .retain(|owner, _| game.players.iter().any(|player| player.id == *owner));
+        object_view_cache.hand_prices.borrow_mut()
+            .retain(|owner, _| game.players.iter().any(|player| player.id == *owner));
         object_view_cache
             .zones
             .borrow_mut()
@@ -3058,27 +3265,17 @@ impl GameSnapshot {
                     can_view_library_top,
                     hand_revealed_by_static,
                 );
+                let hand_cards = object_view_cache.hand_cards(
+                    game, p.id, perspective, visible_hand_view,
+                    if is_perspective_player || controls_player
+                        || game.can_review_teammate_hand(perspective, p.id) || hand_revealed_by_static
+                    { 2 } else if can_view_hand { 1 } else { 0 },
+                );
                 PlayerSnapshot {
                     persistent_look_cards,
                     can_view_hand,
                     can_view_library_top,
-                    hand_cards: object_view_cache.hand_cards(
-                        game,
-                        p.id,
-                        perspective,
-                        visible_hand_view,
-                        if is_perspective_player
-                            || controls_player
-                            || game.can_review_teammate_hand(perspective, p.id)
-                            || hand_revealed_by_static
-                        {
-                            2
-                        } else if can_view_hand {
-                            1
-                        } else {
-                            0
-                        },
-                    ),
+                    hand_cards,
                     graveyard_cards: object_view_cache.zone_cards(
                         game,
                         p.id,
@@ -3435,6 +3632,8 @@ impl GameSnapshot {
             snapshot_id,
             perspective: perspective.0,
             pass_intents: Vec::new(),
+            sticker_sheets: Vec::new(),
+            loop_shortcut: None,
             turn_number: game.turn.turn_number,
             storm_count: game.turn_store.turn_history.total_spells_cast_this_turn(),
             active_player: game.turn.active_player.0,
@@ -3649,6 +3848,7 @@ pub(super) fn build_object_details_snapshot(
         counters,
         compiled_text,
         abilities,
+        chosen_values: public_chosen_values(game, obj.id),
         chosen_color: game
             .chosen_color(obj.id)
             .map(|color| color.name().to_string()),
@@ -3776,6 +3976,183 @@ mod tests {
     use ironsmith::types::{CardType, Subtype};
     use ironsmith::zone::Zone;
     use ironsmith_registry_test::cards::builders::CardDefinitionBuilder;
+
+    #[test]
+    fn hand_mana_cost_previews_update_without_rewriting_printed_hand_cards() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let spell = CardBuilder::new(CardId::new(), "Cost preview spell")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(2),
+                ManaSymbol::Blue,
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+        let cache = SnapshotObjectViewCache::default();
+        let cards = cache.hand_cards(&game, alice, alice, None, 2);
+        let initial = cache.hand_mana_costs(&game, alice, alice, &cards);
+        assert_eq!(initial[0].mana_cost, "{2}{U}");
+        assert!(Arc::ptr_eq(
+            &initial,
+            &cache.hand_mana_costs(&game, alice, alice, &cards)
+        ));
+        let hidden_cache = SnapshotObjectViewCache::default();
+        let hidden = hidden_cache.hand_cards(&game, alice, bob, None, 0);
+        assert!(
+            hidden_cache
+                .hand_mana_costs(&game, alice, bob, &hidden)
+                .is_empty()
+        );
+        let holder = CardBuilder::new(CardId::new(), "Cost modifier")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let tax = game.create_object_from_card(&holder, bob, Zone::Battlefield);
+        game.object_mut(tax)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::new(
+                ironsmith::static_abilities::CostIncrease::new(
+                    ObjectFilter::default(),
+                    ironsmith::effect::Value::Fixed(1),
+                ),
+            )));
+        let taxed = cache.hand_mana_costs(&game, alice, alice, &cards);
+        assert_eq!(taxed[0].mana_cost, "{3}{U}");
+        let reducer = game.create_object_from_card(&holder, alice, Zone::Battlefield);
+        game.object_mut(reducer)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::new(
+                ironsmith::static_abilities::CostReduction::new(
+                    ObjectFilter::default(),
+                    ironsmith::effect::Value::Fixed(2),
+                ),
+            )));
+        assert_eq!(
+            cache.hand_mana_costs(&game, alice, alice, &cards)[0].mana_cost,
+            "{1}{U}"
+        );
+        game.move_object_by_effect(reducer, Zone::Graveyard)
+            .unwrap();
+        assert_eq!(
+            cache.hand_mana_costs(&game, alice, alice, &cards)[0].mana_cost,
+            "{3}{U}"
+        );
+        game.move_object_by_effect(tax, Zone::Graveyard).unwrap();
+        assert_eq!(
+            cache.hand_mana_costs(&game, alice, alice, &cards)[0].mana_cost,
+            "{2}{U}"
+        );
+        assert!(
+            Arc::ptr_eq(&cards, &cache.hand_cards(&game, alice, alice, None, 2)),
+            "only price data changes"
+        );
+        assert_eq!(
+            game.object(spell_id)
+                .unwrap()
+                .mana_cost
+                .as_ref()
+                .unwrap()
+                .to_oracle(),
+            "{2}{U}"
+        );
+        assert_eq!(cards[0].mana_cost.as_deref(), Some("{2}{U}"));
+    }
+
+    #[test]
+    fn hand_mana_cost_previews_keep_x_and_distinguish_zero_from_no_cost() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let make = |name: &str, cost| {
+            CardBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Sorcery])
+                .mana_cost(cost)
+                .build()
+        };
+        let x = game.create_object_from_card(
+            &make(
+                "X preview",
+                ManaCost::from_symbols(vec![ManaSymbol::X, ManaSymbol::Blue]),
+            ),
+            alice,
+            Zone::Hand,
+        );
+        let zero =
+            game.create_object_from_card(&make("Zero preview", ManaCost::new()), alice, Zone::Hand);
+        let no_cost = CardBuilder::new(CardId::new(), "No printed cost")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let absent = game.create_object_from_card(&no_cost, alice, Zone::Hand);
+        let cache = SnapshotObjectViewCache::default();
+        let cards = cache.hand_cards(&game, alice, alice, None, 2);
+        let prices = cache.hand_mana_costs(&game, alice, alice, &cards);
+        assert_eq!(
+            prices
+                .iter()
+                .find(|price| price.id == x.0)
+                .unwrap()
+                .mana_cost,
+            "{X}{U}"
+        );
+        assert_eq!(
+            prices
+                .iter()
+                .find(|price| price.id == zero.0)
+                .unwrap()
+                .mana_cost,
+            "{0}"
+        );
+        assert!(!prices.iter().any(|price| price.id == absent.0));
+    }
+
+    #[test]
+    fn public_chosen_values_cover_etb_options_and_keep_distinct_copies_separate() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Choice source")
+            .card_types(vec![CardType::Land]).build();
+        let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let second = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.set_chosen_creature_type(first, Subtype::Human);
+        game.set_chosen_named_option(first, "odd".into());
+        game.set_chosen_named_option(second, "even".into());
+        game.set_chosen_color(first, ironsmith::color::Color::Blue);
+        game.set_chosen_players(first, vec![bob, alice]);
+        game.set_chosen_basic_land_type_sequence(first, vec![Subtype::Island, Subtype::Forest]);
+        game.set_player_named_option_choices(first, vec![(alice,"war".into()),(bob,"peace".into())]);
+        game.record_number_chosen_by_source(first, 3);
+        let values = public_chosen_values(&game, first);
+        for expected in ["Type: Human", "Choice: odd", "Color: blue", "Player: Bob", "Player: Alice",
+            "Type 1: Island", "Type 2: Forest", "Alice: war", "Bob: peace", "Number: 3"] {
+            assert!(values.iter().any(|value| value == expected), "missing {expected}: {values:?}");
+        }
+        let cache = SnapshotObjectViewCache::default();
+        let (groups, total) = grouped_battlefield_for_player_with_cache(&game, alice, &HashSet::new(), &cache);
+        assert_eq!(total, 2);
+        assert_eq!(groups.len(), 2, "different choices must not visually merge");
+        game.set_chosen_named_option(first, "even".into());
+        let (groups, _) = grouped_battlefield_for_player_with_cache(&game, alice, &HashSet::new(), &cache);
+        let first_view = groups.iter().find(|group| group.id == first.0).unwrap();
+        assert!(first_view.chosen_values.iter().any(|value| value == "Choice: even"));
+        assert!(!first_view.chosen_values.iter().any(|value| value == "Choice: odd"));
+        let object = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(second).unwrap(), &game);
+        game.set_chosen_object(first, object);
+        assert!(public_chosen_values(&game, first).iter().any(|value| value == "Object: Choice source"));
+        for option in ["even", "odd", "left", "Khans", "Lightning Bolt\nForest", "0", "-2"] {
+            game.set_chosen_named_option(first, option.into());
+            let values = public_chosen_values(&game, first);
+            for line in option.lines() { assert!(values.contains(&format!("Choice: {line}"))); }
+        }
+        game.set_face_down(first);
+        assert!(public_chosen_values(&game, first).is_empty());
+        let secret = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.set_secret_chosen_subtype(secret, alice, Subtype::Goblin);
+        game.set_secret_chosen_player(secret, alice, bob);
+        assert!(public_chosen_values(&game, secret).is_empty());
+    }
 
     #[test]
     fn dungeon_search_and_target_snapshots_have_only_js_safe_numbers() {

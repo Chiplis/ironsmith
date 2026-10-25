@@ -27,7 +27,10 @@ impl TriggerMatcher for TapForManaTrigger {
         let Some(e) = event.downcast::<ManaAddedEvent>() else {
             return false;
         };
-        if e.mana.is_empty() || e.provenance != ManaProductionProvenance::TappedSourceForMana {
+        if e.mana.is_empty()
+            || e.provenance != ManaProductionProvenance::TappedSourceForMana
+            || e.tap_occurrence_continuation
+        {
             return false;
         }
 
@@ -113,7 +116,7 @@ fn matches_mana_source(
 ) -> bool {
     let player_matches = match player {
         PlayerFilter::You => e.player == ctx.controller,
-        PlayerFilter::Opponent => e.player != ctx.controller,
+        PlayerFilter::Opponent => ctx.game.are_opponents(ctx.controller, e.player),
         PlayerFilter::Any => true,
         PlayerFilter::Specific(id) => e.player == *id,
         PlayerFilter::Active => ctx.game.is_active_player(e.player),

@@ -4517,6 +4517,21 @@ impl StaticAbilityKind for DoubleAgenda {
     }
 }
 
+/// "You are the starting player. If multiple players would be the starting
+/// player, one of those players is chosen at random." (Power Play, CR 315.5a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartingPlayer;
+
+impl StaticAbilityKind for StartingPlayer {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::StartingPlayer
+    }
+
+    fn display(&self) -> String {
+        "You are the starting player. If multiple players would be the starting player, one of those players is chosen at random.".to_string()
+    }
+}
+
 /// Deck-construction rule text. It has no in-game rules impact, but deck
 /// validation enforces its typed copy limit.
 #[derive(Debug, Clone, PartialEq, Eq)]

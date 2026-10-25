@@ -10,7 +10,7 @@ mod event_program;
 mod plan;
 mod planner;
 pub mod program;
-mod replacement_program;
+pub(crate) mod replacement_program;
 pub(crate) mod resources;
 mod sources;
 mod witness;

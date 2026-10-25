@@ -11,7 +11,7 @@ pub use ironsmith_core::AddManaFromCommanderColorIdentityEffect;
 /// Effect that adds mana of any color in the player's commander's color identity.
 ///
 /// Used by cards like Arcane Signet and Command Tower. If the commander's color
-/// identity is colorless (or there is no commander), adds colorless mana instead.
+/// identity is colorless (or there is no commander), adds no mana (CR 903.4f).
 ///
 /// # Fields
 ///
@@ -64,7 +64,7 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
     ) -> Option<Vec<ManaSymbol>> {
         let identity = game.get_commander_color_identity(controller);
         if identity.is_empty() {
-            return Some(vec![ManaSymbol::Colorless]);
+            return Some(Vec::new());
         }
 
         let mut symbols = Vec::new();

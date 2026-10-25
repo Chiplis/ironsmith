@@ -502,6 +502,15 @@ fn prepare_token_copy_proposal(
         resolved_base_power_toughness,
         &static_abilities_to_grant,
     )?;
+    // CR 111.5: an effect that would create a token copy of an instant or
+    // sorcery card creates no token.
+    let base_count = if token_preview.card_types.iter().any(|card_type| {
+        matches!(card_type, CardType::Instant | CardType::Sorcery)
+    }) {
+        0
+    } else {
+        base_count
+    };
     Ok(TokenCopyProposal {
         effect: effect.clone(),
         token_preview: Some(token_preview),
@@ -851,7 +860,7 @@ fn commit_token_copy_original(
                 game.add_entering_attacker(entered_id, target.clone());
             }
             if let Some(attacker) = blocking_attacker {
-                crate::effects::combat::put_onto_battlefield_blocking(game, entered_id, attacker);
+                crate::effects::combat::add_blocker_after_declaration(game, entered_id, attacker, true);
             }
         }
     }

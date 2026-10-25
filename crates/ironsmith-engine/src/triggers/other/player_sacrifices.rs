@@ -69,7 +69,7 @@ impl TriggerMatcher for PlayerSacrificesTrigger {
 
         let player_matches = match (&self.player, sacrificing_player) {
             (PlayerFilter::You, Some(player)) => player == ctx.controller,
-            (PlayerFilter::Opponent, Some(player)) => player != ctx.controller,
+            (PlayerFilter::Opponent, Some(player)) => ctx.game.are_opponents(ctx.controller, player),
             (PlayerFilter::Any, Some(_)) => true,
             (PlayerFilter::Specific(expected), Some(player)) => player == *expected,
             (PlayerFilter::You, None)

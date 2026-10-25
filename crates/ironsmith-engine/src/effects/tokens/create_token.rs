@@ -68,14 +68,27 @@ pub type CreateTokenEffect = ironsmith_core::CreateTokenEffect<CardDefinition>;
 /// Bind a proper-name reference in a token's quoted CDA to the object whose
 /// effect created that token. Ordinary unmarked `Source` values remain local
 /// to the token itself.
-fn materialize_named_creator_source_spec(spec: &mut Box<ChooseSpec>, source: ObjectId) -> bool {
-    if !matches!(spec.base(), ChooseSpec::Source)
-        || !matches!(
-            spec.source_reference_surface(),
-            Some(SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_))
-        )
-    {
+fn materialize_named_creator_source_spec(
+    spec: &mut Box<ChooseSpec>,
+    source: ObjectId,
+    token_name: &str,
+) -> bool {
+    if !matches!(spec.base(), ChooseSpec::Source) {
         return false;
+    }
+    // CR 201.5c: a token's own full or shortened name refers to the token.
+    let names_token = |name: &str| {
+        let name = name.trim();
+        name.eq_ignore_ascii_case(token_name.trim())
+            || token_name
+                .split(',')
+                .next()
+                .is_some_and(|short| short.trim().eq_ignore_ascii_case(name))
+    };
+    match spec.source_reference_surface() {
+        Some(SourceReferenceSurface::FullName(name) | SourceReferenceSurface::ShortName(name))
+            if !names_token(name) => {}
+        _ => return false,
     }
 
     let hints = spec.surface_hints().to_vec();
@@ -86,6 +99,7 @@ fn materialize_named_creator_source_spec(spec: &mut Box<ChooseSpec>, source: Obj
 fn materialize_named_creator_source_in_value(
     value: &mut crate::effect::Value,
     source: ObjectId,
+    token_name: &str,
 ) -> bool {
     use crate::effect::Value;
 
@@ -93,19 +107,19 @@ fn materialize_named_creator_source_in_value(
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => materialize_named_creator_source_in_value(value, source),
+        | Value::HalfRoundedDown(value) => materialize_named_creator_source_in_value(value, source, token_name),
         Value::Add(left, right) | Value::Min(left, right) => {
-            let left_changed = materialize_named_creator_source_in_value(left, source);
-            let right_changed = materialize_named_creator_source_in_value(right, source);
+            let left_changed = materialize_named_creator_source_in_value(left, source, token_name);
+            let right_changed = materialize_named_creator_source_in_value(right, source, token_name);
             left_changed || right_changed
         }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::CommanderCastCountOf(spec)
-        | Value::CountersOn(spec, _) => materialize_named_creator_source_spec(spec, source),
+        | Value::CountersOn(spec, _) => materialize_named_creator_source_spec(spec, source, token_name),
         Value::ManaSymbolsInManaCostOf { spec, .. } => {
-            materialize_named_creator_source_spec(spec, source)
+            materialize_named_creator_source_spec(spec, source, token_name)
         }
         _ => false,
     }
@@ -115,6 +129,8 @@ pub(crate) fn materialize_named_creator_source_in_token(
     token: &mut CardDefinition,
     source: ObjectId,
 ) {
+    let token_name = token.card.name.to_string();
+    let token_name = token_name.as_str();
     for ability in &mut token.abilities {
         let crate::ability::AbilityKind::Static(static_ability) = &mut ability.kind else {
             continue;
@@ -127,8 +143,8 @@ pub(crate) fn materialize_named_creator_source_in_token(
         else {
             continue;
         };
-        let power_changed = materialize_named_creator_source_in_value(power, source);
-        let toughness_changed = materialize_named_creator_source_in_value(toughness, source);
+        let power_changed = materialize_named_creator_source_in_value(power, source, token_name);
+        let toughness_changed = materialize_named_creator_source_in_value(toughness, source, token_name);
         if power_changed || toughness_changed {
             *static_ability = crate::static_abilities::StaticAbility::from_model(model);
         }
@@ -267,6 +283,26 @@ fn prepare_token_proposal(
         &resolved_token,
         controller_id,
     );
+    // CR 303.4i: an Aura token created attached to a named host that is
+    // undefined or that it couldn't legally enchant isn't created at all.
+    let mut base_count = base_count;
+    if effect.suppress_aura_attachment_choice
+        && resolved_token.card.subtypes.contains(&crate::types::Subtype::Aura)
+        && let Some(spec) = &ctx.pending_entry_attachment
+    {
+        let legal = crate::effects::permanents::resolve_entry_attachment_target(game, spec, ctx)
+            .is_some_and(|target| {
+                crate::effects::permanents::aura_preview_can_enter_attached_to(
+                    game,
+                    &token_preview,
+                    controller_id,
+                    target,
+                )
+            });
+        if !legal {
+            base_count = 0;
+        }
+    }
     Ok(TokenProposal {
         effect: effect.clone(),
         resolved_token,
@@ -557,18 +593,41 @@ fn commit_token_original(
     // An attack target that can't be resolved (for example no defending
     // player in this context) doesn't stop the tokens being created; they
     // fall back to the ordinary CR 508.4 choice.
+    // CR 506.3c / 508.4a: a specified player who is no longer in the game
+    // means the tokens enter without attacking at all.
+    let mut attack_player_departed = false;
+    let mut resolve_attack_player = |player_filter: &crate::target::PlayerFilter| {
+        match resolve_player_filter(game, player_filter, ctx) {
+            Ok(player) if game.player(player).is_some_and(|player| player.is_in_game()) => {
+                Some(player)
+            }
+            Ok(_) => {
+                attack_player_departed = true;
+                None
+            }
+            Err(_) => {
+                attack_player_departed = crate::effects::combat::specified_attack_player_departed(
+                    game,
+                    player_filter,
+                    ctx,
+                );
+                None
+            }
+        }
+    };
     let (configured_attack_player, attack_player_only) = match &effect.attack_target_mode {
         Some(CopyAttackTargetMode::Player(player_filter)) => {
-            let player = resolve_player_filter(game, player_filter, ctx).ok();
+            let player = resolve_attack_player(player_filter);
             (player, player.is_some())
         }
         Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => {
-            (resolve_player_filter(game, player_filter, ctx).ok(), false)
+            (resolve_attack_player(player_filter), false)
         }
         None => (None, false),
     };
-    let entry_options =
-        TokenEntryOptions::new(effect.enters_attacking && configured_attack_player.is_none());
+    let entry_options = TokenEntryOptions::new(
+        effect.enters_attacking && configured_attack_player.is_none() && !attack_player_departed,
+    );
 
     // CR 509.4: "a token that's blocking <that creature>" names what it
     // blocks; resolve the attacker once for every token.
@@ -705,7 +764,7 @@ fn commit_token_original(
             }
 
             if let Some(attacker) = blocking_attacker {
-                crate::effects::combat::put_onto_battlefield_blocking(game, entered_id, attacker);
+                crate::effects::combat::add_blocker_after_declaration(game, entered_id, attacker, true);
             }
 
 

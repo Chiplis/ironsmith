@@ -2122,6 +2122,16 @@ impl<'a> DerivedGameView<'a> {
         {
             return true;
         }
+        // Abilities granted directly to this object (permission riders such
+        // as "it gains haste", CR 702.10b) are added in layer six as well.
+        let current_turn = self.game.turn.turn_number;
+        if object
+            .temporary_static_ability_grants
+            .iter()
+            .any(|grant| !grant.is_expired(current_turn))
+        {
+            return true;
+        }
         self.battlefield_characteristic_scope
             .get_or_init(|| battlefield_characteristic_scope(self.game, &self.all_effects))
             .includes(object_id)

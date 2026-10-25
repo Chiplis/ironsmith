@@ -3114,6 +3114,18 @@ fn try_parse_labeled_line_dispatch(
         if line_starts_with_trigger_intro_tokens(&body_line.tokens)
             && let Some(mut triggered) = authored_trigger
         {
+            // "• Dragons — Whenever ..., Outpost Siege deals ..." inside a
+            // named-option choice block is scoped to that chosen option
+            // (CR 614.12c), however its source name was recovered.
+            if triggered.chosen_option.is_none()
+                && !is_eminence
+                && !is_case_ability_label(label_tokens)
+                && labeled_choice_block_has_peer(&preprocessed.items, idx)
+                && labeled_choice_block_has_named_option_header(&preprocessed.items, idx)
+            {
+                triggered.chosen_option =
+                    document_grammar::parse_chosen_option_context_tokens(label_tokens);
+            }
             if looks_like_ability_word_label(label_tokens, false) {
                 triggered.presentation = Some(trigger_presentation(label_tokens, &label));
             }

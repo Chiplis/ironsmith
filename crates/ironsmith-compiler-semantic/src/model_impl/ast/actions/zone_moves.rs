@@ -146,6 +146,8 @@ pub enum ZoneMoveActionAst {
         destination: Zone,
         reveal: bool,
         progress_tag: TagRef,
+        /// Found cards put onto the battlefield enter tapped.
+        tapped: bool,
     },
     Destroy {
         target: TargetAst,

@@ -1483,7 +1483,7 @@ impl ZoneChangeTrigger {
         let player_matches = |controller: crate::ids::PlayerId| match &self.player {
             PlayerRelation::Any => true,
             PlayerRelation::You => controller == ctx.controller,
-            PlayerRelation::Opponent => controller != ctx.controller,
+            PlayerRelation::Opponent => ctx.game.are_opponents(ctx.controller, controller),
         };
         if !self.uses_snapshot() {
             // Entry-style triggers see the objects as they now exist in the
@@ -1511,7 +1511,7 @@ impl ZoneChangeTrigger {
                     && match &self.player {
                         PlayerRelation::Any => true,
                         PlayerRelation::You => snapshot.controller == ctx.controller,
-                        PlayerRelation::Opponent => snapshot.controller != ctx.controller,
+                        PlayerRelation::Opponent => ctx.game.are_opponents(ctx.controller, snapshot.controller),
                     }
             })
             .cloned()
@@ -1727,7 +1727,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
                     .iter()
                     .any(|snapshot| match &self.player {
                         PlayerRelation::You => snapshot.controller == ctx.controller,
-                        PlayerRelation::Opponent => snapshot.controller != ctx.controller,
+                        PlayerRelation::Opponent => ctx.game.are_opponents(ctx.controller, snapshot.controller),
                         PlayerRelation::Any => true,
                     })
             } else {
@@ -1749,7 +1749,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
                         }
                         match &self.player {
                             PlayerRelation::You => snapshot.controller == ctx.controller,
-                            PlayerRelation::Opponent => snapshot.controller != ctx.controller,
+                            PlayerRelation::Opponent => ctx.game.are_opponents(ctx.controller, snapshot.controller),
                             PlayerRelation::Any => true,
                         }
                     } else {
@@ -1855,7 +1855,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
             let owner_matches = |owner: crate::ids::PlayerId| match zone_owner {
                 None | Some(PlayerFilter::Any) => true,
                 Some(PlayerFilter::You) => owner == ctx.controller,
-                Some(PlayerFilter::Opponent) => owner != ctx.controller,
+                Some(PlayerFilter::Opponent) => ctx.game.are_opponents(ctx.controller, owner),
                 // Unmodeled owner scopes never match rather than silently widening.
                 Some(_) => false,
             };

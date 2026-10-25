@@ -181,6 +181,11 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
                 // Read the layer calculation's current characteristics, avoiding a
                 // fresh GameState query that could recurse into this same value.
                 crate::party::party_size_from_roles(ctx.battlefield.iter().filter_map(|id| {
+                    // CR 702.26b: phased-out permanents are treated as though
+                    // they don't exist.
+                    if ctx.game.is_phased_out(*id) {
+                        return None;
+                    }
                     let chars = ctx.effects.calculate_characteristics(
                         *id,
                         ctx.objects,

@@ -1024,6 +1024,36 @@ pub fn parse_search_library_slots_shape(
     })
 }
 
+/// "Search your library for a Forest card and a Plains card, put them onto
+/// the battlefield tapped, then shuffle." (Krosan Verge): one search for
+/// several differently-constrained cards (CR 701.23h).
+pub fn parse_search_library_slots_to_battlefield_tapped_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<Vec<OwnedLexToken>>> {
+    let words = parser_token_word_refs(tokens);
+    consume_head(&words, &["search", "your", "library", "for"])?;
+    let put_word = sequence_offset(&words, &["put", "them", "onto", "the", "battlefield"])?;
+    let tail = words.get(put_word..)?;
+    complete(
+        tail,
+        sequence(&[
+            "put",
+            "them",
+            "onto",
+            "the",
+            "battlefield",
+            "tapped",
+            "then",
+            "shuffle",
+        ]),
+    )?;
+    if put_word <= 4 {
+        return None;
+    }
+    let filters = token_slice_for_words(tokens, 4..put_word)?;
+    parse_slot_items(trim_lexed_commas(filters))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KickedSearchLibrarySlotsShape {
     pub default_filter: Vec<OwnedLexToken>,

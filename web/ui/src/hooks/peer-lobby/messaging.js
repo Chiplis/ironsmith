@@ -1,3 +1,4 @@
+import { describeColorNoteIssues, submissionColorNoteIssues } from "../../lib/deck-color-notes.js";
 import { ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { recoverVerifiedRuntime } from "../../lib/local-runtime-recovery.js";
 import { RUNTIME_VERSION, assertRuntimeVersion } from "../../lib/runtime-version.js";
@@ -71,6 +72,7 @@ import {
   resolveReconnectPlayerIndex,
   safeSend,
   sanitizeCardList,
+  sanitizeStickerSheetList,
   sanitizeDeckSlotOpenings,
   sanitizePlayerName,
   lobbyDeckLegality,
@@ -109,6 +111,14 @@ const LOBBY_CHAT_EMOJI_PATTERNS = [
   new RegExp("\\p{Emoji_Modifier}", "u"),
   new RegExp("\\p{Regional_Indicator}", "u"),
 ];
+
+
+// Every seat's sticker sheets (CR 103.2d), or undefined when nobody brings any
+// so payloads without stickers stay byte-identical to older ones.
+function matchStickerSheets(players) {
+  const sheets = players.map((player) => sanitizeStickerSheetList(player.stickers));
+  return sheets.some((list) => list.length > 0) ? sheets : undefined;
+}
 
 function normalizeLobbyChatText(value) {
   const text = Array.from(String(value ?? "").normalize("NFKC"))
@@ -533,6 +543,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           sideboards: validationSideboardsForMatchPayload(matchPayload),
           commanders: validationCommandersForMatchPayload(matchPayload),
           planarDecks: validationPlanarDecksForMatchPayload(matchPayload),
+          stickerSheets: Array.isArray(matchPayload.stickerSheets) ? matchPayload.stickerSheets : undefined,
           openingHandSize: matchPayload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
         }, acceptedActions, localEntry.index ?? currentSession.localPlayerIndex ?? 0);
         if (typeof currentGame.setPerspective === "function") {
@@ -1034,6 +1045,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     }
     const format = normalizeMatchFormat(session.format);
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
+    const stickerSheets = matchStickerSheets(players);
     const commanders =
       usesCommanders(format)
         ? players.map((player) => sanitizeCardList(player.commanders))
@@ -1069,6 +1081,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       openDecklists: true,
       decks: players.map((player) => sanitizeCardList(player.deck)),
       sideboards,
+      ...(stickerSheets ? { stickerSheets } : {}),
       commanders,
       planarDecks,
       startingLife: session.startingLife,
@@ -1108,6 +1121,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           sideboards: validationSideboardsForMatchPayload(payload),
           commanders: validationCommandersForMatchPayload(payload),
           planarDecks: validationPlanarDecksForMatchPayload(payload),
+          stickerSheets: Array.isArray(payload.stickerSheets) ? payload.stickerSheets : undefined,
           openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
         });
         if (validation?.valid === false) {
@@ -1196,6 +1210,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     }
 
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
+    const stickerSheets = matchStickerSheets(players);
     const format = normalizeMatchFormat(session.format);
     const commanders =
       usesCommanders(format)
@@ -1239,6 +1254,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       openDecklists: true,
       decks: players.map(() => []),
       sideboards,
+      ...(stickerSheets ? { stickerSheets } : {}),
       commanders: commanders || undefined,
       ziffleKeys: players.map((player) => player.ziffleKey),
       startingLife: session.startingLife,
@@ -1452,6 +1468,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     }
     const format = normalizeMatchFormat(session.format);
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
+    const stickerSheets = matchStickerSheets(players);
     const commanders =
       usesCommanders(format)
         ? players.map((player) => sanitizeCardList(player.commanders))
@@ -1496,6 +1513,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       openDecklists: true,
       decks: players.map(() => []),
       sideboards,
+      ...(stickerSheets ? { stickerSheets } : {}),
       commanders: commanders || undefined,
       ziffleKeys: players.map((player) => player.ziffleKey),
       startingLife: session.startingLife,
@@ -1842,6 +1860,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     );
     const formatStatus = lobbyDeckLegality(session.format, submission.deck, submission.commanders,
       submission.sideboard, { allowUnreleased: session.allowUnreleased });
+    const noteIssues = await submissionColorNoteIssues(gameRef.current, submission);
+    if (noteIssues.length) {
+      setStatus(describeColorNoteIssues(noteIssues), true);
+      return;
+    }
     if (!submission.ready || (formatStatus && !formatStatus.ready)) {
       setStatus(
         formatStatus && !formatStatus.ready
@@ -2081,6 +2104,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	              ? withDeckState(
 	                  {
 	                    ...player,
+	                    stickers: deckSubmission.stickers,
 	                    deckAuditManifest: null,
 	                    deckSlotOpenings: [],
 	                    ziffleKey: null,
@@ -2106,6 +2130,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	        deckAuditManifest: null,
 	        deck: deckSubmission.deck,
 	        sideboard: deckSubmission.sideboard,
+	        stickers: deckSubmission.stickers,
 	        deckSlotOpenings: [],
 	        ziffleKey: null,
 	        deckCount: deckSubmission.deckCount,
@@ -2122,6 +2147,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       owner: localPlayerIndex,
       deck: deckSubmission.deck,
       sideboard: deckSubmission.sideboard,
+      stickers: deckSubmission.stickers,
       commanders: deckSubmission.commanders,
     });
     const localEntry = (session.players || []).find(
@@ -2153,6 +2179,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       owner: localPlayerIndex,
       deck: deckSubmission.deck,
       sideboard: deckSubmission.sideboard,
+      stickers: deckSubmission.stickers,
       commanders: deckSubmission.commanders,
     });
     const deckSlotOpenings = deckSlotOpeningsForManifest(deckAuditManifest);
@@ -2173,6 +2200,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         ...openDecklistPlayerFields({
           deck: deckSubmission.deck,
           sideboard: deckSubmission.sideboard,
+          stickers: deckSubmission.stickers,
           commanders: deckSubmission.commanders,
           deckSlotOpenings,
         }),
@@ -2198,6 +2226,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
                 deckAuditManifest: publicDeckManifest(deckAuditManifest),
                 deck: deckSubmission.deck,
                 sideboard: deckSubmission.sideboard,
+                stickers: deckSubmission.stickers,
                 commanders: deckSubmission.commanders,
                 deckSlotOpenings,
                 ziffleKey: localZiffleKey,
@@ -2223,6 +2252,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       deckAuditManifest: publicDeckManifest(deckAuditManifest),
       deck: deckSubmission.deck,
       sideboard: deckSubmission.sideboard,
+      stickers: deckSubmission.stickers,
       deckSlotOpenings,
       ziffleKey: localZiffleKey,
       deckCount: deckSubmission.deckCount,
@@ -3621,6 +3651,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	                        || publicDeckManifest(player.deckAuditManifest),
                       deck: sanitizeCardList(message.deck),
                       sideboard: sanitizeCardList(message.sideboard),
+                      stickers: sanitizeStickerSheetList(message.stickers),
 	                      ziffleKey: message.ziffleKey || player.ziffleKey || null,
 	                      commanders: sanitizeCardList(message.commanders),
                       deckSlotOpenings: sanitizeDeckSlotOpenings(message.deckSlotOpenings),
@@ -4102,7 +4133,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
                 return current.matchStarted
                   ? nextPlayer
                   : withDeckState(
-                      nextPlayer,
+                      { ...nextPlayer, stickers: currentDeck.stickers },
                       current.format,
                       currentDeck.deck,
                       currentDeck.commanders,
@@ -4384,6 +4415,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             owner: 0,
             deck: currentDeck.deck,
             sideboard: currentDeck.sideboard,
+            stickers: currentDeck.stickers,
             commanders: currentDeck.commanders,
           });
           deckSlotOpenings = deckSlotOpeningsForManifest(deckAuditManifest);
@@ -4405,6 +4437,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               ...openDecklistPlayerFields({
                 deck: currentDeck.deck,
                 sideboard: currentDeck.sideboard,
+                stickers: currentDeck.stickers,
                 commanders: currentDeck.commanders,
                 deckSlotOpenings,
               }),
@@ -4437,6 +4470,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
                 ziffleKey,
                 playerGenesisSignature,
                 connected: true,
+                stickers: currentDeck.stickers,
               },
               prev.format,
               currentDeck.deck,
@@ -4736,6 +4770,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             securityMode: sessionSecurityMode(session),
             deck: currentDeck.deck,
             sideboard: currentDeck.sideboard,
+            stickers: currentDeck.stickers,
             deckSlotOpenings: [],
             deckAuditManifest: null,
             ziffleKey: null,

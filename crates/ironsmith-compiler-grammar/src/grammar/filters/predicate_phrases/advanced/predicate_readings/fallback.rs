@@ -1098,12 +1098,16 @@ fn you_activated_loyalty_ability_this_turn(words: &[&str]) -> Option<PredicateAs
     ))
 }
 
-/// "you gained and lost life this turn" (Lunar Convocation): both turn
-/// facts, each read as its own clause.
+/// "you gained and lost life this turn" (Lunar Convocation), "you've gained
+/// life and lost life this turn": both turn facts, each read as its own clause.
 fn you_gained_and_lost_life_this_turn(words: &[&str]) -> Option<PredicateAst> {
-    let ["you", "gained", "and", "lost", "life", "this", "turn"] = words else {
+    if !matches!(
+        words,
+        ["you" | "youve", "gained", "and", "lost", "life", "this", "turn"]
+            | ["you" | "youve", "gained", "life", "and", "lost", "life", "this", "turn"]
+    ) {
         return None;
-    };
+    }
     let gained = crate::lexer::synthetic_word_tokens(["you", "gained", "life", "this", "turn"]);
     let lost = crate::lexer::synthetic_word_tokens(["you", "lost", "life", "this", "turn"]);
     Some(PredicateAst::And(

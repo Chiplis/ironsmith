@@ -5,7 +5,7 @@ import MiniatureCardFrame from "@/components/cards/MiniatureCardFrame";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 import { placeCardPreview } from "@/lib/card-preview-placement";
-import { parseCommanderList, parseDeckList, parseSideboardList } from "@/lib/decklists";
+import { parseCommanderList, parseDeckList, parseSideboardList, parseStickerList } from "@/lib/decklists";
 import { fetchCardFaceSource } from "@/lib/scryfall";
 
 // A read-only view of the deck a player brings to a lobby seat: one row per
@@ -118,6 +118,7 @@ export default function LobbyDeckCardList({ deckText, commanderText = "", format
     { id: "commander", label: "Commander", entries: countedEntries(parseCommanderList(commanderText)) },
     { id: "main", label: "Main deck", entries: countedEntries(parseDeckList(deckText)) },
     { id: "sideboard", label: "Sideboard", entries: countedEntries(parseSideboardList(deckText)) },
+    { id: "stickers", label: "Stickers", entries: countedEntries(parseStickerList(deckText)) },
   ].filter((section) => section.entries.length > 0), [commanderText, deckText]);
 
   const problemCount = useMemo(() => sections.reduce((total, section) => total

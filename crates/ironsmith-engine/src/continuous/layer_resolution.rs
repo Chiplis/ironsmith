@@ -387,8 +387,12 @@ pub(super) fn calculate_with_layers(
                     );
                 }
                 Modification::AddSubtypes(types) => {
+                    // CR 205.3d: an object can't gain a subtype that doesn't
+                    // correspond to one of its card types.
                     for t in types {
-                        if !chars.subtypes.contains(t) {
+                        if !chars.subtypes.contains(t)
+                            && card_types_support_subtype(&chars.card_types, *t)
+                        {
                             chars.subtypes.push(*t);
                         }
                     }
@@ -413,6 +417,12 @@ pub(super) fn calculate_with_layers(
                     // creature types and keeps an Aura an Aura.
 
                     replace_subtypes_for_set(&mut chars.subtypes, types);
+                    // CR 205.3d: the new subtypes replace their families, but
+                    // only those matching one of the object's types are gained.
+                    let card_types = chars.card_types.clone();
+                    chars.subtypes.retain(|t| {
+                        !types.contains(t) || card_types_support_subtype(&card_types, *t)
+                    });
                 }
                 Modification::SetAuraAttachmentFilter(filter) => {
                     replace_enchant_metadata(&mut chars, filter);
@@ -762,7 +772,7 @@ pub(super) fn calculate_with_layers(
 
     // The surviving layer-six view, including grants after an earlier loss,
     // controls the level symbol. A historical remove-all flag is not its state.
-    let level_pt = get_level_ability_pt(object, &chars.abilities);
+    let level_pt = get_level_ability_pt_with_grant(object, &chars.abilities);
     apply_level_granted_abilities(object, &mut chars);
     prune_ability_gain_prohibitions(&mut chars);
     calc_guard.update(&chars);
@@ -805,7 +815,7 @@ pub(super) fn apply_layer_7_effects(
     _abilities_removed: bool,
     calc_guard: &CharacteristicCalculationGuard,
     started_groups: &mut HashSet<ContinuousEffectGroupId>,
-    level_pt: Option<(i32, i32)>,
+    level_pt: Option<(i32, i32, Option<u64>)>,
 ) {
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
@@ -892,8 +902,12 @@ pub(super) fn apply_layer_7_effects(
     let mut counters_applied = false;
 
     // Level-symbol P/T joins sublayer 7b in timestamp order (CR 711.2b).
-    let level_timestamp = ctx.effects.get_object_timestamp(object.id).unwrap_or(0);
-    let mut pending_level_pt = level_pt;
+    let level_timestamp = ctx
+        .effects
+        .get_object_timestamp(object.id)
+        .unwrap_or(0)
+        .max(level_pt.and_then(|(_, _, grant)| grant).unwrap_or(0));
+    let mut pending_level_pt = level_pt.map(|(power, toughness, _)| (power, toughness));
 
     // Apply in order, interleaving counters at the right point in 7c
     for effect in &pt_effects {
@@ -962,6 +976,7 @@ pub(super) fn apply_layer_7_effects(
             if counter_timestamp.is_none_or(|ct| ct <= effect.timestamp) {
                 apply_counter_modifications(
                     object,
+                    ctx.objects,
                     &mut power,
                     &mut toughness,
                     &mut chars.numeric_range_error,
@@ -978,6 +993,7 @@ pub(super) fn apply_layer_7_effects(
         if effect_sublayer == Some(PtSublayer::Switching) && !counters_applied {
             apply_counter_modifications(
                 object,
+                ctx.objects,
                 &mut power,
                 &mut toughness,
                 &mut chars.numeric_range_error,
@@ -1166,6 +1182,7 @@ pub(super) fn apply_layer_7_effects(
     if !counters_applied {
         apply_counter_modifications(
             object,
+            ctx.objects,
             &mut power,
             &mut toughness,
             &mut chars.numeric_range_error,
@@ -1181,6 +1198,7 @@ pub(super) fn apply_layer_7_effects(
 /// Per Rule 613.4c, these are part of sublayer 7c.
 pub(super) fn apply_counter_modifications(
     object: &Object,
+    objects: &ObjectMap,
     power: &mut Option<i32>,
     toughness: &mut Option<i32>,
     error: &mut Option<(&'static str, i128)>,
@@ -1190,6 +1208,20 @@ pub(super) fn apply_counter_modifications(
         if let Some((power, toughness)) = counter.pt_delta() {
             power_delta += i128::from(power) * i128::from(*count);
             toughness_delta += i128::from(toughness) * i128::from(*count);
+        }
+    }
+    // CR 122.1j: a hone counter on an Equipment gives +1/+0 to any creature
+    // that Equipment is attached to.
+    if object.zone == crate::zone::Zone::Battlefield && !object.attachments.is_empty() {
+        let hone = crate::object::CounterType::Named("hone".into());
+        for attachment in &object.attachments {
+            if let Some(equipment) = objects.get(attachment)
+                && equipment.zone == crate::zone::Zone::Battlefield
+                && equipment.subtypes.contains(&crate::types::Subtype::Equipment)
+                && let Some(count) = equipment.counters.get(&hone)
+            {
+                power_delta += i128::from(*count);
+            }
         }
     }
     add_pt_checked(power, power_delta, error, "power with counters");
@@ -2086,24 +2118,34 @@ pub(super) fn add_temporary_static_ability_grants(
 }
 
 /// Get P/T override from level abilities if applicable.
-pub(super) fn get_level_ability_pt(
+/// The active level P/T plus the timestamp of the effect that created the
+/// level ability, if an effect did (CR 613.7a: the level P/T then uses the
+/// later of that timestamp and the object's).
+pub(super) fn get_level_ability_pt_with_grant(
     object: &Object,
     abilities: &CalculatedAbilities,
-) -> Option<(i32, i32)> {
+) -> Option<(i32, i32, Option<u64>)> {
+    // CR 711.6: level symbols only function on the battlefield.
+    if object.zone != crate::zone::Zone::Battlefield {
+        return None;
+    }
     let level_count = object
         .counters
         .get(&CounterType::Level)
         .copied()
         .unwrap_or(0);
 
-    for ability in abilities.iter() {
+    for (index, ability) in abilities.iter().enumerate() {
         if let AbilityKind::Static(s) = &ability.kind
             && let Some(levels) = s.level_abilities()
         {
             // Find the matching tier (highest tier that applies)
             for tier in levels.iter().rev() {
                 if tier.applies_at_level(level_count) {
-                    return tier.power_toughness;
+                    let grant = abilities
+                        .origin(index)
+                        .and_then(|origin| origin.creating_effect_timestamp());
+                    return tier.power_toughness.map(|(power, toughness)| (power, toughness, grant));
                 }
             }
         }
@@ -2118,6 +2160,10 @@ pub(super) fn apply_level_granted_abilities(
     object: &Object,
     chars: &mut CalculatedCharacteristics,
 ) {
+    // CR 711.6: level symbols only function on the battlefield.
+    if object.zone != crate::zone::Zone::Battlefield {
+        return;
+    }
     let level = object
         .counters
         .get(&CounterType::Level)

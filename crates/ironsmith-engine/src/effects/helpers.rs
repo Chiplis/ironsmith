@@ -2238,6 +2238,23 @@ pub fn resolve_player_from_spec(
 /// is combat damage (CR 506.2: the active player is the attacking player).
 fn combat_attacking_player(game: &GameState, ctx: &ExecutionContext) -> Option<PlayerId> {
     ctx.combat.attacking_player.or_else(|| {
+        // CR 805.10c/506.2: a blocking creature's attacking player is the
+        // controller of the creature it blocks (shared team turns have
+        // several active players).
+        if let Some(blocked) = ctx
+            .triggering_event
+            .as_ref()
+            .and_then(|event| event.downcast::<crate::events::CreatureBlockedEvent>())
+        {
+            let controller = blocked
+                .attacker_snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.controller)
+                .or_else(|| game.object(blocked.attacker).map(|object| game.controller_of(object)));
+            if controller.is_some() {
+                return controller;
+            }
+        }
         let combat_damage_trigger = ctx.triggering_event.as_ref().is_some_and(|event| {
             event
                 .downcast::<DamageEvent>()
@@ -2599,6 +2616,33 @@ pub fn resolve_player_filter(
 /// intentionally confined to chooser resolution: it must not make an
 /// otherwise out-of-range player eligible for the effect itself.
 pub fn resolve_player_filter_as_chooser(
+    game: &GameState,
+    spec: &PlayerFilter,
+    ctx: &ExecutionContext,
+) -> Result<PlayerId, ExecutionError> {
+    let chooser = resolve_player_filter_as_chooser_in_range(game, spec, ctx)?;
+    if game.player(chooser).is_some_and(|player| player.is_in_game()) {
+        return Ok(chooser);
+    }
+    // CR 800.4g: a choice required of a player who left the game is made by
+    // another player the object's controller chooses (another opponent if
+    // the original chooser was an opponent). The controller takes the choice
+    // itself unless an opponent is required.
+    let controller = ctx.controller;
+    if game.are_opponents(controller, chooser)
+        && let Some(opponent) = game.closest_in_game_player_to_left_matching(controller, |candidate| {
+            candidate != controller && game.are_opponents(controller, candidate)
+        })
+    {
+        return Ok(opponent);
+    }
+    if game.player(controller).is_some_and(|player| player.is_in_game()) {
+        return Ok(controller);
+    }
+    Ok(game.next_player_in_game_after(chooser).unwrap_or(chooser))
+}
+
+fn resolve_player_filter_as_chooser_in_range(
     game: &GameState,
     spec: &PlayerFilter,
     ctx: &ExecutionContext,
@@ -4267,9 +4311,10 @@ pub fn resolve_objects_from_spec(
                     }
                     Err(err) => return Err(err),
                 };
-                if objects.len() < count.min {
-                    return Err(ExecutionError::InvalidTarget);
-                }
+                // CR 608.2b: the target count was enforced as the targets
+                // were chosen; on resolution, targets that became illegal are
+                // simply not affected while the remaining legal ones are.
+                // (A mixed "any target" group's minimum also counts players.)
                 if let Some(max) = count.max
                     && objects.len() > max
                 {

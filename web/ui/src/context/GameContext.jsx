@@ -1,9 +1,13 @@
+import { readAutoResolveMode, AUTO_RESOLVE_STORAGE_KEY } from "@/lib/priority-clock";
+import { tryBuildAutoResolveCommand } from "@/lib/auto-resolve-decision";
+import useLoopShortcut from "./useLoopShortcut";
 import { stackArrivalActivity } from "@/lib/stack-arrival-activity";
 import { isOwnPassCancellation } from "@/lib/sync-commands.js";
 import { useAutomaticHandReveal } from "@/hooks/useAutomaticHandReveal";
 import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
 import { selectGoldfishPlayer } from "@/lib/goldfish-player.js";
-import { createPriorityStops } from "@/lib/priority-stops";
+import { createPriorityStops, priorityStopsForPlayer } from "@/lib/priority-stops";
+import { useHandManaCosts } from "@/hooks/useHandManaCosts";
 import { usePaymentOptions } from "@/hooks/usePaymentOptions";
 import { ManaPaymentEditorProvider } from "@/context/ManaPaymentEditorContext";
 import { improvePayment } from "@/lib/payment-analysis.js";
@@ -65,13 +69,6 @@ import { GameContext } from "./GameContext.shared";
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
 const AUDIT_REPLAY_GATE_WAIT_ATTEMPTS = 8;
 const UI_FONT_STORAGE_KEY = "ironsmith.uiFont";
-const AUTO_RESOLVE_STORAGE_KEY = "ironsmith.autoResolveEnabled";
-function readAutoResolveMode() {
-  try {
-    const saved = window.localStorage.getItem(AUTO_RESOLVE_STORAGE_KEY);
-    return saved === "true" ? "regular" : ["regular", "safe", "all"].includes(saved) ? saved : "off";
-  } catch { return "off"; }
-}
 const PLAYER_ACCENTS_STORAGE_KEY = "ironsmith.playerAccentOverrides";
 
 const emptyAuditReplayState = {
@@ -237,90 +234,6 @@ function defaultOpponentAttackerDeclarations(decision) {
     });
   }
   return declarations;
-}
-
-function isPaymentLikeOptionDescription(text) {
-  const description = String(text || "").trim().toLowerCase();
-  if (!description) return false;
-  if (/^pay\b/.test(description)) return true;
-  if (/^use\b.*\bfrom mana pool\b/.test(description)) return true;
-  if (/^tap\b.*:\s*add\b/.test(description)) return true;
-  return false;
-}
-
-function isPaymentSelectOptionsDecision(decision) {
-  if (!decision || decision.kind !== "select_options") return false;
-  if (isPaymentLikeOptionDescription(decision.description || "")) return true;
-  return (decision.options || []).some((opt) => isPaymentLikeOptionDescription(opt?.description || ""));
-}
-
-function isCastOrPlayConfirmDecision(decision) {
-  if (!decision || decision.kind !== "select_options") return false;
-  const legal = (decision.options || []).filter((opt) => opt?.legal !== false);
-  if (legal.length !== 1) return false;
-  const optionText = String(legal[0]?.description || "");
-  return /^\s*(cast|play)\b/i.test(optionText);
-}
-
-function tryBuildAutoResolveCommand(decision) {
-  if (!decision) return null;
-
-  if (
-    decision.kind === "select_options" &&
-    decision.min === 1 &&
-    decision.max === 1 &&
-    !(decision.reason || "").toLowerCase().includes("order")
-  ) {
-    const isManaColorChoice = /^choose\b.*\bmana\b/i.test(decision.description || "")
-      && (decision.options || []).every((option) =>
-        /^(white|blue|black|red|green|colorless)$/i.test(option.description || ""));
-    if ((!isManaColorChoice && isPaymentSelectOptionsDecision(decision)) || isCastOrPlayConfirmDecision(decision)) {
-      return null;
-    }
-    const legal = (decision.options || []).filter((o) => o.legal);
-    if (legal.length === 1) {
-      return {
-        cmd: { type: "select_options", option_indices: [legal[0].index] },
-        label: `Auto: ${legal[0].description}`,
-      };
-    }
-  }
-
-  if (decision.kind === "number" && decision.min === decision.max) {
-    return {
-      cmd: { type: "number_choice", value: decision.min },
-      label: `Auto: ${decision.min}`,
-    };
-  }
-
-  if (decision.kind === "targets") {
-    const reqs = decision.requirements || [];
-    if (
-      reqs.length > 0 &&
-      reqs.every((req) => {
-        const maxT =
-          req.max_targets === null || req.max_targets === undefined
-            ? req.legal_targets.length
-            : Number(req.max_targets);
-        return (
-          req.legal_targets.length > 0 &&
-          req.legal_targets.length === req.min_targets &&
-          req.min_targets === maxT
-        );
-      })
-    ) {
-      const targets = reqs.flatMap((req) =>
-        req.legal_targets.map((t) =>
-          t.kind === "player"
-            ? { kind: "player", player: Number(t.player) }
-            : { kind: "object", object: Number(t.object) }
-        )
-      );
-      return { cmd: { type: "select_targets", targets }, label: "Auto: targets selected" };
-    }
-  }
-
-  return null;
 }
 
 function normalizeMultiplayerTarget(target) {
@@ -869,7 +782,7 @@ export function GameProvider({ children }) {
   const [phasePassing, setPhasePassing] = useState(false);
   const [holdRule, setHoldRule] = useState("never");
   const [priorityStops] = useState(() => createPriorityStops({
-    phaseStopsEnabled: autoResolveEnabled,
+    phaseStopsEnabled: autoResolveMode !== "all",
     resolveMode: autoResolveMode,
     storage: typeof window === "undefined" ? null : window.localStorage,
   }));
@@ -879,19 +792,19 @@ export function GameProvider({ children }) {
     autoResolveModeRef.current = mode;
     autoResolveEnabledRef.current = enabled;
     priorityStops.setResolveMode(mode);
-    if (mode === "safe" || mode === "all") priorityStops.resume(stateRef.current);
-    priorityStops.setPhaseStopsEnabled(enabled);
+    priorityStops.resume(stateRef.current);
+    priorityStops.setPhaseStopsEnabled(mode !== "all");
     priorityStops.observe(stateRef.current);
     setAutoResolveModeRaw(mode);
     try { window.localStorage.setItem(AUTO_RESOLVE_STORAGE_KEY, mode); } catch { /* Storage may be unavailable. */ }
   }, [priorityStops, stateRef]);
   const setAutoResolveEnabled = useCallback(value => {
     const enabled = typeof value === "function" ? value(autoResolveEnabledRef.current) : value;
-    setAutoResolveMode(enabled ? "regular" : "off");
+    setAutoResolveMode(enabled ? "safe" : "off");
   }, [setAutoResolveMode]);
   const pendingStackArrivals = useSyncExternalStore(stackArrivalActivity.subscribe, stackArrivalActivity.getSnapshot);
   const priorityStopsState = useSyncExternalStore(priorityStops.subscribe, priorityStops.getSnapshot);
-  const cyclePriorityStop = useCallback(key => priorityStops.cycleStop(key, stateRef.current), [priorityStops, stateRef]);
+  const cyclePriorityStop = useCallback((key, player) => priorityStops.cycleStop(key, stateRef.current, player), [priorityStops, stateRef]);
   const holdPostActionPriority = useCallback(() => priorityStops.hold(stateRef.current), [priorityStops, stateRef]);
   const pausePostActionPriority = useCallback(id => priorityStops.pauseWindow(id), [priorityStops]);
   const resumePostActionPriority = useCallback(id => priorityStops.resumeWindow(id), [priorityStops]);
@@ -1063,6 +976,9 @@ export function GameProvider({ children }) {
 
   const setPeerState = useCallback((nextState, { replacePresentation = false } = {}) => {
     const visibleState = stabilizePeerUiState(nextState, stateRef.current);
+    if (stateRef.current?.loop_shortcut?.stepping && !visibleState?.loop_shortcut) {
+      priorityStops.holdCurrentPriority(visibleState);
+    }
     if (replacePresentation) {
       stickyViewedCardsRef.current = null;
       stickyGameOverRef.current = visibleState?.game_over || null;
@@ -1072,7 +988,7 @@ export function GameProvider({ children }) {
     }
     setState(visibleState);
     stateRef.current = visibleState;
-  }, [setState, stateRef]);
+  }, [priorityStops, setState, stateRef]);
 
   const moveEffectOrderingItem = useCallback((position, direction) => {
     const decision = stateRef.current?.decision || null;
@@ -1526,7 +1442,7 @@ export function GameProvider({ children }) {
       let resolved = 0;
       let st = currentState;
       const trace = [];
-      while (resolved < 50 && st && st.decision) {
+      while (holdRule !== "always" && autoPassEnabled && resolved < 50 && st && st.decision) {
         // Peer answers must go through submitMultiplayerCommand after the
         // snapshot is published, so the actor can provide verified openings.
         const forcedObjects = !multiplayerActiveRef.current
@@ -1565,7 +1481,7 @@ export function GameProvider({ children }) {
       }
       return { state: st, resolved, trace };
     },
-    []
+    [holdRule, autoPassEnabled]
   );
 
   const settleNoop = useCallback(async (_currentGame, currentState) => ({
@@ -1627,6 +1543,14 @@ export function GameProvider({ children }) {
     ) => {
       const finalizeStartedAt = performance.now();
       let st = currentState;
+      const loopOwned = Boolean(st?.loop_shortcut || stateRef.current?.loop_shortcut);
+      if (loopOwned) {
+        allowOpponentAutomation = false;
+        allowTrivialAutomation = false;
+      }
+      if (publishState && stateRef.current?.loop_shortcut?.stepping && !st?.loop_shortcut) {
+        priorityStops.holdCurrentPriority(st);
+      }
       priorityStops.observe(st);
       const settleStartedAt = performance.now();
       const autoResult = allowOpponentAutomation
@@ -1974,20 +1898,24 @@ export function GameProvider({ children }) {
   useEffect(() => {
     if (!game || typeof game.setAutoCleanupDiscard !== "function") return;
     game
-      .setAutoCleanupDiscard(autoPassEnabled && !multiplayer.matchStarted)
+      .setAutoCleanupDiscard(autoPassEnabled && holdRule !== "always" && !multiplayer.matchStarted)
       .catch((err) => console.warn("setAutoCleanupDiscard failed:", err));
-  }, [autoPassEnabled, game, multiplayer.matchStarted]);
+  }, [autoPassEnabled, holdRule, game, multiplayer.matchStarted]);
 
   useEffect(() => {
     if (!multiplayer.matchStarted) {
       multiplayerAutomationAttemptRef.current = "";
       return;
     }
-    if (phasePassing || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) return;
+    if (state?.loop_shortcut || phasePassing || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) return;
     if (stateRef.current !== state) return;
 
     const currentState = state;
-    const forcedObjects = localForcedObjectSelectionCommand(currentState);
+    const emptyBlockers = autoPassEnabled && holdRule !== "always"
+      && samePlayerId(currentState?.decision?.player, currentState?.perspective)
+      && currentState?.decision?.kind === "blockers"
+      ? tryBuildAutoResolveCommand(currentState.decision)?.cmd : null;
+    const forcedObjects = holdRule === "always" ? null : (emptyBlockers || localForcedObjectSelectionCommand(currentState));
     if (!forcedObjects && (priorityStops.stopReason(currentState)
       || Number(currentState?.stack_size || 0) > 0)) return;
     const result = forcedObjects ? { command: forcedObjects } : buildMultiplayerSmartAutoPass({
@@ -2107,6 +2035,8 @@ export function GameProvider({ children }) {
     });
   }, [setState, stateRef, subscribeState, game]);
 
+  useHandManaCosts({ game, state, stateRef, setState });
+
   usePaymentOptions({ game, state, stateRef, setState,
     enabled: samePlayerId(state?.decision?.player, state?.perspective) });
 
@@ -2142,6 +2072,8 @@ export function GameProvider({ children }) {
     async (command, successMessage, {
       castingAction = null,
       waitForPaymentReady = false,
+      waitForLoopReady = false,
+      expectedLoopSnapshotId = null,
       paymentTransactionId = null,
       backgroundGeneration = null,
     } = {}) => {
@@ -2156,9 +2088,14 @@ export function GameProvider({ children }) {
         backgroundGeneration == null
         || backgroundDispatchGenerationRef.current === backgroundGeneration
       );
-      // Render-driven payment actions must survive the previous action's cooldown,
-      // but must not be applied after cancellation or a different plan arrives.
-      const runInteraction = waitForPaymentReady
+      // Loop continuations must survive the previous action's cooldown and wait
+      // for rendering, but become obsolete when another snapshot replaces theirs.
+      const loopSnapshotId = expectedLoopSnapshotId ?? stateRef.current?.snapshot_id;
+      const runInteraction = waitForLoopReady
+        ? (task) => wasmInteractionGateRef.current.runWhenReady(task,
+          () => stateRef.current?.snapshot_id === loopSnapshotId && Boolean(stateRef.current?.loop_shortcut),
+          isSnapshotRendered)
+        : waitForPaymentReady
         ? (task) => wasmInteractionGateRef.current.runWhenReady(task, () => {
           if (!backgroundIsCurrent()) return false;
           const current = stateRef.current;
@@ -2305,7 +2242,7 @@ export function GameProvider({ children }) {
           st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => dispatchForAutomation(game, nextCommand));
           // Goldfish opponents already governed by the automatic hold policy
           // grant their own intention too. Required choices always return to UI.
-          if (isYield) {
+          if (isYield && !st?.loop_shortcut) {
             const actor = Number(stateRef.current?.perspective);
             for (let pass = 0; pass < 4096; pass++) {
               if (!(st?.pass_intents || []).includes(actor)
@@ -2433,6 +2370,15 @@ export function GameProvider({ children }) {
     ]
   );
 
+  const loopShortcut = useLoopShortcut({
+    state,
+    stateRef,
+    dispatch,
+    multiplayerMatchStarted: Boolean(multiplayer.matchStarted),
+    setStatus,
+  });
+  const userDispatch = loopShortcut.recordingDispatch;
+
   useEffect(() => {
     if (state?.decision?.kind !== "mana_payment") manuallyControlledPaymentRef.current = null;
   }, [state?.decision?.kind]);
@@ -2441,7 +2387,8 @@ export function GameProvider({ children }) {
   // normal local pass, and revalidate authoritative state after any input/sync.
   useEffect(() => {
     const window = priorityStopsState.window;
-    if (!window || !autoResolveEnabled) return;
+    // Replay owns its exact sequence of passes; the timer must not race it.
+    if (!window || state?.loop_shortcut) return;
     // Read live activity too: child layout effects register arrivals before
     // this effect, potentially after this render read the store.
     if (stackArrivalActivity.getSnapshot() > 0) {
@@ -2461,7 +2408,7 @@ export function GameProvider({ children }) {
     let timer;
     const passWhenReady = () => {
       const current = stateRef.current;
-      if (!autoResolveEnabledRef.current) return;
+      if (current?.loop_shortcut) return;
       priorityStops.observe(current);
       if (priorityStops.getSnapshot().window?.id !== window.id) return;
       const remaining = window.startedAt + window.duration - performance.now();
@@ -2480,14 +2427,14 @@ export function GameProvider({ children }) {
         return;
       }
       if (priorityStops.expire(window.id, current)) {
-        void dispatch(priorityCommandForAction(pass), "Passed priority");
+        void userDispatch(priorityCommandForAction(pass), "Passed priority");
       } else if (priorityStops.getSnapshot().window?.id === window.id) {
         timer = setTimeout(passWhenReady, 25);
       }
     };
     timer = setTimeout(passWhenReady, Math.max(0, Math.ceil(window.startedAt + window.duration - performance.now())));
     return () => clearTimeout(timer);
-  }, [priorityStops, priorityStopsState.window, autoResolveEnabled, autoPassEnabled, holdRule, dispatch,
+  }, [priorityStops, priorityStopsState.window, autoResolveEnabled, autoPassEnabled, holdRule, userDispatch,
     isSnapshotRendered, multiplayer.submittingAction, stateRef, state, pendingStackArrivals]);
 
   // Each run sends one authenticated intention. The engine drains authorized
@@ -2588,6 +2535,10 @@ export function GameProvider({ children }) {
 
   useEffect(() => {
     const run = resolveAllRef.current;
+    if (state?.loop_shortcut) {
+      if (run) stopResolveAll();
+      return;
+    }
     if (!run || run.inFlight || stateRef.current !== state) return;
     if (!state || state.game_over || state.turn_number !== run.turn) {
       stopResolveAll();
@@ -2640,7 +2591,7 @@ export function GameProvider({ children }) {
       Promise.resolve(dispatch(continuing ? priorityCommandForAction(pass) : {
         type: "priority_yield",
         mode: run.phases ? "phases" : "stack",
-        stops: run.ignoreStops ? [] : Object.keys(priorityStops.getSnapshot().stops),
+        stops: run.ignoreStops ? [] : Object.keys(priorityStopsForPlayer(priorityStops.getSnapshot().stops, state.active_player)),
       }, run.phases ? "Advance to next pause" : "Resolve all"))
         .catch(stopResolveAll)
         .finally(() => {
@@ -3262,6 +3213,12 @@ export function GameProvider({ children }) {
     wasmProgress,
   ]);
 
+  const { recordResolveStack } = loopShortcut;
+  const userStartResolveAll = useCallback(() => {
+    recordResolveStack();
+    startResolveAll();
+  }, [recordResolveStack, startResolveAll]);
+
   const value = useMemo(
     () => ({
       matchClockStore,
@@ -3277,8 +3234,10 @@ export function GameProvider({ children }) {
       status,
       setStatus,
       runWasmInteraction,
-      dispatch,
+      // User-submitted commands; a loop being recorded keeps them as steps.
+      dispatch: userDispatch,
       dispatchInBackground,
+      loopShortcut,
       cancelDecision,
       refresh,
       changeGoldfishPlayer,
@@ -3291,7 +3250,7 @@ export function GameProvider({ children }) {
       holdRule,
       setHoldRule,
       priorityStops: priorityStopsState.stops,
-      postActionPriorityWindow: autoResolveEnabled && priorityStops.windowFor(state) ? priorityStopsState.window : null,
+      postActionPriorityWindow: priorityStops.windowFor(state) ? priorityStopsState.window : null,
       cyclePriorityStop,
       holdPostActionPriority, pausePostActionPriority, resumePostActionPriority,
       fixedStartingBoard,
@@ -3338,7 +3297,7 @@ export function GameProvider({ children }) {
       followActivePlayer,
       setFollowActivePlayer,
       perspectiveHandoff,
-      startResolveAll,
+      startResolveAll: userStartResolveAll,
       phasePassing,
       togglePhasePassing,
       startPhaseAdvance,
@@ -3357,7 +3316,7 @@ export function GameProvider({ children }) {
       status,
       setStatus,
       runWasmInteraction,
-      dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, changeGoldfishPlayer, autoPassEnabled, autoResolveEnabled, autoResolveMode, setAutoResolveMode, setAutoResolveEnabled, holdRule, uiFont,
+      userDispatch, loopShortcut, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, changeGoldfishPlayer, autoPassEnabled, autoResolveEnabled, autoResolveMode, setAutoResolveMode, setAutoResolveEnabled, holdRule, uiFont,
       priorityStopsState, cyclePriorityStop, holdPostActionPriority, pausePostActionPriority, resumePostActionPriority,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug, fixedStartingBoard,
       activeEffectOrderingState, moveEffectOrderingItem,
@@ -3381,7 +3340,7 @@ export function GameProvider({ children }) {
       followActivePlayer,
       setFollowActivePlayer,
       perspectiveHandoff,
-      startResolveAll,
+      userStartResolveAll,
       phasePassing,
       togglePhasePassing,
       startPhaseAdvance,
@@ -3389,7 +3348,7 @@ export function GameProvider({ children }) {
   );
 
   return <GameContext.Provider value={value}>
-    <ManaPaymentEditorProvider state={state} dispatch={dispatch} cancelBackgroundDispatch={cancelBackgroundDispatch}>
+    <ManaPaymentEditorProvider state={state} dispatch={userDispatch} cancelBackgroundDispatch={cancelBackgroundDispatch}>
       {children}
     </ManaPaymentEditorProvider>
   </GameContext.Provider>;

@@ -3,7 +3,7 @@ use crate::events::{EventKind, ManaAddedEvent};
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementEffect, ReplacementEffectKey, ReplacementEffectSource};
 
-pub(super) struct CompiledManaReplacements {
+pub(crate) struct CompiledManaReplacements {
     effects: Vec<CompiledReplacement>,
 }
 
@@ -35,14 +35,14 @@ impl std::hash::Hash for ReplacementDecision {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ReplacementBranch {
+pub(crate) struct ReplacementBranch {
     pub event: ManaAddedEvent,
     pub resources: ReplacementResources,
     pub decisions: Vec<ReplacementDecision>,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct ReplacementResources {
+pub(crate) struct ReplacementResources {
     pub consumed: Vec<ReplacementEffectKey>,
 }
 

@@ -18,6 +18,9 @@ fn scalar_consumer(value: &Value) -> bool {
     match value {
         Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) =>
             matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG),
+        // "the number of cards exiled with this ..." (CR 607.2a).
+        Value::Count(filter) => filter.tagged_constraints.iter()
+            .any(|constraint| constraint.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG),
         Value::SurfaceHinted { value, .. } | Value::Scaled(value, _) |
         Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => scalar_consumer(value),
         Value::Add(left, right) | Value::Min(left, right) => scalar_consumer(left) || scalar_consumer(right),
@@ -33,8 +36,12 @@ fn inspect(effect: &Effect, producers: &mut usize, compatible: &mut usize, consu
         {
             *compatible += 1;
         }
-    } else if effect.downcast_ref::<crate::effects::ExileEffect>().is_some()
-        || effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>().is_some()
+    } else if effect.downcast_ref::<crate::effects::ExileEffect>().is_some() {
+        // An ordinary exile instruction links what it exiles to its ability
+        // (CR 607.2a), like a source-leaves exile.
+        *producers += 1;
+        *compatible += 1;
+    } else if effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>().is_some()
         || effect.downcast_ref::<crate::effects::cards::ImprintFromHandEffect>().is_some()
         || effect.downcast_ref::<crate::effects::HauntExileEffect>().is_some()
         || effect.downcast_ref::<crate::effects::ExileTaggedWhenSourceLeavesEffect>().is_some()

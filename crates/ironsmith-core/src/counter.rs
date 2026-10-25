@@ -178,6 +178,8 @@ impl CounterType {
             CounterType::MinusOneMinusZero => Some((-1, 0)),
             CounterType::PlusTwoPlusZero => Some((2, 0)),
             CounterType::PlusZeroPlusTwo => Some((0, 2)),
+            // CR 122.1a: any +X/+Y counter, even one carried by name.
+            CounterType::Named(name) => named_pt_delta(name),
             _ => None,
         }
     }
@@ -203,6 +205,22 @@ impl CounterType {
             other => Cow::Owned(split_pascal_case_identifier(&format!("{other:?}"))),
         }
     }
+}
+
+fn named_pt_delta(name: &str) -> Option<(i32, i32)> {
+    fn signed(part: &str) -> Option<i32> {
+        let (sign, digits) = match part.as_bytes().first()? {
+            b'+' => (1, &part[1..]),
+            b'-' => (-1, &part[1..]),
+            _ => return None,
+        };
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        digits.parse::<i32>().ok().map(|value| sign * value)
+    }
+    let (power, toughness) = name.trim().split_once('/')?;
+    Some((signed(power)?, signed(toughness)?))
 }
 
 fn split_pascal_case_identifier(raw: &str) -> String {

@@ -88,6 +88,10 @@ impl AbilityEffectOrigin {
     pub fn source(&self) -> ObjectId {
         self.source
     }
+    /// Timestamp of the effect that granted the ability.
+    pub(crate) fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
     /// The static ability of `source` that generated the effect, when a static
     /// ability (rather than a resolving spell or ability) generated it.
     pub fn static_ability(&self) -> Option<StaticAbilityInstanceId>
@@ -159,6 +163,17 @@ pub enum AbilityOrigin {
 }
 
 impl AbilityOrigin {
+    /// CR 613.7a: the timestamp of the effect that created this ability, when
+    /// an effect (copy, grant, borrowing) rather than the object's own text
+    /// supplied it.
+    pub(crate) fn creating_effect_timestamp(&self) -> Option<u64> {
+        match self {
+            Self::Effect { effect, .. } | Self::Borrowed { effect, .. } => Some(effect.timestamp()),
+            Self::Temporary(origin) => origin.acquired_at(),
+            Self::Level { parent, .. } => parent.creating_effect_timestamp(),
+            _ => None,
+        }
+    }
     /// Copy and text-box replacement define the object's text. Ordinary
     /// grants, borrowed abilities, counters and intrinsic rules do not (612.3).
     pub(crate) fn is_rules_text(&self) -> bool {

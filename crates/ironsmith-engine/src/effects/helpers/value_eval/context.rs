@@ -273,6 +273,51 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             }
             return count;
         }
+        // CR 113.1c/113.7a/115.9b: each ability on the stack is its own
+        // object, independent of its source. Count stack entries, so two
+        // abilities of one source count separately and an ability whose
+        // source left the battlefield still counts.
+        if filter.zone == Some(crate::zone::Zone::Stack)
+            && filter_ctx.stack_entry.is_none()
+            && filter.any_of.is_empty()
+            && let Some(kind) = filter.stack_kind
+            && matches!(
+                kind,
+                ironsmith_core::StackObjectKind::Ability
+                    | ironsmith_core::StackObjectKind::ActivatedAbility
+                    | ironsmith_core::StackObjectKind::TriggeredAbility
+            )
+        {
+            let mut count = 0i32;
+            for entry in &self.game.stack {
+                let kind_matches = entry.is_ability
+                    && match kind {
+                        ironsmith_core::StackObjectKind::ActivatedAbility => {
+                            entry.triggering_event.is_none()
+                        }
+                        ironsmith_core::StackObjectKind::TriggeredAbility => {
+                            entry.triggering_event.is_some()
+                        }
+                        _ => true,
+                    };
+                if !kind_matches {
+                    continue;
+                }
+                let mut entry_ctx = filter_ctx.clone();
+                entry_ctx.stack_entry = Some(entry.target_id());
+                let matched = if let Some(object) = self.game.object(entry.object_id) {
+                    filter.matches(object, &entry_ctx, self.game)
+                } else if let Some(snapshot) = entry.source_snapshot.as_ref() {
+                    filter.matches_snapshot(snapshot, &entry_ctx, self.game)
+                } else {
+                    false
+                };
+                if matched {
+                    count += 1;
+                }
+            }
+            return count;
+        }
         let candidates = value_candidate_ids_for_filter(self.game, filter, ctx);
         let matching = candidates
             .iter()
@@ -467,7 +512,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             NumericProperty::KickerCount => {
                                 checked_kicker_count(&object.optional_costs_paid)
                             }
-                            NumericProperty::ColorCount => Some(object.colors().count() as i32),
+                            NumericProperty::ColorCount => {
+                                NumericProperty::ColorCount.live(self.game, object)
+                            }
                         });
                     }
                 }
@@ -521,7 +568,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         let mut insert_names = |name: &str| {
             for part in name.split(" // ") {
                 if !crate::filter::name_is_nameless(part) {
-                    names.insert(part.trim().to_string());
+                    names.insert(crate::filter::interchangeable_name_key(part.trim()).to_string());
                 }
             }
         };
@@ -538,6 +585,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                         )
                     }) {
                         insert_names(&snapshot.name);
+                        if let Some(other) = snapshot.split_other_half_name() {
+                            insert_names(other);
+                        }
                     }
                 } else {
                     let ids = value_candidate_ids_for_filter(self.game, filter, ctx)
@@ -563,11 +613,17 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             ))
                         })?;
                         insert_names(&chars.name);
+                        if let Some(other) = chars.alternate_name.as_deref() {
+                            insert_names(other);
+                        }
                     }
                 }
             }
             Mode::Continuous(layer) => layer.visit_layered(filter, |_, chars| {
                 insert_names(&chars.name);
+                if let Some(other) = chars.alternate_name.as_deref() {
+                    insert_names(other);
+                }
             }),
         }
         i64::try_from(names.len()).map_err(|_| {
@@ -762,9 +818,32 @@ impl NumericProperty {
             Self::Toughness => game
                 .calculated_toughness(object.id)
                 .or_else(|| object.toughness()),
-            Self::ManaValue | Self::ManaSpent | Self::ColorCount | Self::KickerCount => {
-                self.raw(object)
-            }
+            // CR 202.3c / 707.2: a copy effect changes the mana cost and
+            // linked-face mana value; read the current characteristics.
+            Self::ManaValue => game
+                .calculated_characteristics_arc(object.id)
+                .map(|chars| {
+                    chars.linked_face_mana_value.map_or_else(
+                        || {
+                            chars.mana_cost.as_ref().map_or(0, |cost| {
+                                if object.zone == Zone::Stack {
+                                    cost.mana_value_with_x(object.x_value.unwrap_or(0))
+                                } else {
+                                    cost.mana_value()
+                                }
+                            }) as i32
+                        },
+                        |value| value as i32,
+                    )
+                })
+                .or_else(|| self.raw(object)),
+            // CR 105.2/608.2h: the object's current colors (copy and
+            // color-changing effects), not its printed ones.
+            Self::ColorCount => game
+                .current_colors(object.id)
+                .map(|colors| colors.count() as i32)
+                .or_else(|| self.raw(object)),
+            Self::ManaSpent | Self::KickerCount => self.raw(object),
         }
     }
     pub(crate) fn characteristics(
@@ -775,7 +854,8 @@ impl NumericProperty {
             Self::Power => chars.power,
             Self::BasePower => chars.base_power,
             Self::Toughness => chars.toughness,
-            Self::ManaValue | Self::ManaSpent | Self::ColorCount | Self::KickerCount => None,
+            Self::ColorCount => Some(chars.colors.count() as i32),
+            Self::ManaValue | Self::ManaSpent | Self::KickerCount => None,
         }
     }
 }

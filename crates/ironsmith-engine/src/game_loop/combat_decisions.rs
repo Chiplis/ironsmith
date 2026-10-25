@@ -1916,6 +1916,21 @@ fn lock_combat_cost(
     let mut execution_ctx =
         crate::effects::ExecutionContext::new(source, ability_controller, decision_maker);
     cost.try_map(|component| {
+        // CR 509.1d / 508.1d: the total cost is locked in before it's paid,
+        // so a life amount defined by a value is determined now.
+        if let Some(pay_life) = component
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::PayLifeEffect>())
+            && !matches!(pay_life.amount, crate::effect::Value::Fixed(_))
+        {
+            let amount =
+                crate::effects::helpers::resolve_value(game, &pay_life.amount, &execution_ctx)
+                    .map_err(crate::cost::CostPaymentError::ExecutionFailed)?;
+            return Ok(crate::costs::Cost::effect(crate::effects::PayLifeEffect::new(
+                crate::effect::Value::Fixed(amount),
+                pay_life.player.clone(),
+            )));
+        }
         let Some(dynamic_mana) = component.dynamic_mana_cost_ref() else {
             return Ok(component);
         };
@@ -1930,6 +1945,7 @@ fn lock_combat_cost(
 
 fn locked_block_costs_for_declarations(
     game: &GameState,
+    pre_block_game: &GameState,
     pairs: &[(ObjectId, ObjectId)],
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Vec<LockedCombatCost>, GameLoopError> {
@@ -1978,7 +1994,15 @@ fn locked_block_costs_for_declarations(
                         ))
                     })?;
                 let display = ability.display();
-                let cost = lock_combat_cost(game, source, ability_controller, cost, decision_maker)
+                // CR 509.1d / 509.1g: amounts are determined before the
+                // chosen creatures become blocking creatures.
+                let cost = lock_combat_cost(
+                    pre_block_game,
+                    source,
+                    ability_controller,
+                    cost,
+                    decision_maker,
+                )
                     .map_err(|error| {
                         ResponseError::InvalidBlockers(format!(
                             "Could not determine required blocking cost ({display}): {error}"
@@ -2160,6 +2184,7 @@ fn pay_locked_combat_costs(
     if decision_maker.awaiting_choice() {
         return Ok(false);
     }
+    let mut programs = Vec::new();
     for locked in ordered_costs? {
         let ordered = if attack {
             ordered_locked_combat_cost(game, &locked, decision_maker, true)
@@ -2169,7 +2194,37 @@ fn pay_locked_combat_costs(
         if decision_maker.awaiting_choice() {
             return Ok(false);
         }
-        let ordered = ordered?;
+        programs.push((locked, ordered?));
+    }
+    // CR 509.1f / 508.1h: the costs are paid in any order, and components of
+    // independent costs may be interleaved. Pay every component that taps or
+    // untaps its own source first (in the chosen order) so another cost's
+    // sacrifice can't remove a source before its tap is paid; then pay the
+    // rest in the chosen order.
+    let mut passes: Vec<(LockedCombatCost, crate::cost::TotalCost)> = Vec::new();
+    let split_source_taps = programs.len() > 1;
+    let mut remainders = Vec::new();
+    for (locked, ordered) in programs {
+        match ordered.kind() {
+            ironsmith_core::TotalCostKind::All(components)
+                if split_source_taps && locked.source.is_some() =>
+            {
+                let (taps, rest): (Vec<_>, Vec<_>) = components
+                    .iter()
+                    .cloned()
+                    .partition(|component| component.requires_tap() || component.requires_untap());
+                if !taps.is_empty() {
+                    passes.push((locked.clone(), crate::cost::TotalCost::from_costs(taps)));
+                }
+                if !rest.is_empty() {
+                    remainders.push((locked, crate::cost::TotalCost::from_costs(rest)));
+                }
+            }
+            _ => remainders.push((locked, ordered)),
+        }
+    }
+    passes.extend(remainders);
+    for (locked, ordered) in passes {
         let result = if let Some(source) = locked.source {
             crate::special_actions::pay_total_cost_with_choice(
                 game,
@@ -2582,7 +2637,7 @@ fn prepare_blocker_declarations(
     declaration_view.mark_continuous_state_dirty();
     declaration_view.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let locked_costs =
-        locked_block_costs_for_declarations(&declaration_view, &pairs, decision_maker)?;
+        locked_block_costs_for_declarations(&declaration_view, game, &pairs, decision_maker)?;
     Ok(PreparedBlockerDeclarations {
         pairs,
         next_combat,
@@ -2600,16 +2655,36 @@ fn apply_prepared_blocker_declarations(
 ) -> Result<(), GameLoopError> {
     let pairs = prepared.pairs.clone();
     let defending_player = prepared.defending_player;
+    // CR 509.3c/603.2e: an attacker that was already blocked doesn't become
+    // blocked again when blockers are declared for it.
+    let blocked_before = combat
+        .attackers
+        .iter()
+        .map(|info| info.creature)
+        .filter(|attacker| crate::combat_state::is_blocked(combat, *attacker))
+        .collect::<Vec<_>>();
     apply_prepared_blocker_declaration_state(game, combat, prepared, decision_maker)?;
     if decision_maker.awaiting_choice() {
         return Ok(());
     }
+    // CR 509.1g: only creatures that actually became blocking creatures block.
+    let pairs = pairs
+        .into_iter()
+        .filter(|(blocker, attacker)| {
+            combat
+                .blockers
+                .get(attacker)
+                .is_some_and(|blockers| blockers.contains(blocker))
+        })
+        .collect::<Vec<_>>();
     if defending_player.is_none() {
         combat.block_declaration_complete = true;
         game.combat = Some(combat.clone());
         game.mark_continuous_state_dirty();
     }
-    queue_block_declaration_events(game, combat, trigger_queue, &pairs, defending_player);
+    queue_block_declaration_events_after(
+        game, combat, trigger_queue, &pairs, defending_player, &blocked_before,
+    );
     Ok(())
 }
 
@@ -2638,6 +2713,37 @@ fn apply_prepared_blocker_declaration_state(
         return Ok(());
     }
 
+    // CR 509.1g: a chosen creature that left the battlefield while costs were
+    // paid (e.g. sacrificed to pay one) never becomes a blocking creature.
+    let mut next_combat = next_combat;
+    let departed = |id: &ObjectId| {
+        game.object(*id)
+            .is_none_or(|object| object.zone != crate::zone::Zone::Battlefield)
+    };
+    for blockers in next_combat.blockers.values_mut() {
+        blockers.retain(|blocker| !departed(blocker));
+    }
+    for order in next_combat.damage_assignment_order.values_mut() {
+        order.retain(|blocker| !departed(blocker));
+    }
+    let was_blocked_before = |attacker: &ObjectId| {
+        combat.blocked_attackers.contains(attacker)
+            || combat
+                .blockers
+                .get(attacker)
+                .is_some_and(|previous| !previous.is_empty())
+    };
+    let never_blocked = next_combat
+        .blockers
+        .iter()
+        .filter(|(attacker, blockers)| blockers.is_empty() && !was_blocked_before(attacker))
+        .map(|(attacker, _)| *attacker)
+        .collect::<Vec<_>>();
+    for attacker in never_blocked {
+        next_combat.blockers.remove(&attacker);
+        next_combat.blocked_attackers.remove(&attacker);
+        next_combat.damage_assignment_order.remove(&attacker);
+    }
     // Block triggers can depend on the complete set of blockers declared together.
     *combat = next_combat;
     game.combat = Some(combat.clone());
@@ -2656,6 +2762,21 @@ pub fn queue_block_declaration_events(
     trigger_queue: &mut TriggerQueue,
     pairs: &[(ObjectId, ObjectId)],
     defending_player: Option<PlayerId>,
+) {
+    queue_block_declaration_events_after(game, combat, trigger_queue, pairs, defending_player, &[]);
+}
+
+/// [`queue_block_declaration_events`] for a declaration whose attackers in
+/// `blocked_before` were already blocked: a persisting blocked state is not a
+/// new "becomes blocked" event (CR 509.3c, 603.2e), though each new blocking
+/// creature still blocks it.
+pub(crate) fn queue_block_declaration_events_after(
+    game: &mut GameState,
+    combat: &CombatState,
+    trigger_queue: &mut TriggerQueue,
+    pairs: &[(ObjectId, ObjectId)],
+    defending_player: Option<PlayerId>,
+    blocked_before: &[ObjectId],
 ) {
     // Capture every required event snapshot before checking any trigger. A
     // trigger check can update pass-local state, but all declaration events
@@ -2747,7 +2868,7 @@ pub fn queue_block_declaration_events(
         let Some(blockers) = combat.blockers.get(&attacker_id) else {
             continue;
         };
-        if !blockers.is_empty() {
+        if !blockers.is_empty() && !blocked_before.contains(&attacker_id) {
             let attack_target = Some(crate::triggers::AttackEventTarget::from(
                 &attacker_info.target,
             ));

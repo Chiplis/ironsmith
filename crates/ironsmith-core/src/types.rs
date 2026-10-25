@@ -690,6 +690,89 @@ pub enum Subtype {
     ElAurian,
     Q,
     Ferengi,
+    // CR 205.3n planar types and CR 205.3p dungeon type; appended to preserve
+    // serialized variant ordinals.
+    TheAbyss,
+    Alara,
+    AlfavaMetraxis,
+    Amonkhet,
+    AndrozaniMinor,
+    Antausia,
+    Apalapucia,
+    Arcavios,
+    Arkhos,
+    Avishkar,
+    Azgol,
+    Belenon,
+    BolassMeditationRealm,
+    Capenna,
+    Cridhe,
+    TheDalekAsylum,
+    Darillium,
+    Dominaria,
+    Earth,
+    Echoir,
+    Eldraine,
+    Equilor,
+    Ergamon,
+    Fabacin,
+    Fiora,
+    Gallifrey,
+    Gargantikar,
+    Gobakhan,
+    HorseheadNebula,
+    Ikoria,
+    Innistrad,
+    Iquatana,
+    Ir,
+    Ixalan,
+    Kaldheim,
+    Kamigawa,
+    Kandoka,
+    Karsus,
+    Kephalai,
+    Kinshala,
+    Kolbahan,
+    Kylem,
+    Kyneth,
+    TheLibrary,
+    Lorwyn,
+    Luvion,
+    Mars,
+    Mercadia,
+    Mirrodin,
+    Moag,
+    Mongseng,
+    Moon,
+    Muraganda,
+    Necros,
+    NewEarth,
+    NewPhyrexia,
+    OutsideMuttersSpiral,
+    Phyrexia,
+    Pyrulea,
+    Rabiah,
+    Rath,
+    Ravnica,
+    Regatha,
+    Segovia,
+    SerrasRealm,
+    Shadowmoor,
+    Shandalar,
+    Shenmeng,
+    Skaro,
+    Tarkir,
+    Theros,
+    Trenzalore,
+    Ulgrotha,
+    UnknownPlanet,
+    Valla,
+    Vryn,
+    Wildfire,
+    Xerex,
+    Zendikar,
+    Zhalfir,
+    Undercity,
 }
 
 impl Subtype {
@@ -718,6 +801,7 @@ impl Subtype {
     pub const fn all_creature_types() -> &'static [Subtype] {
         &[
             Subtype::Aetherborn,
+            Subtype::Dauthi,
             Subtype::Advisor,
             Subtype::Ally,
             Subtype::Alien,
@@ -1101,7 +1185,6 @@ impl Subtype {
             Subtype::Shard,
             Subtype::Shrine,
             Subtype::Plan,
-            Subtype::Quest,
         ]
     }
 
@@ -1111,7 +1194,6 @@ impl Subtype {
             Subtype::Arcane,
             Subtype::Lesson,
             Subtype::Trap,
-            Subtype::Chorus,
             Subtype::Omen,
         ]
     }
@@ -1201,6 +1283,197 @@ impl Subtype {
         ]
     }
 
+    /// CR 205.3n: the planar types. Each is one subtype even when its name
+    /// is several words long (CR 311.3).
+    pub const fn all_planar_types() -> &'static [Subtype] {
+        &[
+            Subtype::TheAbyss,
+            Subtype::Alara,
+            Subtype::AlfavaMetraxis,
+            Subtype::Amonkhet,
+            Subtype::AndrozaniMinor,
+            Subtype::Antausia,
+            Subtype::Apalapucia,
+            Subtype::Arcavios,
+            Subtype::Arkhos,
+            Subtype::Avishkar,
+            Subtype::Azgol,
+            Subtype::Belenon,
+            Subtype::BolassMeditationRealm,
+            Subtype::Capenna,
+            Subtype::Cridhe,
+            Subtype::TheDalekAsylum,
+            Subtype::Darillium,
+            Subtype::Dominaria,
+            Subtype::Earth,
+            Subtype::Echoir,
+            Subtype::Eldraine,
+            Subtype::Equilor,
+            Subtype::Ergamon,
+            Subtype::Fabacin,
+            Subtype::Fiora,
+            Subtype::Gallifrey,
+            Subtype::Gargantikar,
+            Subtype::Gobakhan,
+            Subtype::HorseheadNebula,
+            Subtype::Ikoria,
+            Subtype::Innistrad,
+            Subtype::Iquatana,
+            Subtype::Ir,
+            Subtype::Ixalan,
+            Subtype::Kaldheim,
+            Subtype::Kamigawa,
+            Subtype::Kandoka,
+            Subtype::Karsus,
+            Subtype::Kephalai,
+            Subtype::Kinshala,
+            Subtype::Kolbahan,
+            Subtype::Kylem,
+            Subtype::Kyneth,
+            Subtype::TheLibrary,
+            Subtype::Lorwyn,
+            Subtype::Luvion,
+            Subtype::Mars,
+            Subtype::Mercadia,
+            Subtype::Mirrodin,
+            Subtype::Moag,
+            Subtype::Mongseng,
+            Subtype::Moon,
+            Subtype::Muraganda,
+            Subtype::Necros,
+            Subtype::NewEarth,
+            Subtype::NewPhyrexia,
+            Subtype::OutsideMuttersSpiral,
+            Subtype::Phyrexia,
+            Subtype::Pyrulea,
+            Subtype::Rabiah,
+            Subtype::Rath,
+            Subtype::Ravnica,
+            Subtype::Regatha,
+            Subtype::Segovia,
+            Subtype::SerrasRealm,
+            Subtype::Shadowmoor,
+            Subtype::Shandalar,
+            Subtype::Shenmeng,
+            Subtype::Skaro,
+            Subtype::Spacecraft,
+            Subtype::Tarkir,
+            Subtype::Theros,
+            Subtype::Time,
+            Subtype::Trenzalore,
+            Subtype::Ulgrotha,
+            Subtype::UnknownPlanet,
+            Subtype::Valla,
+            Subtype::Vryn,
+            Subtype::Wildfire,
+            Subtype::Xerex,
+            Subtype::Zendikar,
+            Subtype::Zhalfir,
+        ]
+    }
+
+    /// CR 205.3n / 311.3: the planar type whose full name is `name`.
+    pub fn planar_type_from_name(name: &str) -> Option<Subtype> {
+        const NAMES: &[(&str, Subtype)] = &[
+            ("The Abyss", Subtype::TheAbyss),
+            ("Alara", Subtype::Alara),
+            ("Alfava Metraxis", Subtype::AlfavaMetraxis),
+            ("Amonkhet", Subtype::Amonkhet),
+            ("Androzani Minor", Subtype::AndrozaniMinor),
+            ("Antausia", Subtype::Antausia),
+            ("Apalapucia", Subtype::Apalapucia),
+            ("Arcavios", Subtype::Arcavios),
+            ("Arkhos", Subtype::Arkhos),
+            ("Avishkar", Subtype::Avishkar),
+            ("Azgol", Subtype::Azgol),
+            ("Belenon", Subtype::Belenon),
+            ("Bolas's Meditation Realm", Subtype::BolassMeditationRealm),
+            ("Capenna", Subtype::Capenna),
+            ("Cridhe", Subtype::Cridhe),
+            ("The Dalek Asylum", Subtype::TheDalekAsylum),
+            ("Darillium", Subtype::Darillium),
+            ("Dominaria", Subtype::Dominaria),
+            ("Earth", Subtype::Earth),
+            ("Echoir", Subtype::Echoir),
+            ("Eldraine", Subtype::Eldraine),
+            ("Equilor", Subtype::Equilor),
+            ("Ergamon", Subtype::Ergamon),
+            ("Fabacin", Subtype::Fabacin),
+            ("Fiora", Subtype::Fiora),
+            ("Gallifrey", Subtype::Gallifrey),
+            ("Gargantikar", Subtype::Gargantikar),
+            ("Gobakhan", Subtype::Gobakhan),
+            ("Horsehead Nebula", Subtype::HorseheadNebula),
+            ("Ikoria", Subtype::Ikoria),
+            ("Innistrad", Subtype::Innistrad),
+            ("Iquatana", Subtype::Iquatana),
+            ("Ir", Subtype::Ir),
+            ("Ixalan", Subtype::Ixalan),
+            ("Kaldheim", Subtype::Kaldheim),
+            ("Kamigawa", Subtype::Kamigawa),
+            ("Kandoka", Subtype::Kandoka),
+            ("Karsus", Subtype::Karsus),
+            ("Kephalai", Subtype::Kephalai),
+            ("Kinshala", Subtype::Kinshala),
+            ("Kolbahan", Subtype::Kolbahan),
+            ("Kylem", Subtype::Kylem),
+            ("Kyneth", Subtype::Kyneth),
+            ("The Library", Subtype::TheLibrary),
+            ("Lorwyn", Subtype::Lorwyn),
+            ("Luvion", Subtype::Luvion),
+            ("Mars", Subtype::Mars),
+            ("Mercadia", Subtype::Mercadia),
+            ("Mirrodin", Subtype::Mirrodin),
+            ("Moag", Subtype::Moag),
+            ("Mongseng", Subtype::Mongseng),
+            ("Moon", Subtype::Moon),
+            ("Muraganda", Subtype::Muraganda),
+            ("Necros", Subtype::Necros),
+            ("New Earth", Subtype::NewEarth),
+            ("New Phyrexia", Subtype::NewPhyrexia),
+            ("Outside Mutter's Spiral", Subtype::OutsideMuttersSpiral),
+            ("Phyrexia", Subtype::Phyrexia),
+            ("Pyrulea", Subtype::Pyrulea),
+            ("Rabiah", Subtype::Rabiah),
+            ("Rath", Subtype::Rath),
+            ("Ravnica", Subtype::Ravnica),
+            ("Regatha", Subtype::Regatha),
+            ("Segovia", Subtype::Segovia),
+            ("Serra's Realm", Subtype::SerrasRealm),
+            ("Shadowmoor", Subtype::Shadowmoor),
+            ("Shandalar", Subtype::Shandalar),
+            ("Shenmeng", Subtype::Shenmeng),
+            ("Skaro", Subtype::Skaro),
+            ("Spacecraft", Subtype::Spacecraft),
+            ("Tarkir", Subtype::Tarkir),
+            ("Theros", Subtype::Theros),
+            ("Time", Subtype::Time),
+            ("Trenzalore", Subtype::Trenzalore),
+            ("Ulgrotha", Subtype::Ulgrotha),
+            ("Unknown Planet", Subtype::UnknownPlanet),
+            ("Valla", Subtype::Valla),
+            ("Vryn", Subtype::Vryn),
+            ("Wildfire", Subtype::Wildfire),
+            ("Xerex", Subtype::Xerex),
+            ("Zendikar", Subtype::Zendikar),
+            ("Zhalfir", Subtype::Zhalfir),
+        ];
+        let name = name.trim().replace(['’', '‘'], "'");
+        NAMES
+            .iter()
+            .find(|(candidate, _)| candidate.eq_ignore_ascii_case(&name))
+            .map(|(_, subtype)| *subtype)
+    }
+
+    pub fn is_planar_subtype(&self) -> bool {
+        Self::all_planar_types().contains(self)
+    }
+
+    /// CR 205.3p: the dungeon types.
+    pub fn is_dungeon_subtype(&self) -> bool {
+        matches!(self, Subtype::Undercity)
+    }
+
     pub const fn all_battle_types() -> &'static [Subtype] {
         &[Subtype::Siege]
     }
@@ -1213,6 +1486,9 @@ impl Subtype {
             Subtype::PowerPlant => "Power-Plant".to_string(),
             Subtype::Shiar => "Shi'ar".to_string(),
             Subtype::ElAurian => "El-Aurian".to_string(),
+            Subtype::BolassMeditationRealm => "Bolas's Meditation Realm".to_string(),
+            Subtype::OutsideMuttersSpiral => "Outside Mutter's Spiral".to_string(),
+            Subtype::SerrasRealm => "Serra's Realm".to_string(),
             _ => split_pascal_case_identifier(&format!("{self:?}")),
         }
     }
@@ -1266,28 +1542,11 @@ impl Subtype {
     }
 
     pub fn is_enchantment_subtype(&self) -> bool {
-        matches!(
-            self,
-            Subtype::Aura
-                | Subtype::Background
-                | Subtype::Cartouche
-                | Subtype::Case
-                | Subtype::Class
-                | Subtype::Curse
-                | Subtype::Room
-                | Subtype::Role
-                | Subtype::Rune
-                | Subtype::Saga
-                | Subtype::Shard
-                | Subtype::Shrine
-        )
+        Self::all_enchantment_types().contains(self)
     }
 
     pub fn is_spell_subtype(&self) -> bool {
-        matches!(
-            self,
-            Subtype::Adventure | Subtype::Arcane | Subtype::Lesson | Subtype::Trap
-        )
+        Self::all_spell_types().contains(self)
     }
 
     pub fn is_planeswalker_subtype(&self) -> bool {

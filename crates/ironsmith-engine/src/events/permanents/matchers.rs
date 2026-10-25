@@ -33,6 +33,13 @@ impl WouldBecomeTappedMatcher {
 }
 
 impl ReplacementMatcher for WouldBecomeTappedMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool {
+        kind == EventKind::BecomeTapped
+    }
+
+    fn replaces_becoming_tapped(&self) -> bool {
+        true
+    }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if event.event_kind() != EventKind::BecomeTapped {

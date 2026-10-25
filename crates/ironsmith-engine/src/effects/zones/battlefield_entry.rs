@@ -318,7 +318,7 @@ fn transformed_entry_definition(
 
     // Transform-like card families use the lower card id for the front face,
     // matching the existing default-face restoration used by zone changes.
-    let transformed = if current.card.id.0 > other.card.id.0 {
+    let transformed = if game.linked_face_is_back(current.card.id, other.card.id) {
         current
     } else {
         other
@@ -679,6 +679,10 @@ fn prepare_battlefield_entry_batch_inner(
     }
     let additional_effects = ctx.additional_replacement_effects_snapshot();
     let mut working = game.clone();
+    let opened_spent_scope = working.effect_store.entry_spent_objects.is_none();
+    if opened_spent_scope {
+        working.effect_store.entry_spent_objects = Some(Default::default());
+    }
     let mut transformed_entry_states = std::collections::HashMap::new();
     let mut provisional_effects = Vec::new();
     let mut provisional_entry_effects = std::collections::HashMap::new();
@@ -699,7 +703,17 @@ fn prepare_battlefield_entry_batch_inner(
                 .expect("original")
                 .apply_face_down_cast_overlay();
         }
-        if options.transformed || options.entry_definition.is_some() {
+        // CR 702.145b/614.12: at night a daybound permanent enters
+        // transformed, so its back face's entry replacements apply.
+        let enters_transformed_at_night = !options.face_down
+            && options.entry_definition.is_none()
+            && working.has_day_night()
+            && working.is_night
+            && working.current_has_static_ability_id(
+                *object,
+                crate::static_abilities::StaticAbilityId::Daybound,
+            );
+        if options.transformed || enters_transformed_at_night || options.entry_definition.is_some() {
             if let Some(definition) = options
                 .entry_definition
                 .clone()
@@ -961,6 +975,9 @@ fn prepare_battlefield_entry_batch_inner(
         }
     }
 
+    if opened_spent_scope {
+        working.effect_store.entry_spent_objects = None;
+    }
     *game = working;
     Ok(Some(PreparedBattlefieldEntryBatch {
         requests,
@@ -1081,8 +1098,8 @@ impl PreparedBattlefieldEntryBatch {
             )?;
         }
 
-        // CR 613.7j: objects that receive timestamps simultaneously get them in an
-        // order the active player chooses. Only entrants whose static abilities
+        // CR 613.7m: objects that receive timestamps simultaneously get them in
+        // APNAP order, each player choosing the order of their own objects. Only entrants whose static abilities
         // generate continuous effects can make that order observable, so the
         // choice is offered for those; everything else keeps commit order.
         let relevant_entrants: Vec<ObjectId> = outcomes
@@ -1205,12 +1222,51 @@ fn entrant_generates_continuous_effects(game: &GameState, id: ObjectId) -> bool 
     })
 }
 
-/// Ask the active player for the timestamp order of simultaneous entrants
-/// (CR 613.7j). The leftmost item receives the oldest timestamp. Returns
-/// `None` while the decision is still pending.
+/// Order simultaneous entrants' timestamps in APNAP order (CR 613.7m): the
+/// active player's objects come first in the order that player chooses,
+/// followed by each other player's objects in turn order, each in the order
+/// of its controller's choice. The leftmost item receives the oldest
+/// timestamp. Returns `None` while a decision is still pending.
 fn choose_simultaneous_timestamp_order(
     game: &GameState,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
+    entrants: &[ObjectId],
+) -> Option<Vec<ObjectId>> {
+    let controller_of = |id: &ObjectId| {
+        game.current_controller(*id)
+            .or_else(|| game.object(*id).map(|object| object.owner))
+            .unwrap_or(game.turn.active_player)
+    };
+    let mut sorted: Vec<ObjectId> = entrants.to_vec();
+    sorted.sort_by_key(|id| apnap_position(game, controller_of(id)));
+    let mut ordered = Vec::with_capacity(sorted.len());
+    let mut start = 0;
+    while start < sorted.len() {
+        let player = controller_of(&sorted[start]);
+        let mut end = start + 1;
+        while end < sorted.len() && controller_of(&sorted[end]) == player {
+            end += 1;
+        }
+        let group = &sorted[start..end];
+        if group.len() >= 2 {
+            ordered.extend(choose_player_timestamp_order(
+                game,
+                decision_maker,
+                player,
+                group,
+            )?);
+        } else {
+            ordered.extend_from_slice(group);
+        }
+        start = end;
+    }
+    Some(ordered)
+}
+
+fn choose_player_timestamp_order(
+    game: &GameState,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+    player: PlayerId,
     entrants: &[ObjectId],
 ) -> Option<Vec<ObjectId>> {
     let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -1235,7 +1291,7 @@ fn choose_simultaneous_timestamp_order(
         game,
         crate::decisions::context::DecisionContext::Order(
             crate::decisions::context::OrderContext::new(
-                game.turn.active_player,
+                player,
                 None,
                 "Choose the timestamp order for permanents entering at the same time. \
                  The leftmost item is treated as having entered first.",

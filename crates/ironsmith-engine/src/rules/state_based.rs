@@ -44,6 +44,20 @@ fn controlled_existing_attachment_is_preserved_by_protection_grant(
             if game.controller_of_id(grant_source) != game.controller_of_id(attachment) {
                 return false;
             }
+            // CR 702.16p: only Auras and Equipment that were already attached
+            // when the protection began are exempt; later attachments aren't.
+            let attachment_time = |id: ObjectId| {
+                let timestamps = &game.effect_store.continuous_effects;
+                timestamps
+                    .get_attachment_timestamp(id)
+                    .or_else(|| timestamps.get_entry_timestamp(id))
+            };
+            if let (Some(attached), Some(granted)) =
+                (attachment_time(attachment), attachment_time(grant_source))
+                && attached > granted
+            {
+                return false;
+            }
             let Some(source) = game.object(grant_source) else {
                 return false;
             };
@@ -297,10 +311,14 @@ impl StateBasedActionContext {
 // Categories depend on the exact calculated view, not printed card types.
 // An unchanged Arc means the characteristic revision is still valid. A broad
 // continuous invalidation supplies new Arcs and conservatively rebuilds flags.
+fn stack_entry_is_triggered_ability(entry: &crate::game_state::StackEntry) -> bool {
+    entry.is_ability && (entry.triggering_event.is_some() || entry.trigger_identity.is_some())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ComplexSbaInputs {
     pending: StateBasedActionContext,
-    stacked: Vec<(Option<ObjectId>, Option<ObjectId>)>,
+    stacked: Vec<(Option<ObjectId>, Option<ObjectId>, Option<ObjectId>)>,
     attacked_battles: Vec<ObjectId>,
     players: Vec<(PlayerId, bool)>,
 }
@@ -312,8 +330,11 @@ impl ComplexSbaInputs {
                 .stack
                 .iter()
                 .filter_map(|entry| {
-                    (entry.chapter_ability_source.is_some() || entry.battle_defeat_source.is_some())
-                        .then_some((entry.chapter_ability_source, entry.battle_defeat_source))
+                    let triggered = stack_entry_is_triggered_ability(entry).then_some(entry.object_id);
+                    (entry.chapter_ability_source.is_some()
+                        || entry.battle_defeat_source.is_some()
+                        || triggered.is_some())
+                    .then_some((entry.chapter_ability_source, entry.battle_defeat_source, triggered))
                 })
                 .collect(),
             attacked_battles: game
@@ -908,7 +929,23 @@ fn check_scheme_sba(
                 .iter()
                 .any(|entry| entry.is_ability && entry.object_id == *source)
     });
-    if set_event_pending || scheme_ability_pending {
+    // A scheme's triggered ability still counts after that scheme stopped
+    // being face up (e.g. an ongoing scheme abandoned while it waits).
+    let is_scheme_source = |source: ObjectId,
+                            snapshot: Option<&crate::snapshot::ObjectSnapshot>| {
+        snapshot.is_some_and(|snapshot| snapshot.card_types.contains(&CardType::Scheme))
+            || game
+                .object(source)
+                .is_some_and(|object| object.card_types.contains(&CardType::Scheme))
+    };
+    let any_scheme_ability_pending = game.stack.iter().any(|entry| {
+        entry.is_ability && is_scheme_source(entry.object_id, entry.source_snapshot.as_ref())
+    }) || game
+        .effect_store
+        .pending_trigger_entries
+        .iter()
+        .any(|entry| is_scheme_source(entry.source, entry.source_snapshot.as_ref()));
+    if set_event_pending || scheme_ability_pending || any_scheme_ability_pending {
         return;
     }
     actions.extend(
@@ -1334,8 +1371,12 @@ fn check_permanent_sbas_for_ids(
                 || view.object_has_static_ability_id(obj.id, StaticAbilityId::Indestructible);
 
             // Use calculated toughness to include -1/-1 counters, pump effects, etc.
-            if let Some(toughness) = view.calculated_toughness(obj_id)
-                && toughness <= 0
+            // CR 208.3/704.5f: a creature with no toughness has toughness 0.
+            if view
+                .calculated_toughness(obj_id)
+                .or_else(|| obj.toughness())
+                .unwrap_or(0)
+                <= 0
             {
                 actions.push(StateBasedAction::ObjectDies(obj_id));
                 continue;
@@ -1402,11 +1443,19 @@ fn check_permanent_sbas_for_ids(
                 .get(&CounterType::Defense)
                 .copied()
                 .unwrap_or(0);
-            let defeat_ability_pending_or_stacked = context.has_pending_battle_defeat_from(obj_id)
-                || game
-                    .stack
-                    .iter()
-                    .any(|entry| entry.battle_defeat_source == Some(obj_id));
+            // CR 704.5v / 310.7 / 310.8: only a Siege is exempt, and only while
+            // it is the source of a triggered ability that has triggered but
+            // not yet left the stack (any of its triggered abilities, CR 122.1g).
+            let is_siege = view
+                .calculated_characteristics(obj_id)
+                .is_some_and(|chars| chars.subtypes.contains(&crate::types::Subtype::Siege));
+            let defeat_ability_pending_or_stacked = is_siege
+                && (context.has_pending_battle_defeat_from(obj_id)
+                    || context.has_pending_ability_from(obj_id)
+                    || game.stack.iter().any(|entry| {
+                        entry.battle_defeat_source == Some(obj_id)
+                            || (stack_entry_is_triggered_ability(entry) && entry.object_id == obj_id)
+                    }));
             if defense_counters == 0 && !defeat_ability_pending_or_stacked {
                 actions.push(StateBasedAction::BattleDies(obj_id));
                 continue;
@@ -1415,10 +1464,20 @@ fn check_permanent_sbas_for_ids(
             let is_being_attacked = game.combat.as_ref().is_some_and(|combat| {
                 !crate::combat_state::attackers_targeting_battle(combat, obj_id).is_empty()
             });
-            let protector_is_legal = game
+            let protector_in_game = game
                 .battle_protector(obj_id)
+                .filter(|protector| game.player(*protector).is_some_and(|p| p.is_in_game()));
+            let protector_is_legal = protector_in_game
                 .is_some_and(|protector| game.legal_battle_protectors(obj_id).contains(&protector));
-            if !is_being_attacked && !protector_is_legal {
+            // CR 704.5x: a missing protector is replaced only while no
+            // creature attacks the battle; CR 704.5y: an existing protector
+            // who can't be its protector is replaced regardless.
+            let needs_protector = if protector_in_game.is_none() {
+                !is_being_attacked
+            } else {
+                !protector_is_legal
+            };
+            if needs_protector {
                 if game.legal_battle_protectors(obj_id).is_empty() {
                     actions.push(StateBasedAction::BattleDies(obj_id));
                 } else {
@@ -1474,7 +1533,10 @@ fn check_permanent_sbas_for_ids(
                     }
                 }
             } else {
-                let is_equipment = calculated_subtypes.contains(&Subtype::Equipment);
+                // CR 702.16d: protection also stops being equipped or
+                // fortified by Equipment / Fortifications with the quality.
+                let is_equipment = calculated_subtypes.contains(&Subtype::Equipment)
+                    || calculated_subtypes.contains(&Subtype::Fortification);
                 let protection_makes_attachment_illegal = is_equipment
                     && matches!(
                         attached_target,
@@ -1726,6 +1788,7 @@ struct TokenCleanupCache {
     cursor: Option<crate::incremental::ChangeCursor>,
     player_zones: crate::game_state::PersistentMap<(PlayerId, Zone), TokenZoneIndex>,
     exile: TokenZoneIndex,
+    command: TokenZoneIndex,
     copies: im::OrdSet<ObjectId>,
 }
 fn check_token_cleanup_incremental(game: &GameState, actions: &mut Vec<StateBasedAction>) {
@@ -1760,6 +1823,17 @@ fn check_token_cleanup_incremental(game: &GameState, actions: &mut Vec<StateBase
     actions.extend(
         cache
             .exile
+            .candidates
+            .values()
+            .copied()
+            .map(StateBasedAction::TokenCeasesToExist),
+    );
+    // CR 704.5d: a token in any zone other than the battlefield, including
+    // the command zone, ceases to exist.
+    cache.command.update(game, &game.command_zone, changed.as_deref());
+    actions.extend(
+        cache
+            .command
             .candidates
             .values()
             .copied()
@@ -1821,7 +1895,7 @@ fn check_token_cleanup(game: &GameState, actions: &mut Vec<StateBasedAction>) {
         }
     }
 
-    for &obj_id in &game.exile {
+    for &obj_id in game.exile.iter().chain(game.command_zone.iter()) {
         if let Some(obj) = game.object(obj_id)
             && obj.kind == crate::object::ObjectKind::Token
         {
@@ -1835,7 +1909,13 @@ fn check_token_cleanup(game: &GameState, actions: &mut Vec<StateBasedAction>) {
         .objects_map()
         .values()
         .filter(|object| {
-            object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack
+            (object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack)
+                // CR 722.3 / 704.5e: a prepare spell copy is a copy of a card;
+                // outside the stack and battlefield it ceases to exist unless
+                // it is the copy waiting in exile for its prepared permanent.
+                || (!matches!(object.zone, Zone::Stack | Zone::Battlefield)
+                    && game.is_prepare_spell_copy_object(object.id)
+                    && !(object.zone == Zone::Exile && game.is_prepared_spell_copy(object.id)))
         })
         .map(|object| object.id)
         .collect();
@@ -1968,8 +2048,15 @@ fn check_legend_rule_with_view(
             continue;
         }
 
-        if chars.supertypes.contains(&Supertype::Legendary) {
-            let key = (chars.controller, chars.name.to_owned_string());
+        // CR 201.2a: a nameless object doesn't share a name with anything.
+        if chars.supertypes.contains(&Supertype::Legendary)
+            && !crate::filter::name_is_nameless(&chars.name)
+        {
+            // CR 201.3a: interchangeable names form one legend group.
+            let key = (
+                chars.controller,
+                crate::filter::interchangeable_name_key(&chars.name).to_string(),
+            );
             if let Some(&index) = group_indexes.get(&key) {
                 legends[index].1.push(obj_id);
             } else {
@@ -2631,7 +2718,8 @@ pub fn apply_legend_rule_choice(
         .filter_map(|&id| {
             let chars = view.calculated_characteristics(id)?;
             if chars.controller == controller
-                && chars.name == name
+                && crate::filter::interchangeable_name_key(&chars.name)
+                    == crate::filter::interchangeable_name_key(&name)
                 && chars.supertypes.contains(&Supertype::Legendary)
             {
                 Some(id)
@@ -2749,7 +2837,8 @@ fn legend_zone_plans(
             .validate_numeric_range()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         if candidate.controller != chars.controller
-            || candidate.name != chars.name
+            || crate::filter::interchangeable_name_key(&candidate.name)
+                != crate::filter::interchangeable_name_key(&chars.name)
             || !candidate.supertypes.contains(&Supertype::Legendary)
         {
             continue;

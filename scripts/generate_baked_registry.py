@@ -74,7 +74,7 @@ def rust_raw_literal(value: str) -> str:
 
 
 def load_latest_semantic_scores(db_path: Path) -> Dict[str, float]:
-    """Load card-name -> latest strict similarity-score map from SQLite."""
+    """Load independently validated face scores (never infer a back-face score)."""
     conn = sqlite3.connect(db_path)
     score_map: Dict[str, float] = {}
 
@@ -94,14 +94,14 @@ def load_latest_semantic_scores(db_path: Path) -> Dict[str, float]:
             return
         key = name.casefold()
         prev = score_map.get(key)
-        if prev is None or score > prev:
+        if prev is None or score < prev:
             score_map[key] = score
 
     try:
         for name, score in conn.execute(
             """
-            SELECT card_name, similarity_score
-            FROM latest_card_compilation
+            SELECT face_name, similarity_score
+            FROM latest_card_face_compilation
             WHERE parse_status = 'strict_compiled'
               AND parse_error IS NULL
               AND has_unimplemented = 0
@@ -299,8 +299,8 @@ def collect_unique_blocks(
             front_name, front_parse_block = front_pair
             back_name, back_parse_block = back_pair
 
-            front_score = require_score(front_name, front_name, combined_name)
-            back_score = require_score(back_name, back_name, combined_name)
+            front_score = require_score(front_name, front_name)
+            back_score = require_score(back_name, back_name)
 
             splits.append(
                 (
@@ -346,8 +346,8 @@ def collect_unique_blocks(
             front_name, front_parse_block = front_pair
             back_name, back_parse_block = back_pair
 
-            front_score = require_score(front_name, front_name, combined_name)
-            back_score = require_score(back_name, back_name, combined_name)
+            front_score = require_score(front_name, front_name)
+            back_score = require_score(back_name, back_name)
 
             (prepares if layout == "prepare" else flips).append(
                 (
@@ -1459,6 +1459,92 @@ def frontend_asset_payload_for_dungeon(dungeon: dict) -> dict:
     }
 
 
+CARDS_JSON_PATH = ROOT / "cards.json"
+STICKER_TICKET_ROW = re.compile(r"^((?:\{TK\})+) — (.+)$")
+STICKER_PT_ROW = re.compile(r"^(\d+)/(\d+)$")
+# Ability rows compile in the context of a generic permanent, so "this
+# creature" and "this permanent" both resolve the way they will on the
+# stickered object.
+STICKER_ROW_BLOCK_PREFIX = "Type: Artifact Creature — Sticker\nPower/Toughness: 1/1\n"
+# Name stickers are the words of the sheet's name (CR 123.6); these
+# multi-word stickers stay whole.
+MULTI_WORD_NAME_STICKERS = ("Hot Dog",)
+# Every Unfinity sticker sheet carries one art sticker; the oracle data
+# lists only the ticket rows.
+ART_STICKERS_PER_SHEET = 1
+
+
+def load_sticker_sheet_sources(path: Path = CARDS_JSON_PATH) -> List[dict]:
+    """Unfinity sticker sheets (CR 123.2). They are not cards; cards.json
+    carries each as a "Stickers" entry whose oracle lines are its ticket rows."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    entries = payload.values() if isinstance(payload, dict) else payload
+    sheets = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("type_line") == "Stickers"
+    ]
+    sheets.sort(key=lambda entry: entry["name"].casefold())
+    return sheets
+
+
+def sticker_sheet_name_stickers(name: str) -> List[str]:
+    words: List[str] = []
+    remaining = name.split()
+    while remaining:
+        for phrase in MULTI_WORD_NAME_STICKERS:
+            parts = phrase.split()
+            if remaining[: len(parts)] == parts:
+                words.append(phrase)
+                remaining = remaining[len(parts):]
+                break
+        else:
+            words.append(remaining.pop(0))
+    return words
+
+
+def sticker_sheet_route_name(name: str) -> str:
+    return f"{name} (sticker sheet)"
+
+
+def frontend_asset_payload_for_sticker_sheet(sheet: dict) -> dict:
+    """A sticker sheet route. The artifact baker compiles each ability row's
+    block; the engine files the sheet in its sticker-sheet catalog, from which
+    a player's chosen sheets become accessible (CR 103.2d, 123.2c)."""
+    name = sheet["name"]
+    rows = []
+    for index, line in enumerate(str(sheet.get("oracle_text") or "").splitlines()):
+        match = STICKER_TICKET_ROW.match(line.strip())
+        if not match:
+            continue
+        ticket_cost = len(match.group(1)) // len("{TK}")
+        text = match.group(2).strip()
+        pt = STICKER_PT_ROW.match(text)
+        row = {"index": index, "ticketCost": ticket_cost, "text": text}
+        if pt:
+            row["power"] = int(pt.group(1))
+            row["toughness"] = int(pt.group(2))
+        else:
+            row["block"] = STICKER_ROW_BLOCK_PREFIX + text
+        rows.append(row)
+    return {
+        "version": FRONTEND_CARD_ASSET_VERSION,
+        "canonicalName": name,
+        "aliases": [],
+        "scryfall": {"oracle_id": sheet.get("oracle_id")},
+        "group": {
+            "kind": "sticker_sheet",
+            "name": name,
+            "nameStickers": sticker_sheet_name_stickers(name),
+            "artStickers": ART_STICKERS_PER_SHEET,
+            "rows": rows,
+        },
+    }
+
+
 def threshold_counts_for_scores(scores: Iterable[float]) -> List[int]:
     threshold_counts = [0] * 100
     for raw_score in scores:
@@ -1638,6 +1724,14 @@ def write_frontend_card_assets(
             {"name": dungeon["name"], "route": frontend_card_route_key(dungeon["name"])}
         )
 
+    index_sticker_sheets: List[dict] = []
+    for sheet in load_sticker_sheet_sources():
+        route_name = sticker_sheet_route_name(sheet["name"])
+        add_frontend_route(routes, route_name, frontend_asset_payload_for_sticker_sheet(sheet))
+        index_sticker_sheets.append(
+            {"name": sheet["name"], "route": frontend_card_route_key(route_name)}
+        )
+
     cards_dir.mkdir(parents=True, exist_ok=True)
 
     retained_artifact_routes = 0
@@ -1686,6 +1780,7 @@ def write_frontend_card_assets(
         "thresholdCounts": threshold_counts_for_scores(scored_scores),
         "cards": index_cards,
         "dungeons": index_dungeons,
+        "stickerSheets": index_sticker_sheets,
     }
     (cards_dir / "index.json").write_text(
         json.dumps(index_payload, ensure_ascii=False, separators=(",", ":")),

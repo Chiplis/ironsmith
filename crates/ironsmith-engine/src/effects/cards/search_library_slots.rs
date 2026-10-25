@@ -261,6 +261,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                             self.destination,
                             chooser_id,
                             search_override.is_some(),
+                            self.tapped,
                         )?;
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(EffectOutcome::count(0));

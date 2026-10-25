@@ -17,8 +17,7 @@ impl TriggerMatcher for ThisBlocksTrigger {
             return false;
         };
         // CR 509.3a: once per combat, however many creatures it blocks.
-        e.blocker == ctx.source_id
-            && super::blocks::is_first_blocked_attacker_for_blocker(ctx.game, e.blocker, e.attacker)
+        e.blocker == ctx.source_id && e.is_blocker_block_transition(ctx.game)
     }
 
     fn display(&self) -> String {

@@ -258,6 +258,14 @@ fn materialize_static_abilities(
             StaticAbilityAst::KeywordAction(KeywordAction::Fuse) => {
                 builder = builder.has_fuse();
             }
+            // CR 702.49d: commander ninjutsu is an activated ability that
+            // functions from the hand and the command zone, not a static
+            // grant that only functions on the battlefield.
+            StaticAbilityAst::KeywordAction(KeywordAction::CommanderNinjutsu(cost))
+                if !case_solved =>
+            {
+                builder = builder.commander_ninjutsu(cost);
+            }
             ability => {
                 let ability = lower_static_ability_ast(ability)?;
                 let mut ability =

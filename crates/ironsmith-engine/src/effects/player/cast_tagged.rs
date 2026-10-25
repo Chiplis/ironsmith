@@ -17,6 +17,15 @@ use super::runtime_helpers::with_spell_cast_event_with_outputs;
 /// The source reference denotes the resolving ability's exact incarnation.
 /// Keep its copiable native definition when it has already changed zones;
 /// never follow a physical card's stable id to a different incarnation.
+fn effect_discards_a_card(effect: &crate::effect::Effect) -> bool {
+    if effect.downcast_ref::<crate::effects::DiscardEffect>().is_some() {
+        return true;
+    }
+    let mut found = false;
+    effect.0.visit_child_effects(&mut |child| found |= effect_discards_a_card(child));
+    found
+}
+
 fn source_card_copy_snapshot(game: &GameState, ctx: &ExecutionContext) -> Option<crate::snapshot::ObjectSnapshot> {
     let mut snapshot = game.object(ctx.source)
         .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
@@ -215,6 +224,37 @@ impl EffectExecutor for CastTaggedEffect {
                 }
 
                 let caster = resolve_player_filter(game, &self.player, ctx)?;
+
+                // CR 118.8c: an effect requiring a player to cast a spell
+                // doesn't require paying an additional cost that involves a
+                // card in a hidden zone; the player may decline such a cast.
+                if !is_land
+                    && let Some(obj) = retained_copy.as_ref().or_else(|| game.object(object_id))
+                    && let Some(costs) = obj.additional_cost.as_all()
+                    && costs.iter().any(|cost| {
+                        let text = cost.display().to_ascii_lowercase();
+                        cost.is_discard()
+                            || cost.is_exile_from_hand()
+                            || cost.effect_ref().is_some_and(effect_discards_a_card)
+                            || text.contains("discard")
+                            || text.contains("from your hand")
+                            || text.starts_with("reveal")
+                    })
+                {
+                    let name = obj.name.to_string();
+                    let choice = crate::decisions::context::BooleanContext::new(
+                        caster,
+                        Some(object_id),
+                        format!("cast {name}, paying its additional cost"),
+                    );
+                    let accepted = ctx.decision_maker.decide_boolean(game, &choice);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    if !accepted {
+                        return Ok(EffectOutcome::declined());
+                    }
+                }
 
                 if self.alternative_cost.is_some()
                     && (self.alternative_payment.is_some() || self.without_paying_mana_cost)

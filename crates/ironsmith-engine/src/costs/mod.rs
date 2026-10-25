@@ -520,7 +520,12 @@ impl Cost {
 
     /// Create a return another permanent to hand cost.
     pub fn return_to_hand(filter: ObjectFilter) -> Self {
-        Self::validated_effect(crate::effect::Effect::return_to_hand(filter))
+        // CR 118.3/115.10: a cost chooses the objects it returns; it doesn't target.
+        Self::validated_effect(crate::effect::Effect::new(
+            crate::effects::ReturnToHandEffect::with_spec(crate::target::ChooseSpec::Object(
+                filter,
+            )),
+        ))
     }
 
     /// Create a mill cost.

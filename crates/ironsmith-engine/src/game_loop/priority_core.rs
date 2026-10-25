@@ -107,47 +107,54 @@ pub fn advance_priority_with_dm(
     }
     perf.replacement_choice_ms = replacement_started_at.elapsed_ms();
 
-    // Check and apply state-based actions
-    let sba_started_at = PerfTimer::start();
-    if let Err(error) = check_and_apply_sbas_with(game, trigger_queue, decision_maker) {
-        if matches!(error, GameLoopError::MandatoryLoopDraw) {
-            perf.state_based_actions_ms = sba_started_at.elapsed_ms();
-            perf.total_ms = total_started_at.elapsed_ms();
-            perf.result_kind = "mandatory_loop_draw".to_string();
-            store_priority_advance_perf(perf);
-            return finish_mandatory_loop_draw(game, decision_maker);
+    // CR 104.1/104.2a: once all but one player (or team) have left, the game
+    // is already over; no state-based action or trigger can change that.
+    let decided_before_sbas = game.players.len() > 1
+        && (game.players.iter().filter(|p| p.is_in_game()).count() == 1
+            || game.sole_surviving_team_winners().is_some());
+    if !decided_before_sbas {
+        // Check and apply state-based actions
+        let sba_started_at = PerfTimer::start();
+        if let Err(error) = check_and_apply_sbas_with(game, trigger_queue, decision_maker) {
+            if matches!(error, GameLoopError::MandatoryLoopDraw) {
+                perf.state_based_actions_ms = sba_started_at.elapsed_ms();
+                perf.total_ms = total_started_at.elapsed_ms();
+                perf.result_kind = "mandatory_loop_draw".to_string();
+                store_priority_advance_perf(perf);
+                return finish_mandatory_loop_draw(game, decision_maker);
+            }
+            return Err(error);
         }
-        return Err(error);
-    }
-    perf.state_based_actions_ms = sba_started_at.elapsed_ms();
+        perf.state_based_actions_ms = sba_started_at.elapsed_ms();
 
-    // Put triggered abilities on the stack with target selection
-    let triggers_started_at = PerfTimer::start();
-    if let Err(error) = put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker) {
-        if matches!(error, GameLoopError::MandatoryLoopDraw) {
-            perf.put_triggers_ms = triggers_started_at.elapsed_ms();
-            perf.total_ms = total_started_at.elapsed_ms();
-            perf.result_kind = "mandatory_loop_draw".to_string();
-            store_priority_advance_perf(perf);
-            return finish_mandatory_loop_draw(game, decision_maker);
+        // Put triggered abilities on the stack with target selection
+        let triggers_started_at = PerfTimer::start();
+        if let Err(error) = put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker) {
+            if matches!(error, GameLoopError::MandatoryLoopDraw) {
+                perf.put_triggers_ms = triggers_started_at.elapsed_ms();
+                perf.total_ms = total_started_at.elapsed_ms();
+                perf.result_kind = "mandatory_loop_draw".to_string();
+                store_priority_advance_perf(perf);
+                return finish_mandatory_loop_draw(game, decision_maker);
+            }
+            return Err(error);
         }
-        return Err(error);
-    }
-    // CR 610.3c: an exile-until duration that ended where no player could be
-    // asked (a cost payment, the monarch changing, a default-chooser drain)
-    // returns its cards now, before anyone receives priority, with the
-    // players answering the entry choices. The returns can cause further
-    // state-based actions and triggers.
-    while game.has_pending_duration_end_returns() && !decision_maker.awaiting_choice() {
-        game.process_pending_duration_end_returns(decision_maker)?;
-        if decision_maker.awaiting_choice() {
-            break;
+        // CR 610.3c: an exile-until duration that ended where no player could be
+        // asked (a cost payment, the monarch changing, a default-chooser drain)
+        // returns its cards now, before anyone receives priority, with the
+        // players answering the entry choices. The returns can cause further
+        // state-based actions and triggers.
+        while game.has_pending_duration_end_returns() && !decision_maker.awaiting_choice() {
+            game.process_pending_duration_end_returns(decision_maker)?;
+            if decision_maker.awaiting_choice() {
+                break;
+            }
+            drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker)?;
+            check_and_apply_sbas_with(game, trigger_queue, decision_maker)?;
+            put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker)?;
         }
-        drain_pending_trigger_events_with_dm(game, trigger_queue, decision_maker)?;
-        check_and_apply_sbas_with(game, trigger_queue, decision_maker)?;
-        put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker)?;
+        perf.put_triggers_ms = triggers_started_at.elapsed_ms();
     }
-    perf.put_triggers_ms = triggers_started_at.elapsed_ms();
 
     // Check if game is over
     let game_over_started_at = PerfTimer::start();

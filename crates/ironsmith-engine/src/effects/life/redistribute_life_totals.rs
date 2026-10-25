@@ -10,6 +10,26 @@ use crate::ids::PlayerId;
 
 pub use ironsmith_core::RedistributeLifeTotalsEffect;
 
+fn redistribution_target_legal(game: &GameState, player: PlayerId, life: i32) -> bool {
+    let current = game.player(player).map(|state| state.life).unwrap_or(0);
+    life == current
+        || (life > current && game.can_gain_life(player))
+        || (life < current && game.can_lose_life(player))
+}
+
+fn redistribution_feasible(game: &GameState, players: &[PlayerId], pool: &[i32]) -> bool {
+    let Some((first, rest_players)) = players.split_first() else {
+        return true;
+    };
+    pool.iter().enumerate().any(|(slot, life)| {
+        redistribution_target_legal(game, *first, *life) && {
+            let mut rest = pool.to_vec();
+            rest.remove(slot);
+            redistribution_feasible(game, rest_players, &rest)
+        }
+    })
+}
+
 impl EffectExecutor for RedistributeLifeTotalsEffect {
     fn execute(
         &self,
@@ -64,9 +84,19 @@ impl EffectExecutor for RedistributeLifeTotalsEffect {
                     .player(*player)
                     .map(|state| state.name.clone())
                     .unwrap_or_default();
+                // CR 119.7/119.8: offer only totals that leave a legal
+                // assignment for every remaining chosen player.
                 let menu = pool
                     .iter()
                     .enumerate()
+                    .filter(|(slot, life)| {
+                        if !redistribution_target_legal(game, *player, **life) {
+                            return false;
+                        }
+                        let mut rest = pool.clone();
+                        rest.remove(*slot);
+                        redistribution_feasible(game, &chosen[index + 1..], &rest)
+                    })
                     .map(|(slot, life)| (slot, format!("{life} life")))
                     .collect::<Vec<_>>();
                 let Some(slot) = select_typed_option(

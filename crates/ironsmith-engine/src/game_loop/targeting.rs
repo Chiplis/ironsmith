@@ -631,7 +631,7 @@ pub(super) fn is_crime_target(game: &GameState, committer: PlayerId, target: &Ta
     }
 }
 
-pub(super) fn targets_commit_crime(
+pub(crate) fn targets_commit_crime(
     game: &GameState,
     committer: PlayerId,
     targets: &[Target],
@@ -918,6 +918,31 @@ pub(super) fn queue_prepared_activation_notification_with_outputs(
     activation: crate::events::AbilityActivatedEvent,
 ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, GameLoopError> {
     let is_mana = activation.is_mana_ability;
+    // CR 602.2a: activating an ability of a card in a hidden zone reveals
+    // the card that has it.
+    let source_zone = activation
+        .snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.zone)
+        .or_else(|| game.object(activation.source).map(|object| object.zone));
+    if matches!(source_zone, Some(Zone::Hand | Zone::Library)) {
+        let reveal = crate::events::CardRevealedEvent::new(
+            activation.activator,
+            activation.source,
+            source_zone.expect("matched hidden zone"),
+            Some(activation.source),
+            activation.snapshot.clone(),
+        );
+        let provenance = activation.stack_entry_provenance.unwrap_or_default();
+        let event_provenance = game
+            .alloc_child_event_provenance(provenance, crate::events::EventKind::CardRevealed);
+        queue_triggers_from_event(
+            game,
+            trigger_queue,
+            TriggerEvent::new_with_provenance(reveal, event_provenance),
+            true,
+        );
+    }
     let mut notification = game.complete_activation_notification(activation);
     for event in notification.outcome.events.clone() {
         if let Some(capture) =
@@ -3797,7 +3822,9 @@ fn announcement_effects_from_conditionals(
     if target_announcement_condition(effect).is_some() {
         return vec![effect.clone()];
     }
-    let branches = if effect_tree_contains_modes(effect) {
+    let branches = if effect_tree_contains_modes(effect)
+        || condition_is_fixed_by_cast_announcements(&conditional.condition)
+    {
         // Conditional modal spells announce the modes in their applicable
         // branch (for example a commander-dependent mode count).
         if crate::condition_eval::evaluate_condition_cast_time(
@@ -3821,6 +3848,27 @@ fn announcement_effects_from_conditionals(
         .into_iter()
         .flat_map(|child| announcement_effects_from_conditionals(game, child, caster, source))
         .collect()
+}
+
+/// CR 601.2b-c / 702.33g / 702.166d / 702.194c: whether a spell was kicked,
+/// bargained, cast using teamwork or an alternative cost is announced before
+/// targets are chosen, so a branch gated only on such a receipt contributes
+/// targets only when it applies.
+fn condition_is_fixed_by_cast_announcements(condition: &crate::effect::Condition) -> bool {
+    use crate::effect::Condition;
+    match condition {
+        Condition::ThisSpellWasKicked
+        | Condition::ThisSpellPaidLabel(_)
+        | Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::SourceWasKicked { .. }) => {
+            true
+        }
+        Condition::Not(inner) => condition_is_fixed_by_cast_announcements(inner),
+        Condition::And(left, right) | Condition::Or(left, right) => {
+            condition_is_fixed_by_cast_announcements(left)
+                && condition_is_fixed_by_cast_announcements(right)
+        }
+        _ => false,
+    }
 }
 
 fn effects_have_cast_time_target_selection(effects: &[Effect]) -> bool {

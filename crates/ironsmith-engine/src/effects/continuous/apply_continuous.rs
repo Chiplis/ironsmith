@@ -1853,6 +1853,14 @@ impl EffectExecutor for ApplyContinuousEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // CR 702.26e: a phased-out permanent isn't included in the affected
+        // set of a resolving effect, even when that effect names it.
+        if let EffectTarget::Specific(id) = &self.target
+            && self.source_type.is_none()
+            && game.is_phased_out(*id)
+        {
+            return Ok(EffectOutcome::impossible());
+        }
         match acquire_continuous_action(self, game, ctx)? {
             AcquiredContinuousAction::Terminal(outcome) => Ok(outcome),
             AcquiredContinuousAction::Register(mut inputs) => {

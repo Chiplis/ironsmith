@@ -66,6 +66,7 @@ mod ui_snapshot;
 #[cfg(target_arch = "wasm32")]
 use ui_snapshot::SnapshotJsEncodingCache;
 use ui_snapshot::{
+    PlayerStickerSheetsView,
     GameSnapshot, SnapshotObjectViewCache, battlefield_transition_snapshots,
     build_object_details_snapshot,
 };
@@ -3967,6 +3968,22 @@ struct CounterAllocation {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum UiCommand {
     CancelPriorityYield { player: u8 },
+    /// CR 732.2a: the priority holder proposes repeating recorded steps.
+    ProposeLoopShortcut {
+        steps: serde_json::Value,
+        iterations: u32,
+    },
+    /// CR 732.2b: the next player accepts (same count) or shortens.
+    RespondLoopShortcut {
+        player: u8,
+        iterations: u32,
+        #[serde(default)]
+        interrupt_at: Option<u32>,
+    },
+    /// The proposer hands the requested iteration back to manual priority.
+    StepLoopShortcut { player: u8 },
+    /// The proposer ends the shortcut.
+    CancelLoopShortcut { player: u8 },
     PriorityYield {
         mode: wasm_game_impl::PassMode,
         stops: Vec<String>,
@@ -4288,6 +4305,10 @@ enum ReplayOutcome {
 fn ui_command_kind(command: &UiCommand) -> &'static str {
     match command {
         UiCommand::CancelPriorityYield { .. } => "cancel_priority_yield",
+        UiCommand::ProposeLoopShortcut { .. } => "propose_loop_shortcut",
+        UiCommand::RespondLoopShortcut { .. } => "respond_loop_shortcut",
+        UiCommand::StepLoopShortcut { .. } => "step_loop_shortcut",
+        UiCommand::CancelLoopShortcut { .. } => "cancel_loop_shortcut",
         UiCommand::PriorityYield { .. } => "priority_yield",
         UiCommand::PriorityAction { .. } => "priority_action",
         UiCommand::SelectTargets { .. } => "select_targets",
@@ -4828,6 +4849,14 @@ struct GrandMeleeHostLane {
 #[wasm_bindgen]
 pub struct WasmGame {
     pass_intents: std::collections::BTreeMap<u8, wasm_game_impl::PassIntent>,
+    /// Session catalog of registered sticker sheets, keyed by lowercase name.
+    sticker_sheet_catalog: HashMap<String, wasm_game_impl::StickerSheetSpec>,
+    /// Sheets each player brought to the match being set up (CR 123.2).
+    pending_sticker_sheet_pools: Option<Vec<Vec<String>>>,
+    /// Sheets each player chose; they stay revealed all game (CR 123.2c).
+    revealed_sticker_sheets: Vec<(PlayerId, Vec<String>)>,
+    /// The CR 732.2 loop shortcut being agreed or replayed.
+    loop_shortcut: Option<wasm_game_impl::LoopShortcut>,
     /// Internal dispatch output policy; never persisted in a gameplay savepoint.
     previewing_crypto_requirements: bool,
     runtime_identity_origin_available: bool,
@@ -5019,6 +5048,34 @@ enum ExternalCardSourceGroup {
     /// compiled definitions go to the engine's dungeon catalog rather than
     /// the card registry players build decks from.
     Dungeon { name: String, block: String },
+    /// An Unfinity sticker sheet (CR 123.2). Sheets are not cards: their
+    /// stickers go to the session's sticker-sheet catalog, from which each
+    /// player's chosen sheets are made accessible at the start of a game.
+    StickerSheet {
+        name: String,
+        #[serde(default)]
+        name_stickers: Vec<String>,
+        #[serde(default)]
+        art_stickers: u32,
+        #[serde(default)]
+        rows: Vec<StickerRowSource>,
+    },
+}
+
+/// One ticket row of a sticker sheet. Power/toughness rows carry their values;
+/// ability rows carry a compiler block whose abilities the sticker grants.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StickerRowSource {
+    index: usize,
+    ticket_cost: u32,
+    text: String,
+    #[serde(default)]
+    power: Option<i32>,
+    #[serde(default)]
+    toughness: Option<i32>,
+    #[serde(default)]
+    block: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -5092,12 +5149,14 @@ enum CustomCardLayoutInput {
     TransformLike,
     Split,
     Prepare,
+    Meld,
 }
 
 impl CustomCardLayoutInput {
     fn face_count(self) -> usize {
         match self {
             CustomCardLayoutInput::Single => 1,
+            CustomCardLayoutInput::Meld => 3,
             CustomCardLayoutInput::TransformLike
             | CustomCardLayoutInput::Split
             | CustomCardLayoutInput::Prepare => 2,
@@ -5106,7 +5165,9 @@ impl CustomCardLayoutInput {
 
     fn linked_face_layout(self) -> ironsmith::card::LinkedFaceLayout {
         match self {
-            CustomCardLayoutInput::Single => ironsmith::card::LinkedFaceLayout::None,
+            CustomCardLayoutInput::Single | CustomCardLayoutInput::Meld => {
+                ironsmith::card::LinkedFaceLayout::None
+            }
             CustomCardLayoutInput::TransformLike => {
                 ironsmith::card::LinkedFaceLayout::TransformLike
             }
@@ -5275,6 +5336,16 @@ struct MatchSetupInput {
 struct CompanionSelectionsInput {
     #[serde(default)]
     companions: Option<Vec<Option<String>>>,
+}
+
+/// Sticker sheets each player brings (CR 103.2d / 123.2), decoded separately
+/// from `MatchSetupInput` like companions. One list per player, in player
+/// order; an empty or missing list means that player plays without stickers.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StickerSheetSelectionsInput {
+    #[serde(default)]
+    sticker_sheets: Option<Vec<Vec<String>>>,
 }
 
 impl MatchSetupInput {
@@ -5756,6 +5827,11 @@ enum PregameStage {
         current_index: usize,
         pending_hand_exile: Option<PendingPregameHandExile>,
     },
+    /// CR 103.2d: players with more sticker sheets than they may use choose,
+    /// in turn order, which sheets are accessible this game.
+    StickerSheets {
+        queue: Vec<(PlayerId, Vec<String>)>,
+    },
 }
 
 impl PregameState {
@@ -5796,16 +5872,13 @@ impl PregameState {
 
     fn free_mulligan_count(&self) -> u32 {
         // CR 103.5c / 800.6 / 903.12g: the first mulligan is free in a
-        // multiplayer game and in any Brawl game. A two-player Planechase or
-        // Conspiracy Draft game is an ordinary two-player game. Two-player
-        // Commander keeps the format's free mulligan (a product choice).
+        // multiplayer game and in any Brawl game. A two-player Planechase,
+        // Conspiracy Draft or Commander game is an ordinary two-player game.
         u32::from(
             self.player_count > 2
                 || matches!(
                     self.format,
-                    MatchFormatInput::Commander
-                        | MatchFormatInput::PauperCommander
-                        | MatchFormatInput::GrandMelee
+                    MatchFormatInput::GrandMelee
                         | MatchFormatInput::Archenemy
                         | MatchFormatInput::SupervillainRumble
                         | MatchFormatInput::ArchenemyCommander
@@ -5864,6 +5937,10 @@ mod native_tests {
         );
         assert_eq!(
             PregameState::new(&two_players, 7, MatchFormatInput::Commander).free_mulligan_count(),
+            0
+        );
+        assert_eq!(
+            PregameState::new(&three_players, 7, MatchFormatInput::Commander).free_mulligan_count(),
             1
         );
         assert_eq!(
@@ -5872,8 +5949,7 @@ mod native_tests {
         );
     }
 
-    // CR audit (reports/cr-complete-audit, rule 103.5): intentionally fails
-    // while two-player Commander keeps its free mulligan as a product choice.
+    // CR audit (reports/cr-complete-audit, rule 103.5).
     #[test]
     fn cr_103_5c_two_player_commander_first_mulligan_is_not_free() {
         let two_players = [PlayerId::from_index(0), PlayerId::from_index(1)];
@@ -7490,3 +7566,7 @@ mod combined_object_choice_view_tests {
         assert!(selection_alternatives.is_empty(), "eligibility must not reveal hidden card types to opponents");
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "tests/highway_robbery.rs"]
+mod highway_robbery_tests;

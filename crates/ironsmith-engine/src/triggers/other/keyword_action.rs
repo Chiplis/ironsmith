@@ -250,7 +250,7 @@ impl TriggerMatcher for KeywordActionTrigger {
 
         match &self.player {
             PlayerFilter::You => e.player == ctx.controller,
-            PlayerFilter::Opponent => e.player != ctx.controller,
+            PlayerFilter::Opponent => ctx.game.are_opponents(ctx.controller, e.player),
             PlayerFilter::Any => true,
             PlayerFilter::Specific(id) => e.player == *id,
             _ => true,

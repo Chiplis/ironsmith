@@ -305,7 +305,21 @@ impl WasmGame {
         command_decode_ms: f64,
     ) -> Result<JsValue, JsValue> {
         if let UiCommand::PriorityYield { mode, stops } = command {
+            if self.loop_shortcut.is_some() {
+                return Err(payment_disclosure_error("resolve one step at a time while a loop shortcut is in progress"));
+            }
             return self.dispatch_priority_yield(mode, stops);
+        }
+        // Agreement commands preserve the game decision. Their handler clears
+        // existing passing intentions when shortcut execution takes ownership.
+        if matches!(
+            command,
+            UiCommand::ProposeLoopShortcut { .. }
+                | UiCommand::RespondLoopShortcut { .. }
+                | UiCommand::StepLoopShortcut { .. }
+                | UiCommand::CancelLoopShortcut { .. }
+        ) {
+            return self.dispatch_loop_shortcut_command(command);
         }
         if let UiCommand::CancelPriorityYield { player } = command {
             let before = RuntimeSavepoint::capture(self);
@@ -316,6 +330,10 @@ impl WasmGame {
             let result = self.snapshot();
             if result.is_err() { before.restore(self); }
             return result;
+        }
+        if self.loop_shortcut.as_ref().is_some_and(|shortcut| !shortcut.awaiting.is_empty())
+        {
+            return Err(payment_disclosure_error("waiting for all players to answer the loop proposal"));
         }
         if !self.pass_intents.is_empty() && matches!(command, UiCommand::PriorityAction {
             action_ref: Some(PriorityActionRef::PassPriority), ..
@@ -328,8 +346,23 @@ impl WasmGame {
         // A manual action ends previously granted automation. Its next priority
         // opportunity must be authorized against the resulting state again.
         let intentions = std::mem::take(&mut self.pass_intents);
+        // A different action by an opponent ends the agreed shortcut. Keep
+        // the agreement if that action is rejected, like every other savepoint.
+        let opponent_action = self.loop_shortcut.as_ref().is_some_and(|shortcut| {
+            shortcut.awaiting.is_empty()
+                && self.pending_decision.as_ref().is_some_and(|decision| decision.player().0 != shortcut.proposer)
+                && !matches!(&command, UiCommand::PriorityAction { action_ref: Some(PriorityActionRef::PassPriority), .. })
+                && !matches!((&command, self.pending_decision.as_ref()),
+                    (UiCommand::PriorityAction { action_ref: None, action_index: Some(index) }, Some(DecisionContext::Priority(priority)))
+                    if matches!(priority.actions.get(*index), Some(LegalAction::PassPriority)))
+        });
+        let interrupted = if opponent_action { self.loop_shortcut.take() } else { None };
         let result = self.dispatch_typed_command_inner(command, command_decode_ms);
-        if result.is_err() { self.pass_intents = intentions; self.cached_snapshot = None; }
+        if result.is_err() {
+            self.pass_intents = intentions;
+            if interrupted.is_some() { self.loop_shortcut = interrupted; }
+            self.cached_snapshot = None;
+        }
         result
     }
 

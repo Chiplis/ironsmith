@@ -361,12 +361,27 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
                 }
             }
 
+            // CR 404.3: cards a replacement put into a graveyard instead
+            // (umbra armor destroying its Aura) arrive in the same event and
+            // join their owner's ordering choice.
+            let mut graveyard_arrivals = destroyed_objects.clone();
+            for player in &staged_game.players {
+                let before = decision_view
+                    .player(player.id)
+                    .map(|player| player.graveyard.iter().copied().collect::<std::collections::HashSet<_>>())
+                    .unwrap_or_default();
+                for id in &player.graveyard {
+                    if !before.contains(id) && !graveyard_arrivals.contains(id) {
+                        graveyard_arrivals.push(*id);
+                    }
+                }
+            }
             if !super::order_simultaneous_graveyard_batch(
                 &decision_view,
                 &mut staged_game,
                 &mut *ctx.decision_maker,
                 Some(ctx.source),
-                &destroyed_objects,
+                &graveyard_arrivals,
             ) {
                 if ctx.decision_maker.awaiting_choice() {
                     // This prompt is asked against the immutable pre-event view.

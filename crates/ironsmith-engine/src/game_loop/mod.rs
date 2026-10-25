@@ -95,6 +95,7 @@ pub(crate) use targeting::{
     stack_entry_assignment_legal_targets, try_queue_triggers_from_reported_events,
 };
 mod targeting;
+pub(crate) use targeting::targets_commit_crime;
 #[cfg(all(test, feature = "engine-integration-tests"))]
 mod tests;
 mod turn_execution;

@@ -1838,9 +1838,17 @@ fn run_choose_objects_phase_with_outputs(
                     let relation_cost = ctx.cause.cause_type
                         == crate::events::cause::CauseType::Cost
                         && super::selection_relations::has_relations(&effect.filter);
-                    if relation_cost {
+                    // CR 614.13a/b: an entry replacement can't choose an
+                    // entering object (its own or a simultaneous entrant) or
+                    // a card another entry replacement already chose.
+                    if relation_cost || !ctx.replacement.entry_reserved_objects.is_empty() {
                         candidates
                             .retain(|id| !ctx.replacement.entry_reserved_objects.contains(id));
+                    }
+                    if !ctx.replacement.entry_reserved_objects.is_empty()
+                        && let Some(spent) = game.effect_store.entry_spent_objects.as_ref()
+                    {
+                        candidates.retain(|id| !spent.contains(id));
                     }
 
                     if !game.source_snapshot_is_exempt_from_range(
@@ -2356,6 +2364,25 @@ fn run_choose_objects_phase_with_outputs(
                             return Err(ExecutionError::Impossible(format!(
                                 "chosen objects have aggregate value {chosen_total}, below required minimum {minimum}"
                             )));
+                        }
+                    }
+                    // CR 614.13b: record what this entry replacement chose.
+                    // Graveyard/exile choices are the zone-change resources;
+                    // a reveal or battlefield choice isn't spent.
+                    if !ctx.replacement.entry_reserved_objects.is_empty()
+                        && game.effect_store.entry_spent_objects.is_some()
+                    {
+                        let spent_now: Vec<ObjectId> = chosen
+                            .iter()
+                            .copied()
+                            .filter(|id| {
+                                game.object(*id).is_some_and(|object| {
+                                    matches!(object.zone, Zone::Graveyard | Zone::Exile)
+                                })
+                            })
+                            .collect();
+                        if let Some(spent) = game.effect_store.entry_spent_objects.as_mut() {
+                            spent.extend(spent_now);
                         }
                     }
                     // Claims enter the shared ledger, so their description must be the

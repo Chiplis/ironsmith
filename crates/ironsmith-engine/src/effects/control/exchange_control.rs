@@ -94,6 +94,17 @@ impl EffectExecutor for ExchangeControlEffect {
             (perm1_id, perm2_id)
         };
 
+        // CR 701.12a/b: both permanents must still be on the battlefield (and
+        // phased in, CR 702.26b) or no part of the exchange happens.
+        let present = |id: crate::ids::ObjectId| {
+            game.object(id)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                && !game.is_phased_out(id)
+        };
+        if !present(perm1_id) || !present(perm2_id) {
+            return Ok(EffectOutcome::target_invalid());
+        }
+
         if let Some(constraint) = self.shared_type {
             let Some(current_types1) = game.current_card_types(perm1_id) else {
                 return Ok(EffectOutcome::target_invalid());

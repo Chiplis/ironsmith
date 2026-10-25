@@ -114,6 +114,34 @@ pub(crate) fn is_intrinsic_siege_defeat_trigger(entry: &TriggeredAbilityEntry) -
         .is_some_and(|trigger| trigger.id == SIEGE_DEFEAT_TRIGGER_ID)
 }
 
+/// CR 107.3g/107.3m: a permanent's X is 0 except for the enters-the-battlefield
+/// abilities of the object a cast X spell became.
+pub(crate) fn source_entry_x(
+    trigger_event: &TriggerEvent,
+    source: ObjectId,
+    zone: crate::zone::Zone,
+    x: Option<u32>,
+) -> Option<u32> {
+    if zone != crate::zone::Zone::Battlefield {
+        return x;
+    }
+    let entering = trigger_event
+        .downcast::<crate::events::zones::EnterBattlefieldEvent>()
+        .is_some_and(|event| event.object == source)
+        || trigger_event
+            .downcast::<crate::events::zones::ZoneChangeEvent>()
+            .is_some_and(|event| {
+                event.to == crate::zone::Zone::Battlefield
+                    && (event.result_objects.contains(&source) || event.objects.contains(&source))
+            });
+    // CR 702.37f: X chosen while turning a morph face up is available to the
+    // permanent's turned-face-up abilities.
+    let turned_face_up = trigger_event
+        .downcast::<crate::events::other::TurnedFaceUpEvent>()
+        .is_some_and(|event| event.permanent == source);
+    if entering || turned_face_up { x } else { None }
+}
+
 fn trigger_entry_x_value(trigger_event: &TriggerEvent, fallback: Option<u32>) -> Option<u32> {
     trigger_event
         .downcast::<crate::events::other::BecameMonstrousEvent>()
@@ -1672,7 +1700,7 @@ pub(crate) fn check_triggers_batch(
     batches
 }
 
-fn triggered_ability_refers_to_trigger_player(ability: &TriggeredAbility) -> bool {
+pub(crate) fn triggered_ability_refers_to_trigger_player(ability: &TriggeredAbility) -> bool {
     fn contains_player_reference(value: &impl std::fmt::Debug) -> bool {
         let debug = format!("{value:?}");
         debug.contains("IteratedPlayer")
@@ -2636,7 +2664,7 @@ fn check_battlefield_trigger_subscriber(
                     .and_then(|chars| chars.abilities.origin(subscriber.ability_index))),
             source: obj_id,
             controller,
-            x_value: trigger_entry_x_value(trigger_event, obj.x_value),
+            x_value: trigger_entry_x_value(trigger_event, source_entry_x(trigger_event, obj.id, obj.zone, obj.x_value)),
             event_value_amount,
             ability: TriggeredAbility {
                 trigger: trigger_ability.trigger.clone(),
@@ -2824,8 +2852,14 @@ fn presentation_labeled_snapshot_trigger_is_active(
         return true;
     };
     match label {
-        PresentationLabel::CaseSolved => return game.is_case_solved(source.object_id),
-        PresentationLabel::CaseToSolve => return !game.is_case_solved(source.object_id),
+        // CR 603.10a: leaves-the-battlefield abilities look back in time, so
+        // the solved designation is the one the source had before it left.
+        PresentationLabel::CaseSolved => {
+            return source.case_solved || game.is_case_solved(source.object_id);
+        }
+        PresentationLabel::CaseToSolve => {
+            return !(source.case_solved || game.is_case_solved(source.object_id));
+        }
         _ => {}
     }
     let Some(level) = (match label {
@@ -2990,7 +3024,7 @@ fn collect_lookback_source_triggers(
                     source: source_snapshot.object_id,
                     controller: source_snapshot.controller,
                     x_value: dynamic_soulshift_x
-                        .or_else(|| trigger_entry_x_value(trigger_event, source_snapshot.x_value)),
+                        .or_else(|| trigger_entry_x_value(trigger_event, source_entry_x(trigger_event, source_snapshot.object_id, source_snapshot.zone, source_snapshot.x_value))),
                     event_value_amount,
                     ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
                     triggering_event: trigger_event.clone(),
@@ -3179,7 +3213,7 @@ fn check_triggers_with_view_and_registry(
                     source: snapshot.object_id,
                     controller: snapshot.controller,
                     x_value: dynamic_soulshift_x
-                        .or_else(|| trigger_entry_x_value(trigger_event, snapshot.x_value)),
+                        .or_else(|| trigger_entry_x_value(trigger_event, source_entry_x(trigger_event, snapshot.object_id, snapshot.zone, snapshot.x_value))),
                     event_value_amount,
                     ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
                     triggering_event: trigger_event.clone(),
@@ -3261,7 +3295,7 @@ fn check_triggers_with_view_and_registry(
                         snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
                     source: snapshot.object_id,
                     controller: snapshot.controller,
-                    x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
+                    x_value: trigger_entry_x_value(trigger_event, source_entry_x(trigger_event, snapshot.object_id, snapshot.zone, snapshot.x_value)),
                     event_value_amount,
                     ability: TriggeredAbility {
                         trigger: trigger_ability.trigger.clone(),
@@ -3703,7 +3737,7 @@ fn collect_state_triggers_for_object(
         // has resolved, been countered, or otherwise left the stack; then, if
         // the condition still holds, it triggers again. So suppress it only
         // while an instance is waiting to be stacked or is on the stack.
-        if state_trigger_instance_pending(game, pending, key) {
+        if state_trigger_instance_pending(game, pending, key, obj.id) {
             continue;
         }
 
@@ -3719,7 +3753,7 @@ fn collect_state_triggers_for_object(
                     .and_then(|chars| chars.abilities.origin(ability_index))),
             source: obj.id,
             controller,
-            x_value: trigger_entry_x_value(&trigger_event, obj.x_value),
+            x_value: trigger_entry_x_value(&trigger_event, source_entry_x(&trigger_event, obj.id, obj.zone, obj.x_value)),
             event_value_amount: None,
             ability: TriggeredAbility {
                 trigger: trigger_ability.trigger.clone(),
@@ -3744,17 +3778,50 @@ fn state_trigger_instance_pending(
     game: &GameState,
     pending: &[TriggeredAbilityEntry],
     key: ActiveStateTriggerKey,
+    source: ObjectId,
 ) -> bool {
-    let matches = |stable_id: StableId, identity: TriggerIdentity, event: Option<&TriggerEvent>| {
-        stable_id == key.source_stable_id && identity == key.trigger_identity
+    // CR 400.7/603.8: only an instance from this same object suppresses it; a
+    // new incarnation of the card has an independent state trigger.
+    let matches = |source_id: ObjectId, stable_id: StableId, identity: TriggerIdentity,
+        event: Option<&TriggerEvent>| {
+        source_id == source && stable_id == key.source_stable_id && identity == key.trigger_identity
             && event.and_then(|event| event.downcast::<crate::events::StateTriggerEvent>())
                 .and_then(|event| event.watched_object) == key.watched_object
     };
     pending.iter().chain(game.effect_store.pending_trigger_entries.iter())
-        .any(|entry| matches(entry.source_stable_id, entry.trigger_identity, Some(&entry.triggering_event)))
+        .any(|entry| matches(entry.source, entry.source_stable_id, entry.trigger_identity,
+            Some(&entry.triggering_event)))
         || game.stack.iter().any(|entry| entry.is_ability
             && entry.source_stable_id.zip(entry.trigger_identity)
-                .is_some_and(|(stable_id, identity)| matches(stable_id, identity, entry.triggering_event.as_ref())))
+                .is_some_and(|(stable_id, identity)| matches(entry.object_id, stable_id, identity,
+                    entry.triggering_event.as_ref())))
+}
+
+/// CR 603.8: a state trigger triggers as soon as the game state matches its
+/// condition, even in the middle of another object's resolution. Called at
+/// each instruction boundary of a resolution program: newly-true state
+/// triggers wait in the pending-entry queue (which also suppresses duplicates)
+/// until a player would next receive priority. Cheap no-op unless some
+/// battlefield permanent prints a state trigger.
+pub(crate) fn defer_state_triggers_at_instruction_boundary(game: &mut GameState) {
+    if game.action_observations_suppressed() {
+        return;
+    }
+    let has_state_trigger = game.battlefield.iter().any(|id| {
+        game.object(*id).is_some_and(|obj| {
+            obj.abilities_slice().iter().any(|ability| {
+                matches!(&ability.kind, AbilityKind::Triggered(triggered)
+                    if triggered.trigger.downcast_ref::<crate::triggers::StateTrigger>().is_some())
+            })
+        })
+    });
+    if !has_state_trigger {
+        return;
+    }
+    let (entries, _) = check_state_triggers(game, &[]);
+    if !entries.is_empty() {
+        game.defer_trigger_entries(entries);
+    }
 }
 
 /// Check all current state-triggered abilities and return newly-triggered entries plus
@@ -4391,7 +4458,7 @@ fn check_triggers_in_zone(
                             .and_then(|chars| chars.abilities.origin(ability_index))),
                     source: obj_id,
                     controller: game.controller_of(obj),
-                    x_value: trigger_entry_x_value(trigger_event, obj.x_value),
+                    x_value: trigger_entry_x_value(trigger_event, source_entry_x(trigger_event, obj.id, obj.zone, obj.x_value)),
                     event_value_amount,
                     ability: TriggeredAbility {
                         trigger: trigger_ability.trigger.clone(),
@@ -4630,6 +4697,12 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
         make: impl Fn(PlayerId) -> TriggerEvent,
     ) -> Vec<TriggerEvent> {
         let mut players = game.turn_players();
+        // CR 800.4j: a turn whose active player left continues to its
+        // completion without an active player; its step and phase still
+        // begin, so "each end step" style abilities still trigger.
+        if players.is_empty() && game.player(game.turn.active_player).is_some() {
+            players.push(game.turn.active_player);
+        }
         if let Some(primary) = game.singular_active_player(None)
             && let Some(index) = players.iter().position(|player| *player == primary)
         {

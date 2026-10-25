@@ -132,10 +132,13 @@ impl TagOriginalOutcome {
             runtime: capture_tagged_runtime_state(game, &effect.effect, ctx),
             // Successive target declarations under the same tag accumulate
             // selected objects. Capture this before either a live or staged body.
-            accumulated_declarations: effect
+            // A sentence-level aggregate tag ("exile target A and target B.
+            // Copy those cards.") also collects every part's objects.
+            accumulated_declarations: (effect
                 .effect
                 .downcast_ref::<crate::effects::TargetOnlyEffect>()
                 .is_some()
+                || effect.tag.as_str().starts_with("__sentence_helper_exiled_aggregate"))
                 .then(|| ctx.get_tagged_all(effect.tag.as_str()).cloned())
                 .flatten()
                 .filter(|previous| !previous.is_empty()),

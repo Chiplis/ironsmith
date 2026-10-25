@@ -1458,13 +1458,14 @@ pub(super) fn pregame_priority_labels_progress_from_keep_hand_to_pregame() {
 }
 
 #[test]
-pub(super) fn commander_first_mulligan_is_free() {
-    let mut wasm = setup_pregame_match(MatchFormatInput::Commander);
+pub(super) fn brawl_first_mulligan_is_free() {
+    // CR 103.5c: a two-player game has a free first mulligan only in Brawl.
+    let mut wasm = setup_pregame_match(MatchFormatInput::Brawl);
     let alice = PlayerId::from_index(0);
 
     seed_filler_cards(&mut wasm, alice, Zone::Hand, 7);
     seed_filler_cards(&mut wasm, alice, Zone::Library, 7);
-    start_pregame(&mut wasm, 7, MatchFormatInput::Commander);
+    start_pregame(&mut wasm, 7, MatchFormatInput::Brawl);
 
     dispatch_matching_priority_action(&mut wasm, |action| {
         matches!(action, LegalAction::TakeMulligan)
@@ -1490,13 +1491,14 @@ pub(super) fn commander_first_mulligan_is_free() {
 }
 
 #[test]
-pub(super) fn commander_second_mulligan_bottoms_one_card() {
-    let mut wasm = setup_pregame_match(MatchFormatInput::Commander);
+pub(super) fn brawl_second_mulligan_bottoms_one_card() {
+    // CR 103.5c: a two-player game has a free first mulligan only in Brawl.
+    let mut wasm = setup_pregame_match(MatchFormatInput::Brawl);
     let alice = PlayerId::from_index(0);
 
     seed_filler_cards(&mut wasm, alice, Zone::Hand, 7);
     seed_filler_cards(&mut wasm, alice, Zone::Library, 7);
-    start_pregame(&mut wasm, 7, MatchFormatInput::Commander);
+    start_pregame(&mut wasm, 7, MatchFormatInput::Brawl);
 
     dispatch_matching_priority_action(&mut wasm, |action| {
         matches!(action, LegalAction::TakeMulligan)
@@ -2004,4 +2006,84 @@ fn canonical_abby_entry_choice_resumes_without_premature_entry() {
     assert_eq!(wasm.game.object(entered).unwrap().owner, alice);
     assert_eq!(wasm.game.current_controller(entered), Some(cara));
     assert!(wasm.game.stack.is_empty());
+}
+
+#[test]
+pub(super) fn custom_meld_builder_compiles_registers_and_splits_two_physical_cards() {
+    use ironsmith::effects::{EffectExecutor, ExecutionContext, MeldEffect};
+    let mut wasm = WasmGame::new();
+    let mut draft = CustomCardInput {
+        layout: CustomCardLayoutInput::Meld,
+        has_fuse: false,
+        faces: vec![
+            custom_face(
+                "Forge Left",
+                &["Creature"],
+                "{T}: If you both own and control this creature and a creature named Forge Right, exile them, then meld them into Forge Whole.",
+                Some("2"),
+                Some("2"),
+            ),
+            custom_face("Forge Right", &["Creature"], "", Some("3"), Some("3")),
+            custom_face(
+                "Forge Whole",
+                &["Creature"],
+                "Trample",
+                Some("7"),
+                Some("7"),
+            ),
+        ],
+    };
+    draft.faces[0].mana_cost = Some("{1}{R}".to_string());
+    draft.faces[1].mana_cost = Some("{2}{R}".to_string());
+    let definitions = wasm
+        .compile_custom_card_faces(&draft)
+        .expect("meld draft compiles");
+    assert_eq!(definitions.len(), 3);
+    assert_eq!(
+        definitions[0].card.meld_partner_name.as_deref(),
+        Some("Forge Right")
+    );
+    assert_eq!(definitions[1].card.other_face, Some(definitions[2].card.id));
+    assert_eq!(
+        definitions[0].card.linked_face_layout,
+        ironsmith::card::LinkedFaceLayout::None
+    );
+    let alice = PlayerId::from_index(0);
+    wasm.game = setup_two_player_game();
+    for def in &definitions {
+        wasm.game.register_linked_face_definition(def);
+    }
+    let left = wasm
+        .game
+        .create_object_from_definition(&definitions[0], alice, Zone::Battlefield);
+    let right = wasm
+        .game
+        .create_object_from_definition(&definitions[1], alice, Zone::Battlefield);
+    assert!(!wasm.game.transform_permanent(left).unwrap());
+    let mut ctx = ExecutionContext::new_default(left, alice);
+    let outcome = MeldEffect::new("Forge Whole")
+        .execute(&mut wasm.game, &mut ctx)
+        .expect("custom pair melds");
+    let result = outcome.output_objects()[0];
+    assert_eq!(wasm.game.object(result).unwrap().name, "Forge Whole");
+    assert_eq!(
+        wasm.game.object(result).unwrap().linked_face_mana_value(),
+        Some(5)
+    );
+    assert!(wasm.game.object(left).is_none());
+    assert!(wasm.game.object(right).is_none());
+    wasm.game
+        .move_object_by_effect(result, Zone::Graveyard)
+        .expect("meld result leaves");
+    let names = wasm
+        .game
+        .player(alice)
+        .unwrap()
+        .graveyard
+        .iter()
+        .map(|id| wasm.game.object(*id).unwrap().name.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(names.len(), 2);
+    assert!(names.contains(&"Forge Left".to_string()));
+    assert!(names.contains(&"Forge Right".to_string()));
 }

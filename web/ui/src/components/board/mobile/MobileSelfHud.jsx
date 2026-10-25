@@ -1,5 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
+import { LoopShortcutButton } from "@/components/decisions/LoopShortcutControls";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback } from "react";
 import { Library } from "lucide-react";
@@ -88,6 +89,7 @@ export default function MobileSelfHud({
       </button>
 
       <PriorityHoldControl />
+      <span className="decision-quick-controls"><LoopShortcutButton /></span>
 
       <MobileZoneTray player={me} onOpenZone={onOpenZone} zones={["command", "ante"]} />
     </footer>

@@ -157,6 +157,11 @@ impl ManaLossProposal {
                 add_checked(&mut lost, symbol, amount)?;
             }
         }
+        let lost_units = units
+            .iter()
+            .filter(|unit| unit.loses)
+            .map(|unit| (unit.provenance.clone(), unit.restriction.clone()))
+            .collect();
         Ok(Self {
             player,
             original_pool: data.mana_pool.clone(),
@@ -169,6 +174,7 @@ impl ManaLossProposal {
                 player,
                 mana: lost,
                 converted_to: None,
+                lost_units,
             },
             prepared: None,
         })

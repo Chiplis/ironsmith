@@ -4492,6 +4492,10 @@ impl StaticAbility {
         Self::new(PlayersSkipUntapStep::new(player))
     }
 
+    pub fn you_are_the_starting_player() -> Self {
+        Self::new(YouAreTheStartingPlayer)
+    }
+
     pub fn starting_life_bonus(amount: i32) -> Self {
         Self::new(StartingLifeBonus::new(amount))
     }
@@ -5543,6 +5547,10 @@ impl StaticAbility {
 
     pub fn double_agenda() -> Self {
         Self::new(DoubleAgenda)
+    }
+
+    pub fn starting_player() -> Self {
+        Self::new(StartingPlayer)
     }
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {

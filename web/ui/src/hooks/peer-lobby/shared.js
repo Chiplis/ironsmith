@@ -87,6 +87,7 @@ import {
   parseDeckFoilNames,
   parseDeckPrintPreferences,
   parseSideboardList,
+  parseStickerList,
   saveDefaultLobbyDeck,
 } from "@/lib/decklists";
 import { setFoilCards } from "@/lib/foil-cards";
@@ -2149,6 +2150,7 @@ export function parseDeckSubmission(format, deckText, commanderText = "") {
   const deck = applyKnownSubstitutions(sanitizeCardList(parseDeckList(deckText)));
   const sideboard = applyKnownSubstitutions(sanitizeCardList(parseSideboardList(deckText)));
   const commanders = sanitizeCardList(parseCommanderList(commanderText));
+  const stickers = sanitizeStickerSheetList(parseStickerList(deckText));
   setPreferredCardPrints([
     ...parseDeckPrintPreferences(deckText),
     ...parseDeckPrintPreferences(commanderText),
@@ -2162,11 +2164,27 @@ export function parseDeckSubmission(format, deckText, commanderText = "") {
     deck,
     sideboard,
     commanders,
+    stickers,
     deckCount: status.deckCount,
     sideboardCount: sideboard.length,
     commanderCount: status.commanderCount,
     ready: status.ready,
   };
+}
+
+// Sticker sheets a player brings (CR 123.2): unique names, first seen order.
+export function sanitizeStickerSheetList(sheets) {
+  const out = [];
+  const seen = new Set();
+  for (const sheet of Array.isArray(sheets) ? sheets : []) {
+    const name = String(sheet || "").trim().slice(0, 120);
+    const key = name.toLocaleLowerCase("en-US");
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+    if (out.length >= 64) break;
+  }
+  return out;
 }
 
 export function rememberDefaultLobbyDeck(deckText, commanderText = "") {
@@ -2221,6 +2239,7 @@ export function buildRematchStateFromPayload(payload, localPeerId, readyOverride
       deck: sanitizeCardList(player.deck?.length ? player.deck : payload?.decks?.[index]),
       sideboard: sanitizeCardList(player.sideboard?.length ? player.sideboard : payload?.sideboards?.[index]),
       commanders: sanitizeCardList(player.commanders?.length ? player.commanders : payload?.commanders?.[index]),
+      stickers: sanitizeStickerSheetList(player.stickers?.length ? player.stickers : payload?.stickerSheets?.[index]),
       deckSlotOpenings: sanitizeDeckSlotOpenings(player.deckSlotOpenings),
     };
   });
@@ -2244,7 +2263,7 @@ export function withRematchDeckText(rematch, session) {
   const typedCommanders = String(session?.localCommanderText || "");
   return {
     ...rematch,
-    localDeckText: typedDeck.trim() ? typedDeck : deckListText(rematch.localDeck, rematch.localSideboard),
+    localDeckText: typedDeck.trim() ? typedDeck : deckListText(rematch.localDeck, rematch.localSideboard, localPlayer?.stickers),
     localCommanderText: typedCommanders.trim() ? typedCommanders : deckListText(localPlayer?.commanders),
   };
 }
@@ -2704,6 +2723,7 @@ export function ensurePromotedLocalPlayer(players, session, lobbyId, localPlayer
       ),
       index: normalizedIndex,
       connected: true,
+      stickers: deckSubmission.stickers,
     },
     format,
     deckSubmission.deck,
@@ -2719,6 +2739,7 @@ export function ensurePromotedLocalPlayer(players, session, lobbyId, localPlayer
       {
         ...fallbackPlayer,
         ...player,
+        stickers: deckSubmission.stickers,
         peerId:
           String(session?.localPeerId || "").trim()
           || player.peerId
@@ -2760,6 +2781,8 @@ export function toPublicPlayer(player) {
     deckCount: Number(player.deckCount || 0),
     sideboardCount: Number(player.sideboardCount || 0),
     commanderCount: Number(player.commanderCount || 0),
+    // Sticker sheets are revealed (CR 123.2a/c), so they are public in every lobby.
+    stickers: sanitizeStickerSheetList(player.stickers),
     ...openDecklistPlayerFields({
       deck: player.deck,
       sideboard: player.sideboard,

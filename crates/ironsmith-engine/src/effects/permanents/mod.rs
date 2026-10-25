@@ -177,6 +177,11 @@ pub(crate) fn attachment_can_attach_to_target(
     if attachment.zone != Zone::Battlefield || !game.attachment_target_exists(target) {
         return false;
     }
+    // CR 310.10: a battle can't be attached to players or permanents, even
+    // if it is also an Aura, Equipment, or Fortification.
+    if game.object_has_card_type(attachment_id, CardType::Battle) {
+        return false;
+    }
 
     // "can't be enchanted by other Auras" / "can't be equipped": a
     // prohibited attachment is illegal, so it can't attach and falls off
@@ -198,6 +203,10 @@ pub(crate) fn attachment_can_attach_to_target(
 
     let subtypes = game.calculated_subtypes(attachment_id);
     if subtypes.contains(&Subtype::Aura) {
+        // CR 303.4d: an Aura that's also a creature can't enchant anything.
+        if game.object_has_card_type(attachment_id, CardType::Creature) {
+            return false;
+        }
         // CR 702.16c/e/j: a player can't be enchanted by Auras with a quality
         // they have protection from; attached ones fall off as a state-based
         // action (704.5m).
@@ -565,7 +574,7 @@ pub(crate) fn choose_color_as_becomes_attached(
 
 pub use attach_objects::AttachObjectsEffect;
 pub(crate) use attach_objects::{
-    aura_can_enter_attached_to, entry_attachment_for_move, resolve_entry_attachment_target,
+    aura_can_enter_attached_to, aura_preview_can_enter_attached_to, entry_attachment_for_move, resolve_entry_attachment_target,
 };
 pub use attach_to::AttachToEffect;
 pub use become_basic_land_type_choice::BecomeBasicLandTypeChoiceEffect;

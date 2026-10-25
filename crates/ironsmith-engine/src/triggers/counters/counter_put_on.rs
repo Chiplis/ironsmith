@@ -78,7 +78,15 @@ impl TriggerMatcher for CounterPutOnTrigger {
                 let Some(e) = event.downcast::<CounterPlacedEvent>() else {
                     return false;
                 };
-                (e.permanent, e.counter_type, None, e.amount, None)
+                // CR 122.7: the event's own before/after counts decide an
+                // Nth-counter crossing, not the counts at match time.
+                (
+                    e.permanent,
+                    e.counter_type,
+                    None,
+                    e.amount,
+                    e.previous_count.map(|previous| previous.saturating_add(e.amount)),
+                )
             }
             EventKind::MarkersChanged => {
                 let Some(e) = event.downcast::<MarkersChangedEvent>() else {

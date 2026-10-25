@@ -156,10 +156,25 @@ fn granted_optional_cost(
             ),
             OptionalCostKind::GrantedConspire,
         ),
-        GrantedSpellKeywordKind::StickerKicker => (
-            OptionalCost::custom("Sticker kicker", price?),
-            OptionalCostKind::Additional,
-        ),
+        // CR 702.33h: sticker kicker is a kicker ability plus an additional
+        // cost, paid only if kicked, of getting a ticket counter.
+        GrantedSpellKeywordKind::StickerKicker => {
+            let price = price?;
+            let price = match price.as_all() {
+                Some(base) => {
+                    let mut costs = base.to_vec();
+                    costs.push(crate::costs::Cost::effect(
+                        crate::effects::TicketCountersEffect::you(1),
+                    ));
+                    TotalCost::from_costs(costs)
+                }
+                None => price,
+            };
+            (
+                OptionalCost::custom("Sticker kicker", price),
+                OptionalCostKind::Kicker,
+            )
+        }
         // "You may pay any amount of mana": one generic mana per payment of a
         // repeatable optional cost (CR 601.2b, 601.2f).
         GrantedSpellKeywordKind::AnyAmountOfManaForEntryCounters => (
@@ -229,8 +244,8 @@ fn any_amount_of_mana_entry_counters_grant(
     )
 }
 
-/// Sticker kicker: "If you do, you get {TK}, then you may put a sticker on
-/// it." Granted to the spell for this one instance; it resolves as the
+/// Sticker kicker: "then you may put a sticker on it" (the ticket counter is
+/// part of the kicked cost, CR 702.33h). Granted to the spell for this one instance; it resolves as the
 /// resulting permanent enters, if that instance's cost was paid.
 fn sticker_kicker_entry_trigger_grant(
     reference: OptionalCostRef,
@@ -240,7 +255,6 @@ fn sticker_kicker_entry_trigger_grant(
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: crate::triggers::Trigger::this_enters_battlefield(),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                crate::effect::Effect::ticket_counters(1),
                 crate::effect::Effect::may(vec![crate::effect::Effect::put_sticker(
                     crate::target::ChooseSpec::Source,
                     crate::events::KeywordActionKind::Sticker,

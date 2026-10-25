@@ -144,6 +144,7 @@ impl GameState {
             let flags = self.battlefield_flags_mut();
             flags.phased_out.remove(id);
             flags.phased_out_under_controller.remove(id);
+            flags.phased_out_under_departed_until_turn.remove(id);
             flags.indirectly_phased_out.remove(id);
             for held in flags.phase_out_holds_by_source.values_mut() {
                 held.remove(id);

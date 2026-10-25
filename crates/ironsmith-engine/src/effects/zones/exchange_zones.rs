@@ -37,12 +37,20 @@ impl ExchangeZonesEffect {
             Zone::Hand => player_state.hand.to_vec(),
             Zone::Library => player_state.library.to_vec(),
             Zone::Graveyard => player_state.graveyard.to_vec(),
+            // CR 701.12d: exile is shared; the exchange concerns the
+            // player's own exiled cards (all cards share one owner).
+            Zone::Exile => game
+                .exile
+                .iter()
+                .copied()
+                .filter(|id| game.object(*id).is_some_and(|object| object.owner == player))
+                .collect(),
             _ => Vec::new(),
         }
     }
 
     fn supported_zone(zone: Zone) -> bool {
-        matches!(zone, Zone::Hand | Zone::Library | Zone::Graveyard)
+        matches!(zone, Zone::Hand | Zone::Library | Zone::Graveyard | Zone::Exile)
     }
 }
 

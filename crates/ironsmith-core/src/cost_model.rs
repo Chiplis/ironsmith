@@ -1412,6 +1412,12 @@ impl<C> OptionalCost<C> {
     }
 
     pub fn display_label(&self) -> String {
+        // CR 702.33h: sticker kicker is a kicker that keeps its own name.
+        if self.kind == OptionalCostKind::Kicker
+            && self.source_label.eq_ignore_ascii_case("Sticker kicker")
+        {
+            return self.source_label.clone();
+        }
         self.cost_ref().display_label()
     }
 

@@ -11,6 +11,7 @@ import OpponentZone from "./OpponentZone";
 import MyZone from "./MyZone";
 import PhaseTrack from "./PhaseTrack";
 import DeckLoadingView from "./DeckLoadingView";
+import { LoopShortcutButton, LoopShortcutDialogs } from "@/components/decisions/LoopShortcutControls";
 import OpenDecklistModal from "./OpenDecklistModal";
 import PuzzleSetupView from "./PuzzleSetupView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
@@ -223,14 +224,19 @@ export default function TableCore({
     const sideboard = sanitizeDeckCards(matchPlayer?.sideboard);
     const commanders = sanitizeDeckCards(matchPlayer?.commanders);
     const available = Boolean(matchPlayer && Array.isArray(matchPlayer.deck));
+    // Chosen sticker sheets stay revealed all game (CR 123.2c).
+    const stickerSheets = sanitizeDeckCards(
+      (state?.sticker_sheets || []).find((entry) => samePlayerId(entry?.player, player?.id))?.sheets
+    );
     setOpenDecklist({
       playerName: playerDisplayName(state?.players || [], player),
       deck,
       sideboard,
       commanders,
-      available,
+      stickerSheets,
+      available: available || stickerSheets.length > 0,
     });
-  }, [multiplayer?.players, state?.players]);
+  }, [multiplayer?.players, state?.players, state?.sticker_sheets]);
 
   // The brand and table tools float over the top-right of the opponent row;
   // the last opponent header pads itself by their measured width.
@@ -240,12 +246,39 @@ export default function TableCore({
     const brand = phaseBrandRef.current;
     const table = tableRef.current;
     if (!brand || !table) return;
-    const measure = () => table.style.setProperty('--middle-brand-width', `${brand.getBoundingClientRect().width}px`);
+    const divider = brand.parentElement;
+    const phaseGroup = divider.querySelector('.phase-track-group');
+    const logo = brand.querySelector('.topbar-brand-menu-trigger');
+    const links = brand.querySelector('.topbar-brand-links');
+    const measure = () => {
+      table.style.setProperty('--middle-brand-width', `${brand.getBoundingClientRect().width}px`);
+      // Align the logo itself with a local phase icon, leaving its links below.
+      // Measure the rendered icon so its upward offset and font sizing count.
+      const icon = divider.querySelector('.phase-track-player--self .phase-track-stop-icon')
+        || divider.querySelector('.phase-track-group--duel .phase-track-player-stop:first-child .phase-track-stop-icon');
+      if (icon && logo) {
+        const iconRect = icon.getBoundingClientRect();
+        const top = iconRect.top + iconRect.height / 2 - divider.getBoundingClientRect().top
+          - logo.getBoundingClientRect().height / 2;
+        table.style.setProperty('--phase-brand-top', `${top}px`);
+        const label = icon.closest('button')?.querySelector('.phase-track-step-label')
+          || icon.closest('.phase-track-cell')?.querySelector('.phase-track-step-label');
+        if (label && links) {
+          const labelRect = label.getBoundingClientRect();
+          const linksTop = labelRect.top + labelRect.height / 2 - divider.getBoundingClientRect().top
+            - top - links.getBoundingClientRect().height / 2;
+          table.style.setProperty('--phase-links-top', `${linksTop}px`);
+        }
+      }
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(brand);
+    if (phaseGroup) observer.observe(phaseGroup);
+    if (logo) observer.observe(logo);
+    if (links) observer.observe(links);
     return () => observer.disconnect();
-  }, [focusedHudDesktop]);
+  }, [focusedHudDesktop, state?.phase, state?.step, state?.perspective, state?.players?.length]);
   useLayoutEffect(() => {
     const controls = utilityControlsRef.current;
     const table = tableRef.current;
@@ -411,6 +444,7 @@ export default function TableCore({
         onClick={togglePhasePassing}
       >{ui("End turn")}</button>}
       <PriorityHoldControl battlefield />
+      <LoopShortcutButton />
     </div>
   ) : null;
   const middleTopbarElement = focusedHudDesktop && middleTopbar
@@ -475,7 +509,7 @@ export default function TableCore({
               />
             ) : (
               <span className="battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold" data-player-target-name={me.id}>
-                <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                <span className={cn(isActivePlayer && "battlefield-name-text--active")} data-name-active={isActivePlayer} data-name-priority={isPriorityPlayer}>
                   {playerDisplayName(state?.players || [], me)}
                 </span>
               </span>
@@ -651,6 +685,7 @@ export default function TableCore({
           onOpenDecklist={handleOpenDecklist}
         />
         <OpenDecklistModal decklist={openDecklist} onClose={() => setOpenDecklist(null)} />
+        <LoopShortcutDialogs />
         {planarZoneElement}
       </div>
     );
@@ -745,6 +780,7 @@ export default function TableCore({
         decklist={openDecklist}
         onClose={() => setOpenDecklist(null)}
       />
+      <LoopShortcutDialogs />
     </main>
   );
 }

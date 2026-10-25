@@ -10,6 +10,7 @@ mod attacks_while_saddled;
 mod attacks_you;
 mod becomes_blocked;
 mod blocks;
+pub(crate) use blocks::is_first_blocked_attacker_for_blocker;
 mod blocks_or_becomes_blocked;
 mod deals_combat_damage_to_player;
 mod deals_damage;

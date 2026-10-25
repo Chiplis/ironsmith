@@ -568,6 +568,9 @@ pub struct ObjectSnapshot {
     pub was_enchanted: bool,
     /// Whether the permanent was monstrous.
     pub is_monstrous: bool,
+    /// Whether the permanent was a solved Case (CR 719.2).
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub case_solved: bool,
     /// Whether the permanent was prepared.
     pub is_prepared: bool,
     /// Whether this object is a commander.
@@ -729,6 +732,7 @@ impl ObjectSnapshot {
             attachment_snapshots: Vec::new(),
             was_enchanted: false,
             is_monstrous: false,
+            case_solved: false,
             is_prepared: false,
             is_commander: false,
             zone,
@@ -921,6 +925,7 @@ impl ObjectSnapshot {
             attachment_snapshots: Vec::new(),
             was_enchanted,
             is_monstrous: game.is_monstrous(obj.id),
+            case_solved: game.is_case_solved(obj.id),
             is_prepared: game.is_prepared(obj.id),
             is_commander: game.is_commander(obj.id),
             zone: obj.zone,
@@ -1367,6 +1372,7 @@ impl ObjectSnapshot {
             attachment_snapshots: Vec::new(),
             was_enchanted: false,
             is_monstrous: false,
+            case_solved: false,
             is_prepared: false,
             is_commander: false,
             zone: Zone::Battlefield,

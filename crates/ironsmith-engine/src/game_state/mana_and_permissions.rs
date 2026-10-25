@@ -478,6 +478,18 @@ impl GameState {
             let is_planeswalker = self.object_has_card_type(permanent, CardType::Planeswalker);
             let is_battle = self.object_has_card_type(permanent, CardType::Battle);
             let was_both = attacked_as.planeswalker && attacked_as.battle;
+            // CR 506.4e applies to a permanent that is currently both, even
+            // when it gained its second type after it began being attacked.
+            if is_planeswalker && is_battle && !was_both {
+                self.mutate_combat_lanes(|combat| {
+                    if let Some(types) = combat.attacked_permanent_types.get_mut(&permanent) {
+                        types.planeswalker = true;
+                        types.battle = true;
+                    }
+                    false
+                });
+                continue;
+            }
             let retarget = if !was_both {
                 // CR 506.4: attacked as only one of them, it's removed once
                 // it stops being that, even if it has become the other.
@@ -3756,10 +3768,14 @@ impl GameState {
                 linked_exile_owner: None,
                 source_number_owner: None,
                 source: mana_source,
-                controller: source_snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.controller)
-                    .unwrap_or(payer),
+                // CR 603.7e: the controller of the mana ability that made this
+                // mana controls the delayed trigger, not its source's controller.
+                controller: restriction.source_controller.unwrap_or_else(|| {
+                    source_snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.controller)
+                        .unwrap_or(payer)
+                }),
                 x_value: payment_snapshot
                     .as_ref()
                     .and_then(|snapshot| snapshot.x_value),
@@ -4830,8 +4846,8 @@ impl GameState {
         if colors.is_empty() { return 0; }
         self.permanents_controlled_by(controller)
             .into_iter()
-            .filter_map(|id| self.current_characteristics(id))
-            .map(|chars| {
+            .filter_map(|id| self.current_characteristics(id).map(|chars| (id, chars)))
+            .map(|(id, chars)| {
                 let symbols = chars.mana_cost.as_ref().map(|mana_cost| mana_cost
                     .pips()
                     .iter()
@@ -4849,12 +4865,23 @@ impl GameState {
                         }))
                     })
                     .sum::<usize>()).unwrap_or(0);
-                let bonus = chars.static_abilities.iter().filter_map(|ability| {
+                // CR 700.5a: devotion, including effects that modify it, is
+                // calculated after copy, control and text-changing effects but
+                // before any other characteristic-changing effects, so a later
+                // ability removal (layer 6) can't erase a devotion bonus.
+                let devotion_bonus = |ability: &crate::static_abilities::StaticAbility| {
                     match &ability.compiled_model()?.payload {
                         ironsmith_core::StaticAbilityPayload::DevotionIncrease { amount } => Some(*amount as usize),
                         _ => None,
                     }
-                }).sum::<usize>();
+                };
+                let bonus = match self.calculated_copiable_values(id) {
+                    Some(values) => values.abilities.iter().filter_map(|ability| match &ability.kind {
+                        crate::ability::AbilityKind::Static(static_ability) => devotion_bonus(static_ability),
+                        _ => None,
+                    }).sum::<usize>(),
+                    None => chars.static_abilities.iter().filter_map(devotion_bonus).sum::<usize>(),
+                };
                 symbols.saturating_add(bonus)
             })
             .sum()

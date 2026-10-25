@@ -1129,6 +1129,9 @@ fn execute_resolution_program_inner(
                     outputs,
                 });
             }
+            if selected_effects.get(effect_index + 1).is_some() {
+                crate::triggers::check::defer_state_triggers_at_instruction_boundary(game);
+            }
             let next = selected_effects.get(effect_index + 1);
             if match_triggers_per_instruction
                 && crate::effects::match_triggers_at_instruction_boundary(
@@ -1889,7 +1892,10 @@ fn resolve_stack_entry_full_inner(
     // Effects can already have moved the resolving spell (for example cipher).
     let completion_object = game.object(entry.object_id).cloned();
     if let Some(obj) = &completion_object {
-        if obj.zone == Zone::Stack && obj.is_permanent() {
+        if obj.zone == Zone::Stack
+            && obj.is_permanent()
+            && !game.resolving_daybound_spell_cannot_enter(entry.object_id)
+        {
             if let Some(target_id) = mutate_target.flatten() {
                 let options = vec![
                     crate::decisions::SelectableOption::new(0, "Put the mutating spell on top")
@@ -1960,8 +1966,11 @@ fn resolve_stack_entry_full_inner(
                 perm.optional_costs_paid = entry.optional_costs_paid.clone();
                 perm.cast_tagged_objects = entry.tagged_objects.clone();
                 // Preserve Convoke/Improvise contributors for later triggered ability resolution.
-                perm.keyword_payment_contributions_to_cast =
-                    entry.keyword_payment_contributions.clone();
+                for contribution in &entry.keyword_payment_contributions {
+                    if !perm.keyword_payment_contributions_to_cast.contains(contribution) {
+                        perm.keyword_payment_contributions_to_cast.push(*contribution);
+                    }
+                }
             }
 
             // Imported spell objects and effect-granted casting methods also
@@ -2026,9 +2035,34 @@ fn resolve_stack_entry_full_inner(
                 crate::effects::zones::BattlefieldEntryOutcome::Redirected(_)
                 | crate::effects::zones::BattlefieldEntryOutcome::Prevented => None,
             };
+            let prevented = matches!(
+                receipt.outcome,
+                crate::effects::zones::BattlefieldEntryOutcome::Prevented
+            );
             let (movement, published) = receipt.into_zone_receipt_with_outputs();
             root_outputs.retain_published_references(published);
             completion_receipts.push(movement);
+            // CR 608.3e: a permanent spell that can't enter the battlefield is
+            // put into its owner's graveyard instead of lingering on the stack.
+            if prevented
+                && game
+                    .object(entry.object_id)
+                    .is_some_and(|object| object.zone == Zone::Stack)
+            {
+                let receipt = apply_resolving_spell_zone_change(
+                    game,
+                    entry.object_id,
+                    Zone::Stack,
+                    Zone::Graveyard,
+                    crate::events::cause::EventCause::from_game_rule(),
+                    &mut ctx,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(root_outputs);
+                }
+                completion_receipts.pop();
+                completion_receipts.push((entry.object_id, receipt));
+            }
             if let Some(new_id) = new_id {
                 inherit_resolving_spell_delayed_triggers(game, entry.object_id, new_id);
                 // Cards the spell exiled while it was cast (an escape or other
@@ -2262,10 +2296,10 @@ fn resolve_stack_entry_full_inner(
                 }
             }
         } else if obj.zone == Zone::Stack {
-            if obj.kind == crate::object::ObjectKind::SpellCopy {
-                game.remove_object(entry.object_id);
-                return Ok(root_outputs);
-            }
+            // CR 608.2n/704.5e: a resolved instant or sorcery copy is put
+            // where the spell would go (usually its owner's graveyard) and
+            // ceases to exist the next time state-based actions are checked.
+            let is_spell_copy = obj.kind == crate::object::ObjectKind::SpellCopy;
 
             // It's an instant/sorcery
             // CR 702.88a with CR 613 layer 6: rebound granted by a static
@@ -2291,6 +2325,7 @@ fn resolve_stack_entry_full_inner(
                     |zone| zone == Zone::Hand,
                 );
             let has_rebound = cast_from_hand
+                && !is_spell_copy
                 && (obj.abilities.iter().any(|ability| {
                     ability.functions_in(&Zone::Stack)
                         && matches!(
@@ -2302,7 +2337,10 @@ fn resolve_stack_entry_full_inner(
                 }) || resolving_spell_has_granted_rebound);
 
             // Only methods which explicitly replace leaving the stack exile the spell.
-            let should_exile = match entry.casting_method.origin_method() {
+            // CR 715.3c/d: a copy of an Adventure spell is exiled as it resolves.
+            let copied_adventure = obj.kind == crate::object::ObjectKind::SpellCopy
+                && obj.subtypes.contains(&crate::types::Subtype::Adventure);
+            let should_exile = copied_adventure || match entry.casting_method.origin_method() {
                 CastingMethod::AlternativePrice { .. } | CastingMethod::ExactPermission { .. } => {
                     false
                 }
@@ -2384,10 +2422,11 @@ fn resolve_stack_entry_full_inner(
                 .is_some_and(|method| method.exiles_after_resolution()),
                 _ => false,
             };
-            let resolving_as_omen = matches!(
+            let resolving_as_omen = (matches!(
                 entry.casting_method.origin_method(),
                 CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }
-            ) && !omen_alternative_exiles
+            ) || obj.kind == crate::object::ObjectKind::SpellCopy)
+                && !omen_alternative_exiles
                 && obj.subtypes.contains(&crate::types::Subtype::Omen);
 
             if resolving_as_omen {
@@ -2405,8 +2444,8 @@ fn resolve_stack_entry_full_inner(
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(root_outputs);
                 }
-                if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
-                    && result.final_zone == Zone::Library
+                // CR 701.24c: the library is shuffled even if a replacement
+                // effect moved the Omen card somewhere else instead.
                 {
                     let shuffle = crate::effects::cards::commit_library_shuffle_with_outputs(
                         game,

@@ -137,6 +137,7 @@ impl GameState {
         restarted.refresh_range_of_influence_snapshot();
         restarted.free_for_all = self.free_for_all.clone();
         restarted.attack_direction = self.attack_direction;
+        restarted.attack_multiple_players = self.attack_multiple_players;
         restarted.teams = self.teams.clone();
         restarted.deploy_creatures = self.deploy_creatures;
         if let Some(teams) = two_headed_giant_setup {
@@ -467,11 +468,42 @@ impl GameState {
                 }
             }
 
+            // CR 727.2/730.3: every physical card represented by a merged
+            // permanent starts the new game as its own card.
+            if let Some(merged) = self
+                .commander_tracking
+                .merged_permanents
+                .get(&object.stable_id)
+            {
+                for component in &merged.components {
+                    let physical = &component.destination_object;
+                    if physical.kind != ObjectKind::Card
+                        || !players_in_new_game.contains(&physical.owner)
+                    {
+                        continue;
+                    }
+                    cards.push(RestartCard {
+                        definition: physical.physical_card_definition(),
+                        stable_id: component.object.stable_id,
+                        owner: physical.owner,
+                        previous_zone: object.zone,
+                        is_commander: component.is_commander,
+                        is_vanguard: false,
+                        is_scheme: false,
+                        is_conspiracy: false,
+                        agenda_names: Vec::new(),
+                        vanguard_hand_modifier: 0,
+                        vanguard_life_modifier: 0,
+                    });
+                }
+                continue;
+            }
+
             let is_vanguard = self.is_vanguard_card(object.id);
             let is_scheme = self.is_scheme_card(object.id);
             let is_conspiracy = self.is_conspiracy_card(object.id);
             cards.push(RestartCard {
-                definition: object.to_card_definition(),
+                definition: object.physical_card_definition(),
                 stable_id: object.stable_id,
                 owner: object.owner,
                 previous_zone: object.zone,

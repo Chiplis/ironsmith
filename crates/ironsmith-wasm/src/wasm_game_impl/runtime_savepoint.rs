@@ -75,6 +75,8 @@ macro_rules! runtime_savepoint {
 }
 runtime_savepoint! {
     pass_intents: std::collections::BTreeMap<u8, PassIntent>,
+    revealed_sticker_sheets: Vec<(PlayerId, Vec<String>)>,
+    loop_shortcut: Option<LoopShortcut>,
     game: GameState,
     priority_affordability_cache: HashMap<PlayerId, Vec<LegalAction>>,
     priority_affordability_seed_key: Option<SnapshotCacheKey>,

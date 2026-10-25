@@ -292,16 +292,27 @@ impl MayEffect {
         let deciding_player = if let Some(decider) = &self.decider {
             crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
         } else {
-            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
+            // CR 109.5: "you" in a triggered ability is its controller; the
+            // event's player bound for "that player" doesn't make the choice.
+            ctx.iteration
+                .iterated_player
+                .filter(|player| Some(*player) != ctx.iteration.trigger_bound_player)
+                .unwrap_or(ctx.controller)
         };
 
+        // CR 701.17b: a player can't choose to mill more cards than are in
+        // the milling player's library.
+        let mill_impossible = self.leading_mill_exceeds_library(game, ctx);
         let should_do = super::resolved_program::optional_decision(
             game, ctx, deciding_player,
             crate::decisions::MaySpec::new(ctx.source, description)
-                .with_can_accept(identity_guard.as_ref().is_none_or(|guard| guard.can_accept)),
+                .with_can_accept(
+                    !mill_impossible
+                        && identity_guard.as_ref().is_none_or(|guard| guard.can_accept),
+                ),
             self.fallback,
         );
-        if should_do != Some(true) { return Ok(None); }
+        if should_do != Some(true) || mill_impossible { return Ok(None); }
         if identity_guard
             .as_ref()
             .is_some_and(|guard| !guard.can_accept)
@@ -819,6 +830,27 @@ impl MayEffect {
     /// Some parsed patterns compile to "may (if condition, do X)" where the
     /// condition is a strict gate (no else branch). If the gate is false, skip
     /// prompting entirely so UI doesn't offer an option that cannot do anything.
+    fn leading_mill_exceeds_library(&self, game: &GameState, ctx: &ExecutionContext) -> bool {
+        let Some(mill) = self.effects.first().and_then(|effect| {
+            let mut effect = effect;
+            while let Some(child) = effect.transparent_child_effect() {
+                effect = child;
+            }
+            effect.downcast_ref::<crate::effects::MillEffect>()
+        }) else {
+            return false;
+        };
+        let Ok(player) = crate::effects::helpers::resolve_player_filter(game, &mill.player, ctx)
+        else {
+            return false;
+        };
+        let Ok(count) = resolve_value(game, &mill.count, ctx) else {
+            return false;
+        };
+        game.player(player)
+            .is_some_and(|player| (player.library.len() as i64) < count.max(0) as i64)
+    }
+
     fn should_auto_decline_without_prompt(
         &self,
         game: &GameState,
@@ -884,6 +916,32 @@ impl MayEffect {
             return Ok(
                 super::collect_evidence::evidence_capacity(game, ctx.controller, None) < required,
             );
+        }
+        // CR 121.2b/121.3: a player can't choose to draw cards when a draw
+        // prohibition makes drawing all of them impossible.
+        if let Some(draw) = self.effects.first().and_then(|effect| {
+            let mut effect = effect;
+            while let Some(child) = effect.transparent_child_effect() {
+                effect = child;
+            }
+            effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+        }) && let Ok(player) = crate::effects::helpers::resolve_player_filter(game, &draw.player, ctx)
+            && let Ok(count) = resolve_value(game, &draw.count, ctx)
+            && count > 0
+        {
+            if !game.can_draw(player) {
+                return Ok(true);
+            }
+            if !game.can_draw_extra_cards(player) {
+                let has_drawn = game
+                    .turn_store
+                    .turn_history
+                    .has_drawn_cards_this_turn(player)
+                    .unwrap_or(false);
+                if count > 1 || has_drawn {
+                    return Ok(true);
+                }
+            }
         }
         if self.effects.len() != 1 {
             return Ok(false);

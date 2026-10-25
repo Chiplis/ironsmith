@@ -90,6 +90,7 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
         let mut created_ids = Vec::new();
         let mut events = Vec::new();
         let mut seen = HashSet::new();
+        let mut planned: Vec<(Target, Vec<Target>)> = Vec::new();
 
         for candidate in slots
             .iter()
@@ -121,6 +122,58 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
                     }
                 }
             }
+            planned.push((*candidate, targets));
+        }
+
+        // CR 707.10d: the copies' controller chooses the order in which the
+        // copies are put onto the stack (first chosen is put on first).
+        if planned.len() > 1
+            && planned
+                .iter()
+                .all(|(candidate, _)| matches!(candidate, Target::Object(_)))
+        {
+            let ids: Vec<crate::ids::ObjectId> = planned
+                .iter()
+                .filter_map(|(candidate, _)| match candidate {
+                    Target::Object(id) => Some(*id),
+                    Target::Player(_) => None,
+                })
+                .collect();
+            let items = ids
+                .iter()
+                .map(|id| {
+                    let name = game
+                        .object(*id)
+                        .map(|object| object.name.to_string())
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    (*id, format!("Copy targeting {name}"))
+                })
+                .collect();
+            let order_ctx = crate::decisions::context::OrderContext::new(
+                copier,
+                Some(ctx.source),
+                "Order the copies to put on the stack. The first option is put onto the stack first.",
+                items,
+            );
+            let response = ctx.decision_maker.decide_order(game, &order_ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::resolved());
+            }
+            let mut remaining = ids.clone();
+            let mut ordered = Vec::with_capacity(ids.len());
+            for id in response {
+                if let Some(position) = remaining.iter().position(|candidate| *candidate == id) {
+                    ordered.push(remaining.remove(position));
+                }
+            }
+            ordered.extend(remaining);
+            planned.sort_by_key(|(candidate, _)| match candidate {
+                Target::Object(id) => ordered.iter().position(|ordered| ordered == id),
+                Target::Player(_) => None,
+            });
+        }
+
+        for (_, targets) in planned {
             let Some(copy_id) = create_stack_copy(
                 game,
                 target_id,

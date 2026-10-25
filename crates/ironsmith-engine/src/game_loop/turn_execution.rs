@@ -129,10 +129,35 @@ pub fn generate_and_queue_step_triggers(game: &mut GameState, trigger_queue: &mu
         game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
         return;
     }
-    for event in crate::triggers::check::generate_step_trigger_events_for_active_players(game) {
+    let events = crate::triggers::check::generate_step_trigger_events_for_active_players(game);
+    // CR 805.4d: with shared team turns each active player gets a step event,
+    // but only abilities that refer back to "that player" trigger once per
+    // event; every other ability triggers once (from the first event).
+    let dedupe = game.shared_team_turns_enabled() && events.len() > 1;
+    let mut seen_in_prior_events = std::collections::HashSet::new();
+    for event in events {
         let event = game.ensure_trigger_event_provenance(event);
-        queue_triggers_from_event(game, trigger_queue, event.clone(), true);
-        queue_inherent_radiation_trigger(game, trigger_queue, &event);
+        if !dedupe {
+            queue_triggers_from_event(game, trigger_queue, event.clone(), true);
+            queue_inherent_radiation_trigger(game, trigger_queue, &event);
+            continue;
+        }
+        let mut scratch = TriggerQueue::new();
+        queue_triggers_from_event(game, &mut scratch, event.clone(), true);
+        queue_inherent_radiation_trigger(game, &mut scratch, &event);
+        let mut present_in_this_event = std::collections::HashSet::new();
+        for entry in scratch.take_all() {
+            if !crate::triggers::check::triggered_ability_refers_to_trigger_player(&entry.ability)
+            {
+                let key = (entry.source_stable_id, entry.trigger_identity, entry.controller);
+                present_in_this_event.insert(key);
+                if seen_in_prior_events.contains(&key) {
+                    continue;
+                }
+            }
+            trigger_queue.add(entry);
+        }
+        seen_in_prior_events.extend(present_in_this_event);
     }
 }
 
@@ -213,8 +238,17 @@ pub(super) fn generate_damage_triggers(
         .map(|event| event.occurrence_key())
         .collect::<std::collections::HashSet<_>>();
     let mut unrelated = Vec::new();
+    // CR 726.2: "one or more creatures a player controls" deal combat damage
+    // to the initiative holder triggers once per controller per damage batch.
+    let initiative_source = ObjectId::from_raw(u64::MAX - 1);
+    let mut initiative_transfers = std::collections::HashSet::new();
     for entry in std::mem::take(&mut game.effect_store.pending_trigger_entries) {
         if receipts.contains(&entry.triggering_event.occurrence_key()) {
+            if entry.source == initiative_source
+                && !initiative_transfers.insert(entry.trigger_identity)
+            {
+                continue;
+            }
             trigger_queue.add(entry);
         } else {
             unrelated.push(entry);

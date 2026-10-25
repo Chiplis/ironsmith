@@ -37,7 +37,8 @@ impl EffectExecutor for ModifyPowerToughnessEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let values = ResolvedPowerToughness::resolve(game, ctx, &self.power, &self.toughness)?;
+        let values =
+            ResolvedPowerToughness::resolve_modifier(game, ctx, &self.power, &self.toughness)?;
 
         let target_id = match resolve_single_object_for_effect(game, ctx, &self.target) {
             Ok(selected) => selected,

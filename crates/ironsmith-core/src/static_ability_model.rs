@@ -4833,6 +4833,10 @@ impl<
         Self::identified(StaticAbilityId::DoubleAgenda, "Double agenda")
     }
 
+    pub fn starting_player() -> Self {
+        Self::identified(StaticAbilityId::StartingPlayer, "You are the starting player. If multiple players would be the starting player, one of those players is chosen at random.")
+    }
+
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
         let text = text.into();
         if let Some(count) = deck_construction_color_choice_count(&text) {
@@ -7855,6 +7859,9 @@ impl<
             label: "players cant cycle".into(),
             payload: StaticAbilityPayload::None,
         }
+    }
+    pub fn you_are_the_starting_player() -> Self {
+        Self::identified(StaticAbilityId::YouAreTheStartingPlayer, "you are the starting player")
     }
     pub fn starting_life_bonus(_amount: i32) -> Self {
         Self::identified(StaticAbilityId::StartingLifeBonus, "starting life bonus")

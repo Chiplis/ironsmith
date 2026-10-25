@@ -20,6 +20,12 @@ pub(super) fn is_reserved_short_alias(alias: &str, alias_tokens: &[OwnedLexToken
             // "Venture into the dungeon" (Dungeon Map, Dungeon Descent): the
             // dungeon is a game object (CR 309), never the source's alias.
             | "dungeon"
+            // Game nouns ("is dealt damage", "add one mana", "gain life")
+            // are never a card's short alias (Damage Control Crew, Mana Vault).
+            | "damage" | "mana" | "life"
+            // Attraction rules words (CR 702.159b): "Visit — Claim the
+            // prize!" and the "Prize —" paragraph never name the card.
+            | "prize" | "visit" | "claim"
     ) {
         return true;
     }

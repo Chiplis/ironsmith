@@ -52,11 +52,8 @@ pub fn parse_hideaway_keyword_tokens(
             return Ok(None);
         }
     };
-    if count == 0 {
-        return Err(CardTextError::ParseError(format!(
-            "hideaway keyword expected positive count in '{display}'"
-        )));
-    }
+    // CR 702.75a / 107.1b: Hideaway N takes any nonnegative N; Hideaway 0
+    // still triggers and simply looks at no cards.
     Ok(Some(HideawayKeywordShape {
         count: count as i32,
     }))

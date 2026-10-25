@@ -74,7 +74,10 @@ fn related_object_ids_for_mode(
         ids.append(&mut effect_ids);
     }
 
-    if !saw_preview {
+    // An unresolved action preview (for example, sacrifice a land selected
+    // later) is not an empty pile. Explicit captured groups return above and
+    // retain Some([]), which really does mean an empty group.
+    if !saw_preview || ids.is_empty() {
         return None;
     }
 
@@ -425,7 +428,8 @@ pub(super) fn select_mode_program(
             .filter(|idx| is_mode_legal(*idx))
             .collect();
         let legal_mode_count = randomized_modes.len();
-        if legal_mode_count < min_modes {
+        // CR 700.2d: a repeatable mode can fill every choice.
+        if legal_mode_count < min_modes && !(effect.allow_repeated_modes && legal_mode_count > 0) {
             return Err(ExecutionError::Impossible(
                 "Not enough legal modes available".to_string(),
             ));
@@ -452,7 +456,7 @@ pub(super) fn select_mode_program(
             .enumerate()
             .map(|(i, mode)| {
                 let option =
-                    ModeOption::with_legality(i, mode.source_text.clone(), is_mode_legal(i));
+                    ModeOption::with_legality(i, effect.decision_label(i), is_mode_legal(i));
                 if let Some(object_ids) = related_object_ids_for_mode(game, mode, ctx) {
                     option.with_related_objects(object_ids)
                 } else {
@@ -462,7 +466,8 @@ pub(super) fn select_mode_program(
             .collect();
 
         let legal_mode_count = mode_options.iter().filter(|m| m.legal).count();
-        if legal_mode_count < min_modes {
+        // CR 700.2d: a repeatable mode can fill every choice.
+        if legal_mode_count < min_modes && !(effect.allow_repeated_modes && legal_mode_count > 0) {
             return Err(ExecutionError::Impossible(
                 "Not enough legal modes available".to_string(),
             ));
@@ -524,6 +529,9 @@ pub(super) fn select_mode_program(
         valid_chosen_indices.push(idx);
         chosen_point_total += point_cost;
     }
+
+    // CR 608.2c: chosen modes are followed in their printed order.
+    valid_chosen_indices.sort_unstable();
 
     if selected_mode_point_total(effect, &valid_chosen_indices) < min_modes {
         return Err(ExecutionError::Impossible(
@@ -814,6 +822,23 @@ mod tests {
             self.captured = Some(ctx.clone());
             Vec::new()
         }
+    }
+
+    #[test]
+    fn empty_action_previews_are_distinct_from_captured_empty_groups() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut dm = CapturingOptionsDecisionMaker::default();
+        let ctx = ExecutionContext::new(source, alice, &mut dm);
+        let selection = |filter| Effect::new(crate::effects::ChooseObjectsEffect::new(
+            filter, 1, PlayerFilter::You, "selected"));
+        let action = EffectMode::new("Sacrifice a land", vec![selection(crate::filter::ObjectFilter::land())]);
+        assert_eq!(related_object_ids_for_mode(&game, &action, &ctx), None);
+        let captured = EffectMode::new("Choose pile", vec![selection(
+            crate::filter::ObjectFilter::land().match_tagged("captured_pile",
+                crate::target::TaggedOpbjectRelation::SameObjectId))]);
+        assert_eq!(related_object_ids_for_mode(&game, &captured, &ctx), Some(Vec::new()));
     }
 
     #[test]

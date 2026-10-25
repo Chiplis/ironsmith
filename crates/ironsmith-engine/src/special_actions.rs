@@ -1219,8 +1219,11 @@ fn ignore_source_effect_mana_cost(
     if game.is_phased_out(source_id) {
         return Err(ActionError::NoSuchAbility);
     }
-    let ability = source
-        .abilities
+    // CR 116.2d: read the source's current abilities (grants and losses).
+    let abilities = game
+        .current_abilities(source_id)
+        .unwrap_or_else(|| source.abilities_vec());
+    let ability = abilities
         .get(ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
     let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
@@ -1263,8 +1266,11 @@ fn sacrifice_to_ignore_source_effect_player(
     if game.is_phased_out(source_id) {
         return Err(ActionError::NoSuchAbility);
     }
-    let ability = source
-        .abilities
+    // CR 116.2d: read the source's current abilities (grants and losses).
+    let abilities = game
+        .current_abilities(source_id)
+        .unwrap_or_else(|| source.abilities_vec());
+    let ability = abilities
         .get(ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
     let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
@@ -1416,6 +1422,10 @@ fn can_ignore_attached_restriction(
             expected: Zone::Battlefield,
             actual: source.zone,
         });
+    }
+    // CR 702.26b: a phased-out Aura is treated as though it doesn't exist.
+    if game.is_phased_out(source_id) {
+        return Err(ActionError::NoSuchAbility);
     }
     let ability = source
         .abilities
@@ -1787,12 +1797,8 @@ fn can_play_land(
         });
     }
 
-    // Normal land plays from hand require ownership. External permissions
-    // (e.g. "you may play that card from exile") can bypass this.
-    if object.zone == Zone::Hand && object.owner != player {
-        return Err(ActionError::InvalidTarget);
-    }
-
+    // CR 116.2a: a land in another player's hand was admitted above only by
+    // an explicit permission for that origin (Sen Triplets).
     Ok(())
 }
 
@@ -3586,6 +3592,10 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                 cost_ctx.x_value = announced_x;
                 cost_ctx.interactive_mana_exclusions = interactive_mana_exclusions;
                 cost_ctx.reserved_tap_sources = reserved_tap_sources;
+                // CR 118.13a/602.2b: a mana-versus-life or hybrid choice is
+                // announced before any cost is paid, so mana components with
+                // a choice of symbols are paid ahead of the others.
+                let total_cost = mana_choice_costs_first(total_cost);
                 let paid_cost =
                     pay_total_cost_without_preflight_with_outputs(game, &total_cost, &mut cost_ctx)
                         .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
@@ -3644,9 +3654,9 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                         .with_source_snapshot(source_snapshot.clone())
                         .with_tagged_objects(cost_tags.clone())
                         .with_effect_outcomes(cost_effect_outcomes.clone());
-                if let Some(x) = x_value_from_costs {
-                    mana_ctx = mana_ctx.with_x(x);
-                }
+                // CR 107.3j/107.3g: a mana ability whose X is not defined by
+                // its cost or its own text uses zero.
+                mana_ctx = mana_ctx.with_x(x_value_from_costs.unwrap_or(0));
                 let outputs = crate::effects::EffectExecutor::execute_with_outputs(
                     &crate::effects::AddManaEffect::new(
                         mana,
@@ -3684,9 +3694,7 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                             .with_source_snapshot(source_snapshot.clone())
                             .with_tagged_objects(cost_tags.clone())
                             .with_effect_outcomes(cost_effect_outcomes.clone());
-                    if let Some(x) = x_value_from_costs {
-                        effect_ctx = effect_ctx.with_x(x);
-                    }
+                    effect_ctx = effect_ctx.with_x(x_value_from_costs.unwrap_or(0));
                     let program_outputs =
                         crate::game_loop::execute_resolution_program_with_outputs_typed(
                             game,
@@ -3710,6 +3718,28 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                     completion.outputs.extend(program_outputs.outputs);
                 }
 
+                // CR 106.12a: one activation with a tap cost is one
+                // tapped-for-mana occurrence, however many production
+                // instructions it has.
+                let mut tap_occurrence_seen = false;
+                for event in completion.events.iter_mut() {
+                    let Some(added) = event.downcast::<crate::events::ManaAddedEvent>() else {
+                        continue;
+                    };
+                    if added.source != permanent_id
+                        || added.mana.is_empty()
+                        || added.provenance
+                            != crate::events::mana::ManaProductionProvenance::TappedSourceForMana
+                    {
+                        continue;
+                    }
+                    if tap_occurrence_seen {
+                        let mut continued = added.clone();
+                        continued.tap_occurrence_continuation = true;
+                        *event = event.with_inner_event(continued);
+                    }
+                    tap_occurrence_seen = true;
+                }
                 game.record_land_mana_activation(permanent_id, player, Some(&source_snapshot));
                 Ok(completion)
             } else {
@@ -3717,6 +3747,26 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
             }
         },
     )
+}
+
+fn mana_choice_costs_first(total_cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
+    let ironsmith_core::TotalCostKind::All(costs) = total_cost.kind() else {
+        return total_cost;
+    };
+    let has_choice = |cost: &crate::costs::Cost| {
+        cost.mana_cost_ref()
+            .is_some_and(|mana| mana.pips().iter().any(|pip| pip.len() > 1))
+    };
+    let Some(first_choice) = costs.iter().position(has_choice) else {
+        return total_cost;
+    };
+    if costs[..first_choice].iter().all(|cost| cost.is_mana_cost()) {
+        return total_cost;
+    }
+    let (mut ordered, rest): (Vec<_>, Vec<_>) =
+        costs.iter().cloned().partition(|cost| has_choice(cost));
+    ordered.extend(rest);
+    crate::cost::TotalCost::from_costs(ordered)
 }
 
 /// Pay a single cost component, resolving any required choices via decision specs.

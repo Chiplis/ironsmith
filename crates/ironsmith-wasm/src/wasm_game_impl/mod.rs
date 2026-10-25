@@ -6,6 +6,8 @@ include!("external_registry.rs");
 include!("dispatch.rs");
 include!("undo.rs");
 include!("pregame.rs");
+include!("sticker_sheets.rs");
+include!("loop_shortcut.rs");
 include!("runtime_flow.rs");
 include!("public_audit.rs");
 include!("manabrew_compat.rs");

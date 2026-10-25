@@ -110,8 +110,8 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 return Ok(EffectOutcome::target_invalid());
             };
 
-            match super::retarget_stack_object::commit_retarget(
-                game, entry.target_id(), new_targets, ctx.provenance,
+            match super::retarget_stack_object::commit_copy_retarget(
+                game, &entry, new_targets, ctx.provenance, true,
             ) {
                 Some((did_change, completion)) => {
                     changed += i32::from(did_change);

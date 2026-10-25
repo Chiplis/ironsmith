@@ -5408,6 +5408,21 @@ impl StaticAbilityKind for PlayersCantCycle {
     }
 }
 
+/// "You are the starting player. If multiple players would be the starting
+/// player, one of those players is chosen at random." (Power Play, CR 103.1c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct YouAreTheStartingPlayer;
+
+impl StaticAbilityKind for YouAreTheStartingPlayer {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::YouAreTheStartingPlayer
+    }
+
+    fn display(&self) -> String {
+        "You are the starting player. If multiple players would be the starting player, one of those players is chosen at random".to_string()
+    }
+}
+
 /// Start the game with an additional amount of life.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StartingLifeBonus {

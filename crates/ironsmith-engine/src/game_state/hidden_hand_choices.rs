@@ -1711,6 +1711,25 @@ impl GameState {
         self.auxiliary_tracking
             .publicly_revealed_hidden_cards
             .contains(&id)
+            || (self.hidden_card_info(id).is_none() && self.is_revealed_by_pending_ninjutsu(id))
+    }
+
+    /// CR 702.49b: a card with ninjutsu remains revealed from the time the
+    /// ability is announced until the ability leaves the stack.
+    pub fn is_revealed_by_pending_ninjutsu(&self, id: ObjectId) -> bool {
+        self.object(id).is_some_and(|object| object.zone == Zone::Hand)
+            && self.stack.iter().any(|entry| {
+                entry.is_ability
+                    && entry.object_id == id
+                    && (entry.ninjutsu_attack_target.is_some()
+                        || entry.ability_effects.as_ref().is_some_and(|program| {
+                            program.all_effects().into_iter().any(|effect| {
+                                effect
+                                    .downcast_ref::<crate::effects::NinjutsuEffect>()
+                                    .is_some()
+                            })
+                        }))
+            })
     }
 
     /// Whether this tracked identity still requires a public opening. A

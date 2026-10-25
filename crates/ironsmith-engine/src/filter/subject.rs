@@ -5,6 +5,10 @@ use crate::derived_view::DerivedGameView;
 use crate::game_state::StackEntry;
 use crate::mana::ManaCost;
 
+fn live_locked_room(object: &Object, game: &GameState) -> bool {
+    object.zone == Zone::Battlefield && game.room_has_no_unlocked_door(object.id)
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum ObjectSubject<'a> {
     Live(&'a Object),
@@ -55,11 +59,17 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.is_token,
         }
     }
-    pub(crate) fn mana_cost(self, game: &GameState) -> Option<&'a ManaCost> {
+    pub(crate) fn mana_cost(self, game: &GameState) -> Option<std::borrow::Cow<'a, ManaCost>> {
         if self.zone() == Zone::Exile && self.face_down(game) { return None; }
         match self {
-            Self::Live(object) => object.mana_cost.as_deref(),
-            Self::Snapshot(snapshot) => snapshot.mana_cost.as_ref(),
+            // CR 709.5d: a Room with neither door unlocked has no mana cost.
+            Self::Live(object) if live_locked_room(object, game) => None,
+            // CR 709.4b: both split halves' costs outside the stack.
+            Self::Live(object) => match object.split_combined_mana_cost() {
+                Some(combined) => Some(std::borrow::Cow::Owned(combined)),
+                None => object.mana_cost.as_deref().map(std::borrow::Cow::Borrowed),
+            },
+            Self::Snapshot(snapshot) => snapshot.mana_cost.as_ref().map(std::borrow::Cow::Borrowed),
         }
     }
     pub(crate) fn counters(self) -> &'a std::collections::BTreeMap<CounterType, u32> {
@@ -77,6 +87,7 @@ impl<'a> ObjectSubject<'a> {
     pub(crate) fn mana_value(self, game: &GameState) -> i32 {
         if self.zone() == Zone::Exile && self.face_down(game) { return 0; }
         match self {
+            Self::Live(object) if live_locked_room(object, game) => 0,
             Self::Live(object) => object_mana_value_for_filter(object),
             Self::Snapshot(snapshot) => snapshot_mana_value_for_filter(snapshot),
         }

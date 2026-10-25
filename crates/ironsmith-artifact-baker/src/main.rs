@@ -44,6 +44,38 @@ enum CardSourceGroup {
     /// room abilities come from the printed "Room — effect. (Leads to: ...)"
     /// lines. Dungeons are not playable cards, so there is no semantic score.
     Dungeon { name: String, block: String },
+    /// An Unfinity sticker sheet (CR 123.2). Sheets are not cards; each
+    /// ability row compiles to its own artifact named after the sheet and the
+    /// row, and the engine builds the sheet's stickers from them. Power and
+    /// toughness rows and name/art stickers need no compiler output.
+    StickerSheet {
+        name: String,
+        #[serde(default)]
+        name_stickers: Vec<String>,
+        #[serde(default)]
+        art_stickers: u32,
+        #[serde(default)]
+        rows: Vec<StickerRowSource>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StickerRowSource {
+    index: usize,
+    ticket_cost: u32,
+    text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    power: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    toughness: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    block: Option<String>,
+}
+
+/// Must match the engine's sticker row definition names.
+fn sticker_row_definition_name(sheet: &str, index: usize) -> String {
+    format!("{sheet} — Sticker {index}")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +128,9 @@ fn compile_artifact(input: CompileInput<'_>) -> Result<CompiledCardArtifact, Str
     compiled.definition.card.transforming_dfc = input.transforming_dfc;
     let definition = wire_definition_from_serializable(&compiled.definition)
         .map_err(|error| format!("failed to encode {}: {error}", input.name))?;
+    let definition = ironsmith_text::with_choice_decision_labels(definition, |wire|
+        ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire)
+            .map_err(|error| error.to_string()))?;
     let runtime_definition =
         ironsmith_runtime_catalog::artifact_materializer::materialize_definition(
             definition.clone(),
@@ -143,6 +178,26 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                 transforming_dfc: false,
             })?])
         }
+        CardSourceGroup::StickerSheet { name, rows, .. } => Ok(rows
+            .iter()
+            .filter_map(|row| Some((row, row.block.as_deref()?)))
+            .enumerate()
+            .filter_map(|(position, (row, block))| {
+                // A row the compiler cannot express has no sticker; the rest
+                // of the sheet stays usable.
+                compile_artifact(CompileInput {
+                    name: &sticker_row_definition_name(name, row.index),
+                    text: block,
+                    score: None,
+                    local_id: position as u32 + 1,
+                    other_face_id: None,
+                    other_face_name: None,
+                    layout: LinkedFaceLayout::None,
+                    transforming_dfc: false,
+                })
+                .ok()
+            })
+            .collect()),
         CardSourceGroup::Dungeon { name, block } => Ok(vec![compile_artifact(CompileInput {
             name,
             text: block,
@@ -206,6 +261,9 @@ fn source_texts(source: &CardSourceFile) -> Vec<&str> {
         CardSourceGroup::Linked { faces, .. } => {
             faces.iter().map(|face| face.block.as_str()).collect()
         }
+        CardSourceGroup::StickerSheet { rows, .. } => {
+            rows.iter().filter_map(|row| row.block.as_deref()).collect()
+        }
     }
 }
 
@@ -216,13 +274,25 @@ fn valid_existing_artifacts(
     let value = payload.get("artifacts")?.clone();
     let artifacts: Vec<CompiledCardArtifact> = serde_json::from_value(value.clone()).ok()?;
     let texts = source_texts(source);
-    if artifacts.len() != texts.len()
-        || artifacts.iter().zip(texts).any(|(artifact, text)| {
-            artifact.validate().is_err()
-                || artifact.compiler_version != artifact_compiler_version()
-                || artifact.source_checksum != sha256_hex(text.as_bytes())
-        })
-    {
+    let current = |artifact: &CompiledCardArtifact, text: &str| {
+        artifact.validate().is_ok()
+            && artifact.compiler_version == artifact_compiler_version()
+            && artifact.source_checksum == sha256_hex(text.as_bytes())
+    };
+    let valid = if matches!(source.group, CardSourceGroup::StickerSheet { .. }) {
+        // Uncompilable rows have no artifact, so a sheet keeps a subset.
+        artifacts.len() <= texts.len()
+            && artifacts
+                .iter()
+                .all(|artifact| texts.iter().any(|text| current(artifact, text)))
+    } else {
+        artifacts.len() == texts.len()
+            && artifacts
+                .iter()
+                .zip(texts)
+                .all(|(artifact, text)| current(artifact, text))
+    };
+    if !valid {
         return None;
     }
     Some((value, artifacts))
@@ -477,6 +547,45 @@ mod tests {
         };
         let error = compile_source(&source).expect_err("unvalidated source should be skipped");
         assert!(error.contains("no validated strict compilation snapshot"));
+    }
+
+    #[test]
+    fn sticker_sheet_compiles_ability_rows_and_skips_the_rest() {
+        let ability = |index: usize, text: &str| StickerRowSource {
+            index,
+            ticket_cost: 2,
+            text: text.to_string(),
+            power: None,
+            toughness: None,
+            block: Some(format!(
+                "Type: Artifact Creature — Sticker\nPower/Toughness: 1/1\n{text}"
+            )),
+        };
+        let source = CardSourceFile {
+            canonical_name: "Test Sheet".to_string(),
+            group: CardSourceGroup::StickerSheet {
+                name: "Test Sheet".to_string(),
+                name_stickers: vec!["Test".to_string(), "Sheet".to_string()],
+                art_stickers: 1,
+                rows: vec![
+                    ability(0, "Flying"),
+                    StickerRowSource {
+                        index: 1,
+                        ticket_cost: 3,
+                        text: "1/4".to_string(),
+                        power: Some(1),
+                        toughness: Some(4),
+                        block: None,
+                    },
+                    ability(2, "Perform an unsupported action."),
+                ],
+            },
+        };
+        let artifacts = compile_source(&source).expect("sticker sheet compiles");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].card.name, "Test Sheet — Sticker 0");
+        let payload = serde_json::json!({ "artifacts": artifacts });
+        assert!(valid_existing_artifacts(&payload, &source).is_some());
     }
 
     #[test]

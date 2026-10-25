@@ -95,6 +95,10 @@ pub struct ManaAddedEvent {
     pub snapshot: Option<ObjectSnapshot>,
     /// How this mana was produced, when relevant to replacement effects.
     pub provenance: ManaProductionProvenance,
+    /// CR 106.12a: a later production instruction of the same tap-cost mana
+    /// activation. The source was tapped for mana once; only the first
+    /// addition of that activation is the tapped-for-mana occurrence.
+    pub tap_occurrence_continuation: bool,
 }
 
 impl ManaAddedEvent {
@@ -111,6 +115,7 @@ impl ManaAddedEvent {
             mana,
             snapshot: None,
             provenance: ManaProductionProvenance::Unknown,
+            tap_occurrence_continuation: false,
         }
     }
 
@@ -261,6 +266,13 @@ pub struct ManaLostEvent {
     pub player: PlayerId,
     pub mana: crate::player::ManaPool,
     pub converted_to: Option<ManaSymbol>,
+    /// CR 106.13: the tracked units lost, with their original production
+    /// provenance and spending restrictions, so an effect that adds "the
+    /// mana lost this way" moves the same mana rather than making new mana.
+    pub(crate) lost_units: Vec<(
+        crate::player::ManaSourceProvenance,
+        Option<crate::ability::RestrictedManaUnit>,
+    )>,
 }
 impl GameEventType for ManaLostEvent {
     fn event_kind(&self) -> EventKind {

@@ -80,6 +80,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         attachment_snapshots: Vec::new(),
         was_enchanted: false,
         is_monstrous: false,
+        case_solved: false,
         is_prepared: false,
         is_commander: false,
         zone: Zone::Command,
@@ -93,6 +94,48 @@ pub(crate) fn split_chosen_card_names(names: &str) -> Vec<String> {
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+/// CR 201.4a-f: a name chosen "with certain characteristics" must be the name
+/// of a card (or of the selected half, face, or alternative characteristics)
+/// whose Oracle characteristics match. Names the Oracle table doesn't know
+/// fall back to the physical cards in this game; a name neither knows can't
+/// be checked and is accepted.
+fn oracle_name_matches_filter(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    chooser: crate::ids::PlayerId,
+    filter: &crate::target::ObjectFilter,
+    name: &str,
+) -> bool {
+    use crate::filter::ObjectFilterExt as _;
+    let mut candidates = crate::cards::oracle_face_types(name).to_vec();
+    if candidates.is_empty() {
+        candidates = game
+            .objects_map()
+            .values()
+            .filter(|object| {
+                matches!(object.kind, ObjectKind::Card)
+                    && crate::filter::names_match(&object.name, name)
+            })
+            .map(|object| (object.supertypes.to_vec(), object.card_types.to_vec()))
+            .collect();
+    }
+    if candidates.is_empty() {
+        return true;
+    }
+    // The choice tests the named card's characteristics, not any object's
+    // location or tagged relations.
+    let mut functional = filter.clone();
+    functional.zone = None;
+    functional.tagged_constraints.clear();
+    let filter_ctx = ctx.filter_context(game);
+    candidates.into_iter().any(|(supertypes, card_types)| {
+        let mut snapshot = synthetic_chosen_name_snapshot(ctx.source, chooser, name.to_string());
+        snapshot.supertypes = supertypes;
+        snapshot.card_types = card_types;
+        functional.matches_snapshot(&snapshot, &filter_ctx, game)
+    })
 }
 
 impl EffectExecutor for ChooseCardNameEffect {
@@ -164,6 +207,10 @@ impl EffectExecutor for ChooseCardNameEffect {
             if !name_is_legal {
                 return Ok(EffectOutcome::count(0));
             }
+        } else if let Some(filter) = &self.filter
+            && !oracle_name_matches_filter(game, ctx, chooser, filter, &canonical_name)
+        {
+            return Ok(EffectOutcome::count(0));
         }
 
         let mut chosen_names = game

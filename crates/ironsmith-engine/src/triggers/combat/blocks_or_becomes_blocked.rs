@@ -118,7 +118,8 @@ impl BlocksOrBecomesBlockedTrigger {
         };
         // The subject blocks: one trigger for the blocker, from the first
         // matching attacker it blocks (CR 509.1).
-        if !matches_event_object(&self.filter, e.blocker_snapshot.as_ref(), e.blocker, ctx)
+        if e.entered_blocking
+            || !matches_event_object(&self.filter, e.blocker_snapshot.as_ref(), e.blocker, ctx)
             || !matches_event_object(other_filter, e.attacker_snapshot.as_ref(), e.attacker, ctx)
         {
             return false;
@@ -150,8 +151,8 @@ impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
             let Some(e) = event.downcast::<CreatureBlockedEvent>() else {
                 return false;
             };
-            let subject_blocks =
-                matches_event_object(&self.filter, e.blocker_snapshot.as_ref(), e.blocker, ctx)
+            let subject_blocks = !e.entered_blocking
+                && matches_event_object(&self.filter, e.blocker_snapshot.as_ref(), e.blocker, ctx)
                     && matches_event_object(
                         other_filter,
                         e.attacker_snapshot.as_ref(),
@@ -176,9 +177,7 @@ impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
                 // CR 509.3a: "blocks" triggers once per combat per blocker.
                 if let Some(obj) = ctx.game.object(e.blocker) {
                     self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-                        && super::blocks::is_first_blocked_attacker_for_blocker(
-                            ctx.game, e.blocker, e.attacker,
-                        )
+                        && e.is_blocker_block_transition(ctx.game)
                 } else {
                     false
                 }

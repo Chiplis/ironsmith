@@ -73,6 +73,21 @@ fn commit_keyword_program(
             let source_snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
                 .or_else(|| fallback_source_snapshot.clone());
             let payments = forage_payments(false);
+            // CR 701.61a: a player who can neither exile three graveyard cards
+            // nor sacrifice a Food can't forage; the instruction simply
+            // doesn't happen (so "when you do" reflexive triggers don't fire).
+            if super::payable_choice::payable_action_indices(
+                game,
+                ctx.source,
+                ctx.controller,
+                &payments,
+            )
+            .is_empty()
+            {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::impossible(),
+                ));
+            }
             let outcome = super::payable_choice::execute_payable_choice(
                 game,
                 ctx,

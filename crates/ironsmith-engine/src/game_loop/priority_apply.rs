@@ -948,7 +948,11 @@ pub(super) fn apply_admitted_priority_action(
             if decision_maker.awaiting_choice() {
                 return Ok(GameProgress::Continue);
             }
-            // Player retains priority after playing a land
+            // CR 116.3 / 117.4: playing a land is an action that breaks any
+            // run of passes; the player retains priority.
+            if let Some(player) = game.turn.priority_player {
+                priority_after_player_action(game, &mut state.tracker, player);
+            }
             advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
         LegalAction::CastSpell {
@@ -1058,6 +1062,9 @@ pub(super) fn apply_admitted_priority_action(
             source,
             ability_index,
         } => {
+            if let Some(activator) = game.turn.priority_player {
+                game.record_activation_for_fragmented_loop(activator, *source, *ability_index);
+            }
             // Re-check activation legality at execution time so stale actions can’t
             // bypass constraints discovered after action discovery.
             if game.object(*source).is_some() {
@@ -1093,6 +1100,11 @@ pub(super) fn apply_admitted_priority_action(
             // Save checkpoint before starting the action chain
             // This allows rollback if the player makes an invalid choice
             state.save_checkpoint(game);
+            // CR 115.4 / 702.16b: target legality must see current
+            // restrictions (e.g. player protection) the same way the legal
+            // action query did.
+            game.refresh_continuous_state()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
             game.begin_exhaust_activation(*source, *ability_index);
 
             // Get the ability cost, effects, tracking info, and source info for the stack entry
@@ -1514,7 +1526,7 @@ pub(super) fn apply_admitted_priority_action(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
-            begin_mana_ability_activation(
+            let progress = begin_mana_ability_activation(
                 game,
                 trigger_queue,
                 state,
@@ -1522,7 +1534,13 @@ pub(super) fn apply_admitted_priority_action(
                 ability_index,
                 player,
                 decision_maker,
-            )
+            )?;
+            // CR 117.4: a completed mana ability activation is an action, so
+            // passes before it don't combine with passes after it.
+            if state.pending_mana_ability.is_none() && !decision_maker.awaiting_choice() {
+                state.tracker.reset();
+            }
+            Ok(progress)
         }
         LegalAction::TurnFaceUp {
             creature_id,
@@ -1587,15 +1605,10 @@ pub(super) fn apply_admitted_priority_action(
                     )
                 };
                 let performed = finish_special_action_response(result, game, decision_maker)?;
-                // CR 116.3 / 117.3c / 117.4: a special action breaks any run
-                // of passes in succession; the player keeps priority. (Mana
-                // abilities keep the existing pass count.)
-                if performed
-                    && !matches!(
-                        special,
-                        crate::special_actions::SpecialAction::ActivateManaAbility { .. }
-                    )
-                {
+                // CR 116.3 / 117.3c / 117.4: a special action or mana ability
+                // breaks any run of passes in succession; the player keeps
+                // priority.
+                if performed {
                     priority_after_player_action(game, &mut state.tracker, player);
                 }
                 if performed

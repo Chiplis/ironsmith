@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   MATCH_FORMAT_PLANECHASE,
+  deckListText,
   evaluateLobbyDeckSubmission,
   isLobbyDeckReady,
   parseDeckList,
   parseSideboardList,
+  parseStickerList,
   readDefaultLobbyDeck,
   saveDefaultLobbyDeck,
 } from "../src/lib/decklists.js";
@@ -138,4 +140,27 @@ test("empty lobby deck submissions do not clear the saved default", () => {
 
     assert.equal(readDefaultLobbyDeck().deckText, "4 Lightning Bolt");
   });
+});
+
+test("a Stickers section lists sticker sheets apart from the deck and sideboard", () => {
+  const text = [
+    "Deck",
+    "4 Island",
+    "",
+    "Sideboard",
+    "1 Negate",
+    "",
+    "Stickers",
+    "Ancestral Hot Dog Minotaur",
+    "1 Cool Fluffy Loxodon",
+    "",
+  ].join("\n");
+  assert.deepEqual(parseDeckList(text), ["Island", "Island", "Island", "Island"]);
+  assert.deepEqual(parseSideboardList(text), ["Negate"]);
+  assert.deepEqual(parseStickerList(text), ["Ancestral Hot Dog Minotaur", "Cool Fluffy Loxodon"]);
+  assert.equal(
+    deckListText(["Island", "Island"], ["Negate"], ["Ancestral Hot Dog Minotaur"]),
+    "2 Island\n\nSideboard\n1 Negate\n\nStickers\n1 Ancestral Hot Dog Minotaur",
+  );
+  assert.deepEqual(parseStickerList(deckListText(["Island"], [], ["Cool Fluffy Loxodon"])), ["Cool Fluffy Loxodon"]);
 });

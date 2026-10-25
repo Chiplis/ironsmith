@@ -10,6 +10,7 @@ import {
   parseCommanderList,
   parseDeckList,
   parseSideboardList,
+  parseStickerList,
   removeSavedDeckPreset,
   saveSavedDeckPreset,
 } from "@/lib/decklists";
@@ -43,7 +44,7 @@ const PLAYER_COUNT_MODES = {
   [MATCH_FORMAT_NORMAL]: [1, 2],
   [MATCH_FORMAT_COMMANDER]: [1, 2, 4],
 };
-const COMMANDER_SECTION = /(?:^|\n)Commanders?\s*\n([\s\S]*?)(?=\n(?:Deck|Sideboard)\s*(?:\n|$)|$)/i;
+const COMMANDER_SECTION = /(?:^|\n)Commanders?\s*\n([\s\S]*?)(?=\n(?:Deck|Sideboard|Stickers)\s*(?:\n|$)|$)/i;
 
 function parseCommanderSection(text) {
   const section = String(text || "").match(COMMANDER_SECTION);
@@ -354,6 +355,7 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
   const handleTestInGame = useCallback(() => {
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
+    const stickerSheets = texts.map(parseStickerList);
     const commanders = texts.map(parseCommanderSection);
     if (!decks.some((deck) => deck.length > 0)) {
       setStatus(ui("Paste at least one deck to test it in a game."));
@@ -374,6 +376,7 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
       format,
       decks: playerDecks,
       sideboards: playerSideboards,
+      stickerSheets: stickerSheets.slice(0, playerCount),
       commanders: commanders.slice(0, playerCount),
       playerCount,
       perspectivePlayerIndex,

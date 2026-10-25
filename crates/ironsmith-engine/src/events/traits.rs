@@ -387,6 +387,12 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone + An
         true
     }
 
+    /// True only for matchers that replace a permanent becoming tapped. Tap
+    /// actions consult the replacement pipeline only when one exists.
+    fn replaces_becoming_tapped(&self) -> bool {
+        false
+    }
+
     /// CR 614.12: only a replacement affecting this specific entrant can
     /// function from the entering object's own text before it is on the field.
     fn applies_from_entering_source(&self) -> bool {

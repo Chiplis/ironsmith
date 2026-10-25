@@ -876,6 +876,7 @@ fn execute_prepared_draw_cards(
     let mut direct_miracle = None;
     let mut direct_automatic_reveals = Vec::new();
     let mut direct_draw_step_context = (false, 0);
+    let mut attempted_empty_library_draw = false;
 
     for index in 0..count {
         if !game.can_draw(player_id) {
@@ -1122,6 +1123,15 @@ fn execute_prepared_draw_cards(
                     // A count raised by a replacement is still one draw per card.
                     final_count = final_count.min(1);
                 }
+                // CR 118.12: starting a mandatory draw from an empty library
+                // still starts that action ("if you do" checks the attempt).
+                if final_count > 0
+                    && game
+                        .player(player_id)
+                        .is_some_and(|player| player.library.is_empty())
+                {
+                    attempted_empty_library_draw = true;
+                }
                 let completed = super::draw_cards_with_miracle_window(
                     game,
                     player_id,
@@ -1232,6 +1242,9 @@ fn execute_prepared_draw_cards(
         .with_execution_facts(original_draw_facts.clone())
         .with_events(original_events);
     replacement_facts.extend(original_draw_facts);
+    if attempted_empty_library_draw {
+        replacement_facts.push(crate::effect::ExecutionFact::Accepted);
+    }
     let mut observed = EffectOutcome::count(total_drawn + replacement_count)
         .with_events(events)
         .with_execution_facts(EffectOutcome::merge_execution_facts(replacement_facts));

@@ -13,8 +13,8 @@ use crate::snapshot::ObjectSnapshot;
 /// Complete receipt for a resolved mana operation. Additional instruction
 /// outcomes never substitute for the original instruction's mana quantity.
 pub(crate) struct ManaCreditReceipt {
-    mana: Vec<ManaSymbol>,
-    original_committed: bool,
+    pub(crate) mana: Vec<ManaSymbol>,
+    pub(crate) original_committed: bool,
     outputs: crate::effects::CompletedEffectOutputs,
 }
 

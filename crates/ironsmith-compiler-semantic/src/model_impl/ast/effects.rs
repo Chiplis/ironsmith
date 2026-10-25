@@ -3864,6 +3864,27 @@ impl EffectAst {
                 destination,
                 reveal,
                 progress_tag,
+                tapped: false,
+            }),
+        )
+    }
+
+    /// "Search your library for a Forest card and a Plains card, put them
+    /// onto the battlefield tapped, then shuffle." (Krosan Verge)
+    pub fn subject_verb_search_library_slots_to_battlefield_tapped(
+        player: PlayerAst,
+        slots: Vec<SearchLibrarySlotAst>,
+        progress_tag: TagRef,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand {
+                slots,
+                destination: Zone::Battlefield,
+                reveal: false,
+                progress_tag,
+                tapped: true,
             }),
         )
     }

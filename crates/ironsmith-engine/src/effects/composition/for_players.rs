@@ -85,6 +85,28 @@ impl ForPlayersEffect {
 
 use super::player_order::selected_players_from as order_selected_players_from;
 
+/// CR 810.9d: a "set life total" instruction, including one inside a
+/// conditional wrapper, is chosen once per team.
+fn is_team_shared_life_setting(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::SetLifeTotalEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        return conditional
+            .if_true
+            .iter()
+            .chain(conditional.if_false.iter())
+            .any(is_team_shared_life_setting);
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return sequence.effects.iter().any(is_team_shared_life_setting);
+    }
+    false
+}
+
 /// In Two-Headed Giant, a shared-life action like a "set life total" effect
 /// applies once per team: the team's primary player picks which head performs
 /// it at the team's first position in APNAP order. Returns, per shared
@@ -102,10 +124,7 @@ fn twohg_shared_action_players(
         return Ok(shared);
     }
     for (effect_index, effect) in effects.iter().enumerate() {
-        if effect
-            .downcast_ref::<crate::effects::SetLifeTotalEffect>()
-            .is_none()
-        {
+        if !is_team_shared_life_setting(effect) {
             continue;
         }
         let mut seen_teams = std::collections::HashSet::new();
@@ -825,6 +844,21 @@ impl ForPlayersEffect {
             .map(|p| p.id)
             .collect();
 
+        // CR 101.4/121.2d: in shared-team turns each team orders its own
+        // members, so APNAP follows the teams' chosen member order.
+        if !self.starting_with_controller && game.shared_team_turns_enabled() {
+            let order = game.team_apnap_player_order();
+            let mut ordered = order
+                .into_iter()
+                .filter(|player| players.contains(player))
+                .collect::<Vec<_>>();
+            for player in players {
+                if !ordered.contains(&player) {
+                    ordered.push(player);
+                }
+            }
+            return Ok(ordered);
+        }
         let first_player = if self.starting_with_controller {
             ctx.controller
         } else {

@@ -19,7 +19,7 @@ use crate::game_loop::{
     finish_blocker_declaration_transaction_deferring_triggers, generate_and_queue_step_triggers,
     get_declare_attackers_decision, get_declare_blockers_decision,
     preview_attack_cost_needs_mana_window, preview_optional_attack_cost_prompts,
-    queue_block_declaration_events, try_queue_combat_damage_triggers,
+    queue_block_declaration_events_after, try_queue_combat_damage_triggers,
 };
 use crate::game_state::{
     AddedStepPlacement, GameState, Phase, ScheduledStep, Step, TurnScheduleDestination,
@@ -65,6 +65,8 @@ pub enum TurnState {
 
     // === Combat Phase ===
     BeginCombat,
+    /// CR 507.1 / 703.4h: the active player chooses the defending player.
+    BeginCombatChooseDefender,
     BeginCombatPriority,
     DeclareAttackersDecision,
     DeclareAttackersApply,
@@ -123,6 +125,7 @@ impl TurnState {
             Self::FirstMainAttractions => "first_main_attractions",
             Self::FirstMainPriority => "first_main_priority",
             Self::BeginCombat => "begin_combat",
+            Self::BeginCombatChooseDefender => "begin_combat_choose_defender",
             Self::BeginCombatPriority => "begin_combat_priority",
             Self::DeclareAttackersDecision => "declare_attackers_decision",
             Self::DeclareAttackersApply => "declare_attackers_apply",
@@ -171,6 +174,7 @@ impl TurnState {
             "first_main_attractions" => Self::FirstMainAttractions,
             "first_main_priority" => Self::FirstMainPriority,
             "begin_combat" => Self::BeginCombat,
+            "begin_combat_choose_defender" => Self::BeginCombatChooseDefender,
             "begin_combat_priority" => Self::BeginCombatPriority,
             "declare_attackers_decision" => Self::DeclareAttackersDecision,
             "declare_attackers_apply" => Self::DeclareAttackersApply,
@@ -860,6 +864,9 @@ pub struct TurnRunner {
     /// Their trigger events are queued once, after the last defending player
     /// declares (CR 509.1 is a single turn-based action).
     declared_block_pairs: Vec<(ObjectId, ObjectId)>,
+    /// Attackers already blocked (by an effect) when this declare-blockers
+    /// step's declarations began (CR 509.3c: they don't become blocked again).
+    blocked_before_declarations: Vec<ObjectId>,
 }
 
 impl TurnRunner {
@@ -912,6 +919,7 @@ impl TurnRunner {
             defending_player: None,
             remaining_defending_players: Vec::new(),
             declared_block_pairs: Vec::new(),
+            blocked_before_declarations: Vec::new(),
         }
     }
 
@@ -1071,6 +1079,8 @@ impl TurnRunner {
                 game.turn.step = Some(Step::Untap);
 
                 if game.consume_step_skip(game.turn.active_player, Step::Untap) {
+                    // CR 502.2: a skipped untap step has no day/night check.
+                    game.turn_store.pending_day_night_check = None;
                     self.state = finish_step(
                         game,
                         Step::Untap,
@@ -1081,6 +1091,7 @@ impl TurnRunner {
                 // CR 614.10: a static "skip your untap step" (Stasis) passes the
                 // whole step, including its untapping and phasing.
                 if game.player_skips_untap_step(game.turn.active_player) {
+                    game.turn_store.pending_day_night_check = None;
                     self.state = finish_step(
                         game,
                         Step::Untap,
@@ -1241,11 +1252,14 @@ impl TurnRunner {
                 // turn-based draw, no "beginning of draw step" triggers and no
                 // priority window. Anything waiting for the draw step waits
                 // for the next one that actually happens (CR 614.10a).
+                // CR 103.8a-b: the starting player of a two-player (or Two-Headed
+                // Giant) game skips the whole draw step of their first turn.
                 if draw_not_started
-                    && game
-                        .turn_players()
-                        .iter()
-                        .any(|player| game.player_skips_draw_step(*player))
+                    && (game.should_skip_first_turn_draw(game.turn.active_player)
+                        || game
+                            .turn_players()
+                            .iter()
+                            .any(|player| game.player_skips_draw_step(*player)))
                 {
                     game.reset_priority_for_new_window();
                     self.state = finish_step_and_phase(
@@ -1385,8 +1399,37 @@ impl TurnRunner {
                 game.mark_combat_phase_started();
                 game.turn.step = Some(Step::BeginCombat);
                 game.reset_priority_for_new_window();
+                // CR 703.4h / 507.1: immediately after the beginning of combat
+                // step begins, the active player chooses the defending player
+                // unless all opponents automatically become defending players.
+                game.set_chosen_defending_player(None);
+                if let Some(candidates) = game.defending_player_choice_candidates() {
+                    self.pending_option = None;
+                    self.state = TurnState::BeginCombatChooseDefender;
+                    return Ok(TurnAction::Decision(DecisionContext::SelectOptions(
+                        defending_player_choice_context(game, &candidates),
+                    )));
+                }
                 generate_and_queue_step_triggers(game, tq);
 
+                self.state = TurnState::BeginCombatPriority;
+                Ok(TurnAction::RunPriority)
+            }
+
+            TurnState::BeginCombatChooseDefender => {
+                let Some(candidates) = game.defending_player_choice_candidates() else {
+                    generate_and_queue_step_triggers(game, tq);
+                    self.state = TurnState::BeginCombatPriority;
+                    return Ok(TurnAction::RunPriority);
+                };
+                let Some(choice) = self.pending_option.take() else {
+                    return Ok(TurnAction::Decision(DecisionContext::SelectOptions(
+                        defending_player_choice_context(game, &candidates),
+                    )));
+                };
+                let chosen = candidates.get(choice).copied().unwrap_or(candidates[0]);
+                game.set_chosen_defending_player(Some(chosen));
+                generate_and_queue_step_triggers(game, tq);
                 self.state = TurnState::BeginCombatPriority;
                 Ok(TurnAction::RunPriority)
             }
@@ -1686,7 +1729,11 @@ impl TurnRunner {
                 self.pending_blocker_preparation_choices = None;
                 self.pending_blocker_payment_choices = None;
                 self.pending_option = None;
-                if self.combat.attackers.is_empty() {
+                // CR 508.8: skip only if no creature was declared or put onto
+                // the battlefield attacking this combat.
+                let attacked_this_combat = game.turn_store.attackers_existed_in_combat
+                    == Some((game.turn.turn_number, game.turn_store.combat_phases_started_this_turn));
+                if self.combat.attackers.is_empty() && !attacked_this_combat {
                     // Skip blockers and combat damage
                     self.state = finish_step(
                         game,
@@ -1694,10 +1741,26 @@ impl TurnRunner {
                         TurnScheduleDestination::Step(Step::EndCombat),
                     );
                     Ok(TurnAction::Continue)
+                } else if self.combat.attackers.is_empty() {
+                    // The step happens, but no creature is attacking anyone,
+                    // so no player declares blockers.
+                    game.turn.step = Some(Step::DeclareBlockers);
+                    self.combat.block_declaration_complete = true;
+                    game.combat = Some(self.combat.clone());
+                    game.reset_priority_for_new_window();
+                    self.state = TurnState::DeclareBlockersPriority;
+                    Ok(TurnAction::RunPriority)
                 } else {
                     self.remaining_defending_players =
                         attacked_defending_players_in_apnap_order(game, &self.combat);
                     self.declared_block_pairs.clear();
+                    self.blocked_before_declarations = self
+                        .combat
+                        .attackers
+                        .iter()
+                        .map(|info| info.creature)
+                        .filter(|attacker| crate::combat_state::is_blocked(&self.combat, *attacker))
+                        .collect();
                     self.state = TurnState::DeclareBlockersDecision;
                     Ok(TurnAction::Continue)
                 }
@@ -1896,7 +1959,7 @@ impl TurnRunner {
                     self.state = TurnState::DeclareBlockersDecision;
                     return Ok(TurnAction::Continue);
                 }
-                self.queue_declared_block_events(game, tq);
+                self.queue_declared_block_events(game, tq, defending_player);
                 // The priority loop announces trigger modes, targets, and order.
                 game.combat = Some(self.combat.clone());
                 game.reset_priority_for_new_window();
@@ -3536,12 +3599,18 @@ impl TurnRunner {
 
     /// CR 509.1: queue every defending player's block events as the one
     /// declare-blockers batch, against the completed blocking configuration.
-    fn queue_declared_block_events(&mut self, game: &mut GameState, tq: &mut TriggerQueue) {
+    fn queue_declared_block_events(
+        &mut self,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
+        _last_defender: PlayerId,
+    ) {
         self.combat.block_declaration_complete = true;
         game.combat = Some(self.combat.clone());
         game.mark_continuous_state_dirty();
         let pairs = std::mem::take(&mut self.declared_block_pairs);
-        queue_block_declaration_events(game, &self.combat, tq, &pairs, None);
+        let blocked_before = std::mem::take(&mut self.blocked_before_declarations);
+        queue_block_declaration_events_after(game, &self.combat, tq, &pairs, None, &blocked_before);
     }
 
     fn apply_sbas_until_commander_choice(
@@ -4156,6 +4225,32 @@ fn finish_phase(
     }
 
     begin_phase_schedule(game, phase, normal_next)
+}
+
+/// CR 507.1: prompt for the active player's choice of defending player.
+fn defending_player_choice_context(
+    game: &GameState,
+    candidates: &[PlayerId],
+) -> crate::decisions::context::SelectOptionsContext {
+    let options = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, player)| {
+            let name = game
+                .player(*player)
+                .map(|player| player.name.to_string())
+                .unwrap_or_else(|| format!("Player {}", player.index() + 1));
+            crate::decisions::context::SelectableOption::new(index, name)
+        })
+        .collect();
+    crate::decisions::context::SelectOptionsContext::new(
+        game.turn.active_player,
+        None,
+        "Choose the defending player",
+        options,
+        1,
+        1,
+    )
 }
 
 fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -> TurnState {
@@ -4829,6 +4924,8 @@ mod tests {
         game.turn.phase = Phase::Beginning;
         game.turn.step = Some(Step::Upkeep);
 
+        // Not the starting player's first turn (CR 103.8a would skip the draw step).
+        game.turn.turn_number = 2;
         let forecast = CardBuilder::new(CardId::new(), "Forecast Reveal Probe").build();
         let forecast_id = game.create_object_from_card(&forecast, alice, Zone::Hand);
         assert!(game.reveal_hand_card_until_upkeep_ends(forecast_id));
@@ -6352,7 +6449,8 @@ mod tests {
         runner.state = TurnState::Draw;
 
         let action = runner.advance(&mut game, &mut tq).unwrap();
-        assert!(matches!(action, TurnAction::RunPriority));
+        // CR 103.8a: the whole draw step is skipped, so no priority window opens.
+        assert!(matches!(action, TurnAction::Continue));
         assert_eq!(
             game.player(alice).expect("alice should exist").hand.len(),
             0
@@ -6383,7 +6481,8 @@ mod tests {
         runner.state = TurnState::Draw;
 
         let action = runner.advance(&mut game, &mut tq).unwrap();
-        assert!(matches!(action, TurnAction::RunPriority));
+        // CR 103.8a: the whole draw step is skipped, so no priority window opens.
+        assert!(matches!(action, TurnAction::Continue));
         // CR 103.8a: a two-player Commander game is a two-player game.
         assert_eq!(
             game.player(alice).expect("alice should exist").hand.len(),

@@ -599,6 +599,25 @@ impl GameState {
         self.cast_permission_flags
             .prepared_spells_cast
             .contains(&spell_id)
+            // CR 722.3c: the cast prepare spell copy keeps its identity on the
+            // stack (its exile link is dropped as it leaves exile).
+            || self.object(spell_id).is_some_and(|object| {
+                object.zone == Zone::Stack
+                    && self
+                        .cast_permission_flags
+                        .prepare_spell_copy_stables
+                        .contains(&object.stable_id)
+            })
+    }
+
+    /// Whether an object is (the current incarnation of) a prepare spell
+    /// copy, a copy of a card (CR 722.3, 704.5e).
+    pub(crate) fn is_prepare_spell_copy_object(&self, id: ObjectId) -> bool {
+        self.object(id).is_some_and(|object| {
+            self.cast_permission_flags
+                .prepare_spell_copy_stables
+                .contains(&object.stable_id)
+        })
     }
 
     /// Return all currently prepared permanents.
@@ -619,6 +638,11 @@ impl GameState {
             && let Some(controller) = self.object(id).map(|object| self.controller_of(object))
         {
             let copy_id = self.create_object_from_definition(&definition, controller, Zone::Exile);
+            if let Some(stable) = self.object(copy_id).map(|object| object.stable_id) {
+                self.cast_permission_flags_mut()
+                    .prepare_spell_copy_stables
+                    .insert(stable);
+            }
             self.cast_permission_flags_mut()
                 .prepared_spell_copies
                 .insert(id, copy_id);
@@ -874,6 +898,30 @@ impl GameState {
     /// Eligibility for turning an existing permanent face down (CR 712.11).
     /// This is deliberately separate from `set_face_down`: a double-faced
     /// card can enter face down through manifest, cloak, or a face-down cast.
+    /// Whether this object is a physical double-faced card (CR 712). Adventurer
+    /// and Omen cards share the linked-face representation but have one face.
+    pub(crate) fn object_is_physical_double_faced_card(
+        &self,
+        object: &crate::object::Object,
+    ) -> bool {
+        if object.linked_face_layout != LinkedFaceLayout::TransformLike {
+            return false;
+        }
+        let single_faced_inset = |subtypes: &[crate::types::Subtype]| {
+            subtypes.contains(&crate::types::Subtype::Adventure)
+                || subtypes.contains(&crate::types::Subtype::Omen)
+        };
+        if single_faced_inset(&object.subtypes) {
+            return false;
+        }
+        !self
+            .linked_face_definition_by_name_or_id(
+                object.other_face_name.as_deref(),
+                object.other_face,
+            )
+            .is_some_and(|other| single_faced_inset(&other.card.subtypes))
+    }
+
     pub fn can_turn_face_down_permanent(&self, id: ObjectId) -> bool {
         let Some(object) = self.object(id) else {
             return false;
@@ -881,10 +929,15 @@ impl GameState {
         if object.zone != Zone::Battlefield || self.is_face_down(id) || self.is_phased_out(id) {
             return false;
         }
-        let double_faced = |object: &crate::object::Object| {
-            matches!(object.linked_face_layout, LinkedFaceLayout::TransformLike)
-        };
-        if double_faced(object) {
+        let double_faced =
+            |object: &crate::object::Object| self.object_is_physical_double_faced_card(object);
+        // CR 712.16: a melded permanent is represented by double-faced cards.
+        if double_faced(object)
+            || self
+                .commander_tracking
+                .melded_permanents
+                .contains_key(&object.stable_id)
+        {
             return false;
         }
         !self
@@ -910,6 +963,16 @@ impl GameState {
         if self.is_face_down(id) {
             return false;
         }
+        // CR 712.16: a melded permanent can't be turned face down.
+        if self.object(id).is_some_and(|object| {
+            object.zone == Zone::Battlefield
+                && self
+                    .commander_tracking
+                    .melded_permanents
+                    .contains_key(&object.stable_id)
+        }) {
+            return false;
+        }
         let merged_stable_id = self.object(id).and_then(|object| {
             self.commander_tracking
                 .merged_permanents
@@ -924,8 +987,7 @@ impl GameState {
                 .is_some_and(|merged| {
                     merged.components.iter().any(|component| {
                         component.object.kind == crate::object::ObjectKind::Card
-                            && component.object.linked_face_layout
-                                == LinkedFaceLayout::TransformLike
+                            && self.object_is_physical_double_faced_card(&component.object)
                     })
                 });
             if contains_double_faced_card {
@@ -1055,12 +1117,52 @@ impl GameState {
                     && !self.is_hidden_card_placeholder(*id)
             })
             .collect();
+        // CR 702.143f: face-down foretold cards are revealed at game end.
+        face_down.extend(
+            self.cast_permission_flags
+                .foretold_cards
+                .keys()
+                .copied()
+                .filter(|id| {
+                    self.is_face_down(*id)
+                        && self
+                            .object(*id)
+                            .is_some_and(|object| object.zone == Zone::Exile)
+                        && !self.is_hidden_card_placeholder(*id)
+                }),
+        );
         face_down.sort_unstable();
+        face_down.dedup();
         for id in face_down {
             let Some(owner) = self.object(id).map(|object| object.owner) else {
                 continue;
             };
             self.record_face_down_reveal(id, owner);
+        }
+        // CR 702.106e: every face-down conspiracy is revealed at game end.
+        self.reveal_face_down_conspiracies(None);
+    }
+
+    /// CR 702.106e: face-down conspiracies are revealed when their owner
+    /// leaves the game or the game ends.
+    pub(crate) fn reveal_face_down_conspiracies(&mut self, owner: Option<PlayerId>) {
+        let mut hidden: Vec<ObjectId> = self
+            .conspiracy_cards()
+            .into_iter()
+            .filter(|id| {
+                self.is_face_down_conspiracy(*id)
+                    && !self.is_hidden_card_placeholder(*id)
+                    && self
+                        .object(*id)
+                        .is_some_and(|object| owner.is_none_or(|owner| object.owner == owner))
+            })
+            .collect();
+        hidden.sort_unstable();
+        for id in hidden {
+            let Some(card_owner) = self.object(id).map(|object| object.owner) else {
+                continue;
+            };
+            self.record_face_down_reveal(id, card_owner);
         }
     }
 
@@ -1091,9 +1193,17 @@ impl GameState {
             .get(&object.stable_id)
             .is_some_and(|merged| {
                 merged.components.iter().any(|component| {
+                    // A face-down component's own card types are beneath its
+                    // face-down overlay (CR 730.2g).
+                    let card_types = component
+                        .object
+                        .face_down_cast_state
+                        .as_deref()
+                        .map(|state| &state.card_types)
+                        .unwrap_or(&component.object.card_types);
                     component.object.kind == crate::object::ObjectKind::Card
-                        && (component.object.card_types.contains(&CardType::Instant)
-                            || component.object.card_types.contains(&CardType::Sorcery))
+                        && (card_types.contains(&CardType::Instant)
+                            || card_types.contains(&CardType::Sorcery))
                 })
             })
     }
@@ -1243,6 +1353,7 @@ impl GameState {
             .transform_count
             .insert(id, next);
         self.effect_store.continuous_effects.record_entry(id);
+        self.restamp_object_stickers(id);
         if let Some(stable_id) = self.object(id).map(|o| o.stable_id) {
             self.record_ui_effect_event("transform", None, None, vec![stable_id], None, None);
         }
@@ -1380,6 +1491,20 @@ impl GameState {
             && self.current_has_static_ability_id(id, ability_id)
     }
 
+    /// CR 702.145d/g: any permanent with daybound or nightbound, including a
+    /// face-down one that was granted the keyword, sets day or night.
+    fn permanent_has_day_night_keyword_for_designation(
+        &self,
+        id: ObjectId,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        !self.is_phased_out(id)
+            && self
+                .object(id)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+            && self.current_has_static_ability_id(id, ability_id)
+    }
+
     /// Whether a permanent currently has daybound or nightbound, which carry
     /// the "can't transform except due to its daybound/nightbound ability"
     /// restriction (CR 702.145b/e).
@@ -1435,10 +1560,10 @@ impl GameState {
             // gained or a permanent phases in, not only upon entry.
             let daybound = ids
                 .iter()
-                .any(|&id| self.permanent_has_day_night_keyword(id, Daybound));
+                .any(|&id| self.permanent_has_day_night_keyword_for_designation(id, Daybound));
             let nightbound = ids
                 .iter()
-                .any(|&id| self.permanent_has_day_night_keyword(id, Nightbound));
+                .any(|&id| self.permanent_has_day_night_keyword_for_designation(id, Nightbound));
             if !daybound && !nightbound {
                 return false;
             }
@@ -1449,8 +1574,15 @@ impl GameState {
             let should_transform = self.object(id).is_some_and(|object| {
                 object.zone == Zone::Battlefield
                     && self.permanent_has_transforming_component(id)
-                    && ((self.is_night && self.permanent_has_day_night_keyword(id, Daybound))
-                        || (!self.is_night && self.permanent_has_day_night_keyword(id, Nightbound)))
+                    // CR 702.145c/f: a daybound permanent transforms at night
+                    // only while front face up; a nightbound one by day only
+                    // while back face up.
+                    && ((self.is_night
+                        && self.permanent_has_day_night_keyword(id, Daybound)
+                        && !self.is_transformed_permanent(id))
+                        || (!self.is_night
+                            && self.permanent_has_day_night_keyword(id, Nightbound)
+                            && self.is_transformed_permanent(id)))
             });
             if should_transform && self.transform_permanent_with_current_restrictions(id) {
                 transformed = true;
@@ -1542,11 +1674,11 @@ impl GameState {
             (object.zone == Zone::Battlefield).then(|| {
                 (
                     Self::object_starts_daytime_if_unset_as_enters(object),
-                    self.permanent_has_day_night_keyword(
+                    self.permanent_has_day_night_keyword_for_designation(
                         id,
                         crate::static_abilities::StaticAbilityId::Daybound,
                     ),
-                    self.permanent_has_day_night_keyword(
+                    self.permanent_has_day_night_keyword_for_designation(
                         id,
                         crate::static_abilities::StaticAbilityId::Nightbound,
                     ),
@@ -1555,7 +1687,7 @@ impl GameState {
         }) else {
             return;
         };
-        let daybound_or_nightbound = daybound || nightbound;
+        let daybound_or_nightbound = !self.is_face_down(id) && (daybound || nightbound);
 
         if !self.has_day_night {
             if sets_day_if_unset || daybound {
@@ -1565,7 +1697,7 @@ impl GameState {
                 // CR 702.145g: a nightbound permanent makes it night, unless
                 // a daybound permanent is on the battlefield (702.145d).
                 let daybound_on_battlefield = self.battlefield.iter().any(|&other| {
-                    self.permanent_has_day_night_keyword(
+                    self.permanent_has_day_night_keyword_for_designation(
                         other,
                         crate::static_abilities::StaticAbilityId::Daybound,
                     )
@@ -1583,6 +1715,33 @@ impl GameState {
         if daybound_or_nightbound {
             self.apply_day_nightbound_transformations();
         }
+    }
+
+    /// CR 712.13a/702.145b: a resolving daybound spell would enter
+    /// transformed at night; if its back face is an instant or sorcery it
+    /// doesn't enter the battlefield and goes to its owner's graveyard.
+    pub(crate) fn resolving_daybound_spell_cannot_enter(&self, id: ObjectId) -> bool {
+        let Some(spell) = self.object(id) else {
+            return false;
+        };
+        if !(self.has_day_night && self.is_night)
+            || spell.zone != Zone::Stack
+            || spell.linked_face_layout != LinkedFaceLayout::TransformLike
+            || !self.current_has_static_ability_id(
+                id,
+                crate::static_abilities::StaticAbilityId::Daybound,
+            )
+        {
+            return false;
+        }
+        self.linked_face_definition_by_name_or_id(
+            spell.other_face_name.as_deref(),
+            spell.other_face,
+        )
+        .is_some_and(|other| {
+            other.card.card_types.contains(&CardType::Instant)
+                || other.card.card_types.contains(&CardType::Sorcery)
+        })
     }
 
     /// Put a just-entered daybound permanent back face up (CR 702.145b).
@@ -1684,6 +1843,42 @@ impl GameState {
     #[cfg(test)]
     pub(crate) fn phased_out_ids(&self) -> impl Iterator<Item = ObjectId> + '_ {
         self.battlefield_flags.phased_out.iter().copied()
+    }
+
+    /// CR 702.26n: directly phased-out permanents whose departed controller's
+    /// next turn would have begun before `turn_number`.
+    pub(crate) fn phased_out_under_departed_due(&self, turn_number: u32) -> Vec<ObjectId> {
+        let mut due: Vec<ObjectId> = self
+            .battlefield_flags
+            .phased_out_under_departed_until_turn
+            .iter()
+            .filter(|(id, boundary)| {
+                turn_number > **boundary
+                    && self.is_phased_out(**id)
+                    && !self.battlefield_flags.indirectly_phased_out.contains(id)
+                    && !self.is_phase_out_held(**id)
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        due.sort();
+        due
+    }
+
+    pub(crate) fn record_phased_out_under_departed(&mut self, player: PlayerId, boundary: u32) {
+        let ids: Vec<ObjectId> = self
+            .battlefield_flags
+            .phased_out_under_controller
+            .iter()
+            .filter(|(_, controller)| **controller == player)
+            .map(|(id, _)| *id)
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        let flags = self.battlefield_flags_mut();
+        for id in ids {
+            flags.phased_out_under_departed_until_turn.insert(id, boundary);
+        }
     }
 
     pub(crate) fn directly_phased_out_under(
@@ -1841,6 +2036,22 @@ impl GameState {
             .get_or_insert_with(Default::default)
             .attackers
             .push(crate::combat_state::AttackerInfo { creature, target });
+        // CR 506.3d / 508.4d: entering attacking during the declare blockers,
+        // combat damage, or end of combat step means entering unblocked, even
+        // when this combat skipped its declare blockers step.
+        if self.turn.phase == crate::game_state::Phase::Combat
+            && matches!(
+                self.turn.step,
+                Some(
+                    crate::game_state::Step::DeclareBlockers
+                        | crate::game_state::Step::CombatDamage
+                        | crate::game_state::Step::EndCombat
+                )
+            )
+            && let Some(combat) = self.combat.as_mut()
+        {
+            combat.block_declaration_complete = true;
+        }
         // Combat roles can change characteristics and replacement eligibility.
         self.mark_continuous_state_dirty();
         // Capture history at the role commit. Waiting until a later refresh
@@ -1865,8 +2076,24 @@ impl GameState {
     /// Remove an attacking or blocking permanent from combat (CR 506.4).
     /// Creatures it blocked stay blocked (CR 509.1h).
     pub(crate) fn remove_object_from_combat(&mut self, id: ObjectId) {
+        self.remove_object_from_combat_with(id, false);
+    }
+
+    /// CR 506.4 / 509.1g: remove a combatant that left the battlefield; its
+    /// blockers stay blocking creatures.
+    pub(crate) fn remove_departed_object_from_combat(&mut self, id: ObjectId) {
+        self.remove_object_from_combat_with(id, true);
+    }
+
+    fn remove_object_from_combat_with(&mut self, id: ObjectId, departed: bool) {
         self.retire_attacking_role(id);
-        let was_participating = self.mutate_combat_lanes(|combat| combat.remove_combatant(id));
+        let was_participating = self.mutate_combat_lanes(|combat| {
+            if departed {
+                combat.remove_departed_combatant(id)
+            } else {
+                combat.remove_combatant(id)
+            }
+        });
         self.clear_ninjutsu_attack_targets_for(id);
         if was_participating {
             // Combat roles can condition abilities and replacement matchers.
@@ -1902,6 +2129,21 @@ impl GameState {
     /// Mark a card as exiled via madness.
     pub fn set_madness_exiled(&mut self, id: ObjectId) {
         self.cast_permission_flags_mut().madness_exiled.insert(id);
+    }
+
+    /// CR 400.7k: the object a madness-exiled card became when its resolved
+    /// madness trigger moved it, uncast, to a public zone.
+    pub fn madness_public_arrival(&self, exiled: ObjectId) -> Option<ObjectId> {
+        self.cast_permission_flags
+            .madness_public_arrivals
+            .get(&exiled)
+            .copied()
+    }
+
+    pub(crate) fn record_madness_public_arrival(&mut self, exiled: ObjectId, arrival: ObjectId) {
+        self.cast_permission_flags_mut()
+            .madness_public_arrivals
+            .insert(exiled, arrival);
     }
 
     /// Clear madness exiled status.
@@ -2162,6 +2404,7 @@ impl GameState {
     pub fn clear_battlefield_state(&mut self, id: ObjectId) {
         self.clear_soulbond_pair(id);
         self.clear_prepared(id);
+        let departed_protector = self.battle_protector(id);
         {
             let flags = self.battlefield_flags_mut();
             flags.tapped_permanents.remove(&id);
@@ -2195,6 +2438,7 @@ impl GameState {
             flags.mutation_count.remove(&id);
             flags.phased_out.remove(&id);
             flags.phased_out_under_controller.remove(&id);
+            flags.phased_out_under_departed_until_turn.remove(&id);
             flags.indirectly_phased_out.remove(&id);
             flags.phase_out_holds_by_source.remove(&id);
             for held in flags.phase_out_holds_by_source.values_mut() {
@@ -2211,6 +2455,9 @@ impl GameState {
             flags
                 .phased_out_with_source
                 .retain(|_, phased| !phased.is_empty());
+        }
+        if let Some(protector) = departed_protector {
+            self.departed_battle_protectors.insert(id, protector);
         }
         self.exile_tracking_mut().imprinted_cards.remove(&id);
         self.object_annotations_mut().noted_life_totals.remove(&id);
@@ -2312,9 +2559,17 @@ impl GameState {
             return false;
         }
         self.object_store.changes.record(battle);
-        self.battlefield_flags_mut()
+        let previous = self
+            .battlefield_flags_mut()
             .battle_protectors
             .insert(battle, protector);
+        // CR 506.4 / 506.4c: a battle whose protector changes is removed from
+        // combat; creatures attacking it keep attacking nothing.
+        if let Some(previous) = previous
+            && previous != protector
+        {
+            self.remove_attacked_permanent_from_combat(battle, Some(previous));
+        }
         true
     }
 
@@ -3407,6 +3662,30 @@ impl GameState {
             .insert(group_id, controller);
     }
 
+    /// [`Self::track_exiled_until_opponent_becomes_monarch`] for the exact
+    /// exiled incarnations, so a later incarnation of the same card isn't
+    /// returned when the duration ends.
+    pub fn track_exiled_incarnations_until_opponent_becomes_monarch(
+        &mut self,
+        controller: PlayerId,
+        object_ids: Vec<ObjectId>,
+        return_zone: Zone,
+    ) {
+        let stable_ids = object_ids
+            .iter()
+            .filter_map(|id| self.object(*id).map(|object| object.stable_id))
+            .collect::<Vec<_>>();
+        if stable_ids.is_empty() {
+            return;
+        }
+        let group_id = self.create_linked_exile_group(stable_ids, return_zone, true);
+        let tracking = self.exile_tracking_mut();
+        tracking
+            .return_exiled_when_opponent_becomes_monarch
+            .insert(group_id, controller);
+        tracking.monarch_exile_incarnations.insert(group_id, object_ids);
+    }
+
     /// End all qualifying monarch-event exile durations. This is a one-shot
     /// duration ending, not a triggered ability, so the cards return directly
     /// as the designation changes.
@@ -3427,6 +3706,10 @@ impl GameState {
             self.exile_tracking_mut()
                 .return_exiled_when_opponent_becomes_monarch
                 .remove(&group_id);
+            let incarnations = self
+                .exile_tracking_mut()
+                .monarch_exile_incarnations
+                .remove(&group_id);
             let Some(group) = self.take_linked_exile_group(group_id) else {
                 continue;
             };
@@ -3437,6 +3720,9 @@ impl GameState {
                 .filter(|object_id| {
                     self.object(*object_id)
                         .is_some_and(|object| object.zone == Zone::Exile)
+                        && incarnations
+                            .as_ref()
+                            .is_none_or(|incarnations| incarnations.contains(object_id))
                 })
                 .map(|object_id| (object_id, group.return_zone))
                 .collect::<Vec<_>>();
@@ -3543,6 +3829,30 @@ impl GameState {
         self.object_annotations_mut()
             .token_creation_sources
             .insert(token_stable_id, source_stable_id);
+    }
+
+    /// Record the exact source incarnation that created a token instance.
+    pub(crate) fn add_token_created_with_source_incarnation(
+        &mut self,
+        source: ObjectId,
+        token_stable_id: StableId,
+    ) {
+        self.object_annotations_mut()
+            .token_creation_source_incarnations
+            .insert(token_stable_id, source);
+    }
+
+    /// Whether the token instance was created by this exact source
+    /// incarnation, when that incarnation was recorded (CR 400.7, 607.2c).
+    pub(crate) fn token_created_by_source_incarnation(
+        &self,
+        source: ObjectId,
+        token_stable_id: StableId,
+    ) -> bool {
+        self.object_annotations
+            .token_creation_source_incarnations
+            .get(&token_stable_id)
+            .is_none_or(|created_by| *created_by == source)
     }
 
     /// Whether this token instance was created by the specified source
@@ -3958,9 +4268,9 @@ impl GameState {
         // cast characteristics end (CR 718.4, 702.103). Same order as an
         // ordinary battlefield leave.
         destination.end_enters_as_copy_overlay();
-        destination.end_prototype_cast_overlay();
         destination.end_bestow_cast_overlay();
         destination.end_face_down_cast_overlay();
+        destination.end_prototype_cast_overlay();
         if destination.kind != crate::object::ObjectKind::Card {
             return destination;
         }
@@ -4081,6 +4391,8 @@ impl GameState {
         self.effect_store
             .continuous_effects
             .retarget_merged_spell(spell_id, target_id);
+        // CR 123.5b: the incoming component's stickers join the merged permanent.
+        self.absorb_component_stickers(spell.stable_id, target_id);
         self.remove_object(spell_id);
         self.mark_continuous_state_dirty();
         Some(target_id)
@@ -4779,6 +5091,30 @@ impl GameState {
         }
         if let Some(targeted) = event.downcast::<crate::events::BecomesTargetedEvent>() {
             event = event.with_inner_event(targeted.clone().with_participant_snapshots(self));
+        }
+        // CR 700.11: whether a permanent card was put into a graveyard depends
+        // on the card as it exists there (an Adventure or a manifested instant
+        // differs from its origin LKI). Freeze those arrival snapshots now.
+        if let Some(zone_change) = event.downcast::<ZoneChangeEvent>()
+            && zone_change.to == Zone::Graveyard
+            && zone_change.from != Zone::Graveyard
+            && zone_change.destination_snapshots.is_empty()
+            && !zone_change.result_objects.is_empty()
+        {
+            let snapshots: Vec<_> = zone_change
+                .result_objects
+                .iter()
+                .filter_map(|id| {
+                    self.object(*id)
+                        .filter(|object| object.zone == Zone::Graveyard)
+                        .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, self))
+                })
+                .collect();
+            if !snapshots.is_empty() {
+                let mut zone_change = zone_change.clone();
+                zone_change.destination_snapshots = snapshots;
+                event = event.with_inner_event(zone_change);
+            }
         }
         if let Some(damage) = event.downcast::<DamageEvent>()
             && let DamageTarget::Object(object_id) = damage.target

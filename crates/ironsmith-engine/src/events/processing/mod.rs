@@ -5239,6 +5239,7 @@ fn prepare_zone_change_with_context_inner(
                 } else {
                     game.prepare_merged_component_destinations(object, final_zone, dm);
                 }
+                game.prepare_merged_sticker_component(object, final_zone, dm);
                 Ok(EventOutcome::Proceed(PreparedZoneProposal::Ready(
                     PreparedZoneChange {
                         final_zone,
@@ -7911,11 +7912,19 @@ fn prepared_object_etb_replacement_effects(
             .origin(index)
             .expect("calculated ability and origin remain paired")
             .clone();
+        // CR 707.9 / 614.12: once the entrant is a copy, its "printed" text
+        // is the copied object's, a different acquisition from the entrant's
+        // own text even at the same ability index.
         let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
             .then(|| {
-                prospective
-                    .object(etb.object)
-                    .and_then(|object| object.card)
+                etb.enters_as_copy_of
+                    .and_then(|source| game.object(source))
+                    .and_then(|source| source.card)
+                    .or_else(|| {
+                        prospective
+                            .object(etb.object)
+                            .and_then(|object| object.card)
+                    })
             })
             .flatten();
         let parent = crate::replacement::ReplacementAbilityOrigin {
@@ -10653,6 +10662,7 @@ fn prepare_etb_replacements_inner(
                 prepared_choices: None,
                 pending_program: None,
                 program_choices: entry_program_choices,
+                prior_copy_exceptions: None,
             },
             etb_event_provenance,
         );

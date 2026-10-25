@@ -56,6 +56,7 @@ export default function OpenDecklistModal({ decklist, onClose }) {
   const deck = sanitizeCards(decklist.deck);
   const sideboard = sanitizeCards(decklist.sideboard);
   const commanders = sanitizeCards(decklist.commanders);
+  const stickerSheets = sanitizeCards(decklist.stickerSheets);
   const playerName = String(decklist.playerName || "Player");
 
   return (
@@ -73,6 +74,7 @@ export default function OpenDecklistModal({ decklist, onClose }) {
             <div className="grid content-start gap-4">
               {commanders.length > 0 ? <DeckSection title={ui("Commanders")} cards={commanders} /> : null}
               <DeckSection title={ui("Sideboard")} cards={sideboard} />
+              {stickerSheets.length > 0 ? <DeckSection title={ui("Sticker sheets")} cards={stickerSheets} /> : null}
             </div>
           </div>}
         </div>

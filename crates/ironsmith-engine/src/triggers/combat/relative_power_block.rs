@@ -98,6 +98,10 @@ impl TriggerMatcher for BlocksObjectWithLesserPowerTrigger {
         let Some(event) = event.downcast::<CreatureBlockedEvent>() else {
             return false;
         };
+        // CR 509.4: a creature put onto the battlefield blocking never blocked.
+        if event.entered_blocking {
+            return false;
+        }
         if !matches_event_object(
             &self.blocker,
             event.blocker_snapshot.as_ref(),

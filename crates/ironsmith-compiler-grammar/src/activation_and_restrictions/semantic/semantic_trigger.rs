@@ -1915,6 +1915,22 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
+    // CR 702.142b: "Whenever a creature you control boasts" (Birgi, God of
+    // Storytelling) means that creature's boast ability is activated.
+    if let [.., "boasts"] = &words[..]
+        && words.len() > 1
+        && let Some(boast_token) = trigger_word_token_start(tokens, words.len() - 1)
+        && let Ok(filter) = parse_object_filter_lexed(&tokens[..boast_token], false)
+    {
+        return Ok(TriggerSpec::AbilityActivated {
+            activator: PlayerFilter::Any,
+            filter: filter.with_ability_marker("boast"),
+            non_mana_only: false,
+            loyalty_only: false,
+            activation_cost_has_tap: None,
+        });
+    }
+
     if let Some(activate_idx) = trigger_atom_word(&words, TriggerClauseAtom::Activate) {
         let subject_tokens = &tokens[..activate_idx];
         let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
@@ -3159,14 +3175,22 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if is_source_reference_words(&subject_words) {
             return Ok(TriggerSpec::PutIntoGraveyard(ObjectFilter::source()));
         }
+        // CR 108.2b: a token isn't a card, so a "card" subject excludes tokens.
+        let card_noun = |mut filter: ObjectFilter| {
+            if subject_mentions_card(&subject_words) {
+                filter.nontoken = true;
+                filter.set_explicit_card_noun(true);
+            }
+            filter
+        };
         if subject_starts_one_or_more(&subject_words)
             && let Ok(filter) =
                 parse_object_filter_lexed(strip_leading_one_or_more_lexed(subject_tokens), false)
         {
-            return Ok(TriggerSpec::PutIntoGraveyardOneOrMore(filter));
+            return Ok(TriggerSpec::PutIntoGraveyardOneOrMore(card_noun(filter)));
         }
         if let Ok(filter) = parse_object_filter_lexed(subject_tokens, false) {
-            return Ok(TriggerSpec::PutIntoGraveyard(filter));
+            return Ok(TriggerSpec::PutIntoGraveyard(card_noun(filter)));
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported filter in put-into-graveyard-from-anywhere trigger clause (clause: '{}')",

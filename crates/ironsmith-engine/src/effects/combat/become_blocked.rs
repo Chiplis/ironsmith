@@ -31,7 +31,23 @@ impl EffectExecutor for BecomeBlockedEffect {
                 }
                 let mut changed = Vec::new();
                 if let Some(combat) = game.combat.as_mut() {
+                    // CR 702.22i: if a member of an attacking band becomes
+                    // blocked due to an effect, the entire band becomes blocked.
+                    let mut affected = selected.clone();
                     for id in &selected {
+                        for band in &combat.attacking_bands {
+                            if band.contains(id) {
+                                for member in band {
+                                    if !affected.contains(member)
+                                        && crate::combat_state::is_attacking(combat, *member)
+                                    {
+                                        affected.push(*member);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    for id in &affected {
                         if !crate::combat_state::is_blocked(combat, *id) {
                             let target = combat
                                 .attackers

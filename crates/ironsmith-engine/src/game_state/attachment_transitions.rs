@@ -96,7 +96,33 @@ impl GameState {
         }
         let lookback = self.trigger_source_lookback_snapshots();
         for detached in detached {
+            // CR 702.26b/i: a phased-out attachment is treated as though it
+            // doesn't exist; when its visible host leaves, it later phases in
+            // unattached, but nothing observes it becoming unattached now.
+            if detached.attachment != object && self.is_phased_out(detached.attachment) {
+                self.commit_silent_detachment(detached);
+                continue;
+            }
             self.commit_detachment(detached, lookback.clone());
+        }
+    }
+
+    fn commit_silent_detachment(&mut self, detached: Detachment) {
+        self.mark_continuous_state_dirty();
+        match detached.previous_target {
+            AttachmentTarget::Object(id) => {
+                if let Some(parent) = self.object_mut(id) {
+                    parent.attachments.retain(|id| *id != detached.attachment);
+                }
+            }
+            AttachmentTarget::Player(id) => {
+                if let Some(player) = self.player_mut(id) {
+                    player.attachments.retain(|id| *id != detached.attachment);
+                }
+            }
+        }
+        if let Some(object) = self.object_mut(detached.attachment) {
+            object.attached_to = None;
         }
     }
 

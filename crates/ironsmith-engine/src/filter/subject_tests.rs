@@ -64,11 +64,9 @@ fn shared_subject_keeps_live_only_predicate_policy() {
     let snapshot = ObjectSnapshot::from_object(game.object(candidate).unwrap(), &game);
     let ctx = FilterContext::new(alice).with_source(source);
     // These are existing differences, not changes to rule support in this refactor.
+    // `modified` is no longer live-only: CR 700.9/603.10 death triggers read
+    // a last-known subject's counters and attachments.
     let filters = [
-        ObjectFilter {
-            modified: true,
-            ..Default::default()
-        },
         ObjectFilter {
             blocking: true,
             ..Default::default()

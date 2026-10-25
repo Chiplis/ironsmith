@@ -84,17 +84,28 @@ export function priorityCommandForAction(action) {
   return command;
 }
 
-// Cancellation is the only pass-intent control permitted out of turn. The
-// signed actor must match the seat; this is checked again on every receiver.
+// Seat controls permitted out of turn: cancelling one's own passing intention,
+// and answering or ending a loop shortcut (CR 732.2b). The command names its
+// seat; the signed actor must match it, which every receiver checks again.
+const SEAT_CONTROL_COMMANDS = new Set(["cancel_priority_yield", "respond_loop_shortcut", "step_loop_shortcut", "cancel_loop_shortcut"]);
+
+export function isSeatControlCommand(command) {
+  return SEAT_CONTROL_COMMANDS.has(command?.type);
+}
+
 export function isOwnPassCancellation(command, actor) {
-  return command?.type === "cancel_priority_yield" && Number.isInteger(command.player)
+  return isSeatControlCommand(command) && Number.isInteger(command.player)
     && command.player >= 0 && command.player <= 255 && actor != null
-    && command.player === Number(actor);
+    && command.player === Number(actor)
+    && (command.type !== "respond_loop_shortcut"
+      || (Number.isInteger(command.iterations) && command.iterations >= 0
+        && (command.interrupt_at == null || (Number.isInteger(command.interrupt_at)
+          && command.interrupt_at >= 1 && command.interrupt_at <= command.iterations))));
 }
 
 export function isDecisionCommandCompatible(decision, command) {
   if (!command) return false;
-  if (command.type === "cancel_priority_yield") return isOwnPassCancellation(command, command.player);
+  if (isSeatControlCommand(command)) return isOwnPassCancellation(command, command.player);
   if (command.type === "cancel_decision") return true;
   if (command.type === "forfeit_player") {
     // Forfeiting a seat is independent of the current engine decision.
@@ -105,6 +116,9 @@ export function isDecisionCommandCompatible(decision, command) {
 
   switch (decision.kind) {
     case "priority":
+      // CR 732.2a: the priority holder proposes a loop shortcut.
+      if (command.type === "propose_loop_shortcut") return Array.isArray(command.steps)
+        && command.steps.length > 0 && Number.isInteger(command.iterations) && command.iterations > 0;
       if (command.type === "priority_yield") return ["stack", "phases"].includes(command.mode)
         && Array.isArray(command.stops)
         && (decision.actions || []).some(action => action.kind === "pass_priority"

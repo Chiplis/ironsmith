@@ -410,7 +410,7 @@ fn triggering_object_entered_transformed(
     else {
         return false;
     };
-    current.card.id.0 > other.card.id.0
+    game.linked_face_is_back(current.card.id, other.card.id)
 }
 
 fn triggering_spell_was_kicked(game: &GameState, triggering_event: Option<&TriggerEvent>) -> bool {

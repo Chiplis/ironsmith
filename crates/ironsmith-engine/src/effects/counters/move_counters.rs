@@ -119,6 +119,8 @@ impl EffectExecutor for MoveCountersEffect {
                         }
                         let available = game.counter_count(from_id, kind);
                         if available == 0 { continue; }
+                        // CR 122.5: a counter that can't be removed can't be moved.
+                        if !game.can_have_counter_type_removed(from_id, kind) { continue; }
                         if first_available.is_none() {
                             first_available = Some((from_id, kind));
                         }

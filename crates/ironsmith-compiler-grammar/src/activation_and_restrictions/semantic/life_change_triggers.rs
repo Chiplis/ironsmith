@@ -42,9 +42,13 @@ pub(super) fn parse_life_change_trigger(tokens: &[OwnedLexToken]) -> Option<Trig
         (words.as_slice(), None)
     };
     let words = words.strip_suffix(&["life"])?;
+    // "you gain or lose life" and "you gain life or lose life" name one event
+    // pair.
     if let Some(subject) = words
         .strip_suffix(&["gain", "or", "lose"])
         .or_else(|| words.strip_suffix(&["gains", "or", "loses"]))
+        .or_else(|| words.strip_suffix(&["gain", "life", "or", "lose"]))
+        .or_else(|| words.strip_suffix(&["gains", "life", "or", "loses"]))
     {
         let player = singular_player(subject)?;
         return Some(TriggerSpec::Either(

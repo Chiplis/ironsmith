@@ -45,10 +45,47 @@ pub(crate) fn resolve_continuous_characteristic(
             evidence_error.get_or_insert("the source numeric pair or acquisition is unrecorded");
             0
         }
-        Err(_) => {
-            evidence_error.get_or_insert("the continuous characteristic value is unavailable");
-            0
+        Err(_) => match resolve_wide_zeroing_unavailable(value, &context) {
+            // CR 208.2a: a number the ability uses that can't be determined
+            // is zero; the rest of the arithmetic still applies.
+            Some(exact) => i32::try_from(exact).unwrap_or_else(|_| {
+                error.get_or_insert(("characteristic-defining scalar", i128::from(exact)));
+                0
+            }),
+            None => {
+                evidence_error.get_or_insert("the continuous characteristic value is unavailable");
+                0
+            }
+        },
+    }
+}
+
+/// Evaluate `value` substituting zero for each operand that can't be
+/// determined (CR 208.2a). Arithmetic overflow and resource limits are not
+/// "undeterminable" and still fail.
+fn resolve_wide_zeroing_unavailable(
+    value: &Value,
+    context: &EvaluationContext<'_, '_>,
+) -> Option<i64> {
+    let operand = |value: &Value| resolve_wide_zeroing_unavailable(value, context);
+    match value {
+        Value::Add(left, right) => operand(left)?.checked_add(operand(right)?),
+        Value::Scaled(value, multiplier) => operand(value)?.checked_mul(i64::from(*multiplier)),
+        Value::Min(left, right) => Some(operand(left)?.min(operand(right)?)),
+        Value::DividedRoundedDown(value, divisor) if *divisor != 0 => {
+            operand(value)?.checked_div_euclid(i64::from(*divisor))
         }
+        _ => match resolve_wide(value, context) {
+            Ok(value) => Some(value),
+            // Only an as-yet-unchosen player is undeterminable; a reference to
+            // a player that doesn't exist stays missing evidence.
+            Err(ExecutionError::UnresolvableValue(_))
+                if format!("{value:?}").contains("ChosenPlayer") =>
+            {
+                Some(0)
+            }
+            Err(_) => None,
+        },
     }
 }
 
@@ -566,16 +603,44 @@ pub(crate) fn resolve_wide(
             .source_number(NumericProperty::Toughness)
             .map(i64::from),
         Value::PowerOf(target_spec) => {
+            if noncreature_permanent_reference(game, context, target_spec) {
+                return Ok(0);
+            }
             context.object_number_wide(target_spec, NumericProperty::Power)
         }
         Value::BasePowerOf(target_spec) => context
             .object_number(target_spec, NumericProperty::BasePower)
             .map(i64::from),
         Value::StationContributionOf(target_spec) => {
-            let uses_toughness = context
-                .execution()
-                .and_then(|ctx| resolve_primary_object_from_value_spec(game, target_spec, ctx).ok())
-                .is_some_and(|id| crate::effects::permanents::stations_using_toughness(game, id));
+            // CR 702.184c / 608.2h: a contributor that left the battlefield
+            // uses its last known information, including the static
+            // abilities that changed which characteristic it stations with.
+            let uses_toughness = context.execution().is_some_and(|ctx| {
+                match resolve_primary_object_from_value_spec(game, target_spec, ctx).ok() {
+                    Some(id)
+                        if game
+                            .object(id)
+                            .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield) =>
+                    {
+                        crate::effects::permanents::stations_using_toughness(game, id)
+                    }
+                    _ => match target_spec.base() {
+                        ChooseSpec::Tagged(tag) => ctx
+                            .tagged_objects
+                            .get(tag)
+                            .and_then(|snapshots| snapshots.first())
+                            .is_some_and(|snapshot| {
+                                snapshot.abilities.iter().any(|ability| {
+                                    matches!(&ability.kind,
+                                        crate::ability::AbilityKind::Static(static_ability)
+                                            if static_ability.keyword_marker_mechanic()
+                                                == Some(ironsmith_core::KeywordMarkerMechanic::StationsUsingToughness))
+                                })
+                            }),
+                        _ => false,
+                    },
+                }
+            });
             context.object_number_wide(
                 target_spec,
                 if uses_toughness {
@@ -586,6 +651,9 @@ pub(crate) fn resolve_wide(
             )
         }
         Value::ToughnessOf(target_spec) => {
+            if noncreature_permanent_reference(game, context, target_spec) {
+                return Ok(0);
+            }
             context.object_number_wide(target_spec, NumericProperty::Toughness)
         }
         // "the number of times you chose a mode for that spell" (Riku of
@@ -1751,10 +1819,32 @@ pub(crate) fn resolve_wide(
             if let Some(ctx) = context.execution() {
                 {
                     if let Some(snapshots) = tagged_snapshots_for_choose_spec(ctx, spec) {
+                        // CR 608.2h: a chosen object still in the public zone
+                        // where it was chosen is read with current information
+                        // (counters placed on it later in this resolution).
                         return Ok(i64::from(
                             snapshots
                                 .iter()
-                                .map(|snapshot| snapshot_counter_total(snapshot, counter_type))
+                                .map(|snapshot| match game.object(snapshot.object_id) {
+                                    Some(object)
+                                        if object.stable_id == snapshot.stable_id
+                                            && object.zone == snapshot.zone
+                                            && object.zone.is_public() =>
+                                    {
+                                        match counter_type {
+                                            Some(kind) => {
+                                                object.counters.get(kind).copied().unwrap_or(0)
+                                                    as i64
+                                            }
+                                            None => object
+                                                .counters
+                                                .values()
+                                                .map(|count| *count as i64)
+                                                .sum(),
+                                        }
+                                    }
+                                    _ => snapshot_counter_total(snapshot, counter_type),
+                                })
                                 .sum::<i64>(),
                         ));
                     }
@@ -1945,6 +2035,33 @@ pub(crate) fn resolve_wide(
 
 const RESOLUTION_ONLY: &str =
     "value requires resolution, trigger, loop, or out-of-game context that layers do not retain";
+/// CR 107.2/208.3: a noncreature permanent on the battlefield has no power or
+/// toughness, so an effect using that undefined number uses zero.
+fn noncreature_permanent_reference(
+    game: &GameState,
+    context: &EvaluationContext<'_, '_>,
+    spec: &ChooseSpec,
+) -> bool {
+    if matches!(spec.base(), ChooseSpec::Tagged(_)) {
+        return false;
+    }
+    let Some(ctx) = context.execution() else {
+        return false;
+    };
+    let Ok(id) = resolve_primary_object_from_value_spec(game, spec, ctx) else {
+        return false;
+    };
+    game.object(id).is_some_and(|object| {
+        if object.zone == crate::zone::Zone::Battlefield {
+            !game.current_is_creature(id)
+        } else {
+            // CR 208.3: off the battlefield a noncreature object has power and
+            // toughness only if printed; with none, CR 107.2 uses zero.
+            !game.current_is_creature(id) && game.current_power(id).is_none()
+        }
+    })
+}
+
 fn resolve_event_value(
     game: &GameState,
     ctx: &ExecutionContext,

@@ -83,6 +83,7 @@ function replayMatchConfig(match = {}) {
     decks: replayDecks(match),
     sideboards: clonePayload(match.sideboards),
     commanders: clonePayload(match.commanders),
+    ...(Array.isArray(match.stickerSheets) ? { stickerSheets: clonePayload(match.stickerSheets) } : {}),
     hiddenDeckManifests: clonePayload(
       match.runtimeHiddenDeckManifests
         || match.hiddenDeckManifests

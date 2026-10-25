@@ -519,9 +519,25 @@ pub(super) fn apply_trait_replacement(
             } else {
                 effect.source
             };
-            let prospective = if etb_value_uses_revealed_choice(selected_count) {
+            // CR 611.3c/614.12: an entering object's own power or toughness
+            // is read as it would exist on the battlefield, so external
+            // static effects (an anthem) already apply.
+            let prospective = if etb_value_uses_revealed_choice(selected_count)
+                || etb_value_reads_entering_pt(selected_count)
+            {
                 crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
                     .and_then(|etb| etb.prospective_game_state(game))
+                    .or_else(|| {
+                        let zone_change = crate::events::downcast_event::<
+                            crate::events::ZoneChangeEvent,
+                        >(event.inner())
+                        .filter(|zone_change| zone_change.to == Zone::Battlefield)?;
+                        crate::events::EnterBattlefieldEvent::new(
+                            *zone_change.objects.first()?,
+                            zone_change.from,
+                        )
+                        .prospective_game_state(game)
+                    })
             } else {
                 None
             };
@@ -1900,6 +1916,45 @@ fn apply_trait_enter_as_copy(
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
     let apply_copy_modifiers = |mut etb: EnterBattlefieldEvent| {
+        // CR 707.9e: a later copy effect replaces an earlier copy choice; the
+        // earlier choice's exceptions and additional effects no longer apply.
+        if etb.enters_as_copy_of.is_some() {
+            etb.discard_prior_copy_exceptions();
+        }
+        let abilities_before = etb.added_abilities.len();
+        let tapped_before = etb.enters_tapped;
+        let contribution = crate::events::zones::CopyExceptionContribution {
+            counters: additional_counters.to_vec(),
+            linked_exile: linked_exile_objects
+                .iter()
+                .copied()
+                .filter(|id| !etb.linked_exile_with_entering.contains(id))
+                .collect(),
+            card_types: added_card_types
+                .iter()
+                .copied()
+                .filter(|t| !etb.added_card_types.contains(t))
+                .collect(),
+            subtypes: added_subtypes
+                .iter()
+                .copied()
+                .filter(|t| !etb.added_subtypes.contains(t))
+                .collect(),
+            supertypes: added_supertypes
+                .iter()
+                .copied()
+                .filter(|t| !etb.added_supertypes.contains(t))
+                .collect(),
+            removed_supertypes: removed_supertypes
+                .iter()
+                .copied()
+                .filter(|t| !etb.removed_supertypes.contains(t))
+                .collect(),
+            base_power_toughness: set_base_power_toughness,
+            removes_other_card_types: removes_other_card_types && !etb.removes_other_card_types,
+            added_ability_count: 0,
+            enters_tapped: enters_tapped && !tapped_before,
+        };
         etb = etb
             .with_copy_of(source_id)
             .with_copy_followups(copy_followups)
@@ -1922,6 +1977,9 @@ fn apply_trait_enter_as_copy(
         if enters_tapped {
             etb = etb.with_tapped();
         }
+        let mut contribution = contribution;
+        contribution.added_ability_count = etb.added_abilities.len() - abilities_before;
+        etb.prior_copy_exceptions = Some(Box::new(contribution));
         etb
     };
 
@@ -2233,6 +2291,25 @@ fn resolve_value_for_replacement_checked(
 }
 
 /// A count of the as-enters revealed collection needs the prepared choice.
+fn etb_value_reads_entering_pt(value: &crate::effect::Value) -> bool {
+    use crate::effect::Value;
+    match value.unhinted() {
+        Value::SourcePower | Value::SourceToughness => true,
+        Value::PowerOf(spec) | Value::ToughnessOf(spec)
+            if matches!(spec.base(), crate::target::ChooseSpec::Source) =>
+        {
+            true
+        }
+        Value::Add(a, b) | Value::Min(a, b) => {
+            etb_value_reads_entering_pt(a) || etb_value_reads_entering_pt(b)
+        }
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => etb_value_reads_entering_pt(inner),
+        _ => false,
+    }
+}
+
 pub(super) fn etb_value_uses_revealed_choice(value: &crate::effect::Value) -> bool {
     use crate::effect::Value;
     match value.unhinted() {

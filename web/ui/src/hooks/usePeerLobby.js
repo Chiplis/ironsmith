@@ -1,4 +1,5 @@
-import { isOwnPassCancellation } from "../lib/sync-commands.js";
+import { describeColorNoteIssues, submissionColorNoteIssues } from "../lib/deck-color-notes.js";
+import { isOwnPassCancellation, isSeatControlCommand } from "../lib/sync-commands.js";
 import { isOpaqueExilePlayCommand } from "../lib/sync-object-identity.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./peer-lobby/match-lifecycle.js";
 import { createValueStore } from "../lib/value-store.js";
@@ -416,6 +417,10 @@ export function usePeerLobby({
         },
       );
       if (!isCurrentUpdate()) return;
+      // Match start rejects a missing or wrong circled-color note; say so now.
+      const noteIssues = await submissionColorNoteIssues(gameRef.current, deckSubmission);
+      if (!isCurrentUpdate()) return;
+      if (noteIssues.length) setStatus(describeColorNoteIssues(noteIssues), true);
       rememberDefaultLobbyDeck(nextDeckText, nextCommanderText);
 	      if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(currentSession))) {
 	        const nextSession = updateMultiplayer((prev) => ({
@@ -432,6 +437,7 @@ export function usePeerLobby({
 	                      ? withDeckState(
 	                          {
 	                            ...player,
+	                            stickers: deckSubmission.stickers,
 	                            name: nextName,
 	                            deckAuditManifest: null,
 	                            deckSlotOpenings: [],
@@ -463,6 +469,7 @@ export function usePeerLobby({
 	            deckAuditManifest: null,
 	            deck: deckSubmission.deck,
 	            sideboard: deckSubmission.sideboard,
+	            stickers: deckSubmission.stickers,
 	            deckSlotOpenings: [],
 	            ziffleKey: null,
 	            deckCount: deckSubmission.deckCount,
@@ -486,6 +493,7 @@ export function usePeerLobby({
         owner: localPlayerIndex,
         deck: deckSubmission.deck,
         sideboard: deckSubmission.sideboard,
+        stickers: deckSubmission.stickers,
         commanders: deckSubmission.commanders,
         // Without an assigned seat the owner is a guess; persisting it could
         // shadow the real seat-0 deck in private manifest lookups.
@@ -510,6 +518,7 @@ export function usePeerLobby({
         ...openDecklistPlayerFields({
           deck: deckSubmission.deck,
           sideboard: deckSubmission.sideboard,
+          stickers: deckSubmission.stickers,
           commanders: deckSubmission.commanders,
           deckSlotOpenings,
         }),
@@ -536,6 +545,7 @@ export function usePeerLobby({
                     ? withDeckState(
                         {
 	                          ...player,
+	                          stickers: deckSubmission.stickers,
 	                          name: nextName,
 	                          auditPublicKey,
 		                          auditEncryptionPublicKey,
@@ -573,6 +583,7 @@ export function usePeerLobby({
           deckAuditManifest: publicDeckManifest(deckAuditManifest),
           deck: deckSubmission.deck,
           sideboard: deckSubmission.sideboard,
+          stickers: deckSubmission.stickers,
           deckSlotOpenings,
           ziffleKey: localZiffleKey,
           deckCount: deckSubmission.deckCount,
@@ -838,8 +849,8 @@ export function usePeerLobby({
             command.object_hidden_refs = hiddenRefs;
           }
         }
-        if (command?.type === "cancel_priority_yield" && !isOwnPassCancellation(command, session.localPlayerIndex)) {
-          throw new Error("A player can only cancel their own passing intention");
+        if (isSeatControlCommand(command) && !isOwnPassCancellation(command, session.localPlayerIndex)) {
+          throw new Error("A player can only send seat controls for their own seat");
         }
         const expectedActor = preSubmitState?.decision?.player;
         const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);

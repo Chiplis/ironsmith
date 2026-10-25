@@ -1,4 +1,4 @@
-import { deckListText, parseCommanderList, parseDeckList, parseSideboardList } from './decklists.js';
+import { deckListText, parseCommanderList, parseDeckList, parseSideboardList, parseStickerList } from './decklists.js';
 import { validateFormatDeck } from './relay/format-legality.js';
 
 // Main-deck and commander errors still exclude a deck. Sideboard cards are
@@ -22,5 +22,5 @@ export function prepareFormatDeck(format, texts, data, options = {}) {
       removed.set(key, removal);
     }
   }
-  return { ...texts, deckText: deckListText(deck, kept), sideboardCount: kept.length, removedSideboard: [...removed.values()] };
+  return { ...texts, deckText: deckListText(deck, kept, parseStickerList(texts.deckText)), sideboardCount: kept.length, removedSideboard: [...removed.values()] };
 }

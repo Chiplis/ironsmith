@@ -2429,7 +2429,10 @@ impl CardDefinitionBuilder {
 
         let filter = ObjectFilter::default()
             .in_zone(Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag);
+            .same_stable_id_as_tagged(trigger_tag)
+            // CR 603.6c/400.7: only the exact graveyard object the trigger
+            // saw arrive; a later incarnation of the card is a new object.
+            .match_tagged(trigger_tag, crate::filter::TaggedOpbjectRelation::SameObjectId);
 
         let tag_return = Effect::new(crate::effects::TagMatchingObjectsEffect::new(
             filter, return_tag,
@@ -2486,7 +2489,10 @@ impl CardDefinitionBuilder {
 
         let filter = ObjectFilter::default()
             .in_zone(Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag);
+            .same_stable_id_as_tagged(trigger_tag)
+            // CR 603.6c/400.7: only the exact graveyard object the trigger
+            // saw arrive; a later incarnation of the card is a new object.
+            .match_tagged(trigger_tag, crate::filter::TaggedOpbjectRelation::SameObjectId);
 
         let tag_return = Effect::new(crate::effects::TagMatchingObjectsEffect::new(
             filter, return_tag,

@@ -65,6 +65,75 @@ pub struct EnterBattlefieldEvent {
     /// Frozen paid-cost evidence for this exact stack-to-battlefield
     /// incarnation; it is not part of the permanent's copiable values.
     pub emerge_sacrifice: Option<Vec<crate::snapshot::ObjectSnapshot>>,
+    /// CR 707.9e: what the most recently applied copy-as-enters replacement
+    /// added as exceptions/additional effects, so a later copy effect that
+    /// replaces it can discard them.
+    pub(crate) prior_copy_exceptions: Option<Box<CopyExceptionContribution>>,
+}
+
+/// Exceptions and additional effects contributed by one enters-as-copy choice.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CopyExceptionContribution {
+    pub(crate) counters: Vec<(CounterType, u32)>,
+    pub(crate) linked_exile: Vec<ObjectId>,
+    pub(crate) card_types: Vec<CardType>,
+    pub(crate) subtypes: Vec<Subtype>,
+    pub(crate) supertypes: Vec<Supertype>,
+    pub(crate) removed_supertypes: Vec<Supertype>,
+    pub(crate) base_power_toughness: Option<(i32, i32)>,
+    pub(crate) removes_other_card_types: bool,
+    pub(crate) added_ability_count: usize,
+    pub(crate) enters_tapped: bool,
+}
+
+impl EnterBattlefieldEvent {
+    /// CR 707.9e: when another copy effect applies, the exceptions and
+    /// additional effects of the earlier copy choice no longer happen.
+    pub(crate) fn discard_prior_copy_exceptions(&mut self) {
+        let Some(prior) = self.prior_copy_exceptions.take() else {
+            return;
+        };
+        for (kind, count) in &prior.counters {
+            if let Some(index) = self
+                .enters_with_counters
+                .iter()
+                .position(|(existing, _)| existing == kind)
+            {
+                let remaining = self.enters_with_counters[index].1.saturating_sub(*count);
+                if remaining == 0 {
+                    self.enters_with_counters.remove(index);
+                } else {
+                    self.enters_with_counters[index].1 = remaining;
+                }
+            }
+        }
+        self.linked_exile_with_entering
+            .retain(|id| !prior.linked_exile.contains(id));
+        self.added_card_types
+            .retain(|card_type| !prior.card_types.contains(card_type));
+        self.added_subtypes
+            .retain(|subtype| !prior.subtypes.contains(subtype));
+        self.added_supertypes
+            .retain(|supertype| !prior.supertypes.contains(supertype));
+        self.removed_supertypes
+            .retain(|supertype| !prior.removed_supertypes.contains(supertype));
+        if prior.base_power_toughness.is_some()
+            && self.set_base_power_toughness == prior.base_power_toughness
+        {
+            self.set_base_power_toughness = None;
+        }
+        if prior.removes_other_card_types {
+            self.removes_other_card_types = false;
+        }
+        let keep = self
+            .added_abilities
+            .len()
+            .saturating_sub(prior.added_ability_count);
+        self.added_abilities.truncate(keep);
+        if prior.enters_tapped {
+            self.enters_tapped = false;
+        }
+    }
 }
 
 impl EnterBattlefieldEvent {
@@ -94,6 +163,7 @@ impl EnterBattlefieldEvent {
             prepared_choices: None,
             pending_program: None,
             program_choices: Default::default(),
+            prior_copy_exceptions: None,
         }
     }
 
@@ -123,6 +193,7 @@ impl EnterBattlefieldEvent {
             prepared_choices: None,
             pending_program: None,
             program_choices: Default::default(),
+            prior_copy_exceptions: None,
         }
     }
 

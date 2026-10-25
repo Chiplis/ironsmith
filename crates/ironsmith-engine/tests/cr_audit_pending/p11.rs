@@ -2715,3 +2715,17 @@ fn cr_702_29d_cycle_or_discard_triggers_once_per_cycle() {
         + game.stack.iter().filter(|e| e.is_ability && e.source_name.as_deref() == Some("Drake Haven")).count();
     assert_eq!(haven, 1, "CR 702.29d: 'cycles or discards' triggers only once when a card is cycled");
 }
+
+#[test]
+fn zz_debug_gh_sticker() {
+    let mut game = main_game();
+    put(&mut game, &card("Wicker Picker", "Mana cost: {3}\nType: Artifact Creature — Scarecrow Guest\nPower/Toughness: 2/3\nCreature spells you cast have sticker kicker {1}."), ALICE);
+    let kicked_bear = card("Kicked bear", "Mana cost: {G}\nType: Creature — Bear\nPower/Toughness: 2/2\nWhen this creature enters, if it was kicked, you gain 3 life.");
+    eprintln!("DBG bear abilities {:?}", kicked_bear.abilities.iter().map(|a| format!("{:?}", a.kind).chars().take(1500).collect::<String>()).collect::<Vec<_>>());
+    let spell = game.create_object_from_definition(&kicked_bear, ALICE, Zone::Hand);
+    add_mana(&mut game, ALICE, ManaSymbol::Green, 2);
+    let mut dm = Dm::new().pick("Sticker kicker").pick("Additional").no();
+    cast_with(&mut game, ALICE, spell, any_method, &mut dm);
+    for e in &game.stack { eprintln!("DBG stack paid={:?}", game.object(e.object_id).map(|o| o.optional_costs_paid.clone())); }
+    resolve_all(&mut game, &mut dm);
+}

@@ -526,6 +526,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // The complete assignment suffix proves its grammar; its source,
         // filtered-set and leading-condition subjects have no single head.
         "parse_filtered_toughness_assignment_line" => Vec::new(),
+        "parse_you_are_the_starting_player_line" => {
+            vec![StaticAbilityLineHeadHint::Pair("you", "are")]
+        }
         // These rule names describe semantic operations, not the lexical
         // subjects accepted by their complete grammars. Deriving a head from
         // the name silently made already-supported static families unreachable.
@@ -1784,6 +1787,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_players_cant_cycle_line),
         single_static_ability_ast_rule!(parse_starting_life_bonus_line),
+        single_static_ability_ast_rule!(parse_you_are_the_starting_player_line),
         single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
         single_static_ability_ast_passthrough_rule!(parse_can_be_attached_only_to_line),
         single_static_ability_ast_rule!(parse_spell_additional_life_cost_per_target_line),
@@ -9615,6 +9619,27 @@ pub fn parse_players_cant_cycle_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_players_cant_cycle_line_lexed(tokens) {
         return Ok(Some(StaticAbility::players_cant_cycle()));
+    }
+    Ok(None)
+}
+
+/// "You are the starting player. If multiple players would be the starting
+/// player, one of those players is chosen at random." (Power Play, CR 103.1c)
+pub fn parse_you_are_the_starting_player_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let first: &[&str] = &["you", "are", "the", "starting", "player"];
+    let tie: &[&str] = &[
+        "if", "multiple", "players", "would", "be", "the", "starting", "player", "one", "of",
+        "those", "players", "is", "chosen", "at", "random",
+    ];
+    if words.as_slice() == first
+        || (words.len() == first.len() + tie.len()
+            && words[..first.len()] == *first
+            && words[first.len()..] == *tie)
+    {
+        return Ok(Some(StaticAbility::you_are_the_starting_player()));
     }
     Ok(None)
 }

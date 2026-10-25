@@ -334,7 +334,7 @@ pub(crate) fn create_replacement_additional_tokens(
                     }
                 }
                 if let Some(attacker) = instructions.blocking_attacker {
-                    crate::effects::combat::put_onto_battlefield_blocking(game, entered, attacker);
+                    crate::effects::combat::add_blocker_after_declaration(game, entered, attacker, true);
                 }
                 if let Some(cleanup) = &instructions.cleanup {
                     let cleanup = schedule_token_cleanup_with_outputs(
@@ -412,6 +412,7 @@ pub(crate) fn apply_token_battlefield_entry_with_outputs(
     let token_stable_id = game.object(token_id).map(|token| token.stable_id);
     if let (Some(source_stable_id), Some(token_stable_id)) = (source_stable_id, token_stable_id) {
         game.add_token_created_with_source_link(source_stable_id, token_stable_id);
+        game.add_token_created_with_source_incarnation(ctx.source, token_stable_id);
     }
 
     // Tapped state was committed from the resolved entry event.

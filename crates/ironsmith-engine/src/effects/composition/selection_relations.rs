@@ -15,18 +15,27 @@ fn names(game: &GameState, id: ObjectId) -> Vec<String> {
     let Some(object) = game.object(id) else {
         return Vec::new();
     };
-    let primary = game.current_name(id).unwrap_or_else(|| object.name.to_string());
-    primary
-        .split(" // ")
-        .chain(
-            object
-                .split_other_half_name()
-                .into_iter()
-                .flat_map(|name| name.split(" // ")),
-        )
-        .map(str::trim)
-        .filter(|name| !crate::filter::name_is_nameless(name))
-        .map(str::to_owned)
+    // CR 201.2a-b: only the current names count; a name-changing effect
+    // removes a split card's other printed half name as well.
+    let current = game.current_characteristics(id);
+    let primary = current
+        .as_ref()
+        .map(|chars| chars.name.to_owned_string())
+        .unwrap_or_else(|| object.name.to_string());
+    let alternate = match &current {
+        Some(chars) => chars.alternate_name.clone(),
+        None => object.split_other_half_name().map(str::to_string),
+    };
+    std::iter::once(primary)
+        .chain(alternate)
+        .flat_map(|names| {
+            names
+                .split(" // ")
+                .map(str::trim)
+                .filter(|name| !crate::filter::name_is_nameless(name))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
         .collect()
 }
 

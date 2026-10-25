@@ -239,6 +239,10 @@ fn attack_targets_for_player(
         }
     }
     for &other_perm_id in &game.battlefield {
+        // CR 702.26b: a phased-out planeswalker or battle can't be attacked.
+        if game.is_phased_out(other_perm_id) {
+            continue;
+        }
         let Some(other_perm) = game.object(other_perm_id) else {
             continue;
         };

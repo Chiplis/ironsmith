@@ -1,4 +1,4 @@
-import { isOwnPassCancellation } from "../../lib/sync-commands.js";
+import { isOwnPassCancellation, isSeatControlCommand } from "../../lib/sync-commands.js";
 import { isOpaqueExilePlayCommand, localOpaqueExilePlayCommand, opaqueExileOriginReference } from "../../lib/sync-object-identity.js";
 import { createLocalRuntimeRecovery } from '../../lib/local-runtime-recovery.js';
 import { exactSnapshotMatches, validateExactSnapshotHeader } from '../../lib/exact-build-snapshot.js';
@@ -3711,8 +3711,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       const actorName = playerNameForIndex(multiplayerRef.current.players, normalizedActor);
       throw new Error(`Unauthorized add-card action from ${actorName}`);
     }
-    if (command?.type === "cancel_priority_yield" && !isOwnPassCancellation(command, normalizedActor)) {
-      throw new Error("A player can only cancel their own passing intention");
+    if (isSeatControlCommand(command) && !isOwnPassCancellation(command, normalizedActor)) {
+      throw new Error("A player can only send seat controls for their own seat");
     }
     const expectedActor = liveState?.decision?.player;
     const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);

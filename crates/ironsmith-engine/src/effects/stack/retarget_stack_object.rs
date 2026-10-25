@@ -345,6 +345,46 @@ pub(super) fn commit_retarget(
     Some((true, events))
 }
 
+/// [`commit_retarget`] for new targets chosen as a copy is put on the stack
+/// (`new_copy`): CR 700.13/707.10c, a copied triggered ability whose new
+/// targets make it target an opponent (or what they control) commits a crime
+/// its copied targets didn't.
+pub(super) fn commit_copy_retarget(
+    game: &mut GameState,
+    entry: &crate::game_state::StackEntry,
+    targets: Vec<Target>,
+    provenance: crate::provenance::ProvNodeId,
+    new_copy: bool,
+) -> Option<(bool, Vec<TriggerEvent>)> {
+    let triggered_copy = new_copy
+        && entry.is_ability
+        && entry.triggering_event.is_some()
+        && game
+            .object(entry.object_id)
+            .is_some_and(|object| object.kind == crate::object::ObjectKind::SpellCopy);
+    let previously_criminal = triggered_copy
+        && crate::game_loop::targets_commit_crime(game, entry.controller, &entry.targets);
+    let (did_change, mut events) = commit_retarget(game, entry.target_id(), targets, provenance)?;
+    if did_change
+        && triggered_copy
+        && !previously_criminal
+        && let Some(updated) =
+            game.stack.iter().find(|candidate| candidate.target_id() == entry.target_id())
+        && crate::game_loop::targets_commit_crime(game, updated.controller, &updated.targets)
+    {
+        events.push(TriggerEvent::new_with_provenance(
+            crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::CommitCrime,
+                updated.controller,
+                entry.object_id,
+                1,
+            ),
+            provenance,
+        ));
+    }
+    Some((did_change, events))
+}
+
 fn resolve_retarget_objects(
     game: &GameState,
     ctx: &mut ExecutionContext,
@@ -552,7 +592,9 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     }
 
                     if let Some((did_change, completion)) =
-                        commit_retarget(game, entry.target_id(), new_targets, ctx.provenance)
+                        commit_copy_retarget(
+                            game, &entry, new_targets, ctx.provenance, !self.target.is_target(),
+                        )
                     {
                         changed += i32::from(did_change);
                         events.extend(completion);
@@ -600,7 +642,9 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         continue;
                     }
                     if let Some((did_change, completion)) =
-                        commit_retarget(game, entry.target_id(), new_targets, ctx.provenance)
+                        commit_copy_retarget(
+                            game, &entry, new_targets, ctx.provenance, !self.target.is_target(),
+                        )
                     {
                         changed += i32::from(did_change);
                         events.extend(completion);
@@ -696,7 +740,9 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     let mut new_targets = entry.targets.clone();
                     new_targets[chosen_idx] = fixed_target;
                     if let Some((did_change, completion)) =
-                        commit_retarget(game, entry.target_id(), new_targets, ctx.provenance)
+                        commit_copy_retarget(
+                            game, &entry, new_targets, ctx.provenance, !self.target.is_target(),
+                        )
                     {
                         changed += i32::from(did_change);
                         events.extend(completion);

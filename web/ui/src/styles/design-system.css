@@ -6152,7 +6152,7 @@ html[data-hand-pointer-suspended="true"] * {
     opacity: 1 !important;
   }
 
-  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button {
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:not(.loop-shortcut-action) {
     position: relative;
     display: inline-grid !important;
     width: 26px !important;
@@ -6171,7 +6171,7 @@ html[data-hand-pointer-suspended="true"] * {
     transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
   }
 
-  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button svg {
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:not(.loop-shortcut-action) svg {
     width: 15px !important;
     height: 15px !important;
     stroke: currentColor;
@@ -6180,8 +6180,8 @@ html[data-hand-pointer-suspended="true"] * {
     stroke-linejoin: round;
   }
 
-  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:hover,
-  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:focus-visible {
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:not(.loop-shortcut-action):hover,
+  .table-shell[data-focused-hud="true"] :is(.table-shared-player-header, .battlefield-phase-priority-controls) .battlefield-human-quick-controls button:not(.loop-shortcut-action):focus-visible {
     border-color: rgba(204, 165, 255, 0.72) !important;
     background: rgba(49, 31, 72, 0.72) !important;
     color: #f0dcff !important;
@@ -7417,7 +7417,7 @@ html[data-hand-pointer-suspended="true"] * {
     align-items: center;
   }
 
-  .table-shell[data-focused-hud="true"] .decision-quick-controls button {
+  .table-shell[data-focused-hud="true"] .decision-quick-controls button:not(.loop-shortcut-action) {
     display: inline-grid !important;
     flex: 0 0 36px !important;
     width: 36px !important;
@@ -7432,7 +7432,7 @@ html[data-hand-pointer-suspended="true"] * {
     color: #eee5fa !important;
   }
 
-  .table-shell[data-focused-hud="true"] .decision-quick-controls button svg {
+  .table-shell[data-focused-hud="true"] .decision-quick-controls button:not(.loop-shortcut-action) svg {
     display: block !important;
     width: 15px;
     height: 15px;
@@ -7442,7 +7442,7 @@ html[data-hand-pointer-suspended="true"] * {
     stroke-linejoin: round;
   }
 
-  .table-shell[data-focused-hud="true"] .decision-quick-controls button:is(:hover, :focus-visible, [aria-pressed="true"]) {
+  .table-shell[data-focused-hud="true"] .decision-quick-controls button:not(.loop-shortcut-action):is(:hover, :focus-visible, [aria-pressed="true"]) {
     border-color: rgba(204, 165, 255, 0.72) !important;
     background: rgba(67, 39, 96, 0.65) !important;
     color: #e6c9ff !important;
@@ -7637,7 +7637,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     :is(.action-strip-decision-stack[data-details-expanded="false"], .combat-decision-panel[data-minimized="true"])
-    .decision-quick-controls button {
+    .decision-quick-controls button:not(.loop-shortcut-action) {
     width: 26px !important;
     min-width: 26px !important;
     height: 26px !important;
@@ -7712,7 +7712,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Keep the labelled phase pass beside the main action, including compact HUDs. */
 .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-.decision-quick-controls button.decision-phase-pass {
+.decision-quick-controls button:not(.loop-shortcut-action).decision-phase-pass {
   width: auto !important;
   min-width: 52px !important;
   flex: 0 0 auto !important;
@@ -7723,9 +7723,62 @@ html[data-hand-pointer-suspended="true"] * {
   font-weight: 700;
 }
 .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
-.decision-quick-controls button.decision-phase-pass[aria-pressed="true"] {
+.decision-quick-controls button:not(.loop-shortcut-action).decision-phase-pass[aria-pressed="true"] {
   background: #2483db !important;
   box-shadow: 0 0 0 2px #91ceff;
+}
+
+/* CR 732.2 loop shortcut controls beside the phase pass. */
+.loop-shortcut-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: #cfe6ff;
+}
+.loop-shortcut-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  overflow: hidden;
+  height: 34px;
+  border: 1px solid rgba(194, 157, 241, 0.3);
+  border-radius: 6px;
+  background: rgba(7, 9, 17, 0.65);
+  color: #eee5fa;
+}
+.loop-shortcut-control--recording {
+  border-color: #ff8a8a;
+  background: #5c202b;
+  color: #ffb6bc;
+}
+.loop-shortcut-action {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  min-width: 34px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.loop-shortcut-action:hover {
+  background: rgba(194, 157, 241, 0.16);
+}
+.loop-shortcut-action:focus-visible {
+  outline: 2px solid #e6c9ff;
+  outline-offset: -3px;
+}
+.loop-shortcut-action + .loop-shortcut-action {
+  border-left: 1px solid rgba(255, 138, 138, 0.3);
 }
 
 /* Keep automatic previews transparent to board input outside their text. */

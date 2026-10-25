@@ -97,7 +97,7 @@ impl TriggerMatcher for ThisBlocksObjectTrigger {
         let Some(e) = event.downcast::<CreatureBlockedEvent>() else {
             return false;
         };
-        if e.blocker != ctx.source_id {
+        if e.blocker != ctx.source_id || e.entered_blocking {
             return false;
         }
         let current_matches = ctx
@@ -113,6 +113,11 @@ impl TriggerMatcher for ThisBlocksObjectTrigger {
         let Some((count, first)) = self.matching_blocked_objects(ctx) else {
             return minimum == 1;
         };
+        if e.added_by_effect {
+            // CR 509.3e: an added blocking relationship triggers when it
+            // brings the count to the threshold.
+            return count >= minimum && count.saturating_sub(1) < minimum;
+        }
         count >= minimum && first == Some(e.attacker)
     }
 

@@ -269,6 +269,15 @@ pub(super) fn parse_static_line_impl(
     }
     if matches!(
         special_shape,
+        Some(semantic_grammar::StaticSpecialLineShape::StartingPlayer)
+    ) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::starting_player().into()),
+            chosen_option,
+        );
+    }
+    if matches!(
+        special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
     ) {
         let display = render_token_slice(parse_tokens)

@@ -301,6 +301,10 @@ impl WasmGame {
         self.include_payment_disclosure_views(&mut snap);
         self.apply_hidden_card_memory(&mut snap);
         snap.pass_intents = self.pass_intents.keys().copied().collect();
+        snap.sticker_sheets = self.sticker_sheet_views();
+        snap.loop_shortcut = self
+            .loop_shortcut_view()
+            .and_then(|view| serde_json::to_value(view).ok());
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
@@ -1113,6 +1117,7 @@ impl WasmGame {
     fn snapshot_state_shape_hash(&self) -> u64 {
         hash_debug_value(&(
             &self.pass_intents,
+            &self.loop_shortcut,
             self.game.players.len(),
             self.game
                 .players
@@ -1545,6 +1550,10 @@ impl WasmGame {
         let priority_state = PriorityLoopState::new(2);
         Self {
             pass_intents: Default::default(),
+            sticker_sheet_catalog: HashMap::new(),
+            pending_sticker_sheet_pools: None,
+            revealed_sticker_sheets: Vec::new(),
+            loop_shortcut: None,
             previewing_crypto_requirements: false,
             runtime_identity_origin_available: true,
             game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
@@ -1919,15 +1928,40 @@ impl WasmGame {
         let companion_selections: CompanionSelectionsInput =
             serde_wasm_bindgen::from_value(config.clone())
                 .map_err(|e| JsValue::from_str(&format!("invalid companion match config: {e}")))?;
+        let sticker_selections: StickerSheetSelectionsInput =
+            serde_wasm_bindgen::from_value(config.clone())
+                .map_err(|e| JsValue::from_str(&format!("invalid sticker sheet match config: {e}")))?;
         let config: MatchSetupInput = serde_wasm_bindgen::from_value(config)
             .map_err(|e| JsValue::from_str(&format!("invalid match config: {e}")))?;
-        self.apply_match_setup_with_companions(config, companion_selections.companions)?;
+        self.apply_match_setup_with_stickers(
+            config,
+            companion_selections.companions,
+            sticker_selections.sticker_sheets,
+        )
+        .map_err(|error| JsValue::from_str(&error))?;
         self.snapshot()
     }
 
     #[cfg(test)]
     fn apply_match_setup(&mut self, config: MatchSetupInput) -> Result<(), JsValue> {
         self.apply_match_setup_with_companions(config, None)
+    }
+
+    /// Match setup with each player's sticker sheets (CR 103.2d). The sheets
+    /// are validated before anything changes, then handed to pregame.
+    fn apply_match_setup_with_stickers(
+        &mut self,
+        config: MatchSetupInput,
+        companions: Option<Vec<Option<String>>>,
+        sticker_sheets: Option<Vec<Vec<String>>>,
+    ) -> Result<(), String> {
+        let pools = sticker_sheets.unwrap_or_default();
+        self.validate_sticker_sheet_pools(&pools, config.player_names.len())?;
+        self.revealed_sticker_sheets.clear();
+        self.pending_sticker_sheet_pools = (!pools.iter().all(Vec::is_empty)).then_some(pools);
+        let result = self.apply_match_setup_with_companions_native(config, companions);
+        self.pending_sticker_sheet_pools = None;
+        result
     }
 
     fn apply_match_setup_with_companions(
@@ -3518,10 +3552,18 @@ impl WasmGame {
         let companion_selections: CompanionSelectionsInput =
             serde_wasm_bindgen::from_value(config.clone())
                 .map_err(|e| JsValue::from_str(&format!("invalid companion match config: {e}")))?;
+        let sticker_selections: StickerSheetSelectionsInput =
+            serde_wasm_bindgen::from_value(config.clone())
+                .map_err(|e| JsValue::from_str(&format!("invalid sticker sheet match config: {e}")))?;
         let config: MatchSetupInput = serde_wasm_bindgen::from_value(config)
             .map_err(|e| JsValue::from_str(&format!("invalid match config: {e}")))?;
         self.validate_companion_setup(&config, companion_selections.companions.as_deref())
             .map_err(|error| JsValue::from_str(&error))?;
+        self.validate_sticker_sheet_pools(
+            sticker_selections.sticker_sheets.as_deref().unwrap_or(&[]),
+            config.player_names.len(),
+        )
+        .map_err(|error| JsValue::from_str(&error))?;
         let validation = self.validate_match_setup_input(&config)?;
         serde_wasm_bindgen::to_value(&validation)
             .map_err(|e| JsValue::from_str(&format!("failed to serialize match validation: {e}")))
@@ -3639,6 +3681,10 @@ impl WasmGame {
         self.include_payment_disclosure_views(&mut snap);
         self.apply_hidden_card_memory(&mut snap);
         snap.pass_intents = self.pass_intents.keys().copied().collect();
+        snap.sticker_sheets = self.sticker_sheet_views();
+        snap.loop_shortcut = self
+            .loop_shortcut_view()
+            .and_then(|view| serde_json::to_value(view).ok());
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();
@@ -3776,6 +3822,30 @@ impl WasmGame {
                 Err(_) => None,
             }
         })
+    }
+
+    /// Optional, deferred presentation analysis; never part of publishing a snapshot.
+    #[wasm_bindgen(js_name = previewHandManaCosts)]
+    pub fn preview_hand_mana_costs(&self, snapshot_id: u64) -> Result<JsValue, JsValue> {
+        if snapshot_id != self.snapshot_serial {
+            return Ok(JsValue::NULL);
+        }
+        let game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
+        let prices = self
+            .snapshot_object_view_cache
+            .preview_visible_hand_mana_costs(game, self.perspective);
+        #[derive(Serialize)]
+        struct Preview<T> {
+            snapshot_id: u64,
+            perspective: u8,
+            prices: T,
+        }
+        serde_wasm_bindgen::to_value(&Preview {
+            snapshot_id,
+            perspective: self.perspective.0,
+            prices,
+        })
+        .map_err(|e| JsValue::from_str(&format!("hand mana costs encode failed: {e}")))
     }
 
     /// Return a detailed, human-readable object snapshot for inspector UI.
@@ -4667,20 +4737,24 @@ impl WasmGame {
                 preserve_missing_decks: bool,
                 #[serde(default, alias = "allowPartialDecks")]
                 allow_partial_decks: bool,
+                #[serde(default, alias = "stickerSheets")]
+                sticker_sheets: Vec<Vec<String>>,
             },
         }
 
         let payload: DeckLoadPayload = serde_wasm_bindgen::from_value(decks_js)
             .map_err(|e| JsValue::from_str(&format!("invalid decks payload: {e}")))?;
-        let (mut decks, sideboards, preserve_missing_decks, allow_partial_decks) = match payload {
-            DeckLoadPayload::Decks(decks) => (decks, Vec::new(), false, false),
-            DeckLoadPayload::Structured {
-                decks,
-                sideboards,
-                preserve_missing_decks,
-                allow_partial_decks,
-            } => (decks, sideboards, preserve_missing_decks, allow_partial_decks),
-        };
+        let (mut decks, sideboards, preserve_missing_decks, allow_partial_decks, sticker_sheets) =
+            match payload {
+                DeckLoadPayload::Decks(decks) => (decks, Vec::new(), false, false, Vec::new()),
+                DeckLoadPayload::Structured {
+                    decks,
+                    sideboards,
+                    preserve_missing_decks,
+                    allow_partial_decks,
+                    sticker_sheets,
+                } => (decks, sideboards, preserve_missing_decks, allow_partial_decks, sticker_sheets),
+            };
 
         if decks.len() != self.game.players.len() {
             return Err(JsValue::from_str(
@@ -4795,6 +4869,8 @@ impl WasmGame {
             &[],
         )
         .map_err(|error| JsValue::from_str(&error))?;
+        self.validate_sticker_sheet_pools(&sticker_sheets, names.len())
+            .map_err(|error| JsValue::from_str(&error))?;
 
         // Loading is a setup transaction: the live match is not replaced until
         // every accepted main deck and sideboard is legal.
@@ -4802,7 +4878,12 @@ impl WasmGame {
         self.populate_explicit_libraries(&accepted_decks)?;
         self.populate_explicit_sideboards(&accepted_sideboards)?;
 
-        self.finish_match_setup(7)?;
+        self.revealed_sticker_sheets.clear();
+        self.pending_sticker_sheet_pools =
+            (!sticker_sheets.iter().all(Vec::is_empty)).then_some(sticker_sheets);
+        let finished = self.finish_match_setup(7);
+        self.pending_sticker_sheet_pools = None;
+        finished?;
 
         serde_wasm_bindgen::to_value(&DeckLoadResult {
             loaded,
@@ -4909,6 +4990,16 @@ impl WasmGame {
             }
             object_id
         };
+
+        if payload.draft.layout == CustomCardLayoutInput::Meld {
+            let partner = &compiled[1];
+            if payload.skip_triggers {
+                self.game.create_object_from_catalog_definition(partner, &self.registry, player_id, zone);
+                self.recompute_ui_decision()?;
+            } else {
+                self.add_definition_to_zone_with_triggers(partner, player_id, zone)?;
+            }
+        }
 
         // The counter lab is an explicit authoring aid.  Battlefield cards use
         // their compiled "enters with" ability; cards placed directly into a

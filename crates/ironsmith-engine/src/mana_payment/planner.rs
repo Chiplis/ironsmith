@@ -540,7 +540,7 @@ fn useful_manual_mana_abilities_with_resolved(
     simulate_unknown: bool,
     resolved: &[ResolvedManualActivation],
 ) -> Vec<(ObjectId, usize)> {
-    if game
+    let already_payable = game
         .preview_mana_cost_payment_with_options(
             request.payer,
             Some(request.source),
@@ -552,10 +552,7 @@ fn useful_manual_mana_abilities_with_resolved(
             false,
             false,
         )
-        .is_some()
-    {
-        return Vec::new();
-    }
+        .is_some();
     let before = game.covered_mana_payment_pips(request);
     let mut result = Vec::new();
     let mut unconstrained = request.clone();
@@ -563,6 +560,20 @@ fn useful_manual_mana_abilities_with_resolved(
         unconstrained.preferences.excluded_sources.clear();
     }
     let analysis = super::sources::ManaSourceAnalysis::new(game);
+    if already_payable {
+        // CR 605.3a/608.2g: a player given the chance to pay mana may
+        // activate mana abilities even when floating mana already covers the
+        // cost; no source adds coverage, so offer every activatable one.
+        for choice in
+            collect_raw_activation_choices_with_view(game, &unconstrained, false, &analysis.view)
+        {
+            let key = (choice.source, choice.ability_index);
+            if !result.contains(&key) {
+                result.push(key);
+            }
+        }
+        return result;
+    }
     let choices = if simulate_unknown {
         collect_activation_choices_with_view(game, &unconstrained, false, &analysis.view)
     } else {
@@ -587,6 +598,13 @@ fn useful_manual_mana_abilities_with_resolved(
             && let Some(projected) = analysis.project(&choice)
             && !projected.needs_choice
         {
+            // CR 605.3a/605.2: an ability that currently makes no mana is
+            // still a mana ability the payer may activate for its other
+            // effects.
+            if projected.credits.is_empty() {
+                result.push(key);
+                continue;
+            }
             // The reviewed projection includes every immediate mana trigger
             // and replacement, with the same restriction/snow provenance used
             // by execution. A source is still checked again when activated.
@@ -631,9 +649,17 @@ fn useful_manual_mana_abilities_with_resolved(
         for event in completed.events {
             staged.queue_trigger_event(event.provenance(), event);
         }
+        let pool_total = |state: &GameState| {
+            state
+                .player(request.payer)
+                .map_or(0, |player| player.mana_pool.total() as usize + player.restricted_mana.len())
+        };
         if finish_mana_activation_with_outputs(&mut staged, activation, &mut decision_maker).is_ok()
             && !decision_maker.awaiting_choice()
-            && staged.covered_mana_payment_pips(request) > before
+            && (staged.covered_mana_payment_pips(request) > before
+                // CR 605.3a/605.2: an ability that made no mana this time is
+                // still activatable for its other effects.
+                || pool_total(&staged) == pool_total(game))
         {
             result.push(key);
         }

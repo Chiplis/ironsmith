@@ -219,6 +219,7 @@ impl EffectExecutor for SearchLibraryEffect {
                                             self.destination,
                                             chooser_id,
                                             true,
+                                            false,
                                         )?;
                                     if ctx.decision_maker.awaiting_choice() {
                                         return Ok(EffectOutcome::count(0));

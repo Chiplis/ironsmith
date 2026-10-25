@@ -162,6 +162,13 @@ fn counter_ability_payloads(kind: CounterType) -> Vec<Ability> {
         CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => {
             Some(StaticAbility::shadow())
         }
+        // CR 122.1b: keyword counters include keyword variants.
+        CounterType::Named(name) => crate::marker::hexproof_from_counter_color(&name).map(|color| {
+            StaticAbility::hexproof_from(
+                crate::target::ObjectFilter::default()
+                    .with_colors(crate::color::ColorSet::from(color)),
+            )
+        }),
         _ => None,
     };
     if let Some(keyword) = keyword {
@@ -754,6 +761,8 @@ pub struct BestowCastState {
 #[derive(Debug, Clone)]
 pub struct SpliceCastState {
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
+    /// Abilities before stack-only text was added (CR 702.47c), if any was.
+    pub abilities: Option<Arc<Vec<Ability>>>,
 }
 
 /// Stored copiable fields needed to restore a card after a face-down cast.
@@ -1213,6 +1222,11 @@ impl Object {
 
     pub fn abilities_vec(&self) -> Vec<Ability> {
         self.abilities.as_ref().clone()
+    }
+
+    /// Borrow this object's copiable abilities without cloning them.
+    pub(crate) fn abilities_slice(&self) -> &[Ability] {
+        self.abilities.as_slice()
     }
 
     fn compiled_display_text(def: &crate::cards::CardDefinition) -> Arc<str> {
@@ -1726,6 +1740,7 @@ impl Object {
                 // The modal/transforming distinction is read from the linked
                 // face's registry definition, not carried on objects.
                 transforming_dfc: false,
+                meld_partner_name: None,
                 is_token: matches!(self.kind, ObjectKind::Token),
             },
             canonical_text: self.compiled_card_text.to_string(),
@@ -1739,6 +1754,20 @@ impl Object {
             additional_cost: self.additional_cost.to_owned_value(),
             refers_to_ante: false,
         }
+    }
+
+    /// The physical card's definition, without this game's face-down,
+    /// prototype, bestow, stack-program or enters-as-copy overlays. Used when
+    /// a card starts anew in another game (CR 727.2, 729.1b).
+    pub fn physical_card_definition(&self) -> crate::cards::CardDefinition {
+        let mut physical = self.clone();
+        physical.end_face_down_cast_overlay();
+        physical.end_prototype_cast_overlay();
+        physical.end_bestow_cast_overlay();
+        physical.end_stack_program_overlay();
+        physical.end_enters_as_copy_overlay();
+        physical.copied_face_values = None;
+        physical.to_card_definition()
     }
 
     /// Creates a new token.
@@ -2367,8 +2396,25 @@ impl Object {
         }
         self.splice_cast_state = Some(Box::new(SpliceCastState {
             spell_effect: self.spell_effect.clone(),
+            abilities: None,
         }));
         true
+    }
+
+    /// CR 702.47c: add stack-only rules text (a spliced card's abilities) to
+    /// this spell, restored when the stack program overlay ends.
+    pub fn add_stack_overlay_abilities(&mut self, extra: Vec<Ability>) {
+        if extra.is_empty() {
+            return;
+        }
+        self.begin_stack_program_overlay();
+        let saved = self.abilities.clone();
+        if let Some(state) = self.splice_cast_state.as_mut()
+            && state.abilities.is_none()
+        {
+            state.abilities = Some(saved);
+        }
+        self.abilities_mut().extend(extra);
     }
 
     /// Restore this object's saved program exactly once when the overlay ends.
@@ -2377,6 +2423,9 @@ impl Object {
             return false;
         };
         self.spell_effect = restore.spell_effect;
+        if let Some(abilities) = restore.abilities {
+            self.abilities = abilities;
+        }
         true
     }
 
@@ -2606,6 +2655,20 @@ impl Object {
     pub fn split_combined_active(&self) -> Option<&SplitCombinedCharacteristics> {
         let combined = self.split_combined.as_deref()?;
         (!matches!(self.zone, Zone::Stack | Zone::Battlefield)).then_some(combined)
+    }
+
+    /// CR 709.4b: outside the stack and battlefield a split card's mana cost
+    /// is the combination of both halves' mana costs.
+    pub fn split_combined_mana_cost(&self) -> Option<ManaCost> {
+        self.split_combined_active()?;
+        let other = self.linked_face_mana_cost.as_deref()?;
+        let mut pips: Vec<_> = self
+            .mana_cost
+            .as_deref()
+            .map(|cost| cost.pips().to_vec())
+            .unwrap_or_default();
+        pips.extend(other.pips().iter().cloned());
+        Some(ManaCost::from_pips(pips))
     }
 
     /// Card types in the object's current zone (both split halves outside the
@@ -2933,6 +2996,9 @@ impl Object {
     /// Returns None if there are no level abilities or the current level tier has no P/T override.
     fn level_ability_pt(&self) -> Option<(i32, i32)> {
         use crate::ability::AbilityKind;
+        if self.zone != Zone::Battlefield {
+            return None;
+        }
 
         let level_count = self.counters.get(&CounterType::Level).copied().unwrap_or(0);
 
@@ -2956,6 +3022,9 @@ impl Object {
     /// Returns all static abilities granted by the current level tier.
     pub fn level_granted_abilities(&self) -> Vec<crate::static_abilities::StaticAbility> {
         use crate::ability::AbilityKind;
+        if self.zone != Zone::Battlefield {
+            return Vec::new();
+        }
 
         let level_count = self.counters.get(&CounterType::Level).copied().unwrap_or(0);
 
@@ -2980,6 +3049,11 @@ impl Object {
     /// Returns the current loyalty of this planeswalker.
     pub fn loyalty(&self) -> Option<u32> {
         let base = self.base_loyalty?;
+        // CR 306.5a / 209.1: outside the battlefield, loyalty is the printed
+        // value; loyalty counters only matter on a permanent.
+        if self.zone != Zone::Battlefield {
+            return Some(base);
+        }
         Some(
             self.counters
                 .get(&CounterType::Loyalty)
@@ -3003,7 +3077,11 @@ impl Object {
         let current = self.counters.get(&counter_type).copied().unwrap_or(0);
         let removed = current.min(amount);
         let remaining = current - removed;
-        if remaining == 0 {
+        if remaining == 0 && counter_type == CounterType::Loyalty && self.base_loyalty.is_some() {
+            // CR 122.1e: a planeswalker whose last loyalty counter is removed
+            // has 0 loyalty (until the SBA), not its printed loyalty.
+            self.counters.insert(counter_type, 0);
+        } else if remaining == 0 {
             self.counters.remove(&counter_type);
         } else {
             self.counters.insert(counter_type, remaining);

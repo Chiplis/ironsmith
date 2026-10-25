@@ -145,14 +145,63 @@ pub(crate) fn name_is_nameless(name: &str) -> bool {
     name.trim().is_empty() || name == crate::object::FACE_DOWN_DISPLAY_NAME
 }
 
+/// CR 201.3: pairs of cards with interchangeable names (a Universes Beyond
+/// card and its Universes Within reprint, rule 201.3c). The second name of
+/// each pair is the Universes Within printing (Secret Lair `SLX`).
+const INTERCHANGEABLE_NAME_PAIRS: &[(&str, &str)] = &[
+    ("Rick, Steadfast Leader", "Greymond, Avacyn's Stalwart"),
+    ("Daryl, Hunter of Walkers", "Hansk, Slayer Zealot"),
+    ("Glenn, the Voice of Calm", "Gregor, Shrewd Magistrate"),
+    ("Negan, the Cold-Blooded", "Malik, Grim Manipulator"),
+    ("Lucille", "Gisa's Favorite Shovel"),
+];
+
+fn normalized_interchangeable_pairs() -> &'static [(String, String)] {
+    static PAIRS: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+    PAIRS.get_or_init(|| {
+        INTERCHANGEABLE_NAME_PAIRS
+            .iter()
+            .map(|(first, second)| {
+                (
+                    normalize_name_for_match(first),
+                    normalize_name_for_match(second),
+                )
+            })
+            .collect()
+    })
+}
+
+/// CR 201.3a: the name that stands for `name` and every name interchangeable
+/// with it. Names without an interchangeable partner are returned unchanged.
+pub(crate) fn interchangeable_name_key(name: &str) -> &str {
+    let normalized = normalize_name_for_match(name);
+    normalized_interchangeable_pairs()
+        .iter()
+        .position(|(first, second)| *first == normalized || *second == normalized)
+        .map_or(name, |index| INTERCHANGEABLE_NAME_PAIRS[index].0)
+}
+
+/// Both arguments are already normalized with `normalize_name_for_match`.
+fn normalized_names_are_interchangeable(lhs: &str, rhs: &str) -> bool {
+    normalized_interchangeable_pairs()
+        .iter()
+        .any(|(first, second)| (lhs == first && rhs == second) || (lhs == second && rhs == first))
+}
+
 /// CR 201.2a: an object with no name doesn't have the same name as any other
-/// object, including another object with no name.
+/// object, including another object with no name. CR 201.3a: interchangeable
+/// names are the same name.
 pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     if name_is_nameless(lhs) || name_is_nameless(rhs) {
         return false;
     }
-    if lhs.eq_ignore_ascii_case(rhs)
-        || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
+    if lhs.eq_ignore_ascii_case(rhs) {
+        return true;
+    }
+    let (normalized_lhs, normalized_rhs) =
+        (normalize_name_for_match(lhs), normalize_name_for_match(rhs));
+    if normalized_lhs == normalized_rhs
+        || normalized_names_are_interchangeable(&normalized_lhs, &normalized_rhs)
     {
         return true;
     }
@@ -224,7 +273,31 @@ pub(crate) fn attachments_grant_all_nonlegendary_creature_card_names(
                     matches!(&ability.kind, AbilityKind::Static(rule)
                         if rule.id() == StaticAbilityId::AttachedHasAllNonlegendaryCreatureCardNames)
                 })
+                && !host_renamed_after_attachment(attachment, game)
         })
+    })
+}
+
+/// CR 612.7/612.8/613.7: a name-setting effect with a later timestamp than
+/// the attachment's grant leaves the host only that name.
+fn host_renamed_after_attachment(attachment: &Object, game: &GameState) -> bool {
+    let Some(crate::object::AttachmentTarget::Object(host)) = attachment.attached_to else {
+        return false;
+    };
+    let grant_timestamp = game
+        .effect_store
+        .continuous_effects
+        .get_object_timestamp(attachment.id)
+        .unwrap_or(0);
+    // Registered (resolution) effects only: reading them can't re-enter the
+    // static-effect discovery that may be calling this filter.
+    game.effect_store.continuous_effects.effects().iter().any(|effect| {
+        matches!(effect.modification, crate::continuous::Modification::SetName(_))
+            && effect.timestamp > grant_timestamp
+            && (matches!(effect.applies_to, crate::continuous::EffectTarget::Specific(target) if target == host)
+                || matches!(&effect.source_type,
+                    crate::continuous::EffectSourceType::Resolution { locked_targets }
+                        if locked_targets.contains(&host)))
     })
 }
 
@@ -525,10 +598,24 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
         ctx: &FilterContext,
     ) -> bool;
     fn tail_has_static_ability_id(&self, ability_id: StaticAbilityId) -> bool;
+    /// CR 702.124n: partner, partner with, and partner—[text] (not "Choose a
+    /// Background" or other pairing variants).
+    fn tail_has_partner_family(&self) -> bool;
     fn tail_has_ability_marker(&self, marker: &str) -> bool;
     fn tail_has_tap_activated_ability(&self) -> bool;
     fn tail_has_non_mana_activated_ability(&self) -> bool;
     fn tail_is_commander(&self, game: &crate::game_state::GameState) -> bool;
+}
+
+fn static_ability_is_partner_family(ability: &crate::static_abilities::StaticAbility) -> bool {
+    match ability.id() {
+        StaticAbilityId::PartnerWith => true,
+        StaticAbilityId::Partner => !matches!(
+            ability.commander_pairing(),
+            Some(crate::static_abilities::CommanderPairing::ChooseBackground)
+        ),
+        _ => false,
+    }
 }
 
 impl TaggedConstraintSubject for Object {
@@ -621,6 +708,12 @@ impl TailMatchSubject for Object {
 
     fn tail_has_static_ability_id(&self, ability_id: StaticAbilityId) -> bool {
         object_has_static_ability_id(self, ability_id)
+    }
+
+    fn tail_has_partner_family(&self) -> bool {
+        self.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(s) if static_ability_is_partner_family(s))
+        })
     }
 
     fn tail_has_ability_marker(&self, marker: &str) -> bool {
@@ -754,6 +847,13 @@ impl TailMatchSubject for LayeredSubject<'_> {
             .any(|ability| ability.id() == ability_id)
     }
 
+    fn tail_has_partner_family(&self) -> bool {
+        self.chars
+            .static_abilities
+            .iter()
+            .any(static_ability_is_partner_family)
+    }
+
     fn tail_has_ability_marker(&self, marker: &str) -> bool {
         calculated_object_has_ability_marker(self.object, self.chars, marker)
     }
@@ -873,6 +973,12 @@ impl TailMatchSubject for ObjectSnapshot {
         snapshot_has_static_ability_id(self, ability_id)
     }
 
+    fn tail_has_partner_family(&self) -> bool {
+        self.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(s) if static_ability_is_partner_family(s))
+        })
+    }
+
     fn tail_has_ability_marker(&self, marker: &str) -> bool {
         snapshot_has_ability_marker(self, marker)
     }
@@ -948,6 +1054,325 @@ fn subject_has_name_in_game<S: TailMatchSubject>(
             subject.subject_attachments(),
             game,
         ) && is_nonlegendary_creature_card_name(name, game))
+}
+
+/// CR 206.3a-c: the names originally printed in the sets that Oracle text
+/// still refers to ("with a name originally printed in the ... expansion").
+const NAMES_ORIGINALLY_PRINTED_IN_SET: &[(&str, &[&str])] = &[
+    (
+        "Arabian Nights",
+        &[
+            "Abu Ja'far",
+            "Aladdin",
+            "Aladdin's Lamp",
+            "Aladdin's Ring",
+            "Ali Baba",
+            "Ali from Cairo",
+            "Army of Allah",
+            "Bazaar of Baghdad",
+            "Bird Maiden",
+            "Bottle of Suleiman",
+            "Brass Man",
+            "Camel",
+            "City in a Bottle",
+            "City of Brass",
+            "Cuombajj Witches",
+            "Cyclone",
+            "Dancing Scimitar",
+            "Dandân",
+            "Desert",
+            "Desert Nomads",
+            "Desert Twister",
+            "Diamond Valley",
+            "Drop of Honey",
+            "Ebony Horse",
+            "Elephant Graveyard",
+            "El-Hajjâj",
+            "Erg Raiders",
+            "Erhnam Djinn",
+            "Eye for an Eye",
+            "Fishliver Oil",
+            "Flying Carpet",
+            "Flying Men",
+            "Ghazbán Ogre",
+            "Giant Tortoise",
+            "Guardian Beast",
+            "Hasran Ogress",
+            "Hurr Jackal",
+            "Ifh-Biff Efreet",
+            "Island Fish Jasconius",
+            "Island of Wak-Wak",
+            "Jandor's Ring",
+            "Jandor's Saddlebags",
+            "Jeweled Bird",
+            "Jihad",
+            "Junún Efreet",
+            "Juzám Djinn",
+            "Khabál Ghoul",
+            "King Suleiman",
+            "Kird Ape",
+            "Library of Alexandria",
+            "Magnetic Mountain",
+            "Merchant Ship",
+            "Metamorphosis",
+            "Mijae Djinn",
+            "Moorish Cavalry",
+            "Nafs Asp",
+            "Oasis",
+            "Old Man of the Sea",
+            "Oubliette",
+            "Piety",
+            "Pyramids",
+            "Repentant Blacksmith",
+            "Ring of Ma'rûf",
+            "Rukh Egg",
+            "Sandals of Abdallah",
+            "Sandstorm",
+            "Serendib Djinn",
+            "Serendib Efreet",
+            "Shahrazad",
+            "Sindbad",
+            "Singing Tree",
+            "Sorceress Queen",
+            "Stone-Throwing Devils",
+            "Unstable Mutation",
+            "War Elephant",
+            "Wyluli Wolf",
+            "Ydwen Efreet",
+        ],
+    ),
+    (
+        "Antiquities",
+        &[
+            "Amulet of Kroog",
+            "Argivian Archaeologist",
+            "Argivian Blacksmith",
+            "Argothian Pixies",
+            "Argothian Treefolk",
+            "Armageddon Clock",
+            "Artifact Blast",
+            "Artifact Possession",
+            "Artifact Ward",
+            "Ashnod's Altar",
+            "Ashnod's Battle Gear",
+            "Ashnod's Transmogrant",
+            "Atog",
+            "Battering Ram",
+            "Bronze Tablet",
+            "Candelabra of Tawnos",
+            "Circle of Protection: Artifacts",
+            "Citanul Druid",
+            "Clay Statue",
+            "Clockwork Avian",
+            "Colossus of Sardia",
+            "Coral Helm",
+            "Crumble",
+            "Cursed Rack",
+            "Damping Field",
+            "Detonate",
+            "Drafna's Restoration",
+            "Dragon Engine",
+            "Dwarven Weaponsmith",
+            "Energy Flux",
+            "Feldon's Cane",
+            "Gaea's Avenger",
+            "Gate to Phyrexia",
+            "Goblin Artisans",
+            "Golgothian Sylex",
+            "Grapeshot Catapult",
+            "Haunting Wind",
+            "Hurkyl's Recall",
+            "Ivory Tower",
+            "Jalum Tome",
+            "Martyrs of Korlis",
+            "Mightstone",
+            "Millstone",
+            "Mishra's Factory",
+            "Mishra's War Machine",
+            "Mishra's Workshop",
+            "Obelisk of Undoing",
+            "Onulet",
+            "Orcish Mechanics",
+            "Ornithopter",
+            "Phyrexian Gremlins",
+            "Power Artifact",
+            "Powerleech",
+            "Priest of Yawgmoth",
+            "Primal Clay",
+            "The Rack",
+            "Rakalite",
+            "Reconstruction",
+            "Reverse Polarity",
+            "Rocket Launcher",
+            "Sage of Lat-Nam",
+            "Shapeshifter",
+            "Shatterstorm",
+            "Staff of Zegon",
+            "Strip Mine",
+            "Su-Chi",
+            "Tablet of Epityr",
+            "Tawnos's Coffin",
+            "Tawnos's Wand",
+            "Tawnos's Weaponry",
+            "Tetravus",
+            "Titania's Song",
+            "Transmute Artifact",
+            "Triskelion",
+            "Urza's Avenger",
+            "Urza's Chalice",
+            "Urza's Mine",
+            "Urza's Miter",
+            "Urza's Power Plant",
+            "Urza's Tower",
+            "Wall of Spears",
+            "Weakstone",
+            "Xenic Poltergeist",
+            "Yawgmoth Demon",
+            "Yotian Soldier",
+        ],
+    ),
+    (
+        "Homelands",
+        &[
+            "Abbey Gargoyles",
+            "Abbey Matron",
+            "Aether Storm",
+            "Aliban's Tower",
+            "Ambush",
+            "Ambush Party",
+            "Anaba Ancestor",
+            "Anaba Bodyguard",
+            "Anaba Shaman",
+            "Anaba Spirit Crafter",
+            "An-Havva Constable",
+            "An-Havva Inn",
+            "An-Havva Township",
+            "An-Zerrin Ruins",
+            "Apocalypse Chime",
+            "Autumn Willow",
+            "Aysen Abbey",
+            "Aysen Bureaucrats",
+            "Aysen Crusader",
+            "Aysen Highway",
+            "Baki's Curse",
+            "Baron Sengir",
+            "Beast Walkers",
+            "Black Carriage",
+            "Broken Visage",
+            "Carapace",
+            "Castle Sengir",
+            "Cemetery Gate",
+            "Chain Stasis",
+            "Chandler",
+            "Clockwork Gnomes",
+            "Clockwork Steed",
+            "Clockwork Swarm",
+            "Coral Reef",
+            "Dark Maze",
+            "Daughter of Autumn",
+            "Death Speakers",
+            "Didgeridoo",
+            "Drudge Spell",
+            "Dry Spell",
+            "Dwarven Pony",
+            "Dwarven Sea Clan",
+            "Dwarven Trader",
+            "Ebony Rhino",
+            "Eron the Relentless",
+            "Evaporate",
+            "Faerie Noble",
+            "Feast of the Unicorn",
+            "Feroz's Ban",
+            "Folk of An-Havva",
+            "Forget",
+            "Funeral March",
+            "Ghost Hounds",
+            "Giant Albatross",
+            "Giant Oyster",
+            "Grandmother Sengir",
+            "Greater Werewolf",
+            "Hazduhr the Abbot",
+            "Headstone",
+            "Heart Wolf",
+            "Hungry Mist",
+            "Ihsan's Shade",
+            "Irini Sengir",
+            "Ironclaw Curse",
+            "Jinx",
+            "Joven",
+            "Joven's Ferrets",
+            "Joven's Tools",
+            "Koskun Falls",
+            "Koskun Keep",
+            "Labyrinth Minotaur",
+            "Leaping Lizard",
+            "Leeches",
+            "Mammoth Harness",
+            "Marjhan",
+            "Memory Lapse",
+            "Merchant Scroll",
+            "Mesa Falcon",
+            "Mystic Decree",
+            "Narwhal",
+            "Orcish Mine",
+            "Primal Order",
+            "Prophecy",
+            "Rashka the Slayer",
+            "Reef Pirates",
+            "Renewal",
+            "Retribution",
+            "Reveka, Wizard Savant",
+            "Root Spider",
+            "Roots",
+            "Roterothopter",
+            "Rysorian Badger",
+            "Samite Alchemist",
+            "Sea Sprite",
+            "Sea Troll",
+            "Sengir Autocrat",
+            "Sengir Bats",
+            "Serra Aviary",
+            "Serra Bestiary",
+            "Serra Inquisitors",
+            "Serra Paladin",
+            "Serrated Arrows",
+            "Shrink",
+            "Soraya the Falconer",
+            "Spectral Bears",
+            "Timmerian Fiends",
+            "Torture",
+            "Trade Caravan",
+            "Truce",
+            "Veldrane of Sengir",
+            "Wall of Kelp",
+            "Willow Faerie",
+            "Willow Priestess",
+            "Winter Sky",
+            "Wizards' School",
+        ],
+    ),
+];
+
+/// CR 206.3a-c / 201.2a: whether the subject has a name (its current name or
+/// an additional name it has) originally printed in `set_name`: its printing
+/// metadata while it keeps its printed name, or, for the sets the rules
+/// enumerate, any current name on that list (renames and copies included).
+fn subject_has_name_originally_printed_in_set<S: TailMatchSubject>(
+    subject: &S,
+    set_name: &str,
+    game: &GameState,
+) -> bool {
+    subject
+        .tail_first_printed_set_name()
+        .is_some_and(|printed| printed.eq_ignore_ascii_case(set_name))
+        || NAMES_ORIGINALLY_PRINTED_IN_SET
+            .iter()
+            .find(|(set, _)| set.eq_ignore_ascii_case(set_name))
+            .is_some_and(|(_, names)| {
+                names
+                    .iter()
+                    .any(|name| subject_has_name_in_game(subject, name, game))
+            })
 }
 
 fn object_matches_subtype(object: &Object, subtype: Subtype, game: &GameState) -> bool {
@@ -2407,7 +2832,7 @@ fn resolve_filter_comparison_rhs_value(
             let mut insert = |name: &str| {
                 for part in name.split(" // ") {
                     if !name_is_nameless(part) {
-                        names.insert(part.trim().to_string());
+                        names.insert(interchangeable_name_key(part.trim()).to_string());
                     }
                 }
             };
@@ -3932,9 +4357,7 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
         if let Some(required_set_name) = &self.name_originally_printed_in_set
-            && !subject
-                .tail_first_printed_set_name()
-                .is_some_and(|set_name| set_name.eq_ignore_ascii_case(required_set_name))
+            && !subject_has_name_originally_printed_in_set(subject, required_set_name, game)
         {
             return false;
         }
@@ -4013,6 +4436,9 @@ impl ObjectFilterExt for ObjectFilter {
         // CR 702.11e: an effect that looks for a permanent with hexproof also
         // finds one with a "hexproof from [quality]" ability.
         let has_static_ability_id = |ability_id: StaticAbilityId| {
+            if ability_id == StaticAbilityId::Partner {
+                return subject.tail_has_partner_family();
+            }
             subject.tail_has_static_ability_id(ability_id)
                 || (ability_id == StaticAbilityId::Hexproof
                     && subject.tail_has_static_ability_id(StaticAbilityId::HexproofFrom))
@@ -4335,6 +4761,9 @@ impl ObjectFilterExt for ObjectFilter {
                         .is_some_and(|source| {
                             source.subtypes.contains(&crate::types::Subtype::Aura)
                                 || source.subtypes.contains(&crate::types::Subtype::Equipment)
+                                || source
+                                    .subtypes
+                                    .contains(&crate::types::Subtype::Fortification)
                         })
                     && matches!(
                         constraint.relation,
@@ -4518,10 +4947,12 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
 
+            // CR 115.9b: a targeted player who left the game is ignored.
             let matches_player = self.targets_player.as_ref().is_none_or(|player_filter| {
                 entry.targets.iter().any(|target| match target {
                     crate::game_state::Target::Player(pid) => {
-                        player_filter.matches_player(*pid, ctx)
+                        game.player(*pid).is_some_and(|player| player.is_in_game())
+                            && player_filter.matches_player(*pid, ctx)
                     }
                     _ => false,
                 })
@@ -4576,12 +5007,18 @@ impl ObjectFilterExt for ObjectFilter {
                 if entry.targets.is_empty() {
                     return false;
                 }
+                // CR 115.9c: "targets only" requires exactly one different
+                // object or player among the chosen targets.
+                if entry.targets.iter().any(|target| target != &entry.targets[0]) {
+                    return false;
+                }
 
                 let matches_target = |target: &crate::game_state::Target| -> bool {
                     let matches_player = self.targets_only_player.as_ref().is_some_and(
                         |player_filter| match target {
                             crate::game_state::Target::Player(pid) => {
-                                player_filter.matches_player(*pid, ctx)
+                                game.player(*pid).is_some_and(|player| player.is_in_game())
+                                    && player_filter.matches_player(*pid, ctx)
                             }
                             _ => false,
                         },

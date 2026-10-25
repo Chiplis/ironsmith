@@ -86,6 +86,20 @@ pub(crate) fn entry_attachment_for_move(
     effect: &crate::effect::Effect,
     next: Option<&crate::effect::Effect>,
 ) -> Option<ChooseSpec> {
+    // "Create an Aura token attached to X": the creation's attachment choice
+    // is suppressed and the following instruction names its host.
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && let Some(create) = tagged.effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+    {
+        if !create.suppress_aura_attachment_choice {
+            return None;
+        }
+        let attach = next?.downcast_ref::<AttachObjectsEffect>()?;
+        if attach.individual_targets || !choose_spec_names_tag(&attach.objects, &tagged.tag) {
+            return None;
+        }
+        return Some(attach.target.clone());
+    }
     let (move_effect, tag) = if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         (tagged.effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?, &tagged.tag)
     } else {
@@ -147,6 +161,33 @@ pub(crate) fn aura_can_enter_attached_to(
     }
 }
 
+/// [`aura_can_enter_attached_to`] for an Aura token that doesn't exist yet
+/// (CR 303.4i: such a token isn't created at all).
+pub(crate) fn aura_preview_can_enter_attached_to(
+    game: &GameState,
+    preview: &crate::object::Object,
+    controller: crate::ids::PlayerId,
+    target: AttachmentTarget,
+) -> bool {
+    let Some(filter) = preview.aura_attach_filter_owned() else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(controller, None);
+    if !filter.matches_target(target, &filter_ctx, game) {
+        return false;
+    }
+    match target {
+        AttachmentTarget::Object(target_id) => !crate::targeting::has_protection_from_snapshot(
+            game,
+            target_id,
+            &crate::snapshot::ObjectSnapshot::from_object(preview, game),
+        ),
+        AttachmentTarget::Player(player) => {
+            !super::player_has_protection_from_object(game, player, preview)
+        }
+    }
+}
+
 /// Effect that attaches one or more objects to a destination object.
 impl EffectExecutor for AttachObjectsEffect {
     fn execute(
@@ -183,6 +224,13 @@ impl EffectExecutor for AttachObjectsEffect {
                                     game,
                                     object_id,
                                     AttachmentTarget::Object(*candidate_id),
+                                )
+                                // CR 303.4k / 702.16c: protection forbids the
+                                // attachment, so it isn't offered.
+                                && !crate::targeting::has_protection_from_source(
+                                    game,
+                                    *candidate_id,
+                                    object_id,
                                 )
                             })
                             .filter(|id| game.object(*id).is_some())

@@ -75,7 +75,7 @@ impl TriggerMatcher for BeginningOfUpkeepTrigger {
 fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerContext) -> bool {
     match filter {
         PlayerFilter::You => player == ctx.controller,
-        PlayerFilter::Opponent => player != ctx.controller,
+        PlayerFilter::Opponent => ctx.game.are_opponents(ctx.controller, player),
         PlayerFilter::Any => true,
         PlayerFilter::Specific(id) => player == *id,
         PlayerFilter::Active => ctx.game.is_active_player(player),

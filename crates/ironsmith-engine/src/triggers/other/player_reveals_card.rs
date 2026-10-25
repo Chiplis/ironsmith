@@ -76,7 +76,7 @@ impl TriggerMatcher for PlayerRevealsCardTrigger {
 
         let player_matches = match &self.player {
             PlayerFilter::You => revealed.player == ctx.controller,
-            PlayerFilter::Opponent => revealed.player != ctx.controller,
+            PlayerFilter::Opponent => ctx.game.are_opponents(ctx.controller, revealed.player),
             PlayerFilter::Any => true,
             PlayerFilter::Specific(id) => revealed.player == *id,
             PlayerFilter::IteratedPlayer => revealed.player == ctx.controller,

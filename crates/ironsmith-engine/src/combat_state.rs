@@ -80,6 +80,19 @@ pub struct AttackedPermanentTypes {
 }
 
 impl CombatState {
+    /// Remove a combatant that left the battlefield. CR 509.1g: creatures
+    /// that were blocking it remain blocking creatures, so its blocker list
+    /// is kept under the departed (never reused) ID; nothing can deal or be
+    /// dealt combat damage through an object that no longer exists.
+    pub(crate) fn remove_departed_combatant(&mut self, id: ObjectId) -> bool {
+        let retained_blockers = self.blockers.get(&id).cloned();
+        let was_participating = self.remove_combatant(id);
+        if let Some(blockers) = retained_blockers.filter(|blockers| !blockers.is_empty()) {
+            self.blockers.insert(id, blockers);
+        }
+        was_participating
+    }
+
     pub(crate) fn remove_combatant(&mut self, id: ObjectId) -> bool {
         let was_participating = self
             .attackers
@@ -1209,8 +1222,18 @@ fn blocking_requirements<'a>(
             requirements.extend(groups.iter().map(|group| BlockingRequirement::AttackerMustBeBlockedBy(attacker.creature, group)));
         }
         if game.must_be_blocked(attacker.creature) {
-            requirements.push(BlockingRequirement::AttackerMustBeBlocked(
-                attacker.creature,
+            // CR 509.1c: independent requirements each count.
+            let count = game
+                .effect_store
+                .cant_effects
+                .must_be_blocked_requirement_counts
+                .get(&attacker.creature)
+                .copied()
+                .unwrap_or(1)
+                .max(1);
+            requirements.extend(std::iter::repeat_n(
+                BlockingRequirement::AttackerMustBeBlocked(attacker.creature),
+                count,
             ));
         }
         if let Some(minimums) = game
@@ -1249,8 +1272,18 @@ fn blocking_requirements<'a>(
     for (&blocker, attackers) in &game.effect_store.cant_effects.must_block_specific_attackers {
         for &attacker in attackers {
             if is_attacking(combat, attacker) {
-                requirements
-                    .push(BlockingRequirement::BlockerMustBlockAttacker { blocker, attacker });
+                let count = game
+                    .effect_store
+                    .cant_effects
+                    .must_block_specific_attacker_counts
+                    .get(&(blocker, attacker))
+                    .copied()
+                    .unwrap_or(1)
+                    .max(1);
+                requirements.extend(std::iter::repeat_n(
+                    BlockingRequirement::BlockerMustBlockAttacker { blocker, attacker },
+                    count,
+                ));
             }
         }
     }

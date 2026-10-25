@@ -2256,6 +2256,12 @@ impl RestrictionExt for Restriction {
                     if let Some(obj) = game.object(obj_id)
                         && blockers.matches(obj, &ctx, game)
                     {
+                        for &attacker_id in &attacker_ids {
+                            *tracker
+                                .must_block_specific_attacker_counts
+                                .entry((obj_id, attacker_id))
+                                .or_default() += 1;
+                        }
                         let required = tracker
                             .must_block_specific_attackers
                             .entry(obj_id)
@@ -2371,6 +2377,10 @@ impl RestrictionExt for Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.must_be_blocked.insert(obj_id);
+                        *tracker
+                            .must_be_blocked_requirement_counts
+                            .entry(obj_id)
+                            .or_default() += 1;
                     }
                 }
             }

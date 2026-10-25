@@ -115,6 +115,19 @@ impl crate::effects::ResolutionPreludeBinding for TagTriggeringObjectEffect {
                                     object.zone == receipt.zone
                                         && object.stable_id == origin.stable_id
                                 })
+                                .or_else(|| {
+                                    // CR 400.7k: after its madness trigger
+                                    // resolved, an uncast card moved to a
+                                    // public zone is still the discarded card.
+                                    receipt
+                                        .object
+                                        .and_then(|id| game.madness_public_arrival(id))
+                                        .and_then(|id| game.object(id))
+                                        .filter(|object| {
+                                            object.zone.is_public()
+                                                && object.stable_id == origin.stable_id
+                                        })
+                                })
                         })
                         .map(|object| {
                             ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -818,6 +831,7 @@ mod tests {
                     attachment_snapshots: Vec::new(),
                     was_enchanted: false,
                     is_monstrous: false,
+                    case_solved: false,
                     is_prepared: false,
                     is_commander: false,
                     zone: Zone::Battlefield,

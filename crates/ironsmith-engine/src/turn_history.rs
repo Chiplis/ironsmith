@@ -695,6 +695,14 @@ impl TurnHistory {
             .iter()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
             .filter(|event| event.to == Zone::Exile && event.from != Zone::Exile)
+            // CR 607.2e: only cards exiled while `source` existed were noted
+            // for it. Object IDs are allocated monotonically, so an exiled
+            // card whose new identity predates the source was exiled earlier
+            // (this also covers a source with no recorded entry event).
+            .filter(|event| {
+                event.result_objects.is_empty()
+                    || event.result_objects.iter().any(|id| *id > source)
+            })
             .flat_map(|event| {
                 if event.destination_snapshots.is_empty() {
                     event.snapshots().iter()
@@ -1268,8 +1276,16 @@ impl TurnHistory {
     pub fn player_descended_count_this_turn(&self, player: PlayerId) -> u32 {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-            .filter(|event| event.to == Zone::Graveyard)
-            .flat_map(|event| event.snapshots.iter())
+            .filter(|event| event.to == Zone::Graveyard && event.from != Zone::Graveyard)
+            .flat_map(|event| {
+                // CR 700.11: judge the card as it is in the graveyard; a spell
+                // copy never arrives there as a card.
+                if event.destination_snapshots.is_empty() {
+                    event.snapshots.iter()
+                } else {
+                    event.destination_snapshots.iter()
+                }
+            })
             .filter(|snapshot| snapshot.owner == player && snapshot_is_permanent_card(snapshot))
             .count() as u32
     }
@@ -2158,6 +2174,7 @@ fn snapshot_is_permanent_card(snapshot: &ObjectSnapshot) -> bool {
     ];
 
     !snapshot.is_token
+        && snapshot.kind == crate::object::ObjectKind::Card
         && snapshot
             .card_types
             .iter()
@@ -2805,8 +2822,14 @@ pub(crate) fn resolve_turn_history_count(
         TurnHistoryCount::Descended(player) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-            .filter(|event| event.to == Zone::Graveyard)
-            .flat_map(ZoneChangeEvent::snapshots)
+            .filter(|event| event.to == Zone::Graveyard && event.from != Zone::Graveyard)
+            .flat_map(|event| {
+                if event.destination_snapshots.is_empty() {
+                    event.snapshots()
+                } else {
+                    event.destination_snapshots.as_slice()
+                }
+            })
             .filter(|snapshot| {
                 snapshot_is_permanent_card(snapshot)
                     && player.matches_player(snapshot.owner, filter_ctx)

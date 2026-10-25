@@ -798,17 +798,44 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
 /// [+1] becomes [+2], so a planeswalker with 1 loyalty may activate [-2].
 fn merge_loyalty_cost_components(cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
     use crate::object::CounterType;
+    let effect_loyalty_delta = |component: &crate::costs::Cost| -> Option<i64> {
+        // A cost increase such as Carth's "[+1]" is an effect-backed
+        // "put a loyalty counter on this" cost component.
+        let effect = component.effect_ref()?;
+        let effect = effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .map_or(effect, |observed| &observed.effect);
+        let is_source = |spec: &crate::target::ChooseSpec| {
+            matches!(spec.base(), crate::target::ChooseSpec::Source)
+        };
+        if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
+            && put.counter_type == CounterType::Loyalty
+            && is_source(&put.target)
+            && put.maximum_total.is_none()
+            && let crate::effect::Value::Fixed(count) = put.amount
+        {
+            return Some(i64::from(count));
+        }
+        if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()
+            && remove.counter_type == CounterType::Loyalty
+            && is_source(&remove.target)
+            && let crate::effect::Value::Fixed(count) = remove.count
+        {
+            return Some(-i64::from(count));
+        }
+        None
+    };
     let loyalty_delta = |component: &crate::costs::Cost| -> Option<i64> {
-        match component.compiled_model()? {
-            ironsmith_core::Cost::AddCounters {
+        match component.compiled_model() {
+            Some(ironsmith_core::Cost::AddCounters {
                 counter_type: CounterType::Loyalty,
                 count,
-            } => Some(i64::from(*count)),
-            ironsmith_core::Cost::RemoveCounters {
+            }) => Some(i64::from(*count)),
+            Some(ironsmith_core::Cost::RemoveCounters {
                 counter_type: CounterType::Loyalty,
                 count,
-            } => Some(-i64::from(*count)),
-            _ => None,
+            }) => Some(-i64::from(*count)),
+            _ => effect_loyalty_delta(component),
         }
     };
     let components = cost.costs();
@@ -1697,6 +1724,21 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
     } else {
         spell
     };
+    // CR 601.3e / 709.3a / 715.3a / 718.3a: when the proposal uses alternative
+    // characteristics (a split half, an Adventure, a prototype...), only those
+    // characteristics are evaluated, not the live card's calculated ones.
+    let alternative_snapshot = game
+        .object(spell.id)
+        .is_some_and(|live| {
+            live.name != spell.name
+                || live.card_types != spell.card_types
+                || live.subtypes != spell.subtypes
+                || live.mana_cost != spell.mana_cost
+                || live.color_override != spell.color_override
+                || live.base_power != spell.base_power
+                || live.base_toughness != spell.base_toughness
+        })
+        .then(|| crate::snapshot::ObjectSnapshot::from_object(spell, game));
     filters.iter().any(|restriction| {
         if ignore_source.is_some() && restriction.source == ignore_source {
             return false;
@@ -1716,7 +1758,10 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
             ctx = with_source_exiled_tagged_objects(game, ctx.with_source(source), source);
         }
         ctx.source_number_owner=restriction.source_number_owner.clone();
-        restriction.filter.matches(spell, &ctx, game)
+        match alternative_snapshot.as_ref() {
+            Some(snapshot) => restriction.filter.matches_snapshot(snapshot, &ctx, game),
+            None => restriction.filter.matches(spell, &ctx, game),
+        }
     })
 }
 
@@ -1826,9 +1871,26 @@ where
             // Target/restriction preflight also checks affordability. It must
             // account for the sacrifices offered by this announced optional
             // cost subset, before a full-price rejection hides the spell.
-            let reduction = max_cost_payment_sacrifice_reduction_for_selection(
+            let mut reduction = max_cost_payment_sacrifice_reduction_for_selection(
                 hypothetical, player, &proposal, true,
             );
+            // CR 702.180a: the stack-zoned proposal skips the resource
+            // preview, so add the best Harmonize tap reduction here.
+            if spell.zone != Zone::Stack
+                && alternative_method_for_casting_method(game, player, spell, casting_method)
+                    .is_some_and(|method| {
+                        matches!(
+                            method,
+                            crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
+                        )
+                    })
+            {
+                reduction += get_convoke_creatures(game, player)
+                    .iter()
+                    .map(|(id, _)| game.current_power(*id).unwrap_or(0).max(0) as u32)
+                    .max()
+                    .unwrap_or(0);
+            }
             apply_minimum_spell_total_mana_with_view(
                 &hypothetical_view, &effective.reduce_generic(reduction),
             )
@@ -1986,6 +2048,22 @@ pub(crate) fn spell_has_active_flash_with_view(
             if s.has_flash() {
                 return true;
             }
+            // "This spell has flash as long as ..." compiled as a conditional
+            // grant of flash to the spell itself (CR 601.3d).
+            if let Some(ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)) =
+                s.compiled_model().map(|model| &model.payload)
+                && grant.filter.source
+                && matches!(
+                    &crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(&grant.ability).kind,
+                    crate::ability::AbilityKind::Static(granted) if granted.has_flash()
+                )
+            {
+                return grant.condition.as_ref().is_none_or(|condition| {
+                    crate::condition_eval::evaluate_condition_cast_time(
+                        game, condition, player, spell_id,
+                    )
+                });
+            }
             if let Some(spec) = s.conditional_spell_keyword_spec()
                 && spec.keyword == crate::static_abilities::ConditionalSpellKeywordKind::Flash
             {
@@ -2119,19 +2197,22 @@ pub(crate) fn this_spell_cast_timing_allows(
         ThisSpellCastTiming::DuringCombatOnOpponentsTurn => {
             opponents_turn && matches!(game.turn.phase, Phase::Combat)
         }
+        // CR 506.8a / 506.8d: before the declare attackers step of the
+        // turn's first combat phase begins.
         ThisSpellCastTiming::BeforeAttackersAreDeclared => {
-            matches!(game.turn.phase, Phase::Combat) && game.turn.step == Some(Step::BeginCombat)
+            crate::decision::legal_actions::turn_is_before_first_combat_step(
+                game,
+                Step::DeclareAttackers,
+            )
         }
-        // Any time earlier in the turn than its combat damage step: the
+        // Any time earlier in the turn than its first combat damage step: the
         // beginning phase, the precombat main phase, or combat before damage.
-        ThisSpellCastTiming::BeforeCombatDamageStep => match game.turn.phase {
-            Phase::Beginning | Phase::FirstMain => true,
-            Phase::Combat => matches!(
-                game.turn.step,
-                Some(Step::BeginCombat | Step::DeclareAttackers | Step::DeclareBlockers)
-            ),
-            Phase::NextMain | Phase::Ending => false,
-        },
+        ThisSpellCastTiming::BeforeCombatDamageStep => {
+            crate::decision::legal_actions::turn_is_before_first_combat_step(
+                game,
+                Step::CombatDamage,
+            )
+        }
         ThisSpellCastTiming::DuringOpponentsUpkeep => {
             opponents_turn
                 && matches!(game.turn.phase, Phase::Beginning)
@@ -2141,10 +2222,15 @@ pub(crate) fn this_spell_cast_timing_allows(
             if !opponents_turn {
                 return false;
             }
-            !matches!(
-                (game.turn.phase, game.turn.step),
-                (Phase::Beginning, Some(Step::Untap | Step::Upkeep))
-            )
+            // CR 503.2: with several upkeep steps, any time after the first
+            // upkeep step ends, including during a later upkeep step.
+            match (game.turn.phase, game.turn.step) {
+                (Phase::Beginning, Some(Step::Untap)) => false,
+                (Phase::Beginning, Some(Step::Upkeep)) => {
+                    game.turn_store.upkeep_steps_started_this_turn > 1
+                }
+                _ => true,
+            }
         }
         ThisSpellCastTiming::DuringYourEndStep => {
             game.is_active_player(player)
@@ -2154,14 +2240,13 @@ pub(crate) fn this_spell_cast_timing_allows(
         ThisSpellCastTiming::AfterCombat => {
             matches!(game.turn.phase, Phase::NextMain | Phase::Ending)
         }
-        ThisSpellCastTiming::BeforeBlockersAreDeclared => match game.turn.phase {
-            Phase::Beginning | Phase::FirstMain => true,
-            Phase::Combat => matches!(
-                game.turn.step,
-                Some(Step::BeginCombat | Step::DeclareAttackers)
-            ),
-            Phase::NextMain | Phase::Ending => false,
-        },
+        // CR 506.8b / 506.8d: before the first combat's declare blockers step.
+        ThisSpellCastTiming::BeforeBlockersAreDeclared => {
+            crate::decision::legal_actions::turn_is_before_first_combat_step(
+                game,
+                Step::DeclareBlockers,
+            )
+        }
         ThisSpellCastTiming::DuringYourDeclareAttackersStep => {
             game.is_active_player(player)
                 && matches!(game.turn.phase, Phase::Combat)
@@ -3124,7 +3209,10 @@ pub(crate) fn casting_method_requires_printed_mana_cost(
         };
     }
     match casting_method.without_exact_permission() {
+        // CR 709.3b / 118.6: a split half without a mana cost can't be cast
+        // by paying its mana cost.
         CastingMethod::Normal
+        | CastingMethod::SplitOtherHalf
         | CastingMethod::GrantedEscape { .. }
         | CastingMethod::GrantedFlashback
         | CastingMethod::PlayFrom {
@@ -4567,7 +4655,17 @@ pub(crate) fn can_cast_with_cost_with_context(
         view.apply_bestow_cast_overlay();
         Some(view)
     } else {
-        None
+        // CR 718.3a: a prototyped spell's legality uses its prototype mana
+        // cost, color and power/toughness.
+        alternative_method_for_casting_method(game, player, spell, casting_method).and_then(
+            |method| {
+                let power_toughness = method.prototype_power_toughness()?;
+                let cost = method.mana_cost()?.clone();
+                let mut view = spell.clone();
+                view.apply_prototype_cast_overlay(cost, power_toughness)
+                    .then_some(view)
+            },
+        )
     };
     let cast_view = if let CastingMethod::ExactPermission { .. } = casting_method {
         if spell.zone == Zone::Stack {
@@ -7659,6 +7757,12 @@ fn reduce_mana_cost_with_spill(
             generic_reduction = generic_reduction.saturating_add(amount as u32);
             continue;
         }
+        // CR 107.4h / 118.7g: a snow symbol in a cost reduction reduces only
+        // generic mana, never a {S} requirement.
+        if red_pip.as_slice() == [ManaSymbol::Snow] {
+            generic_reduction = generic_reduction.saturating_add(1);
+            continue;
+        }
         if let Some(pos) = pips.iter().position(|pip| pip == red_pip) {
             pips.remove(pos);
             continue;
@@ -7677,6 +7781,30 @@ fn reduce_mana_cost_with_spill(
             })
             .collect::<Vec<_>>();
         if reduced_symbols.is_empty() {
+            continue;
+        }
+        // CR 118.7e: a hybrid reduction symbol lets the payer choose which
+        // of its colors to reduce. When it could remove either of two
+        // different one-color pips, the remaining requirement is exactly
+        // "one of those two colors", i.e. a hybrid pip of both.
+        let mut single_colors: Vec<ManaSymbol> = Vec::new();
+        for pip in &pips {
+            if let [symbol] = pip.as_slice()
+                && reduced_symbols.contains(&symbol)
+                && !single_colors.contains(symbol)
+            {
+                single_colors.push(*symbol);
+            }
+        }
+        if let [first, second] = single_colors.as_slice() {
+            let (first, second) = (*first, *second);
+            if let Some(first_pos) = pips.iter().position(|pip| pip.as_slice() == [first]) {
+                pips.remove(first_pos);
+            }
+            if let Some(second_pos) = pips.iter().position(|pip| pip.as_slice() == [second]) {
+                pips.remove(second_pos);
+            }
+            pips.push(vec![first, second]);
             continue;
         }
         if let Some(pos) = pips

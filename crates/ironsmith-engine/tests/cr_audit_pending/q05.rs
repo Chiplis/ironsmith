@@ -781,7 +781,9 @@ fn cr_602_2a_activating_from_hand_reveals_the_card() {
     let mut queue = TriggerQueue::new();
     let action = activate_first(&game, alice(), card).expect("hand ability activatable");
     act_with(&mut game, alice(), action, &mut dm, &mut queue).unwrap();
-    assert_eq!(game.stack.len(), 1, "the ability was activated");
+    // CR 603.3: the observer's reveal trigger is put on the stack the next
+    // time a player would receive priority, right after the activation.
+    assert!(!game.stack.is_empty(), "the ability was activated");
     settle(&mut game, &mut dm, &mut queue);
     assert_eq!(life(&game, alice()), 21);
     let revealed_to_bob = dm

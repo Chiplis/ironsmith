@@ -214,9 +214,9 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                                     );
                                 }
                                 if effect.duration == ExileUntilDuration::OpponentBecomesMonarch
-                                    && let Some(exiled) = game.object(new_id)
+                                    && game.object(new_id).is_some()
                                 {
-                                    monarch_duration_stable_ids.push(exiled.stable_id);
+                                    monarch_duration_stable_ids.push(new_id);
                                 }
                                 exiled_count += 1;
                             }
@@ -231,7 +231,7 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                     if !monarch_duration_stable_ids.is_empty()
                         && effect.duration == ExileUntilDuration::OpponentBecomesMonarch
                     {
-                        game.track_exiled_until_opponent_becomes_monarch(
+                        game.track_exiled_incarnations_until_opponent_becomes_monarch(
                             ctx.controller,
                             monarch_duration_stable_ids,
                             effect.return_zone,

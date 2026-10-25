@@ -434,7 +434,22 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         // Ordered: permissions are pushed into a game-state Vec per player.
         let mut mana_permission_stable_ids =
             std::collections::BTreeMap::<crate::ids::PlayerId, Vec<crate::ids::StableId>>::new();
-        for snapshot in snapshots {
+        for mut snapshot in snapshots {
+            // CR 400.7j: a card this resolution itself just exiled ("exiles a
+            // card from their hand and may play that card") is the object
+            // the permission names, even when it was chosen in another zone.
+            if snapshot.zone != crate::zone::Zone::Exile
+                && game.object(snapshot.object_id).is_none()
+                && let Some(floor) = ctx.resolution_object_id_floor
+                && let Some(current) = game.find_object_by_stable_id(snapshot.stable_id)
+                && current.0 >= floor.0
+                && game
+                    .object(current)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Exile)
+            {
+                snapshot.object_id = current;
+                snapshot.zone = crate::zone::Zone::Exile;
+            }
             // An open-ended exile permission names this exile incarnation.
             // Leaving and later reentering exile must not revive it, and a
             // card that left before this instruction resolves gets no grant.

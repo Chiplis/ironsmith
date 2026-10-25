@@ -1,4 +1,5 @@
 import { PUBLIC_FORMATS, usesCommanders } from './relay/formats.js';
+import { deckCardBaseName } from './deck-color-notes.js';
 export const MATCH_FORMAT_NORMAL = "normal";
 export const MATCH_FORMAT_COMMANDER = "commander";
 export const MATCH_FORMAT_PLANECHASE = "planechase";
@@ -11,6 +12,8 @@ const DEFAULT_LOBBY_DECK_STORAGE_KEY = "ironsmith.defaultLobbyDeck.v1";
 const MAIN_DECK_HEADER = /^Deck$/i;
 const COMMANDER_HEADER = /^(Commander|Commanders)$/i;
 const EXTRA_DECK_HEADER = /^(Sideboard|Companion|Maybeboard)$/i;
+// Unfinity sticker sheets (CR 123.2) a player brings. Sheets are not cards.
+const STICKERS_HEADER = /^Stickers$/i;
 const CARD_LINE = /^(\d+)x?\s+(.+)$/;
 const SET_COLLECTOR_SUFFIX =
   /\s*(?:\((?<parenSet>[a-z0-9]{2,8})\)|\[(?<bracketSet>[a-z0-9]{2,8})\])\s*(?<collector>\d+[a-z]?\*?)?\s*$/i;
@@ -50,7 +53,8 @@ function parseCardPrintPreference(raw) {
   ).trim();
   if (!setCode) return null;
 
-  const name = normalizeCardName(raw);
+  // Printings belong to the card, not to its circled-color note.
+  const name = deckCardBaseName(normalizeCardName(raw));
   if (!name) return null;
 
   const collectorNumber = String(suffixMatch.groups.collector || "")
@@ -133,7 +137,7 @@ export function parseDeckList(text) {
       continue;
     }
 
-    if (COMMANDER_HEADER.test(trimmed) || EXTRA_DECK_HEADER.test(trimmed)) {
+    if (COMMANDER_HEADER.test(trimmed) || EXTRA_DECK_HEADER.test(trimmed) || STICKERS_HEADER.test(trimmed)) {
       parsingMainDeck = false;
       continue;
     }
@@ -166,6 +170,7 @@ export function parseDeckPrintPreferences(text) {
       MAIN_DECK_HEADER.test(trimmed)
       || COMMANDER_HEADER.test(trimmed)
       || EXTRA_DECK_HEADER.test(trimmed)
+      || STICKERS_HEADER.test(trimmed)
     ) {
       continue;
     }
@@ -195,6 +200,7 @@ export function parseDeckFoilNames(text) {
       MAIN_DECK_HEADER.test(trimmed)
       || COMMANDER_HEADER.test(trimmed)
       || EXTRA_DECK_HEADER.test(trimmed)
+      || STICKERS_HEADER.test(trimmed)
     ) {
       continue;
     }
@@ -202,7 +208,7 @@ export function parseDeckFoilNames(text) {
     const match = trimmed.match(CARD_LINE);
     const rawName = match ? match[2] : trimmed;
     if (!FOIL_MARKER.test(rawName)) continue;
-    const name = normalizeCardName(rawName);
+    const name = deckCardBaseName(normalizeCardName(rawName));
     if (name) names.push(name);
   }
 
@@ -217,7 +223,7 @@ export function parseSideboardList(text) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
 
-    if (MAIN_DECK_HEADER.test(trimmed) || COMMANDER_HEADER.test(trimmed)) {
+    if (MAIN_DECK_HEADER.test(trimmed) || COMMANDER_HEADER.test(trimmed) || STICKERS_HEADER.test(trimmed)) {
       parsingSideboard = false;
       continue;
     }
@@ -245,6 +251,34 @@ export function parseSideboardList(text) {
   return cards;
 }
 
+// Sticker sheet names listed under a "Stickers" header, one per line in first
+// seen order. A count prefix is accepted and ignored: each sheet is unique.
+export function parseStickerList(text) {
+  const sheets = [];
+  let parsingStickers = false;
+
+  for (const line of String(text || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+
+    if (STICKERS_HEADER.test(trimmed)) {
+      parsingStickers = true;
+      continue;
+    }
+    if (MAIN_DECK_HEADER.test(trimmed) || COMMANDER_HEADER.test(trimmed) || EXTRA_DECK_HEADER.test(trimmed)) {
+      parsingStickers = false;
+      continue;
+    }
+    if (!parsingStickers) continue;
+
+    const match = trimmed.match(CARD_LINE);
+    const name = normalizeCardName(match ? match[2] : trimmed);
+    if (name) sheets.push(name);
+  }
+
+  return sheets;
+}
+
 export function parseCommanderList(text) {
   const cards = [];
 
@@ -255,6 +289,7 @@ export function parseCommanderList(text) {
       MAIN_DECK_HEADER.test(trimmed)
       || COMMANDER_HEADER.test(trimmed)
       || EXTRA_DECK_HEADER.test(trimmed)
+      || STICKERS_HEADER.test(trimmed)
     ) {
       continue;
     }
@@ -275,9 +310,9 @@ export function parseCommanderList(text) {
   return cards;
 }
 
-// The inverse of parseDeckList / parseSideboardList: "N Name" lines, first
-// seen order, with the sideboard under its header.
-export function deckListText(deck = [], sideboard = []) {
+// The inverse of parseDeckList / parseSideboardList / parseStickerList: "N Name"
+// lines, first seen order, with the sideboard and sticker sheets under their headers.
+export function deckListText(deck = [], sideboard = [], stickers = []) {
   const lines = (cards) => {
     const counts = new Map();
     for (const card of cards || []) {
@@ -288,7 +323,11 @@ export function deckListText(deck = [], sideboard = []) {
   };
   const main = lines(deck);
   const side = lines(sideboard);
-  return side.length ? [...main, "", "Sideboard", ...side].join("\n") : main.join("\n");
+  const sheets = lines(stickers);
+  const out = [...main];
+  if (side.length) out.push("", "Sideboard", ...side);
+  if (sheets.length) out.push("", "Stickers", ...sheets);
+  return out.join("\n");
 }
 
 export function normalizeMatchFormat(raw) {
@@ -357,7 +396,7 @@ export function splitSavedLobbyDeck(text) {
   let inCommanders = false;
   for (const line of String(text || "").split("\n")) {
     if (COMMANDER_HEADER.test(line.trim())) { inCommanders = true; continue; }
-    if (MAIN_DECK_HEADER.test(line.trim()) || EXTRA_DECK_HEADER.test(line.trim())) inCommanders = false;
+    if (MAIN_DECK_HEADER.test(line.trim()) || EXTRA_DECK_HEADER.test(line.trim()) || STICKERS_HEADER.test(line.trim())) inCommanders = false;
     (inCommanders ? commanders : main).push(line);
   }
   return { deckText: main.join("\n").trim(), commanderText: commanders.join("\n").trim() };

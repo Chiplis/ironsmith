@@ -43,7 +43,7 @@ impl EffectExecutor for ShuffleLibraryAction {
         if game.player(self.player).is_none() {
             return Err(ExecutionError::PlayerNotFound(self.player));
         }
-        Ok(commit_library_shuffle_with_outputs(
+        let outputs = commit_library_shuffle_with_outputs(
             game,
             self.player,
             &self.retained,
@@ -51,7 +51,28 @@ impl EffectExecutor for ShuffleLibraryAction {
             &self.reason,
             ctx.cause.clone(),
             |_| ctx.provenance,
-        ))
+        );
+        // CR 701.20d: revealed cards that are reordered stop being revealed
+        // and become new objects.
+        let revealed: Vec<crate::ids::ObjectId> = ctx
+            .get_tagged_all(crate::effects::PUBLIC_REVEALED_TAG)
+            .map(|snapshots| {
+                snapshots
+                    .iter()
+                    .map(|snapshot| snapshot.object_id)
+                    .filter(|id| !self.retained.contains(id))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for id in revealed {
+            let in_library = game
+                .player(self.player)
+                .is_some_and(|player| player.library.contains(&id));
+            if in_library {
+                game.reidentify_reordered_library_card(id);
+            }
+        }
+        Ok(outputs)
     }
 }
 

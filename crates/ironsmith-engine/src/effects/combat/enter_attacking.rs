@@ -115,6 +115,81 @@ pub(crate) fn put_onto_battlefield_blocking(
     true
 }
 
+/// CR 509.3a-e / 509.4: make `blocker` block `attacker` after blockers were
+/// declared and queue the resulting block transitions. A creature put onto the
+/// battlefield blocking (`entered`) never blocked, so only the attacker side
+/// triggers; an effect making an existing creature block produces both. The
+/// attacker "becomes blocked" only if it wasn't already blocked.
+pub(crate) fn add_blocker_after_declaration(
+    game: &mut GameState,
+    blocker: ObjectId,
+    attacker: ObjectId,
+    entered: bool,
+) -> bool {
+    let (attacker_was_blocked, blocker_was_blocking) =
+        game.combat.as_ref().map_or((false, false), |combat| {
+            (
+                crate::combat_state::is_blocked(combat, attacker),
+                crate::combat_state::is_blocking(combat, blocker),
+            )
+        });
+    if !put_onto_battlefield_blocking(game, blocker, attacker) {
+        return false;
+    }
+    let snapshot = |game: &GameState, id: ObjectId| {
+        game.object(id).map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, game,
+            )
+        })
+    };
+    let blocker_snapshot = snapshot(game, blocker);
+    let attacker_snapshot = snapshot(game, attacker);
+    let blocked_event = match (blocker_snapshot.clone(), attacker_snapshot.clone()) {
+        (Some(blocker_snapshot), Some(attacker_snapshot)) => {
+            crate::events::CreatureBlockedEvent::with_snapshots(
+                blocker,
+                attacker,
+                blocker_snapshot,
+                attacker_snapshot,
+            )
+        }
+        _ => crate::events::CreatureBlockedEvent::new(blocker, attacker),
+    }
+    .with_combat_phase(game.turn_store.combat_phases_started_this_turn)
+    .after_declaration(entered, blocker_was_blocking);
+    let provenance = game
+        .provenance_graph_mut()
+        .alloc_root_event(crate::events::EventKind::CreatureBlocked);
+    game.queue_trigger_event(
+        provenance,
+        crate::triggers::TriggerEvent::new_with_provenance(blocked_event, provenance),
+    );
+    if !attacker_was_blocked
+        && let Some(target) = game.combat.as_ref().and_then(|combat| {
+            crate::combat_state::get_attack_target(combat, attacker).cloned()
+        })
+    {
+        let event = crate::events::CreatureBecameBlockedEvent::with_target_and_blockers(
+            attacker,
+            vec![blocker],
+            Some(crate::triggers::AttackEventTarget::from(&target)),
+            attacker_snapshot,
+            blocker_snapshot.into_iter().collect(),
+        );
+        let provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::CreatureBecameBlocked);
+        let reference = game.retain_attacking_role(attacker, &target);
+        game.queue_trigger_event(
+            provenance,
+            crate::triggers::TriggerEvent::new_with_provenance(event, provenance)
+                .with_defending_player_reference(reference),
+        );
+    }
+    true
+}
+
 /// CR 506.2 / 802.2 / 508.4: what a creature put onto the battlefield
 /// attacking under `controller`'s control may attack — every defending
 /// player of this combat (not only players something already attacks), the
@@ -189,6 +264,23 @@ fn attack_target_description(game: &GameState, target: &AttackTarget) -> String 
             .map(|object| object.name.to_string())
             .unwrap_or_else(|| format!("battle #{}", object_id.0)),
         AttackTarget::Nothing { .. } => "nothing".to_string(),
+    }
+}
+
+/// CR 506.3c / 508.4a: whether the player an effect says a creature enters
+/// attacking is no longer in the game: a specific departed player, or the
+/// defending player of a retained attack whose candidates have all left.
+pub(crate) fn specified_attack_player_departed(
+    game: &GameState,
+    filter: &crate::target::PlayerFilter,
+    ctx: &ExecutionContext<'_>,
+) -> bool {
+    match filter {
+        crate::target::PlayerFilter::Specific(player) => {
+            game.player(*player).is_none_or(|player| !player.is_in_game())
+        }
+        crate::target::PlayerFilter::Defending => ctx.combat.defending_player_reference.is_some(),
+        _ => false,
     }
 }
 

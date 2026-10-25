@@ -641,6 +641,7 @@ pub fn execute_untap_step_with(
 ) -> Result<(), crate::effects::ExecutionError> {
     // CR 614.10: a static "skip your untap step" (Stasis) skips the occurrence.
     if game.player_skips_untap_step(game.turn.active_player) {
+        game.turn_store.pending_day_night_check = None;
         return Ok(());
     }
     let checkpoint = game.clone();
@@ -714,12 +715,19 @@ fn execute_untap_step_inner(
         .filter(|id| game.current_has_static_ability_id(*id, StaticAbilityId::Phasing))
         .filter(|id| game.can_phase_out(*id))
         .collect::<Vec<_>>();
-    let phase_in = active_players
+    let mut phase_in = active_players
         .iter()
         .flat_map(|player| game.directly_phased_out_under(*player))
         .filter(|id| game.can_phase_in(*id))
         .collect::<Vec<_>>();
+    for id in game.phased_out_under_departed_due(game.turn.turn_number) {
+        if game.can_phase_in(id) && !phase_in.contains(&id) {
+            phase_in.push(id);
+        }
+    }
     game.phase_simultaneously(&phase_out, &phase_in);
+    // CR 502.2: second, the day/night check.
+    game.perform_pending_day_night_check();
 
     // Delayed instructions with "as you untap your permanents" timing are
     // turn-based actions, not triggered abilities. They resolve here without
@@ -1542,6 +1550,11 @@ pub fn try_execute_cleanup_step(game: &mut GameState)
     // End "until end of turn" effects would happen here
     // (Handled by continuous effect manager)
     game.effect_store.continuous_effects.cleanup_end_of_turn();
+    // CR 514.2: "ignore this effect until end of turn" payments end here too.
+    game.turn_store
+        .turn_history
+        .players_ignoring_source_static_effects_this_turn
+        .clear();
     game.cleanup_player_control_end_of_turn();
     game.cleanup_combat_choice_control_end_of_turn();
     game.cleanup_vote_control_end_of_turn();

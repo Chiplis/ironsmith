@@ -105,6 +105,25 @@ pub(crate) fn execute_production(
             }
         }
     };
+    // CR 106.10/106.11: a generic or snow symbol in an output adds that much
+    // colorless mana (snow provenance comes from the source, not the symbol).
+    let symbols: Vec<ManaSymbol> = if symbols
+        .iter()
+        .any(|symbol| matches!(symbol, ManaSymbol::Generic(_) | ManaSymbol::Snow))
+    {
+        symbols
+            .into_iter()
+            .flat_map(|symbol| match symbol {
+                ManaSymbol::Generic(amount) => {
+                    std::iter::repeat_n(ManaSymbol::Colorless, amount as usize)
+                }
+                ManaSymbol::Snow => std::iter::repeat_n(ManaSymbol::Colorless, 1),
+                other => std::iter::repeat_n(other, 1),
+            })
+            .collect()
+    } else {
+        symbols
+    };
     if (ctx.decision_maker.awaiting_choice() || symbols.is_empty())
         && !matches!(projection, ManaOutputProjection::Symbols)
     {
@@ -303,7 +322,16 @@ impl ManaProduction<'_> {
                 ..
             } => {
                 let count = amount(value)?;
-                let chosen = game.chosen_color(ctx.source).unwrap_or(Color::Green);
+                // CR 106.5: an undefined chosen color produces no mana of it.
+                let Some(chosen) = game.chosen_color(ctx.source) else {
+                    return Ok(ResolvedManaProduction {
+                        player: recipient,
+                        output: match fixed_option {
+                            Some(fixed) => Exact(vec![ManaSymbol::from_color(fixed); count as usize]),
+                            None => Exact(vec![]),
+                        },
+                    });
+                };
                 match fixed_option {
                     Some(fixed) if fixed != chosen => Choice {
                         available: vec![
@@ -320,8 +348,9 @@ impl ManaProduction<'_> {
             Self::CommanderIdentity { amount: value, .. } => {
                 let count = amount(value)?;
                 let identity = game.get_commander_color_identity(recipient);
+                // CR 106.5: a colorless (or absent) identity defines no type.
                 if identity.is_empty() {
-                    Exact(vec![ManaSymbol::Colorless; count as usize])
+                    Exact(vec![])
                 } else {
                     Choice {
                         available: Color::ALL

@@ -395,6 +395,31 @@ impl GameState {
             })
     }
 
+    /// [`Self::entry_prohibited_by_cant_effect`] for a prospective entering
+    /// object whose characteristics differ from the live object's (applied
+    /// entry replacements, CR 614.17d). The prohibition filter is matched
+    /// against a snapshot so the live object's layered characteristics don't
+    /// mask the prospective ones.
+    fn prospective_entry_prohibited_by_cant_effect(&self, object: &crate::object::Object) -> bool {
+        if object.zone == Zone::Battlefield {
+            return false;
+        }
+        let mut snapshot = crate::snapshot::ObjectSnapshot::from_object(object, self);
+        snapshot.card_types = object.card_types.to_vec().into();
+        snapshot.subtypes = object.subtypes.to_vec().into();
+        self.effect_store
+            .cant_effects
+            .cant_enter_battlefield
+            .iter()
+            .any(|restriction| {
+                let mut ctx = crate::target::FilterContext::default();
+                if let Some(source) = restriction.source {
+                    ctx = ctx.with_source(source);
+                }
+                restriction.filter.matches_snapshot(&snapshot, &ctx, self)
+            })
+    }
+
     fn execute_immediate_effect_programs(
         &mut self,
         source: ObjectId,
@@ -1069,6 +1094,25 @@ impl GameState {
         if self.is_conspiracy_card(old_id) && new_zone != Zone::Command {
             return Some(old_id);
         }
+        // CR 108.5: an effect can't bring a nontraditional card (other than a
+        // dungeon) into the game from outside the game; it stays outside.
+        if new_zone != Zone::Command
+            && new_zone != Zone::OutsideGame
+            && self.objects.get(&old_id).is_some_and(|object| {
+                object.zone == Zone::OutsideGame
+                    && object.card_types.iter().any(|card_type| {
+                        matches!(
+                            card_type,
+                            crate::types::CardType::Plane
+                                | crate::types::CardType::Phenomenon
+                                | crate::types::CardType::Vanguard
+                                | crate::types::CardType::Scheme
+                        )
+                    })
+            })
+        {
+            return None;
+        }
         // CR 717.6: an Attraction card goes to its owner's junkyard in the
         // command zone instead of a graveyard, hand or library.
         let new_zone = self.attraction_card_destination(old_id, new_zone);
@@ -1184,8 +1228,9 @@ impl GameState {
             // CR 506.4: an attacking or blocking creature that leaves the
             // battlefield is removed from combat. The new object in the
             // destination zone is unrelated to the departed combatant (CR
-            // 400.7), so its old ID must not linger in the combat state.
-            self.remove_object_from_combat(old_id);
+            // 400.7), so its old ID must not linger as a combatant; creatures
+            // that blocked it remain blocking creatures (CR 509.1g).
+            self.remove_departed_object_from_combat(old_id);
         }
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {
@@ -1344,6 +1389,7 @@ impl GameState {
             self.commander_tracking_mut()
                 .merged_permanents
                 .remove(&old_object.stable_id);
+            self.distribute_merged_stickers(old_object.stable_id, &result_object_ids);
 
             use crate::events::zones::ZoneChangeEvent;
             use crate::triggers::TriggerEvent;
@@ -1400,6 +1446,7 @@ impl GameState {
             self.commander_tracking_mut()
                 .melded_permanents
                 .remove(&old_object.stable_id);
+            self.distribute_merged_stickers(old_object.stable_id, &result_object_ids);
 
             use crate::events::zones::ZoneChangeEvent;
             use crate::triggers::TriggerEvent;
@@ -1503,17 +1550,26 @@ impl GameState {
         if old_zone == Zone::Battlefield && new_zone != Zone::Battlefield {
             new_object.end_enters_as_copy_overlay();
         }
-        if !preserve_prototype_overlay {
-            new_object.end_prototype_cast_overlay();
+        // CR 702.51c: "creatures that convoked it" stays linked to the
+        // permanent the resolving spell becomes.
+        if !preserve_optional_costs_paid {
+            new_object.keyword_payment_contributions_to_cast.clear();
         }
         if !preserve_face_down_overlay && !preserve_bestow_overlay {
-            new_object.keyword_payment_contributions_to_cast.clear();
             // The face-down and bestow overlays overwrote the object's
             // copiable fields; restore the printed card as it leaves (CR 708.9,
             // 400.7, 702.103). Merely dropping the saved state would leave the
             // card in its new zone as a "Face-down creature" / Aura.
             new_object.end_bestow_cast_overlay();
             new_object.end_face_down_cast_overlay();
+        }
+        // CR 718.4: end the prototype overlay after the face-down overlay,
+        // whose saved values are the prototype characteristics when a
+        // prototyped permanent was turned face down.
+        // A token (e.g. a resolved copy of a prototyped spell) has no other
+        // characteristics to return to; only a card does (CR 718.3c, 718.4).
+        if !preserve_prototype_overlay && new_object.kind == crate::object::ObjectKind::Card {
+            new_object.end_prototype_cast_overlay();
         }
         if !preserve_x_value {
             new_object.x_value = None;
@@ -1578,8 +1634,11 @@ impl GameState {
                 .into();
         }
 
+        // CR 715.3c / 720.3c / 704.5e: a copied Adventure or Omen spell has
+        // no physical normal face; it keeps the inset until it ceases.
         if old_zone == Zone::Stack
             && new_zone != Zone::Stack
+            && new_object.kind != crate::object::ObjectKind::SpellCopy
             && (new_object.subtypes.contains(&Subtype::Adventure)
                 || new_object.subtypes.contains(&Subtype::Omen))
             && let Some(front_def) = self.linked_face_definition_by_name_or_id(
@@ -1604,6 +1663,7 @@ impl GameState {
                 new_object.linked_face_layout,
                 LinkedFaceLayout::TransformLike | LinkedFaceLayout::Flip
             )
+            && new_object.kind != crate::object::ObjectKind::SpellCopy
             && let Some(front_def) =
                 self.default_face_definition_for_transform_like_return(&new_object)
         {
@@ -1729,9 +1789,10 @@ impl GameState {
             self.record_face_down_reveal(new_id, owner);
         }
 
-        // Record entry timestamp per Rule 613.7d when entering the battlefield
+        // CR 613.7d: an object receives a timestamp whenever it enters a zone.
+        self.effect_store.continuous_effects.record_entry(new_id);
+        self.restamp_object_stickers(new_id);
         if new_zone == Zone::Battlefield {
-            self.effect_store.continuous_effects.record_entry(new_id);
             self.handle_day_night_object_entered(new_id);
         }
 
@@ -1831,7 +1892,18 @@ impl GameState {
             return None;
         }
 
-        (current_def.card.id.0 > other_def.card.id.0).then_some(other_def)
+        // CR 715.4/719.4: an Adventurer or Omen card's normal face is its only
+        // face outside the stack, whichever face definition was created first.
+        let inset = |def: &crate::cards::CardDefinition| {
+            def.card.subtypes.contains(&Subtype::Adventure)
+                || def.card.subtypes.contains(&Subtype::Omen)
+        };
+        match (inset(&current_def), inset(&other_def)) {
+            (true, false) => return Some(other_def),
+            (false, true) => return None,
+            _ => {}
+        }
+        self.linked_face_is_back(current_def.card.id, other_def.card.id).then_some(other_def)
     }
 
     pub fn move_object_by_effect(&mut self, old_id: ObjectId, new_zone: Zone) -> Option<ObjectId> {
@@ -2205,20 +2277,6 @@ impl GameState {
                 entry_attachment_filter: None,
             }));
         }
-        if let Some(choices) = result.prepared_choices.clone() {
-            return Ok(Some(PreparedEtbEntry {
-                result,
-                choices,
-                zone_entry_lookback: None,
-                entry_definition: None,
-                physical_components: Vec::new(),
-                linked_face_mana_cost: None,
-                entry_attachment: None,
-                entry_attachment_requires_aura: false,
-                entry_attachment_filter: None,
-            }));
-        }
-
         let prospective_source = result
             .enters_as_copy_of
             .and_then(|copy_source| self.object(copy_source))
@@ -2242,6 +2300,20 @@ impl GameState {
             .or_else(|| self.current_controller(old_id))
             .or_else(|| self.object(old_id).map(|object| object.owner))
             .ok_or(crate::effects::ExecutionError::InvalidTarget)?;
+        // CR 110.2b/614.12a: a resolving permanent spell's default controller
+        // is its caster, but the player currently controlling the spell makes
+        // the permanent's own entry choices.
+        let entering_default_controller = prospective_controller;
+        let prospective_controller = if result.controller_override.is_none()
+            && self
+                .object(old_id)
+                .is_some_and(|object| object.zone == Zone::Stack)
+        {
+            self.current_controller(old_id)
+                .unwrap_or(prospective_controller)
+        } else {
+            prospective_controller
+        };
         let mut prospective_card_types = prospective_copiable_values
             .as_ref()
             .map(|values| values.card_types.clone().into())
@@ -2268,6 +2340,46 @@ impl GameState {
             if !prospective_subtypes.contains(subtype) {
                 prospective_subtypes.push(*subtype);
             }
+        }
+        // CR 614.17d: an entry prohibition is checked against the permanent
+        // as it would exist after the applied replacement effects, so a
+        // replacement that adds a banned type can't sneak it in.
+        if (!result.added_card_types.is_empty()
+            || !result.added_subtypes.is_empty()
+            || result.removes_other_card_types
+            || result.enters_as_copy_of.is_some())
+            && let Some(mut prospective) = self.object(old_id).cloned()
+        {
+            prospective.card_types = prospective_card_types.clone();
+            prospective.subtypes = prospective_subtypes.clone();
+            if self.prospective_entry_prohibited_by_cant_effect(&prospective) {
+                result.prevented = true;
+                result.new_destination = None;
+                return Ok(Some(PreparedEtbEntry {
+                    result,
+                    choices: PreparedEtbChoices::default(),
+                    zone_entry_lookback: None,
+                    entry_definition: None,
+                    physical_components: Vec::new(),
+                    linked_face_mana_cost: None,
+                    entry_attachment: None,
+                    entry_attachment_requires_aura: false,
+                    entry_attachment_filter: None,
+                }));
+            }
+        }
+        if let Some(choices) = result.prepared_choices.clone() {
+            return Ok(Some(PreparedEtbEntry {
+                result,
+                choices,
+                zone_entry_lookback: None,
+                entry_definition: None,
+                physical_components: Vec::new(),
+                linked_face_mana_cost: None,
+                entry_attachment: None,
+                entry_attachment_requires_aura: false,
+                entry_attachment_filter: None,
+            }));
         }
         let mut prospective_abilities = prospective_copiable_values
             .as_ref()
@@ -2304,7 +2416,7 @@ impl GameState {
             entry_event.added_subtypes = result.added_subtypes.clone();
             entry_event.added_abilities = result.added_abilities.clone();
             entry_event.set_base_power_toughness = result.set_base_power_toughness;
-            entry_event.controller_override = Some(prospective_controller);
+            entry_event.controller_override = Some(entering_default_controller);
             if result.copy_duration.is_some() && result.enters_as_copy_of.is_some() {
                 entry_event.program_choices.entry_copy_registration =
                     Some(self.effect_store.continuous_effects.reserve_entry_effect());
@@ -3463,8 +3575,10 @@ impl GameState {
             return Ok(None);
         }
 
+        // CR 303.4f: an Aura put onto the battlefield by an effect chooses
+        // what to enchant even if it was on the stack; a resolving Aura spell
+        // supplies its target as the entry attachment instead.
         let prospective_aura_entry = choose_aura_attachment
-            && (old_zone != Zone::Stack || result.enters_as_copy_of.is_some())
             && (self
                 .object(old_id)
                 .is_some_and(|object| object.subtypes.contains(&Subtype::Aura))
@@ -4071,9 +4185,10 @@ impl GameState {
             self.apply_enter_as_copy_followups(new_id, copy_source_id, &result.copy_followups);
         }
 
-        // If this is an Aura entering from a non-stack zone, choose what to attach to
+        // If this is an Aura entering without a specified host, choose what to
+        // attach to (CR 303.4f; a resolving Aura spell supplies its target as
+        // the entry attachment instead).
         if choose_aura_attachment
-            && (old_zone != Zone::Stack || result.enters_as_copy_of.is_some())
             && let Some(obj) = self.object(new_id)
             && obj.subtypes.contains(&Subtype::Aura)
             // An entry effect that makes it a non-Aura ("as a non-Aura
@@ -5978,6 +6093,14 @@ impl GameState {
             return;
         };
         object.initial_controller = controller;
+        let on_battlefield = object.zone == Zone::Battlefield;
+        // CR 508.4: an entry controller is not a later control change, so
+        // the control-transition baseline starts with it.
+        if on_battlefield {
+            self.battlefield_flags_mut()
+                .controller_at_last_refresh
+                .insert(id, controller);
+        }
     }
 
     /// Stage an ordinary control-changing effect while assembling an isolated

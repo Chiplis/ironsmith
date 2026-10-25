@@ -36,12 +36,22 @@ fn put_madness_card_into_graveyard(
     // Use the full zone-changing instruction owner: it consumes deferred
     // replacement programs and rolls the entire movement back on suspension
     // or failure before this linked madness marker is cleared.
+    let stable_id = game.object(card_id).map(|object| object.stable_id);
     let outcome = crate::effects::MoveToZoneEffect::to_graveyard(
         crate::target::ChooseSpec::SpecificObject(card_id),
     )
     .execute_child_with_outputs(game, ctx)?;
     if !ctx.decision_maker.awaiting_choice() {
         game.clear_madness_exiled(card_id);
+        // CR 400.7k: effects referencing the discarded card can find the
+        // object it became in a public zone.
+        if let Some(arrival) = stable_id
+            .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
+            .filter(|id| *id != card_id)
+            .filter(|id| game.object(*id).is_some_and(|object| object.zone.is_public()))
+        {
+            game.record_madness_public_arrival(card_id, arrival);
+        }
     }
     Ok(outcome)
 }

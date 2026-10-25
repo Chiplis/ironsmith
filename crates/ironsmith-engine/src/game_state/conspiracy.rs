@@ -682,6 +682,11 @@ impl GameState {
         let colors = parse_draft_chosen_colors(note, count)
             .ok_or_else(|| format!("card {card:?} requires {count} different chosen colors"))?;
         self.set_deck_construction_chosen_colors(stable_id, colors);
+        // CR 207.5: the circled colors' mana symbols become part of the
+        // card's rules text, so they count toward its color identity.
+        if let Some(object) = self.object_mut(card) {
+            object.rules_text_color_identity = object.rules_text_color_identity.union(colors);
+        }
         Ok(())
     }
 
@@ -705,6 +710,11 @@ impl GameState {
         if let Some(note) = note {
             let stable_id = object.stable_id;
             self.set_deck_construction_chosen_colors(stable_id, note.colors);
+            // CR 207.5: circled colors count toward color identity.
+            if let Some(object) = self.object_mut(card) {
+                object.rules_text_color_identity =
+                    object.rules_text_color_identity.union(note.colors);
+            }
         }
         Ok(())
     }
@@ -874,6 +884,30 @@ impl GameState {
         cards
     }
 
+    /// Owners of conspiracies that make them the starting player (Power
+    /// Play, CR 315.5a), in turn order.
+    pub(crate) fn conspiracy_starting_player_candidates(&self) -> Vec<PlayerId> {
+        let owners = self
+            .conspiracy_cards()
+            .into_iter()
+            .filter(|card| !self.is_face_down_conspiracy(*card))
+            .filter_map(|card| self.object(card))
+            .filter(|object| {
+                object.abilities.iter().any(|ability| {
+                    matches!(&ability.kind, AbilityKind::Static(ability)
+                        if ability.id() == StaticAbilityId::StartingPlayer)
+                })
+            })
+            .map(|object| object.owner)
+            .collect::<std::collections::HashSet<_>>();
+        self.turn_store
+            .turn_order
+            .iter()
+            .copied()
+            .filter(|player| owners.contains(player))
+            .collect()
+    }
+
     pub fn is_conspiracy_card(&self, object: ObjectId) -> bool {
         self.conspiracy_cards().contains(&object)
     }
@@ -920,6 +954,9 @@ impl GameState {
                 ability.functional_zones = vec![Zone::Command];
             }
         }
+        // CR 613.7j: a face-down conspiracy receives a new timestamp when it
+        // turns face up.
+        self.effect_store.continuous_effects.record_face_change(object);
         self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
         Ok(())

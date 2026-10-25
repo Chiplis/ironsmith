@@ -23,6 +23,15 @@ pub struct CreatureBlockedEvent {
     pub blocker_snapshot: Option<ObjectSnapshot>,
     /// Snapshot of the attacking creature at declaration time.
     pub attacker_snapshot: Option<ObjectSnapshot>,
+    /// CR 509.3c-d / 509.4: the blocker was put onto the battlefield
+    /// blocking. The attacker becomes blocked by it, but the blocker never
+    /// blocked, so blocker-side "blocks" triggers don't fire.
+    pub entered_blocking: bool,
+    /// CR 509.3a-e: an effect made an existing creature block after blockers
+    /// were declared; `blocker_was_blocking` says whether it was already a
+    /// blocking creature (then generic "blocks" triggers don't fire again).
+    pub added_by_effect: bool,
+    pub blocker_was_blocking: bool,
 }
 
 impl CreatureBlockedEvent {
@@ -34,6 +43,9 @@ impl CreatureBlockedEvent {
             combat_phase: None,
             blocker_snapshot: None,
             attacker_snapshot: None,
+            entered_blocking: false,
+            added_by_effect: false,
+            blocker_was_blocking: false,
         }
     }
 
@@ -54,7 +66,34 @@ impl CreatureBlockedEvent {
             combat_phase: None,
             blocker_snapshot: Some(blocker_snapshot),
             attacker_snapshot: Some(attacker_snapshot),
+            entered_blocking: false,
+            added_by_effect: false,
+            blocker_was_blocking: false,
         }
+    }
+
+    /// Mark a blocking relationship created after declaration (CR 509.3).
+    pub fn after_declaration(mut self, entered_blocking: bool, blocker_was_blocking: bool) -> Self {
+        self.entered_blocking = entered_blocking;
+        self.added_by_effect = !entered_blocking;
+        self.blocker_was_blocking = blocker_was_blocking;
+        self
+    }
+
+    /// CR 509.3a: whether this event is the blocker's transition into being
+    /// a blocking creature (for "whenever ... blocks" triggers).
+    pub fn is_blocker_block_transition(&self, game: &GameState) -> bool {
+        if self.entered_blocking {
+            return false;
+        }
+        if self.added_by_effect {
+            return !self.blocker_was_blocking;
+        }
+        crate::triggers::combat::is_first_blocked_attacker_for_blocker(
+            game,
+            self.blocker,
+            self.attacker,
+        )
     }
 }
 

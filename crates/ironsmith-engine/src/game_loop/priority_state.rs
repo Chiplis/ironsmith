@@ -1304,6 +1304,10 @@ pub struct PriorityLoopState {
     /// Checkpoint of game state saved when starting an action chain.
     /// If an error occurs during the chain, we restore to this state.
     pub checkpoint: Option<GameState>,
+    /// CR 733.1: mana abilities activated while paying for the current action
+    /// that moved cards out of (or into) a library. Reversing the action may
+    /// not reverse them, so they are re-applied after the rollback.
+    pub(crate) irreversible_payment_mana: Vec<(ObjectId, usize, PlayerId)>,
 }
 
 impl PriorityLoopState {
@@ -1326,6 +1330,7 @@ impl PriorityLoopState {
             pending_mana_parents: Vec::new(),
             pending_continuation: None,
             checkpoint: None,
+            irreversible_payment_mana: Vec::new(),
         }
     }
 
@@ -1338,6 +1343,7 @@ impl PriorityLoopState {
     /// Clear the checkpoint (called when action completes successfully or after restore).
     pub fn clear_checkpoint(&mut self) {
         self.checkpoint = None;
+        self.irreversible_payment_mana.clear();
         self.opened_exile_play = None;
         self.pending_exile_face_down = None;
         self.declared_exile_face_down = None;
@@ -1352,6 +1358,7 @@ impl PriorityLoopState {
             return false;
         };
         *game = checkpoint;
+        self.irreversible_payment_mana.clear();
         self.cast_output_receiver = None;
         self.pending_cast = None;
         self.pending_activation = None;

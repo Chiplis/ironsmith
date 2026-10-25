@@ -1500,6 +1500,7 @@ pub(super) fn apply_splice_response(
         .unwrap_or_default();
     let mut seen = std::collections::HashSet::new();
     let mut additions = Vec::with_capacity(selected_cards.len());
+    let mut added_abilities = Vec::new();
     for card_id in selected_cards {
         if !hand.contains(card_id) || !seen.insert(*card_id) {
             state.rollback_action(game);
@@ -1520,6 +1521,9 @@ pub(super) fn apply_splice_response(
                 "Selected splice card no longer exists".to_string(),
             ));
         };
+        // CR 702.47a/c: the spell gains the spliced card's whole rules text,
+        // including its splice ability.
+        added_abilities.extend(card.abilities_vec());
         additions.push((
             card.stable_id,
             spec.cost,
@@ -1572,6 +1576,7 @@ pub(super) fn apply_splice_response(
             ));
         };
         spell.begin_splice_cast_overlay();
+        spell.add_stack_overlay_abilities(added_abilities);
         let mut program = spell.spell_effect_owned().unwrap_or_default();
         for (stable_id, cost, added_program) in additions {
             pending.spliced_cards.push(stable_id);
@@ -7566,6 +7571,11 @@ pub(super) fn continue_activation_cost_payment(
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
             cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
             cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
+            // CR 702.29c: a hand ability's costs (discard, then cycle) keep the
+            // card's in-hand last-known information for "when you cycle this card".
+            if pending.source_snapshot.zone == Zone::Hand {
+                cost_ctx.source_snapshot = Some(pending.source_snapshot.clone());
+            }
             let pre_cost_source_snapshot = game.object(pending.source).map(|obj| {
                 crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
                     obj, game,
@@ -8677,6 +8687,9 @@ fn auto_pay_activation_tap_cost_steps_inner(
         cost_ctx.tagged_objects = pending.tagged_objects.clone();
         cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
         cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
+        if pending.source_snapshot.zone == Zone::Hand {
+            cost_ctx.source_snapshot = Some(pending.source_snapshot.clone());
+        }
 
         let payment = cost.pay_with_outputs(game, &mut cost_ctx);
         if cost_ctx.decision_maker.awaiting_choice() {

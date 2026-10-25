@@ -278,6 +278,7 @@ mod tests {
                 attachment_snapshots: Vec::new(),
                 was_enchanted: false,
                 is_monstrous: false,
+                case_solved: false,
                 is_prepared: false,
                 is_commander: false,
                 zone: Zone::Command,

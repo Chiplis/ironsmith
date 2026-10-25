@@ -1449,6 +1449,35 @@ impl ContinuousEffectManager {
         Ok(())
     }
 
+    /// Give the listed effects new timestamps, preserving their relative order
+    /// (CR 613.7k: stickers are restamped right after their object).
+    pub(crate) fn restamp_effects(&mut self, ids: &[ContinuousEffectId]) {
+        if ids.is_empty() {
+            return;
+        }
+        let mut stamped: Vec<(u64, ContinuousEffectId)> = self
+            .effects
+            .iter()
+            .filter(|effect| ids.contains(&effect.id))
+            .map(|effect| (effect.timestamp, effect.id))
+            .collect();
+        if stamped.is_empty() {
+            return;
+        }
+        stamped.sort_unstable_by_key(|(timestamp, id)| (*timestamp, id.0));
+        let fresh: Vec<(ContinuousEffectId, u64)> = stamped
+            .into_iter()
+            .map(|(_, id)| (id, self.next_timestamp()))
+            .collect();
+        let effects = Arc::make_mut(&mut self.effects);
+        for (id, timestamp) in fresh {
+            if let Some(effect) = effects.iter_mut().find(|effect| effect.id == id) {
+                effect.timestamp = timestamp;
+            }
+        }
+        self.revision += 1;
+    }
+
     /// Move only the persistent sticker effect to the card's new public-zone identity.
     pub fn retarget_sticker(&mut self, id: ContinuousEffectId, object: ObjectId) {
         if let Some(effect) = Arc::make_mut(&mut self.effects)
@@ -2267,6 +2296,28 @@ impl CalculatedCharacteristics {
     }
 }
 
+/// CR 208.5: a creature with no defined power or toughness uses zero for
+/// it. Applied as layer 7 begins so later P/T effects modify that zero.
+fn fill_missing_creature_pt(chars: &mut CalculatedCharacteristics) {
+    if chars.card_types.contains(&CardType::Creature) {
+        chars.power.get_or_insert(0);
+        chars.toughness.get_or_insert(0);
+    }
+}
+
+/// CR 208.3: a noncreature permanent has no power or toughness, even if it
+/// is a card with them printed on it. CR 306.5: loyalty is a characteristic
+/// only planeswalkers have.
+fn clear_type_dependent_numbers(object: &Object, chars: &mut CalculatedCharacteristics) {
+    if object.zone == Zone::Battlefield && !chars.card_types.contains(&CardType::Creature) {
+        chars.power = None;
+        chars.toughness = None;
+    }
+    if !chars.card_types.contains(&CardType::Planeswalker) {
+        chars.loyalty = None;
+    }
+}
+
 /// Provisional P/T is never wrapped or saturated. The error marker travels
 /// with the computed characteristics to the authoritative checked owner.
 fn add_pt_checked(
@@ -2298,6 +2349,8 @@ pub(crate) fn card_types_support_subtype(card_types: &[CardType], subtype: Subty
             && (card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery)))
         || (subtype.is_planeswalker_subtype() && card_types.contains(&CardType::Planeswalker))
         || (subtype.is_battle_subtype() && card_types.contains(&CardType::Battle))
+        || (subtype.is_planar_subtype() && card_types.contains(&CardType::Plane))
+        || (subtype.is_dungeon_subtype() && card_types.contains(&CardType::Dungeon))
 }
 
 /// Apply CR 205.1a card-type replacement, including the instant/sorcery
@@ -2747,7 +2800,9 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         copy_values: Some(Arc::new(CopiableValues::from_object(object))),
         alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
-        mana_cost: object.mana_cost_owned(),
+        mana_cost: object
+            .split_combined_mana_cost()
+            .or_else(|| object.mana_cost_owned()),
         linked_face_mana_value: object.linked_face_mana_value(),
         compiled_card_text: split_combined.map_or_else(|| object.compiled_card_text.clone(), |combined| format!("{}\n{}", object.compiled_card_text, combined.other_half_compiled_text).into()),
         ability_labels: split_combined.map_or_else(|| object.ability_labels.clone(), |combined| object.ability_labels.iter().chain(combined.other_half_ability_labels.iter()).cloned().collect()),
@@ -2993,6 +3048,9 @@ fn apply_room_no_unlocked_door_layer(
     chars.alternate_name = None;
     chars.mana_cost = None;
     chars.linked_face_mana_value = None;
+    // CR 202.2b: with no mana cost (and no color indicator or CDA), the
+    // locked Room is colorless.
+    chars.colors = ColorSet::COLORLESS;
     chars.abilities.clear();
     chars.static_abilities = SharedVec::default();
     chars.ability_labels = SharedVec::default();
@@ -3713,15 +3771,17 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(chars) = chars_by_id.get_mut(&id) else {
             continue;
         };
+        fill_missing_creature_pt(chars);
         chars.record_base_pt();
         // CR 711.2b: level P/T is a 7b effect with the leveler's timestamp;
         // it's applied in timestamp order with the other P/T effects below.
-        if let Some((lp, lt)) = get_level_ability_pt(object, &chars.abilities) {
+        if let Some((lp, lt, grant)) = get_level_ability_pt_with_grant(object, &chars.abilities) {
             let timestamp = game
                 .effect_store
                 .continuous_effects
                 .get_object_timestamp(id)
-                .unwrap_or(0);
+                .unwrap_or(0)
+                .max(grant.unwrap_or(0));
             pending_level_pt.insert(id, (lp, lt, timestamp));
         }
         apply_level_granted_abilities(object, chars);
@@ -3822,6 +3882,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 {
                     apply_counter_modifications(
                         object,
+                        objects,
                         &mut chars.power,
                         &mut chars.toughness,
                         &mut chars.numeric_range_error,
@@ -3877,6 +3938,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         if !counters_applied_before_switch.contains(&id) {
             apply_counter_modifications(
                 object,
+                objects,
                 &mut chars.power,
                 &mut chars.toughness,
                 &mut chars.numeric_range_error,
@@ -3888,6 +3950,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         guards[idx].update(chars);
 
         refresh_active_static_abilities(chars, game, id);
+        clear_type_dependent_numbers(object, chars);
         guards[idx].update(chars);
     }
 
@@ -3986,7 +4049,7 @@ pub(crate) fn copiable_values_with_effects(
     }
     if let Some(values) = chars.copy_values.as_mut() {
         if values.other_copy_face.is_none()
-            && matches!(object.linked_face_layout, crate::card::LinkedFaceLayout::Flip | crate::card::LinkedFaceLayout::Split)
+            && matches!(object.linked_face_layout, crate::card::LinkedFaceLayout::Flip | crate::card::LinkedFaceLayout::Split | crate::card::LinkedFaceLayout::Prepare)
         {
             let normal = unflipped.as_ref().unwrap_or(object);
             if let Some(other) = game.linked_face_definition_by_name_or_id(normal.other_face_name.as_deref(), normal.other_face) {
@@ -3994,6 +4057,12 @@ pub(crate) fn copiable_values_with_effects(
                 values.copy_face_layout = normal.linked_face_layout;
                 let other = Object::from_card_definition(crate::ids::ObjectId::from_raw(0), &other, normal.owner, normal.zone);
                 let mut other_values = CopiableValues::from_object(&other);
+                // CR 710.1c: a flipped flip card keeps the normal half's mana
+                // cost and color, so those are part of the flipped face values.
+                if normal.linked_face_layout == crate::card::LinkedFaceLayout::Flip {
+                    other_values.mana_cost = values.mana_cost.clone();
+                    other_values.colors = values.colors;
+                }
                 if let Some(merged) = game.merged_permanent(object.stable_id) {
                     // The top component contributes the alternate face; every
                     // other component still contributes its abilities (730.2).
@@ -4009,9 +4078,18 @@ pub(crate) fn copiable_values_with_effects(
         }
     }
     let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
+    // CR 612.6/707.2: "has the full text of that card" (Volrath's
+    // Shapeshifter) is a text-changing effect, not a copy effect, so it
+    // contributes nothing to the object's copiable values.
     let layer_effects: Vec<_> = effects
         .iter()
         .filter(|effect| effect.modification.layer() == Layer::Copy)
+        .filter(|effect| {
+            !effect.originating_static_ability.as_ref().is_some_and(|ability| {
+                ability.id()
+                    == crate::static_abilities::StaticAbilityId::SourceHasFullTextOfTopGraveyardCard
+            })
+        })
         .collect();
     let mut started_groups = HashSet::new();
 
@@ -4596,17 +4674,19 @@ fn calculate_with_layers_direct_internal(
     // Layer 7: Power/Toughness with proper sublayer handling
     // Process in sublayer order: 7a, 7b, 7c, 7d
 
+    fill_missing_creature_pt(&mut chars);
     chars.record_base_pt();
     // Level abilities apply in 7b with the leveler's timestamp (CR 711.2b);
     // they're interleaved with the other P/T effects by timestamp below.
     let mut pending_level_pt = None;
     let mut counters_applied = false;
-    if let Some((lp, lt)) = get_level_ability_pt(object, &chars.abilities) {
+    if let Some((lp, lt, grant)) = get_level_ability_pt_with_grant(object, &chars.abilities) {
         let timestamp = game
             .effect_store
             .continuous_effects
             .get_object_timestamp(object.id)
-            .unwrap_or(0);
+            .unwrap_or(0)
+            .max(grant.unwrap_or(0));
         pending_level_pt = Some((lp, lt, timestamp));
     }
     // A new description can survive a prior remove-all instruction.
@@ -4735,6 +4815,7 @@ fn calculate_with_layers_direct_internal(
             {
                 apply_counter_modifications(
                     object,
+                    objects,
                     &mut chars.power,
                     &mut chars.toughness,
                     &mut chars.numeric_range_error,
@@ -4771,6 +4852,7 @@ fn calculate_with_layers_direct_internal(
     if !counters_applied {
         apply_counter_modifications(
             object,
+            objects,
             &mut chars.power,
             &mut chars.toughness,
             &mut chars.numeric_range_error,
@@ -4782,6 +4864,7 @@ fn calculate_with_layers_direct_internal(
     calc_guard.update(&chars);
 
     refresh_active_static_abilities(&mut chars, game, object.id);
+    clear_type_dependent_numbers(object, &mut chars);
     calc_guard.update(&chars);
 
     chars
@@ -5084,6 +5167,13 @@ fn effect_target_definitely_excludes_object(
         EffectTarget::Filter(filter) => {
             filter.specific.is_some_and(|id| id != object.id)
                 || (filter.source && effect.source != object.id)
+                // CR 400.11c: an effect applies to a card outside the game
+                // only if it specifically refers to cards outside the game.
+                // (an object's own characteristic-defining abilities still work).
+                || (object.zone == Zone::OutsideGame
+                    && !filter.source
+                    && effect.source != object.id
+                    && filter.zone != Some(Zone::OutsideGame))
         }
     }
 }
@@ -5310,6 +5400,16 @@ fn filter_applicability_cacheable(filter: &ObjectFilter, layer: Layer) -> bool {
         // effect's own source; two effects with byte-identical filters can
         // have disjoint subjects, so they must not share a cache entry.
         || !filter.tagged_constraints.is_empty()
+        // Choices made for the effect's own source ("the chosen name",
+        // CR 702.106d / 607.2d) also differ between byte-identical filters.
+        || filter.name.as_deref() == Some("{chosen name}")
+        || filter.excluded_name.as_deref() == Some("{chosen name}")
+        || filter.chosen_creature_type
+        || filter.excluded_chosen_creature_type
+        || filter.excluded_any_chosen_creature_type
+        || filter.chosen_color
+        || filter.chosen_card_type
+        || filter.chosen_land_type
     {
         return false;
     }
@@ -6571,8 +6671,11 @@ fn apply_modification_to_chars(
             );
         }
         Modification::AddSubtypes(subtypes) => {
+            // CR 205.3d: only subtypes matching a current card type are gained.
             for st in subtypes {
-                if !chars.subtypes.contains(st) {
+                if !chars.subtypes.contains(st)
+                    && card_types_support_subtype(&chars.card_types, *st)
+                {
                     chars.subtypes.push(*st);
                 }
             }
@@ -6582,6 +6685,10 @@ fn apply_modification_to_chars(
         }
         Modification::SetSubtypes(subtypes) => {
             replace_subtypes_for_set(&mut chars.subtypes, subtypes);
+            let card_types = chars.card_types.clone();
+            chars.subtypes.retain(|st| {
+                !subtypes.contains(st) || card_types_support_subtype(&card_types, *st)
+            });
         }
         Modification::SetAuraAttachmentFilter(filter) => {
             replace_enchant_metadata(chars, filter);

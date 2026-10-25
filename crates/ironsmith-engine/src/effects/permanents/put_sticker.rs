@@ -52,7 +52,8 @@ fn place_sheet_ability_sticker(
     use crate::effects::composition::scoped_choice::{SingleChoicePolicy, select_typed_option};
     let sheets = game.available_ability_stickers(ctx.controller);
     if sheets.is_empty() {
-        return Ok(None);
+        // CR 123.3: with no accessible ability sticker, none can be placed.
+        return Ok(Some(EffectOutcome::impossible()));
     }
     let cap = match &effect.max_ticket_cost {
         // Pin Collection's enters trigger reads the X paid to cast it (the
@@ -183,6 +184,10 @@ impl EffectExecutor for PutStickerEffect {
                 Err(err) => return Err(err),
             };
 
+            // CR 123.3b: a player can't put a sticker on an object they don't own.
+            if game.object(object_id).is_some_and(|object| object.owner != ctx.controller) {
+                return Ok(EffectOutcome::impossible());
+            }
             let snapshot = game
                 .object(object_id)
                 .map(|object| ObjectSnapshot::from_object(object, game));

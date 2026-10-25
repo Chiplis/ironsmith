@@ -213,6 +213,9 @@ pub struct IterationContext {
     pub iterated_player: Option<PlayerId>,
     /// Current object in a ForEach iteration.
     pub iterated_object: Option<ObjectId>,
+    /// The player a triggered ability bound from its event ("that player"),
+    /// as opposed to a per-player iteration.
+    pub trigger_bound_player: Option<PlayerId>,
 }
 
 /// A triggered ability's "Do this only once each turn" (or N times) limit.
@@ -1580,6 +1583,7 @@ impl<'a> ExecutionContext<'a> {
         }
         if self.iteration.iterated_player.is_none() {
             self.iteration.iterated_player = event.trigger_player();
+            self.iteration.trigger_bound_player = self.iteration.iterated_player;
         }
 
         for (tag, players) in event.player_tags() {

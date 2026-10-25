@@ -124,6 +124,52 @@ impl TapAction {
     }
 }
 
+/// CR 614.1/118.11: apply a replacement of "would become tapped" to one tap.
+/// Returns true when the tap was replaced (the replacement payload ran and the
+/// permanent stays untapped); a modified cost is still a paid cost.
+pub(crate) fn replace_tap_event(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    id: crate::ids::ObjectId,
+) -> Result<bool, ExecutionError> {
+    if game.object(id).is_none() || game.is_tapped(id) {
+        return Ok(false);
+    }
+    let has_tap_replacement = game
+        .effect_store
+        .replacement_effects
+        .effects()
+        .iter()
+        .any(|effect| {
+            effect
+                .matcher
+                .as_ref()
+                .is_some_and(|matcher| matcher.replaces_becoming_tapped())
+        });
+    if !has_tap_replacement {
+        return Ok(false);
+    }
+    let event = crate::events::Event::new_with_provenance(
+        crate::events::TapEvent::new(id),
+        ctx.provenance,
+    );
+    match crate::events::processing::process_trait_event(game, event)? {
+        crate::events::processing::TraitEventResult::Replaced {
+            context,
+            effects,
+            source,
+            controller,
+            ..
+        } => {
+            crate::effects::replacement::execute_replacement_payload(
+                game, ctx, &effects, source, controller, &context, None,
+            )?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 /// Retain the same recorded tap payment under the same rollback boundary.
 pub(crate) fn tap_cost_objects_with_outputs(
     game: &mut GameState,
@@ -191,6 +237,9 @@ fn commit_tap_cost_objects_for_kind(
             .with_cost_kind(cost_kind)
             .paying_cost_of(Some(ctx.source));
         for id in objects {
+            if replace_tap_event(game, ctx, *id)? {
+                continue;
+            }
             if !action.tap(game, *id)? {
                 return Err(ExecutionError::Impossible(
                     "Tap cost was not completed".into(),
@@ -263,7 +312,12 @@ impl EffectExecutor for TapEffect {
             } else { ObjectApplyResultPolicy::CountApplied };
             let apply_result = crate::effects::helpers::apply_to_selected_objects_with_prepared(
                 game, ctx, &self.target, result_policy, None, Some(selected.clone()),
-                |game, _ctx, object| action.tap(game, object),
+                |game, ctx, object| {
+                    if replace_tap_event(game, ctx, object)? {
+                        return Ok(true);
+                    }
+                    action.tap(game, object)
+                },
             )?;
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let taps = action.finish(game)?;

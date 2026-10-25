@@ -1150,6 +1150,13 @@ pub(super) fn apply_mana_payment_plan_response(
     result
 }
 
+fn library_fingerprint(game: &GameState) -> Vec<Vec<crate::ids::ObjectId>> {
+    game.players
+        .iter()
+        .map(|player| player.library.iter().copied().collect())
+        .collect()
+}
+
 fn lock_enclosing_mana_undo(state: &mut PriorityLoopState, locked: bool) {
     if !locked {
         return;
@@ -1327,6 +1334,8 @@ fn apply_mana_payment_plan_response_inner(
                 "illegal mana activation during payment".to_string(),
             ));
         }
+        let top_level_payment = state.pending_mana_ability.is_none();
+        let libraries_before = library_fingerprint(game);
         if let Some(parent) = state.pending_mana_ability.take() {
             state.pending_mana_parents.push(parent);
         }
@@ -1346,6 +1355,13 @@ fn apply_mana_payment_plan_response_inner(
             return Ok(completion.progress);
         }
         state.pending_mana_ability = state.pending_mana_parents.pop();
+        // CR 733.1: a mana ability that moved cards from or to a library may
+        // not be reversed if this action is later canceled.
+        if top_level_payment && library_fingerprint(game) != libraries_before {
+            state
+                .irreversible_payment_mana
+                .push((*source, *ability_index, request.payer));
+        }
         retain_enclosing_mana_outputs(state, completion.outputs);
         lock_enclosing_mana_undo(state, !undo_safe);
         let completed = crate::mana_payment::RequiredManaActivation {
@@ -1404,6 +1420,7 @@ fn apply_mana_payment_plan_response_inner(
         }
         let canceling_effect_cast = state.pending_cast.as_ref()
             .is_some_and(|pending| pending.effect_driven);
+        let irreversible_mana = std::mem::take(&mut state.irreversible_payment_mana);
         state.rollback_action(game);
         if let Some(original_queue) = blind_queue {
             *trigger_queue = original_queue;
@@ -1417,6 +1434,26 @@ fn apply_mana_payment_plan_response_inner(
         }
         state.pending_mana_ability = None;
         state.pending_mana_parents.clear();
+        // CR 733.1: players may not reverse mana abilities that moved cards
+        // from a library to a zone other than the stack (or to a library);
+        // re-apply them on the restored state.
+        for (source, ability_index, payer) in irreversible_mana {
+            if game.object(source).is_none() {
+                continue;
+            }
+            super::priority_apply::begin_mana_ability_activation_with_outputs(
+                game,
+                trigger_queue,
+                state,
+                &source,
+                &ability_index,
+                payer,
+                decision_maker,
+            )?;
+            state.pending_mana_ability = None;
+            state.pending_mana_parents.clear();
+            state.clear_checkpoint();
+        }
         if state.pending_exile_face_down.is_some() {
             return super::exile_face_down::resume(game, state);
         }
@@ -1908,7 +1945,8 @@ pub(super) fn apply_modes_response(
         {
             record_dilemma(game, trigger_queue, pending.source, pending.activator)?;
         }
-        pending.chosen_modes = Some(modes.to_vec());
+        // CR 608.2c: chosen modes are followed in their printed order.
+        pending.chosen_modes = Some(printed_mode_order(modes));
         pending.remaining_requirements = extract_target_requirements_from_program_with_modes(
             game,
             &pending.effects,
@@ -1990,7 +2028,8 @@ pub(super) fn apply_modes_response(
     }
 
     // Store the chosen modes
-    pending.chosen_modes = Some(modes.to_vec());
+    // CR 608.2c: chosen modes are followed in their printed order.
+        pending.chosen_modes = Some(printed_mode_order(modes));
     if let Some(optional_cost_index) = required_optional_cost
         && !pending
             .required_optional_cost_indices
@@ -5019,6 +5058,16 @@ pub(super) fn finalize_spell_cast(
         spell.cast_tagged_objects = stack_entry_tagged_objects.clone();
     }
 
+    // CR 702.51c: contributors recorded by the automatic payment planner on
+    // the spell object also convoked/improvised it.
+    let mut keyword_payment_contributions = keyword_payment_contributions;
+    if let Some(spell) = game.object(new_id) {
+        for contribution in &spell.keyword_payment_contributions_to_cast {
+            if !keyword_payment_contributions.contains(contribution) {
+                keyword_payment_contributions.push(*contribution);
+            }
+        }
+    }
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes
     let mut entry = StackEntry::new(new_id, caster)
         .with_provenance(provenance)
@@ -7833,4 +7882,12 @@ mod planned_mana_witness_tests {
             assert_eq!(dm.prompts, 0);
         }
     }
+}
+
+/// CR 608.2c: the instructions of chosen modes are followed in the order
+/// they're written, whatever order the player selected them in.
+pub(crate) fn printed_mode_order(modes: &[usize]) -> Vec<usize> {
+    let mut ordered = modes.to_vec();
+    ordered.sort_unstable();
+    ordered
 }

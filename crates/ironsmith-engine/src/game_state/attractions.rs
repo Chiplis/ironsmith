@@ -243,6 +243,11 @@ impl GameState {
                 if self.is_phased_out(*object_id)
                     || object.zone != Zone::Battlefield
                     || self.current_controller(*object_id) != Some(player)
+                    // CR 701.52a: only permanents that are currently
+                    // Attractions are visited.
+                    || !self.current_characteristics(*object_id).is_some_and(|chars| {
+                        chars.subtypes.contains(&crate::types::Subtype::Attraction)
+                    })
                     || !state
                         .lights
                         .get(&object.stable_id)

@@ -4747,6 +4747,7 @@ pub(super) fn compile_subject_verb_middle(
             destination,
             reveal,
             progress_tag,
+            tapped,
         }) => {
             let subject = LoweredSubject::resolve_library_owner(player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
@@ -4773,7 +4774,8 @@ pub(super) fn compile_subject_verb_middle(
                     player_filter,
                     *reveal,
                     resolved_tag,
-                ))],
+                )
+                .tapped(*tapped))],
                 subject.into_choices(),
             ))
         }

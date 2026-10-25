@@ -102,9 +102,9 @@ impl EffectExecutor for BlockAttackerOfChoiceEffect {
             let Some(attacker) = chosen.into_iter().find(|id| candidates.contains(id)) else {
                 return Ok(EffectOutcome::count(0));
             };
-            // CR 509.1h: the attacker becomes blocked; the creature was not
-            // declared as a blocker, so no block triggers fire.
-            if !super::put_onto_battlefield_blocking(game, blocker, attacker) {
+            // CR 509.3a-e: an effect making an existing creature block
+            // produces its blocking transitions (unlike entering blocking).
+            if !super::add_blocker_after_declaration(game, blocker, attacker, false) {
                 return Ok(EffectOutcome::count(0));
             }
             Ok(EffectOutcome::count(1).with_affected_objects(vec![blocker]))

@@ -34,7 +34,8 @@ pub fn static_ability_zone_defaults(
             Zone::Exile,
             Zone::Command,
         ],
-        Some(SetColors | AddColors | MakeColorless | AddSubtypes | AddAllSubtypesOfFamily) if source_only => all_zones(),
+        Some(SetColors | AddColors | MakeColorless | AddSubtypes | AddAllSubtypesOfFamily | SetChosenColor)
+            if source_only => all_zones(),
         Some(
             CharacteristicDefiningPT
             | ShuffleIntoLibraryFromGraveyard
@@ -102,6 +103,9 @@ impl<T, E, C, Cond, ICond> StaticAbilityFunctionalZones for StaticAbility<T, E, 
         let source_only = match &self.payload {
             StaticAbilityPayload::ExileToExileInsteadOfGraveyard { filter, .. }
             | StaticAbilityPayload::ExileWouldDieInstead { filter, .. } => filter.source,
+            // "This is the chosen color" (Faceless One) defines its own color
+            // (CR 604.3), so it functions in every zone.
+            StaticAbilityPayload::SetChosenColor { filter, .. } => filter.is_source_only(),
             _ => self.characteristic_defining_colors().is_some()
                 || self.characteristic_defining_subtypes().is_some()
                 || self.is_characteristic_defining_subtype_family(),

@@ -41,6 +41,13 @@ pub(super) struct MandatoryProcedureSignature {
 pub(super) struct MandatoryProcedureObservation {
     signature: MandatoryProcedureSignature,
     blocks_mandatory_proof: bool,
+    /// Player life totals when the procedure was observed (CR 104.3b
+    /// progress check; not part of the structural identity).
+    life_totals: Vec<i32>,
+}
+
+fn player_life_totals(game: &GameState) -> Vec<i32> {
+    game.players.iter().map(|player| player.life).collect()
 }
 
 impl MandatoryProcedureObservation {
@@ -79,6 +86,7 @@ impl MandatoryProcedureObservation {
                     event_kind,
                 ),
             },
+            life_totals: player_life_totals(game),
             blocks_mandatory_proof: entry.intervening_if.is_some()
                 || !entry.target_assignments.is_empty()
                 || entry
@@ -105,6 +113,7 @@ impl MandatoryProcedureObservation {
                     Some(entry.triggering_event.kind()),
                 ),
             },
+            life_totals: player_life_totals(game),
             blocks_mandatory_proof: entry.ability.intervening_if.is_some()
                 || !entry.ability.choices.is_empty()
                 || program_contains_control_branch(&entry.ability.effects),
@@ -119,6 +128,10 @@ fn program_contains_control_branch(program: &crate::resolution::ResolutionProgra
         .any(effect_contains_control_branch)
 }
 
+// CR 732.6: "[A] unless [B]" is not a control branch for loop purposes. No
+// player can be forced to perform [B]; if nobody does, the loop continues as
+// though [A] were mandatory, and performing [B] changes the game state (the
+// control fingerprint) so a paid branch never matches a repeated suffix.
 fn effect_contains_control_branch(effect: &crate::effect::Effect) -> bool {
     if effect.downcast_ref::<crate::effects::MayEffect>().is_some()
         || effect
@@ -126,12 +139,6 @@ fn effect_contains_control_branch(effect: &crate::effect::Effect) -> bool {
             .is_some()
         || effect
             .downcast_ref::<crate::effects::ConditionalEffect>()
-            .is_some()
-        || effect
-            .downcast_ref::<crate::effects::UnlessActionEffect>()
-            .is_some()
-        || effect
-            .downcast_ref::<crate::effects::UnlessPaysEffect>()
             .is_some()
     {
         return true;
@@ -227,6 +234,25 @@ fn source_control_fingerprint(
     hasher.finish()
 }
 
+fn action_involves_loop_object(
+    game: &GameState,
+    action: &crate::decision::LegalAction,
+    loop_sources: &std::collections::HashSet<StableId>,
+) -> bool {
+    use crate::decision::LegalAction;
+    let object = match action {
+        LegalAction::PassPriority => return false,
+        LegalAction::ActivateAbility { source, .. }
+        | LegalAction::ActivateManaAbility { source, .. } => *source,
+        LegalAction::CastSpell { spell_id, .. } => *spell_id,
+        LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => *land_id,
+        LegalAction::TurnFaceUp { creature_id, .. } => *creature_id,
+        _ => return false,
+    };
+    game.object(object)
+        .is_some_and(|object| loop_sources.contains(&object.stable_id))
+}
+
 impl MandatoryProcedureSignature {
     #[cfg(test)]
     fn triggered(source: StableId, controller: PlayerId, trigger: TriggerIdentity) -> Self {
@@ -253,6 +279,7 @@ impl MandatoryProcedureSignature {
 #[derive(Debug, Clone, Default)]
 pub(super) struct MandatoryLoopTracker {
     actions: Vec<MandatoryProcedureSignature>,
+    life_history: Vec<Vec<i32>>,
     optional_action_seen: bool,
     pending_windows: Vec<GameState>,
     history_windows: Vec<Vec<GameState>>,
@@ -261,6 +288,7 @@ pub(super) struct MandatoryLoopTracker {
 impl MandatoryLoopTracker {
     pub(super) fn reset(&mut self) {
         self.actions.clear();
+        self.life_history.clear();
         self.pending_windows.clear();
         self.history_windows.clear();
         self.optional_action_seen = false;
@@ -305,11 +333,13 @@ impl MandatoryLoopTracker {
         }
 
         self.actions.push(resolved.signature);
+        self.life_history.push(resolved.life_totals);
         self.history_windows
             .push(std::mem::take(&mut self.pending_windows));
         if self.actions.len() > MAX_MANDATORY_ACTION_HISTORY {
             let overflow = self.actions.len() - MAX_MANDATORY_ACTION_HISTORY;
             self.actions.drain(..overflow);
+            self.life_history.drain(..overflow);
             self.history_windows.drain(..overflow);
         }
 
@@ -324,6 +354,10 @@ impl MandatoryLoopTracker {
         // Resolve historical unknowns only when they could establish a draw.
         // Drop the prefix through the last optional window, exactly as eager
         // observe_priority_window would have reset it at that resolution.
+        // CR 732.5: only actions called for by objects involved in the loop
+        // make it optional; an unrelated available exit forces nothing.
+        let loop_sources: std::collections::HashSet<StableId> =
+            self.actions.iter().map(|signature| signature.source).collect();
         let mut last_optional = None;
         for (index, windows) in self.history_windows.iter().enumerate() {
             let mut optional = false;
@@ -331,7 +365,7 @@ impl MandatoryLoopTracker {
                 for player in game.priority_team_players() {
                     if crate::decision::compute_legal_actions(game, player)?
                         .into_iter().chain(crate::decision::compute_commander_actions(game, player)?)
-                        .any(|action| !matches!(action, crate::decision::LegalAction::PassPriority)) {
+                        .any(|action| action_involves_loop_object(game, &action, &loop_sources)) {
                         optional = true;
                         break;
                     }
@@ -355,6 +389,21 @@ impl MandatoryLoopTracker {
         result
     }
 
+    /// CR 104.3b / 732.4: a repeating chain that lowers a player's positive
+    /// life total each cycle is finite (that player will lose), not a loop.
+    fn cycle_makes_life_progress(&self, previous_start: usize, current_start: usize) -> bool {
+        let (Some(previous), Some(current)) = (
+            self.life_history.get(previous_start),
+            self.life_history.get(current_start),
+        ) else {
+            return false;
+        };
+        previous
+            .iter()
+            .zip(current)
+            .any(|(before, after)| after < before && *after > 0)
+    }
+
     fn repeated_suffix_next_action(
         &self,
     ) -> Option<(
@@ -365,7 +414,9 @@ impl MandatoryLoopTracker {
         for cycle_len in 1..=len / 2 {
             let previous_start = len - cycle_len * 2;
             let current_start = len - cycle_len;
-            if self.actions[previous_start..current_start] == self.actions[current_start..] {
+            if self.actions[previous_start..current_start] == self.actions[current_start..]
+                && !self.cycle_makes_life_progress(previous_start, current_start)
+            {
                 let controllers = self.actions[current_start..]
                     .iter()
                     .map(|signature| signature.controller)
@@ -430,6 +481,7 @@ mod tests {
                 TriggerIdentity(trigger),
             ),
             blocks_mandatory_proof: false,
+            life_totals: Vec::new(),
         }
     }
 

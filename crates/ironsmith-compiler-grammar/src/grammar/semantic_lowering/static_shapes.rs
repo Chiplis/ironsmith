@@ -24,6 +24,7 @@ pub enum StaticSpecialLineShape {
     DraftRule,
     HiddenAgenda,
     DoubleAgenda,
+    StartingPlayer,
     AnyNumberNamedDeckConstruction,
     FirstEquipCostAlternative,
 }
@@ -141,6 +142,19 @@ fn is_double_agenda(words: &[&str]) -> bool {
     phrase_is_exact(words, &["double", "agenda"])
 }
 
+/// Power Play: "You are the starting player. If multiple players would be
+/// the starting player, one of those players is chosen at random."
+fn is_starting_player(words: &[&str]) -> bool {
+    phrase_is_exact(
+        words,
+        &[
+            "you", "are", "the", "starting", "player", "if", "multiple", "players", "would",
+            "be", "the", "starting", "player", "one", "of", "those", "players", "is", "chosen",
+            "at", "random",
+        ],
+    )
+}
+
 fn is_named_deck_construction(words: &[&str]) -> bool {
     let prefix = &[
         "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
@@ -202,6 +216,8 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::HiddenAgenda)
     } else if is_double_agenda(&words) {
         Some(StaticSpecialLineShape::DoubleAgenda)
+    } else if is_starting_player(&words) {
+        Some(StaticSpecialLineShape::StartingPlayer)
     } else if is_draft_rule(&words) {
         Some(StaticSpecialLineShape::DraftRule)
     } else if is_named_deck_construction(&words) || is_deck_construction_instruction(&words) {

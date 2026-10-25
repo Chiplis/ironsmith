@@ -344,6 +344,7 @@ impl StaticAbility {
                 Self::permanents_you_control_cant_be_sacrificed()
             }
             Some(StaticAbilityId::StartingLifeBonus) => Self::starting_life_bonus(0),
+            Some(StaticAbilityId::YouAreTheStartingPlayer) => Self::you_are_the_starting_player(),
             Some(StaticAbilityId::BuybackCostReduction) => {
                 return Err(StaticAbilityModelConversionError {
                     detail: "buyback cost reduction needs its amount payload".to_string(),
@@ -494,6 +495,7 @@ impl StaticAbility {
             Some(StaticAbilityId::DraftRuleText) => Self::draft_rule_text(label),
             Some(StaticAbilityId::HiddenAgenda) => Self::hidden_agenda(),
             Some(StaticAbilityId::DoubleAgenda) => Self::double_agenda(),
+            Some(StaticAbilityId::StartingPlayer) => Self::starting_player(),
             Some(StaticAbilityId::KeywordText) => Self::keyword_text(label),
             Some(StaticAbilityId::KeywordMarker) => Self::keyword_marker(label),
             Some(StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving) => {

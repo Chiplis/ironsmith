@@ -302,6 +302,8 @@ struct PreparedMoveSelection {
         std::collections::HashMap<crate::ids::ObjectId, Vec<(crate::object::CounterType, u32)>>,
     attachment: Option<crate::object::AttachmentTarget>,
     attack_player: Option<PlayerId>,
+    /// CR 506.3c / 508.4a: the specified defending player is gone.
+    attack_player_unavailable: bool,
     zones:
         std::collections::HashMap<crate::ids::ObjectId, PreparedEventOutcome<PreparedZoneProposal>>,
     draws: super::ZoneInstructionDraws,
@@ -547,7 +549,21 @@ fn move_entry_options(
                 filter.matches(candidate, &ctx.filter_context(game), game)
             })
         });
+    // CR 110.2a: an effect instructing a player to put an object onto the
+    // battlefield puts it under that player's control unless it says
+    // otherwise. A "put" from another zone without an explicit controller or
+    // per-player iteration is performed by the effect's controller.
+    let instructed_put = matches!(effect.battlefield_controller, BattlefieldController::Preserve)
+        && effect.verb_surface == ironsmith_core::MoveToZoneVerbSurface::Put
+        && effect.actor_surface.is_none()
+        && ctx.iteration.iterated_player.is_none()
+        && game
+            .object(object)
+            .is_some_and(|candidate| candidate.zone != Zone::Battlefield);
     let options = match effect.battlefield_controller {
+        BattlefieldController::Preserve if instructed_put => {
+            BattlefieldEntryOptions::specific(ctx.controller, enters_tapped)
+        }
         BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(enters_tapped),
         BattlefieldController::Owner => BattlefieldEntryOptions::owner(enters_tapped),
         BattlefieldController::You => {
@@ -1041,14 +1057,40 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             self.attack_target_mode,
             Some(MoveToZoneAttackTargetMode::Player(_))
         );
+        // CR 506.3c / 508.4a: a specified defending player who can't be
+        // found (e.g. left the game) doesn't cancel the move; the creature
+        // just enters without attacking, rather than choosing a new defender.
+        let mut attack_player_unavailable = false;
         let configured_attack_player = if let Some(prepared) = &prepared {
+            attack_player_unavailable = prepared.attack_player_unavailable;
             prepared.attack_player
         } else {
             match &self.attack_target_mode {
                 Some(
                     MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)
                     | MoveToZoneAttackTargetMode::Player(player_filter),
-                ) => Some(resolve_player_filter(game, player_filter, ctx)?),
+                ) => match resolve_player_filter(game, player_filter, ctx) {
+                    Ok(player)
+                        if game.player(player).is_some_and(|player| player.is_in_game()) =>
+                    {
+                        Some(player)
+                    }
+                    Ok(_) => {
+                        attack_player_unavailable = true;
+                        None
+                    }
+                    Err(_)
+                        if crate::effects::combat::specified_attack_player_departed(
+                            game,
+                            player_filter,
+                            ctx,
+                        ) =>
+                    {
+                        attack_player_unavailable = true;
+                        None
+                    }
+                    Err(error) => return Err(error),
+                },
                 None => None,
             }
         };
@@ -1073,6 +1115,16 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         } else {
             None
         };
+        // CR 303.4i: an explicitly named host that is undefined (it left, or
+        // never existed) doesn't become a free choice of some other host.
+        let entry_attachment_undefined = prepared.is_none()
+            && self.zone == Zone::Battlefield
+            && ctx.pending_entry_attachment.is_some()
+            && entry_attachment.is_none();
+        // CR 303.4h: a permanent entering as a non-Aura or face down is
+        // neither Aura, Equipment nor Fortification, so it enters unattached
+        // whatever its card was in the old zone.
+        let enters_without_attachment_role = self.enters_as_non_aura || self.enters_face_down;
 
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
@@ -1156,6 +1208,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             selection.counters = authored_counters;
             selection.attachment = entry_attachment;
             selection.attack_player = configured_attack_player;
+            selection.attack_player_unavailable = attack_player_unavailable;
             selection.selected = true;
             return Ok(EffectOutcome::resolved());
         }
@@ -1175,16 +1228,18 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 continue;
             };
             let from_zone = target_lki_before_move.zone;
-            let requested_zone = ctx
+            let mut requested_zone = ctx
                 .simultaneous_zone_destination(object_id)
                 .unwrap_or_else(|| destinations.get(&object_id).copied().unwrap_or(self.zone));
             // CR 303.4i: an Aura an effect would put onto the battlefield
-            // attached to something it can't legally enchant stays where it
-            // is; it doesn't enter and choose some other object instead.
+            // attached to something it can't legally enchant (or to a named
+            // host that is undefined) stays where it is, or goes to its
+            // owner's graveyard from the stack; it doesn't enter and choose
+            // some other object instead.
             if requested_zone == Zone::Battlefield
                 && from_zone != Zone::Battlefield
-                && let Some(target) = entry_attachment
                 && prepared.is_none()
+                && !enters_without_attachment_role
                 && target_lki_before_move
                     .subtypes
                     .contains(&crate::types::Subtype::Aura)
@@ -1195,13 +1250,20 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         target_lki_before_move.owner
                     }
                 };
-                if !crate::effects::permanents::aura_can_enter_attached_to(
-                    game,
-                    object_id,
-                    entering_controller,
-                    target,
-                ) {
-                    continue;
+                let blocked = match entry_attachment {
+                    Some(target) => !crate::effects::permanents::aura_can_enter_attached_to(
+                        game,
+                        object_id,
+                        entering_controller,
+                        target,
+                    ),
+                    None => entry_attachment_undefined,
+                };
+                if blocked {
+                    if from_zone != Zone::Stack {
+                        continue;
+                    }
+                    requested_zone = Zone::Graveyard;
                 }
             }
             let target_lki_before_move =
@@ -1222,7 +1284,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     self,
                     game, ctx, object_id,
                     authored_counters.remove(&object_id).unwrap_or_default(),
-                    entry_attachment,
+                    entry_attachment.filter(|_| !enters_without_attachment_role),
                 );
                 battlefield_entries.push((
                     object_id,
@@ -1308,7 +1370,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         self,
                         game, ctx, object_id,
                         authored_counters.remove(&object_id).unwrap_or_default(),
-                        entry_attachment,
+                        entry_attachment.filter(|_| !enters_without_attachment_role),
                     );
                     zone_entry_proposals.insert(object_id, proposal);
                     battlefield_entries.push((
@@ -1515,9 +1577,14 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                         ));
                                     }
                                 }
-                                if final_zone == Zone::Library
-                                    && !self.to_top
-                                    && let Some(owner) = game.object(new_id).map(|obj| obj.owner)
+                                // Each resulting card's own zone decides (a meld
+                                // commander component may go to the command zone
+                                // while its partner goes to the library).
+                                if !self.to_top
+                                    && let Some(owner) = game
+                                        .object(new_id)
+                                        .filter(|obj| obj.zone == Zone::Library)
+                                        .map(|obj| obj.owner)
                                 {
                                     crate::effects::cards::position_library_card(
                                         game,
@@ -1691,6 +1758,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         // CR 506.3a/b/f, 508.4: only a creature controlled by
                         // an attacking player, during combat, becomes attacking.
                         if self.enters_attacking
+                            && !attack_player_unavailable
                             && crate::effects::combat::can_enter_attacking(game, new_id)
                         {
                             let target = if let Some(attack_player) = configured_attack_player {
@@ -1729,8 +1797,8 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         if let Some(attacker) = blocking_attacker
                             && game.current_is_creature(new_id)
                         {
-                            crate::effects::combat::put_onto_battlefield_blocking(
-                                game, new_id, attacker,
+                            crate::effects::combat::add_blocker_after_declaration(
+                                game, new_id, attacker, true,
                             );
                         }
                         ctx.refresh_target_snapshot(target_lki_before_move.clone());
@@ -1856,6 +1924,11 @@ impl CostExecutableEffect for MoveToZoneEffect {
         let moved = outcome
             .affected_objects()
             .map_or(0, |affected| affected.len());
+        // A tagged collection or "all" set is moved whole; an empty set (an
+        // empty pile, CR 700.3d) is a legal zero-object move.
+        if matches!(self.target.base(), ChooseSpec::Tagged(_) | ChooseSpec::All(_)) {
+            return Ok(());
+        }
         let count = self.target.count();
         let fixed_required = count.max.filter(|max| *max == count.min).map(|_| count.min);
         if let Some(required) = fixed_required

@@ -172,6 +172,45 @@ impl EffectExecutor for ExileEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        // CR 701.13a / 113.1c: an ability on the stack is an independent
+        // object; exiling it removes it from the stack (its source stays).
+        if self.spec.is_target()
+            && let ChooseSpec::Object(filter) = self.spec.base()
+            && matches!(
+                filter.stack_kind,
+                Some(
+                    crate::filter::StackObjectKind::Ability
+                        | crate::filter::StackObjectKind::ActivatedAbility
+                        | crate::filter::StackObjectKind::TriggeredAbility
+                )
+            )
+        {
+            let ids: Vec<crate::ids::ObjectId> = ctx
+                .targets
+                .iter()
+                .filter_map(|target| match target {
+                    crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                    _ => None,
+                })
+                .collect();
+            let mut removed = Vec::new();
+            for id in ids {
+                if let Some(index) = game
+                    .stack
+                    .iter()
+                    .position(|entry| entry.is_ability && entry.ability_id == Some(id))
+                {
+                    let entry = game.stack.remove(index);
+                    crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
+                    removed.push(id);
+                }
+            }
+            if !removed.is_empty() {
+                return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
+                    removed.len() as u32,
+                )));
+            }
+        }
         super::movement_instruction::execute_movement_instruction(self.clone(), game, ctx)
     }
 

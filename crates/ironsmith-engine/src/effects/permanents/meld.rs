@@ -214,7 +214,7 @@ fn execute_meld_inner(
         ));
     }
 
-    let Some(counterpart_name) = crate::cards::meld_counterpart_name(&source.name) else {
+    let Some(counterpart_name) = game.meld_counterpart_name(&source.name) else {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
             EffectOutcome::resolved(),
         ));
@@ -238,7 +238,7 @@ fn execute_meld_inner(
                     && !game.is_phased_out(candidate_id)
                     && candidate.owner == ctx.controller
                     && game.controller_of(candidate) == ctx.controller
-                    && candidate.name.eq_ignore_ascii_case(counterpart_name)
+                    && candidate.name.eq_ignore_ascii_case(&counterpart_name)
             })
         })
         .collect::<Vec<_>>();
@@ -317,11 +317,12 @@ fn execute_meld_inner(
             || exiled_counterpart.zone != Zone::Exile
             || exiled_source.kind != ObjectKind::Card
             || exiled_counterpart.kind != ObjectKind::Card
-            || crate::cards::meld_counterpart_name(&exiled_source.name)
-                .is_none_or(|name| !name.eq_ignore_ascii_case(counterpart_name))
+            || game
+                .meld_counterpart_name(&exiled_source.name)
+                .is_none_or(|name| !name.eq_ignore_ascii_case(&counterpart_name))
             || !exiled_counterpart
                 .name
-                .eq_ignore_ascii_case(counterpart_name)
+                .eq_ignore_ascii_case(&counterpart_name)
         {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::resolved(),
@@ -338,6 +339,20 @@ fn execute_meld_inner(
                 .flat_map(|cost| cost.pips().iter().cloned())
                 .collect(),
         );
+
+        if let Some(front) =
+            game.linked_face_definition_by_name_or_id(Some(&exiled_source.name), None)
+            && front.card.meld_partner_name.is_some()
+            && !front
+                .card
+                .other_face_name
+                .as_deref()
+                .is_some_and(|name| name.eq_ignore_ascii_case(&effect.result_name))
+        {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
+        }
 
         let Some(result_def) =
             game.linked_face_definition_by_name_or_id(Some(&effect.result_name), None)
@@ -379,7 +394,14 @@ fn execute_meld_inner(
         let original = match &receipt.outcome {
             BattlefieldEntryOutcome::Moved(new_id) => {
                 let new_id = *new_id;
+                // CR 123.5a: stickers on either meld card apply to the
+                // melded permanent, keeping their relative timestamps.
+                let component_stables: Vec<_> =
+                    meld_components.iter().map(|component| component.stable_id).collect();
                 game.set_melded_permanent(new_id, meld_components);
+                for stable in component_stables {
+                    game.absorb_component_stickers(stable, new_id);
+                }
                 if let Some(target) = source_attack_target
                     && let Some(combat) = game.combat.as_mut()
                 {

@@ -36,6 +36,59 @@ mod generated_meld_counterparts {
     include!("generated_meld_counterparts.rs");
 }
 
+/// The supertypes and card types of one Oracle card or face record.
+pub(crate) type OracleFaceTypes = (Vec<crate::types::Supertype>, Vec<crate::types::CardType>);
+
+/// CR 201.4a-f: the Oracle type lines of every card or face named `name`
+/// (split halves, back faces, flip and adventurer alternative names
+/// included), read from `generated_oracle_face_types.txt`
+/// (`scripts/generate_oracle_face_types.py`). Empty for unknown names.
+pub(crate) fn oracle_face_types(name: &str) -> &'static [OracleFaceTypes] {
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    static TABLE: OnceLock<HashMap<String, Vec<OracleFaceTypes>>> = OnceLock::new();
+    fn key(name: &str) -> String {
+        name.trim().to_lowercase()
+    }
+    let table = TABLE.get_or_init(|| {
+        use crate::types::{CardType, Supertype};
+        let mut table: HashMap<String, Vec<OracleFaceTypes>> = HashMap::new();
+        let mut current: Option<OracleFaceTypes> = None;
+        for line in include_str!("generated_oracle_face_types.txt").lines() {
+            if let Some(header) = line.strip_prefix('#') {
+                let mut supertypes = Vec::new();
+                let mut card_types = Vec::new();
+                for word in header.split_whitespace() {
+                    match word {
+                        "Basic" => supertypes.push(Supertype::Basic),
+                        "Legendary" => supertypes.push(Supertype::Legendary),
+                        "Ongoing" => supertypes.push(Supertype::Ongoing),
+                        "Snow" => supertypes.push(Supertype::Snow),
+                        "World" => supertypes.push(Supertype::World),
+                        "Land" => card_types.push(CardType::Land),
+                        "Creature" => card_types.push(CardType::Creature),
+                        "Artifact" => card_types.push(CardType::Artifact),
+                        "Enchantment" => card_types.push(CardType::Enchantment),
+                        "Planeswalker" => card_types.push(CardType::Planeswalker),
+                        "Instant" => card_types.push(CardType::Instant),
+                        "Sorcery" => card_types.push(CardType::Sorcery),
+                        "Battle" => card_types.push(CardType::Battle),
+                        "Kindred" | "Tribal" => card_types.push(CardType::Kindred),
+                        _ => {}
+                    }
+                }
+                current = Some((supertypes, card_types));
+            } else if let Some(types) = &current
+                && !line.trim().is_empty()
+            {
+                table.entry(key(line)).or_default().push(types.clone());
+            }
+        }
+        table
+    });
+    table.get(&key(name)).map_or(&[], Vec::as_slice)
+}
+
 use crate::ability::Ability;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cost::OptionalCost;

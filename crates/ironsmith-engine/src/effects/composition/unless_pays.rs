@@ -29,6 +29,11 @@ fn select_payment_offer(
     cost: &crate::cost::TotalCost,
     ctx: &mut ExecutionContext,
 ) -> Result<Option<bool>, ExecutionError> {
+    // CR 800.4f: a player who has left the game is never asked to pay and
+    // can't pay, even a zero cost; the unpaid consequence happens.
+    if !game.player(payer).is_some_and(|player| player.is_in_game()) {
+        return Ok(Some(false));
+    }
     // Willingness belongs to the player, even for a free or currently
     // unfunded cost. Funding and legality are checked by the payment owner
     // after acceptance; an affordability query must never answer this offer.

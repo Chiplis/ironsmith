@@ -2313,6 +2313,10 @@ pub struct ChooseModeEffect<E> {
     /// Authored modal choice (CR 700.2), excluding implementation choices such as fabricate.
     #[cfg_attr(feature = "serde", serde(default))]
     pub faces_dilemma: bool,
+    /// UI labels for inline alternatives. These do not turn an "A or B"
+    /// instruction into authored modal text or affect its executable branches.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub decision_labels: Vec<String>,
     pub modes: Vec<EffectMode<E>>,
     /// Typed effects authored once in the modal header after the choice
     /// instruction. They resolve exactly once after modes are chosen and
@@ -2385,6 +2389,7 @@ impl<E> ChooseModeEffect<E> {
         let mode_point_costs = vec![1; modes.len()];
         Self {
             faces_dilemma: false,
+            decision_labels: Vec::new(),
             modes,
             common_prefix_effects: Vec::new(),
             chooser: None,
@@ -2410,6 +2415,14 @@ impl<E> ChooseModeEffect<E> {
             optional_choice: false,
             cost_choice_keywords: Vec::new(),
         }
+    }
+
+    pub fn decision_label(&self, index: usize) -> &str {
+        self.decision_labels
+            .get(index)
+            .filter(|label| !label.trim().is_empty())
+            .map(String::as_str)
+            .unwrap_or_else(|| self.modes[index].source_text.as_str())
     }
 
     /// The modes are one instruction read per keyword chosen as a cost.
@@ -2723,6 +2736,9 @@ pub struct SearchLibrarySlotsEffect {
     pub player: PlayerFilter,
     pub reveal: bool,
     pub progress_tag: crate::tag::TagKey,
+    /// Found cards put onto the battlefield enter tapped.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub tapped: bool,
 }
 
 impl SearchLibrarySlotsEffect {
@@ -2741,7 +2757,13 @@ impl SearchLibrarySlotsEffect {
             player,
             reveal,
             progress_tag: progress_tag.into(),
+            tapped: false,
         }
+    }
+
+    pub fn tapped(mut self, tapped: bool) -> Self {
+        self.tapped = tapped;
+        self
     }
 
     pub fn to_hand(

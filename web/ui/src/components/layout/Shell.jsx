@@ -9,6 +9,7 @@ import { readTableSetup, storeTableSetup, tableSeatNames } from "@/lib/table-set
 import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
 import { decodeBase64UrlUtf8, normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "@/lib/puzzles";
 import { withSupportedCards } from "@/lib/unsupported-card-substitution";
+import { describeColorNoteIssues, submissionColorNoteIssues } from "@/lib/deck-color-notes";
 import { PUBLIC_FORMATS, usesCommanders } from "@/lib/relay/formats";
 import {
   MATCH_FORMAT_COMMANDER,
@@ -465,6 +466,7 @@ export default function Shell() {
               ...payload,
               decks: Array.isArray(payload?.decks) ? payload.decks.slice(0, playerCount) : [],
               sideboards: Array.isArray(payload?.sideboards) ? payload.sideboards.slice(0, playerCount) : [],
+              stickerSheets: Array.isArray(payload?.stickerSheets) ? payload.stickerSheets.slice(0, playerCount) : [],
             }
           : payload;
         const result = await game.loadDecks(loadPayload);
@@ -573,6 +575,14 @@ export default function Shell() {
         decks[index] = supported.deck;
         sideboards[index] = supported.sideboard;
       }
+      // A card that circles colors as its owner builds the deck needs them
+      // written after its name ("Cryptic Spires ({W}{B})").
+      for (let index = 0; index < decks.length; index += 1) {
+        const issues = await submissionColorNoteIssues(game, {
+          deck: decks[index], sideboard: sideboards[index], commanders: payload?.commanders?.[index],
+        });
+        if (issues.length) throw new Error(describeColorNoteIssues(issues));
+      }
     };
     // Pauper EDH goldfish runs as its own engine format (30 life, 16 commander damage).
     const goldfishFormat = normalizeMatchFormat(payload?.format);
@@ -597,6 +607,7 @@ export default function Shell() {
         const decks = Array.from({ length: playerCount }, (_, index) => payload?.decks?.[index] || []);
         const commanders = Array.from({ length: playerCount }, (_, index) => payload?.commanders?.[index] || []);
         const sideboards = Array.from({ length: playerCount }, (_, index) => payload?.sideboards?.[index] || []);
+        const stickerSheets = Array.from({ length: playerCount }, (_, index) => payload?.stickerSheets?.[index] || []);
         const sourceIndex = decks.findIndex((deck, index) => deck.length > 0 && commanders[index].length > 0);
         if (sourceIndex < 0) {
           setStatus("Commander goldfish needs at least one deck with a Commander section", true);
@@ -607,6 +618,7 @@ export default function Shell() {
           decks[index] = decks[sourceIndex];
           commanders[index] = commanders[sourceIndex];
           sideboards[index] = sideboards[sourceIndex];
+          stickerSheets[index] = stickerSheets[sourceIndex];
         }
         const names = parseNames(playerNames);
         const goldfishNames = Array.from({ length: playerCount }, (_, index) => (
@@ -623,6 +635,7 @@ export default function Shell() {
             decks,
             sideboards,
             commanders,
+            stickerSheets,
           });
           setPlayerNames(goldfishNames.join(","));
           const perspective = Math.max(0, Math.min(playerCount - 1, Number(payload?.perspectivePlayerIndex) || 0));

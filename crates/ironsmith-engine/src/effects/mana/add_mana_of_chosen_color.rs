@@ -47,8 +47,11 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
-        let chosen = game.chosen_color(source).unwrap_or(Color::Green);
-        let mut symbols = vec![ManaSymbol::from_color(chosen)];
+        let mut symbols = game
+            .chosen_color(source)
+            .map(ManaSymbol::from_color)
+            .into_iter()
+            .collect::<Vec<_>>();
         if let Some(fixed) = self.fixed_option {
             let fixed_symbol = ManaSymbol::from_color(fixed);
             if !symbols.contains(&fixed_symbol) {

@@ -86,6 +86,13 @@ fn check_and_apply_sbas_with_inner(
     if !awaiting_before && decision_maker.awaiting_choice() {
         return Ok(());
     }
+    // CR 603.8: a state trigger triggers as soon as the game state matches
+    // its condition, so it sees that state before state-based actions
+    // (performed afterward) can change it.
+    let (state_triggers, _) = crate::triggers::check_state_triggers(game, &trigger_queue.entries);
+    for trigger in state_triggers {
+        trigger_queue.add(trigger);
+    }
     let mut seen_mandatory_states = std::collections::HashSet::new();
 
     loop {
@@ -1432,7 +1439,10 @@ fn choose_trigger_modes(
         })
         .collect();
 
-    if mode_options.iter().filter(|mode| mode.legal).count() < min_modes {
+    // CR 700.2d: when a mode may be chosen more than once, any legal mode can
+    // fill every choice.
+    let legal_mode_count = mode_options.iter().filter(|mode| mode.legal).count();
+    if legal_mode_count < min_modes && !(modal_spec.allow_repeated_modes && legal_mode_count > 0) {
         return None;
     }
 
@@ -2130,7 +2140,9 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         entry.triggering_event = Some(triggering_event.with_provenance(matched_node));
     }
 
-    if let Some(chosen_modes) = choose_trigger_modes(game, trigger, decision_maker)? {
+    if let Some(mut chosen_modes) = choose_trigger_modes(game, trigger, decision_maker)? {
+        // CR 608.2c: chosen modes are followed in their printed order.
+        chosen_modes.sort_unstable();
         entry = entry.with_chosen_modes(Some(chosen_modes));
     }
     if decision_maker.awaiting_choice() {
@@ -2434,11 +2446,21 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     } else if let Some(x) = triggering_spell_x {
         entry = entry.with_x(x);
     } else if let Some(obj) = game.object(trigger.source)
-        && let Some(x) = obj.x_value
+        && let Some(x) = crate::triggers::check::source_entry_x(
+            &trigger.triggering_event,
+            obj.id,
+            obj.zone,
+            obj.x_value,
+        )
     {
         entry = entry.with_x(x);
     } else if let Some(ref snapshot) = entry.source_snapshot
-        && let Some(x) = snapshot.x_value
+        && let Some(x) = crate::triggers::check::source_entry_x(
+            &trigger.triggering_event,
+            snapshot.object_id,
+            snapshot.zone,
+            snapshot.x_value,
+        )
     {
         entry = entry.with_x(x);
     } else if game

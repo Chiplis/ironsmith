@@ -527,6 +527,9 @@ fn short_name_is_distinct_name(short_name: &str) -> bool {
         // These are ordinary instructions/ability text even when a card's
         // full name starts with them (for example, "Cast Down").
         && !matches!(lower.as_str(), "cast" | "casts" | "play" | "plays" | "protection" | "roll" | "rolls")
+        // Attraction rules words (CR 702.159b): "Visit — Claim the prize!"
+        // and the "Prize —" paragraph never name the card itself.
+        && !matches!(lower.as_str(), "prize" | "visit" | "claim")
         && parse_leaf_color_complete(&lower).is_err()
         && parse_leaf_card_type_complete(&lower).is_err()
         && match parse_leaf_subtype_flexible_complete(&lower) {

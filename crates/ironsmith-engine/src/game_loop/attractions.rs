@@ -49,6 +49,11 @@ fn roll_to_visit_attractions_inner(
             !game.is_phased_out(*object)
                 && candidate.zone == Zone::Battlefield
                 && game.current_controller(*object) == Some(player)
+                // CR 717.4: a formerly opened card that stopped being an
+                // Attraction doesn't cause the roll.
+                && game.current_subtypes(*object).is_some_and(|subtypes| {
+                    subtypes.contains(&crate::types::Subtype::Attraction)
+                })
         })
     }) {
         return Ok(None);

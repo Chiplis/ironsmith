@@ -1,4 +1,4 @@
-import { isOwnPassCancellation } from "../../lib/sync-commands.js";
+import { isOwnPassCancellation, isSeatControlCommand } from "../../lib/sync-commands.js";
 import { isOpaqueExilePlayCommand, localOpaqueExilePlayCommand } from "../../lib/sync-object-identity.js";
 import { createOperationRevealBatch } from "../../lib/ziffle-operation-reveal-batch.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./match-lifecycle.js";
@@ -109,6 +109,12 @@ import { disclosureDueForPlayer } from "./end-of-match-disclosure.js";
 import { assertGenesisSeedRevealBinding, assertVerifiedMatchStartIsFresh, rememberStartedGenesis, rotateGenesisSeedNonce } from "./genesis-binding.js";
 import { sequencedActionSignedPayload, initialAuditStateHashForMatch } from "../../lib/multiplayer-audit.js";
 import { genesisAuditKeyLookup, signZiffleShuffleStep, verifyZiffleCeremonyStepSignatures } from "../../lib/ziffle-step-signatures.js";
+
+
+function matchStickerSheetsFromPlayers(players) {
+  const sheets = (players || []).map((player) => (Array.isArray(player?.stickers) ? player.stickers : []));
+  return sheets.some((list) => list.length > 0) ? sheets : undefined;
+}
 
 export function usePeerLobbyValidation(base, servicesRef) {
   const { ziffleActionRevealLocksRef } = base;
@@ -548,8 +554,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
         const actorName = playerNameForIndex(session.players, message.actorIndex);
         throw new Error(`Unauthorized add-card action from ${actorName}`);
       }
-      if (message.command?.type === "cancel_priority_yield" && !isOwnPassCancellation(message.command, message.actorIndex)) {
-        throw new Error("A player can only cancel their own passing intention");
+      if (isSeatControlCommand(message.command) && !isOwnPassCancellation(message.command, message.actorIndex)) {
+        throw new Error("A player can only send seat controls for their own seat");
       }
       const expectedActor = gameRef.current
         ? (await gameRef.current.uiState())?.decision?.player
@@ -1964,7 +1970,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     // A peer-local ID is translated only by its frozen public incarnation.
     // Keep the signed wire command unchanged for signature and head checks.
     const localCommand = await localOpaqueExilePlayCommand(gameRef.current, auth.command);
-    if (auth.command?.type === "cancel_priority_yield" && !isOwnPassCancellation(auth.command, auth.actorIndex)) return reject("actor_index_mismatch");
+    if (isSeatControlCommand(auth.command) && !isOwnPassCancellation(auth.command, auth.actorIndex)) return reject("actor_index_mismatch");
     const compatible = isDecisionCommandCompatible(liveState?.decision, localCommand);
     if (debug) {
       debug.liveDecisionKind = String(liveState?.decision?.kind || "");
@@ -4949,6 +4955,9 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        sideboards: startSideboards,
 	        commanders: startCommanders,
 	        planarDecks: startPlanarDecks,
+	        // Sticker sheets are revealed (CR 123.2a), so every seat's list is
+	        // public; read it from the (genesis-signed) player records.
+	        stickerSheets: matchStickerSheetsFromPlayers(payload.players),
 	        hiddenDeckManifests: verifiedMode ? payload.runtimeHiddenDeckManifests : undefined,
 	        // Identical on every peer: decides which seats get a Miracle draw
 	        // reveal window in hidden-deck matches.

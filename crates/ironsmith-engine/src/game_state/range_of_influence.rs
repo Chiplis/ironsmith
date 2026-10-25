@@ -313,9 +313,14 @@ impl GameState {
             return true;
         }
 
-        if event
-            .player()
-            .is_some_and(|player| !self.player_is_within_range(observer, player))
+        // CR 801.7 example: "becomes blocked" happens to the attacking
+        // creature alone; the player it attacks isn't part of that event.
+        let event_player = if event.event_kind() == crate::events::EventKind::CreatureBecameBlocked {
+            None
+        } else {
+            event.player()
+        };
+        if event_player.is_some_and(|player| !self.player_is_within_range(observer, player))
             || event
                 .controller()
                 .is_some_and(|player| !self.player_is_within_range(observer, player))
@@ -371,10 +376,19 @@ impl GameState {
         if self.range_of_influence.is_none() || self.source_is_exempt_from_range(source) {
             return true;
         }
-        let Some(object) = self.object(object) else {
+        let Some(object_ref) = self.object(object) else {
             return false;
         };
-        self.player_is_within_range(observer, self.controller_of(object))
+        if self.player_is_within_range(observer, self.controller_of(object_ref)) {
+            return true;
+        }
+        // CR 801.2d: a battle is also within range of players whose range
+        // includes its protector.
+        self.battle_protector(object).is_some_and(|protector| {
+            self.current_card_types(object)
+                .is_some_and(|types| types.contains(&crate::types::CardType::Battle))
+                && self.player_is_within_range(observer, protector)
+        })
     }
 
     pub fn snapshot_is_within_range(
@@ -386,6 +400,13 @@ impl GameState {
         self.range_of_influence.is_none()
             || self.source_is_exempt_from_range(source)
             || self.player_is_within_range(observer, snapshot.controller)
+            // CR 801.2d / 801.7a: a battle is also within range through its
+            // protector, using the protector it had when the snapshot was taken.
+            || (snapshot.card_types.contains(&crate::types::CardType::Battle)
+                && self
+                    .battle_protector(snapshot.object_id)
+                    .or_else(|| self.departed_battle_protectors.get(&snapshot.object_id).copied())
+                    .is_some_and(|protector| self.player_is_within_range(observer, protector)))
     }
 
     pub fn attachment_target_is_within_range(

@@ -1998,6 +1998,11 @@ export function publicPlayerGenesisRecord(player) {
   if (Array.isArray(player.commanders)) {
     record.commanders = player.commanders.map((card) => String(card || "").trim()).filter(Boolean);
   }
+  // Only seats that bring sticker sheets sign them, so older genesis records
+  // keep their exact canonical form.
+  if (Array.isArray(player.stickers) && player.stickers.length > 0) {
+    record.stickers = player.stickers.map((sheet) => String(sheet || "").trim()).filter(Boolean);
+  }
   if (Array.isArray(player.deckSlotOpenings)) {
     record.deckSlotOpenings = player.deckSlotOpenings
       .map((opening) => ({

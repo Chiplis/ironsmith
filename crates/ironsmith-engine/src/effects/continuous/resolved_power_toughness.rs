@@ -24,6 +24,35 @@ impl ResolvedPowerToughness {
         })
     }
 
+    /// "Gets +X/+Y": per CR 107.1b a calculated amount that would be
+    /// negative is zero (a literal or explicitly negated amount keeps its sign).
+    pub(crate) fn resolve_modifier(
+        game: &GameState,
+        ctx: &ExecutionContext,
+        power: &Value,
+        toughness: &Value,
+    ) -> Result<Self, ExecutionError> {
+        fn amount(
+            game: &GameState,
+            ctx: &ExecutionContext,
+            value: &Value,
+        ) -> Result<i32, ExecutionError> {
+            Ok(match value {
+                Value::SurfaceHinted { value, .. } => amount(game, ctx, value)?,
+                Value::Fixed(n) => *n,
+                Value::Add(_, _) | Value::XTimes(_) => resolve_value(game, value, ctx)?,
+                Value::Scaled(inner, factor) => {
+                    resolve_value(game, inner, ctx)?.max(0).saturating_mul(*factor)
+                }
+                _ => resolve_value(game, value, ctx)?.max(0),
+            })
+        }
+        Ok(Self {
+            power: amount(game, ctx, power)?,
+            toughness: amount(game, ctx, toughness)?,
+        })
+    }
+
     pub(crate) fn scaled(
         game: &GameState,
         ctx: &ExecutionContext,

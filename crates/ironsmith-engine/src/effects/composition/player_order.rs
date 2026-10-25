@@ -61,8 +61,21 @@ pub(crate) fn selected_players_from(
     selected: Vec<PlayerId>,
     start: PlayerId,
 ) -> Vec<PlayerId> {
-    let mut order = game.turn_store.turn_order.clone();
-    rotate_to_start(&mut order, start);
+    // CR 805.6: with shared team turns, simultaneous actions starting from
+    // the active team follow team APNAP order (each team's chosen member
+    // order) rather than raw seat order.
+    let mut order = if game.shared_team_turns_enabled() && game.is_active_player(start) {
+        game.team_apnap_player_order()
+    } else {
+        let mut order = game.turn_store.turn_order.clone();
+        rotate_to_start(&mut order, start);
+        order
+    };
+    for id in game.turn_store.turn_order.iter() {
+        if !order.contains(id) {
+            order.push(*id);
+        }
+    }
     let mut ordered = order
         .into_iter()
         .filter(|id| selected.contains(id))

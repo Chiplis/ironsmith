@@ -536,6 +536,10 @@ struct BattlefieldFlags {
     phased_out: HashSet<ObjectId>,
     /// Controller under whose control a permanent directly phased out.
     phased_out_under_controller: HashMap<ObjectId, PlayerId>,
+    /// CR 702.26n: permanents that phased out under a player who has since
+    /// left the game, keyed to the turn number at which that player's next
+    /// turn would have begun. They phase in at the next untap step after it.
+    phased_out_under_departed_until_turn: HashMap<ObjectId, u32>,
     /// Attachments that phased out only because the object they were attached
     /// to phased out. They phase in with that object, not independently.
     indirectly_phased_out: HashSet<ObjectId>,
@@ -561,6 +565,9 @@ struct BattlefieldFlags {
 struct CastPermissionFlags {
     /// Cards exiled via Madness.
     madness_exiled: HashSet<ObjectId>,
+    /// Madness-exiled incarnation -> the object it became when its resolved
+    /// madness trigger put it, uncast, into a public zone (CR 400.7k).
+    madness_public_arrivals: HashMap<ObjectId, ObjectId>,
     /// Madness cards whose trigger is resolving and casting them right now:
     /// the only window in which the madness cost may be paid (CR 702.35a).
     madness_cast_authorized: HashSet<ObjectId>,
@@ -582,6 +589,9 @@ struct CastPermissionFlags {
     prepared_spell_sources: HashMap<ObjectId, ObjectId>,
     /// Stack objects cast from a prepare spell copy ("a prepared spell").
     prepared_spells_cast: HashSet<ObjectId>,
+    /// Stable identities of prepare spell copies (copies of a card, CR 722.3,
+    /// 704.5e): they cease to exist outside the stack once no longer waiting.
+    prepare_spell_copy_stables: HashSet<StableId>,
 }
 
 /// Per-object annotation state grouped behind copy-on-write storage.
@@ -619,6 +629,10 @@ struct ObjectAnnotationStore {
     /// preserve the link when the source leaves the battlefield and its
     /// leaves-trigger resolves from last known information.
     token_creation_sources: HashMap<StableId, StableId>,
+    /// Token instance -> the exact source incarnation (object id) whose
+    /// effect created it. A source that changes zones is a new object (CR
+    /// 400.7) and doesn't inherit its former incarnation's tokens (607.2c).
+    token_creation_source_incarnations: HashMap<StableId, ObjectId>,
     /// Lasting per-source counter history ("a land that a mire counter was
     /// put onto with this artifact but that a mire counter has not been
     /// removed from with this artifact", Cyclopean Tomb): (source instance,
@@ -650,6 +664,9 @@ struct CommanderTracking {
     /// Per-component destinations chosen for a merged permanent's pending
     /// hand/library move (notably the CR 903.9b commander exception).
     pending_merged_component_destinations: HashMap<StableId, Vec<Zone>>,
+    /// CR 123.5c: the component card the owner chose to keep every sticker
+    /// when a merged or melded permanent leaves for a public zone.
+    pending_merged_sticker_component: HashMap<StableId, usize>,
 }
 
 /// Exile and stack-origin tracking grouped behind copy-on-write storage.
@@ -702,6 +719,10 @@ struct ExileTracking {
     /// Linked exile groups that return when a player who is an opponent of
     /// the effect controller becomes the monarch.
     return_exiled_when_opponent_becomes_monarch: HashMap<u64, PlayerId>,
+    /// The exact exiled incarnations of those monarch-duration groups. A
+    /// card that left exile and was exiled again is a new object the old
+    /// duration doesn't return (CR 400.7 / 610.3).
+    monarch_exile_incarnations: HashMap<u64, Vec<ObjectId>>,
     /// Linked exile groups keyed by generated runtime ID.
     linked_exile_groups: HashMap<u64, LinkedExileGroup>,
     /// Monotonic ID generator for linked exile groups.
@@ -1009,6 +1030,10 @@ pub struct ObjectStore {
     /// resolution doesn't depend on the shared runtime custom-card registry.
     linked_face_definitions_by_id: PersistentMap<crate::ids::CardId, crate::cards::CardDefinition>,
     linked_face_definitions_by_name: PersistentMap<String, crate::cards::CardDefinition>,
+    /// CR 712.8a / 715.4: front face of each registered linked-face family,
+    /// keyed by every face's card id. The first face of a family registered
+    /// is its front; card ids are opaque and carry no face order.
+    linked_face_fronts: PersistentMap<crate::ids::CardId, crate::ids::CardId>,
     /// Game-local Arc-backed payload cache for repeated objects from one card definition.
     card_shared: PersistentMap<CardId, CardSharedHandles>,
     /// Zone indexes (denormalized for efficiency).
@@ -1165,6 +1190,14 @@ pub struct TurnStore {
     /// Later registrations wait for another step, including one in this turn.
     /// The untap transaction restores this receipt when a choice or error pauses.
     pub untap_step_started_at: Option<(u32, u64)>,
+    /// CR 502.2 / 731.2: the day/night check belongs to the untap step. The
+    /// previous turn's (max per active teammate) spell count waits here until
+    /// the untap step performs it; a skipped untap step discards it.
+    pub pending_day_night_check: Option<u32>,
+    /// CR 508.8: the (turn number, combat index) of the latest combat in
+    /// which a creature was declared or put onto the battlefield attacking.
+    /// Removing every attacker later doesn't erase that history.
+    pub attackers_existed_in_combat: Option<(u32, u32)>,
     /// Players who will skip their next combat phase this turn.
     /// Checked and cleared when entering combat phase.
     pub skip_next_combat_phases: HashSet<PlayerId>,
@@ -1353,6 +1386,11 @@ pub struct EffectStore {
     pub next_combat_attack_requirements: Vec<(ObjectId, PlayerId)>,
     /// Latest resolved removal of the goaded designation for each permanent.
     pub goad_cleared_at: HashMap<ObjectId, u64>,
+    /// CR 614.13b: while a battlefield-entry batch is being prepared, the
+    /// objects its entry replacements have already chosen to change zones.
+    /// A later entry choice can't choose them again, even if a replacement
+    /// left them where they were. `None` outside entry preparation.
+    pub entry_spent_objects: Option<HashSet<ObjectId>>,
 }
 
 impl EffectStore {
@@ -1399,6 +1437,7 @@ impl Default for EffectStore {
             attack_player_requirements: Vec::new(),
             next_combat_attack_requirements: Vec::new(),
             goad_cleared_at: HashMap::new(),
+            entry_spent_objects: None,
         }
     }
 }
@@ -2167,6 +2206,14 @@ pub struct CantEffectTracker {
     /// Attackers that must be blocked this turn if able.
     /// Example: "Target creature must be blocked this turn if able."
     pub must_be_blocked: HashSet<ObjectId>,
+
+    /// CR 509.1c: how many independent must-be-blocked requirements apply to
+    /// each attacker; each counts separately when maximizing obedience.
+    pub must_be_blocked_requirement_counts: HashMap<ObjectId, usize>,
+
+    /// CR 509.1c: how many independent requirements make a blocker block a
+    /// specific attacker, keyed by (blocker, attacker).
+    pub must_block_specific_attacker_counts: HashMap<(ObjectId, ObjectId), usize>,
 
     /// Each set is one independent existential blocking requirement.
     pub must_be_blocked_by: HashMap<ObjectId, Vec<HashSet<ObjectId>>>,
@@ -3147,6 +3194,12 @@ impl CantEffectTracker {
                 .extend(attackers);
         }
         self.must_be_blocked.extend(other.must_be_blocked);
+        for (attacker, count) in other.must_be_blocked_requirement_counts {
+            *self.must_be_blocked_requirement_counts.entry(attacker).or_default() += count;
+        }
+        for (pair, count) in other.must_block_specific_attacker_counts {
+            *self.must_block_specific_attacker_counts.entry(pair).or_default() += count;
+        }
         for (attacker, groups) in other.must_be_blocked_by {
             self.must_be_blocked_by.entry(attacker).or_default().extend(groups);
         }
@@ -3349,6 +3402,8 @@ impl CantEffectTracker {
         self.cant_block_specific_attackers.clear();
         self.must_block_specific_attackers.clear();
         self.must_be_blocked.clear();
+        self.must_be_blocked_requirement_counts.clear();
+        self.must_block_specific_attacker_counts.clear();
         self.must_be_blocked_by.clear();
         self.must_be_blocked_by_at_least.clear();
         self.must_attack.clear();
@@ -5023,6 +5078,19 @@ pub struct GameState {
     range_of_influence: Option<LimitedRangeOfInfluenceState>,
     /// Present only when a CR 803 attack-left or attack-right option is active.
     attack_direction: Option<AttackDirection>,
+    /// Whether the CR 802 attack multiple players option is active. On by
+    /// default (every app format uses it); with it off, a multiplayer game's
+    /// active player chooses one defending opponent (CR 703.4h / 506.2a).
+    attack_multiple_players: bool,
+    /// CR 506.2a / 507.1 defending player chosen at the beginning of combat,
+    /// keyed by (turn number, combat phase ordinal) so it lapses on its own.
+    chosen_defending_player: Option<(u32, u32, PlayerId)>,
+    /// CR 801.7a: last protector of each battle that left the battlefield,
+    /// keyed by its former object ID, for range checks on its departure LKI.
+    departed_battle_protectors: HashMap<ObjectId, PlayerId>,
+    /// CR 732.3: (turn, game-state fingerprint, activating player, source,
+    /// ability index) for each non-mana activation this turn.
+    fragmented_loop_history: Vec<(u32, (u64, u64), PlayerId, StableId, usize)>,
     /// Explicit multiplayer team identity shared by team-format options.
     teams: Option<TeamState>,
     /// Whether CR 804 deploy creatures is active.
@@ -5643,6 +5711,10 @@ impl GameState {
             alternating_teams: None,
             range_of_influence: None,
             attack_direction: None,
+            attack_multiple_players: true,
+            chosen_defending_player: None,
+            departed_battle_protectors: HashMap::new(),
+            fragmented_loop_history: Vec::new(),
             teams: None,
             deploy_creatures: false,
             shared_team_turns: None,
@@ -6313,6 +6385,27 @@ impl GameState {
         Some(())
     }
 
+    /// CR 613.7k: when an object receives a new timestamp, each sticker on it
+    /// receives a new timestamp immediately after, keeping their relative order.
+    pub(crate) fn restamp_object_stickers(&mut self, object_id: ObjectId) {
+        let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
+            return;
+        };
+        let ids: Vec<crate::continuous::ContinuousEffectId> = self
+            .object_annotations
+            .object_stickers
+            .get(&stable_id)
+            .into_iter()
+            .flatten()
+            .flat_map(|marker| marker.name_effect.into_iter().chain(marker.ability_effects.iter().copied()))
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        self.effect_store.continuous_effects.restamp_effects(&ids);
+        self.mark_continuous_state_dirty();
+    }
+
     pub fn sticker_characteristic_total(&self, object_id: ObjectId, toughness: bool) -> i64 {
         self.object(object_id).and_then(|object| self.object_annotations.object_stickers.get(&object.stable_id))
             .into_iter().flatten().filter_map(|marker| marker.power_toughness)
@@ -6561,6 +6654,142 @@ impl GameState {
         } else {
             self.remove_stickers(stable_id);
         }
+    }
+
+    /// CR 123.5a/b: stickers on each component of a melded or merged
+    /// permanent belong to that permanent, keeping their relative timestamps.
+    pub(crate) fn absorb_component_stickers(&mut self, from: StableId, into_object: ObjectId) {
+        let Some(into) = self.object(into_object).map(|object| object.stable_id) else {
+            return;
+        };
+        if from == into {
+            return;
+        }
+        let Some(markers) = self.object_annotations_mut().object_stickers.remove(&from) else {
+            return;
+        };
+        for id in markers
+            .iter()
+            .flat_map(|marker| marker.name_effect.into_iter().chain(marker.ability_effects.iter().copied()))
+        {
+            self.effect_store.continuous_effects.retarget_sticker(id, into_object);
+        }
+        self.object_annotations_mut()
+            .object_stickers
+            .entry(into)
+            .or_default()
+            .extend(markers);
+        self.restamp_object_stickers(into_object);
+        self.mark_continuous_state_dirty();
+    }
+
+    /// CR 123.5c: before a stickered merged or melded permanent leaves for a
+    /// public zone, its owner chooses the one resulting card that keeps all
+    /// of its stickers.
+    pub(crate) fn prepare_merged_sticker_component(
+        &mut self,
+        object_id: ObjectId,
+        zone: Zone,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    ) {
+        if !zone.is_public() || zone == Zone::Battlefield {
+            return;
+        }
+        let Some((stable_id, owner)) = self
+            .object(object_id)
+            .filter(|object| object.zone == Zone::Battlefield)
+            .map(|object| (object.stable_id, object.owner))
+        else {
+            return;
+        };
+        if self
+            .object_annotations
+            .object_stickers
+            .get(&stable_id)
+            .is_none_or(|markers| markers.is_empty())
+        {
+            return;
+        }
+        let names: Vec<String> = if let Some(merged) = self.merged_permanent(stable_id) {
+            merged
+                .components
+                .iter()
+                .map(|component| component.object.name.to_string())
+                .collect()
+        } else if let Some(melded) = self.melded_permanent(stable_id) {
+            melded.components.iter().map(|component| component.name.clone()).collect()
+        } else {
+            return;
+        };
+        if names.len() < 2 {
+            return;
+        }
+        let options = names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                crate::decisions::context::SelectableOption::new(
+                    index,
+                    format!("Keep the stickers on {name}"),
+                )
+            })
+            .collect();
+        let context = crate::decisions::context::SelectOptionsContext::new(
+            owner,
+            Some(object_id),
+            "Choose the card that keeps the stickers",
+            options,
+            1,
+            1,
+        );
+        let selected = decision_maker.decide_options(self, &context);
+        if decision_maker.awaiting_choice() {
+            return;
+        }
+        let index = selected.first().copied().filter(|index| *index < names.len()).unwrap_or(0);
+        self.commander_tracking_mut()
+            .pending_merged_sticker_component
+            .insert(stable_id, index);
+    }
+
+    /// Move a departed merged or melded permanent's stickers onto the one
+    /// chosen resulting card (the first by default), or off the game when
+    /// that card went to a hidden zone.
+    pub(crate) fn distribute_merged_stickers(&mut self, departed: StableId, results: &[ObjectId]) {
+        let chosen = self
+            .commander_tracking_mut()
+            .pending_merged_sticker_component
+            .remove(&departed)
+            .unwrap_or(0);
+        if !self.object_annotations.object_stickers.contains_key(&departed) {
+            return;
+        }
+        let Some(&target) = results.get(chosen).or_else(|| results.first()) else {
+            self.remove_stickers(departed);
+            return;
+        };
+        if !self.object(target).is_some_and(|object| object.zone.is_public()) {
+            self.remove_stickers(departed);
+            return;
+        }
+        let target_stable = self.object(target).map(|object| object.stable_id);
+        if target_stable != Some(departed) {
+            self.absorb_component_stickers(departed, target);
+            return;
+        }
+        let effects: Vec<_> = self
+            .object_annotations
+            .object_stickers
+            .get(&departed)
+            .into_iter()
+            .flatten()
+            .flat_map(|marker| marker.name_effect.into_iter().chain(marker.ability_effects.iter().copied()))
+            .collect();
+        for id in effects {
+            self.effect_store.continuous_effects.retarget_sticker(id, target);
+        }
+        self.restamp_object_stickers(target);
+        self.mark_continuous_state_dirty();
     }
 
     fn remove_stickers(&mut self, stable_id: StableId) {
@@ -8101,6 +8330,32 @@ impl GameState {
         self.shuffle_library_except_then_insert_from_top(player, top_cards_in_push_order, 1, reason)
     }
 
+    /// CR 701.20d: a revealed library card that is reordered becomes a new
+    /// object in the same library position. Cards tracked by the hidden-card
+    /// layer already lose their identity through anonymous shuffle slots.
+    pub(crate) fn reidentify_reordered_library_card(&mut self, old: ObjectId) -> Option<ObjectId> {
+        if self.hidden_card_info(old).is_some() {
+            return None;
+        }
+        let object = self.object(old).filter(|o| o.zone == Zone::Library)?.clone();
+        let owner = object.owner;
+        let position = self.player(owner)?.library.iter().position(|id| *id == old)?;
+        let new_id = self.new_object_id();
+        self.remove_object(old);
+        let mut object = object;
+        object.id = new_id;
+        self.add_object(object);
+        if let Some(player) = self.player_mut(owner) {
+            player.library.with_vec_mut(|ids| {
+                ids.retain(|id| *id != new_id);
+                let position = position.min(ids.len());
+                ids.insert(position, new_id);
+            });
+        }
+        self.bump_library_top_revision(owner);
+        Some(new_id)
+    }
+
     /// Generates a new unique object ID.
     pub fn new_object_id(&mut self) -> ObjectId {
         let id = ObjectId::from_raw(self.next_object_id);
@@ -9120,7 +9375,7 @@ impl GameState {
 
     /// Can the player gain life?
     pub fn can_gain_life(&self, player: PlayerId) -> bool {
-        self.two_headed_giant_team_members(player)
+        self.shared_life_team_members(player)
             .unwrap_or_else(|| vec![player])
             .into_iter()
             .all(|member| self.effect_store.cant_effects.can_gain_life(member))
@@ -9128,7 +9383,7 @@ impl GameState {
 
     /// Can the player lose life (not from damage)?
     pub fn can_lose_life(&self, player: PlayerId) -> bool {
-        self.two_headed_giant_team_members(player)
+        self.shared_life_team_members(player)
             .unwrap_or_else(|| vec![player])
             .into_iter()
             .all(|member| self.effect_store.cant_effects.can_lose_life(member))
@@ -9162,7 +9417,7 @@ impl GameState {
 
     /// Can the player's life total change?
     pub fn can_change_life_total(&self, player: PlayerId) -> bool {
-        self.two_headed_giant_team_members(player)
+        self.shared_life_team_members(player)
             .unwrap_or_else(|| vec![player])
             .into_iter()
             .all(|member| self.effect_store.cant_effects.can_change_life_total(member))
@@ -10691,6 +10946,30 @@ impl GameState {
             .insert(def.card.id, def.clone());
         self.linked_face_definitions_by_name
             .insert(def.card.name.to_string(), def.clone());
+        if let Some(other) = def.card.other_face
+            && !self.linked_face_fronts.contains_key(&def.card.id)
+            && !self.linked_face_fronts.contains_key(&other)
+        {
+            self.linked_face_fronts.insert(def.card.id, def.card.id);
+            self.linked_face_fronts.insert(other, def.card.id);
+        }
+    }
+
+    /// Whether `shown` is the back face of the linked-face family it shares
+    /// with `other` (CR 712.8a). Falls back to card-id order for families
+    /// whose registration order is unknown.
+    pub(crate) fn linked_face_is_back(
+        &self,
+        shown: crate::ids::CardId,
+        other: crate::ids::CardId,
+    ) -> bool {
+        match (
+            self.linked_face_fronts.get(&shown),
+            self.linked_face_fronts.get(&other),
+        ) {
+            (Some(front), Some(other_front)) if front == other_front => *front != shown,
+            _ => shown.0 > other.0,
+        }
     }
 
     fn load_linked_face_definition(
@@ -10752,16 +11031,29 @@ impl GameState {
     /// The prepare spell is the card's other face; a permanent that is not a
     /// prepare card (a token copy of one, say) can never become prepared.
     pub fn has_prepare_spell(&self, id: crate::ids::ObjectId) -> bool {
-        let Some(object) = self.object(id) else {
-            return false;
-        };
-        object.linked_face_layout == crate::card::LinkedFaceLayout::Prepare
-            && self
-                .linked_face_definition_by_name_or_id(
-                    object.other_face_name.as_deref(),
-                    object.other_face,
-                )
-                .is_some()
+        self.prepare_spell_definition(id).is_some()
+    }
+
+    /// CR 722.2a/b: the prepare spell is part of the permanent's current
+    /// copiable values, so a copy of a preparation card has it and a
+    /// preparation card copying something else doesn't.
+    fn copiable_prepare_spell_name(&self, id: crate::ids::ObjectId) -> Option<Option<String>> {
+        let object = self.object(id)?;
+        if object.zone != crate::zone::Zone::Battlefield {
+            return None;
+        }
+        let chars = self.calculated_characteristics_arc(id)?;
+        let values = chars.copy_values.as_ref()?;
+        if values.copy_face_layout == crate::card::LinkedFaceLayout::Prepare
+            && let Some(face) = values.other_copy_face.as_ref()
+        {
+            return Some(Some(face.name.clone()));
+        }
+        // Without a copy effect the printed linked face is authoritative.
+        if values.name == object.name.as_ref() {
+            return None;
+        }
+        Some(None)
     }
 
     /// Resolve the currently displayed definition without confusing equal names
@@ -10795,6 +11087,9 @@ impl GameState {
         if object.zone != crate::zone::Zone::Battlefield
             || object.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike
             || self.is_face_down(id)
+            // CR 701.27g / 730.2i: a merged permanent is never a transformed
+            // permanent, even if it has a transformed face up.
+            || self.merged_permanent(object.stable_id).is_some()
         {
             return false;
         }
@@ -10807,7 +11102,7 @@ impl GameState {
                 .linked_face_definition_by_name_or_id(object.other_face_name.as_deref(), None)
                 .map(|definition| definition.card.id),
         };
-        matches!((shown_id, other_id), (Some(shown), Some(other)) if shown.0 > other.0)
+        matches!((shown_id, other_id), (Some(shown), Some(other)) if self.linked_face_is_back(shown, other))
     }
     /// The prepare spell face of a prepared permanent, if it has one.
     pub fn prepare_spell_definition(
@@ -10815,6 +11110,17 @@ impl GameState {
         id: crate::ids::ObjectId,
     ) -> Option<crate::cards::CardDefinition> {
         let object = self.object(id)?;
+        if let Some(copiable) = self.copiable_prepare_spell_name(id) {
+            let name = copiable?;
+            let definition = if object.linked_face_layout == crate::card::LinkedFaceLayout::Prepare
+                && object.other_face_name.as_deref() == Some(name.as_str())
+            {
+                self.linked_face_definition_by_name_or_id(Some(&name), object.other_face)
+            } else {
+                self.linked_face_definition_by_name_or_id(Some(&name), None)
+            };
+            return definition;
+        }
         if object.linked_face_layout != crate::card::LinkedFaceLayout::Prepare {
             return None;
         }
@@ -10822,6 +11128,24 @@ impl GameState {
             object.other_face_name.as_deref(),
             object.other_face,
         )
+    }
+
+    /// Resolve an explicitly authored meld pair, falling back to the printed catalog.
+    pub fn meld_counterpart_name(&self, name: &str) -> Option<String> {
+        if let Some(front) = self.linked_face_definition_by_name_or_id(Some(name), None)
+            && let Some(partner_name) = front.card.meld_partner_name.as_deref()
+        {
+            let partner = self.linked_face_definition_by_name_or_id(Some(partner_name), None)?;
+            // Both physical fronts must name each other and the same result.
+            if partner.card.meld_partner_name.as_deref().is_some_and(|other| other.eq_ignore_ascii_case(name))
+                && front.card.other_face_name.is_some()
+                && front.card.other_face_name == partner.card.other_face_name
+            {
+                return Some(partner.card.name.clone());
+            }
+            return None;
+        }
+        crate::cards::meld_counterpart_name(name).map(str::to_owned)
     }
 
     pub fn linked_face_definition_by_name_or_id(

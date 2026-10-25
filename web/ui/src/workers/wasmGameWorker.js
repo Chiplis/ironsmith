@@ -137,7 +137,7 @@ const CARD_ZONE_KEYS = [
 
 // Unknown methods invalidate by default. Presentation reads cannot cancel a
 // long search merely because the user hovered a card or requested a snapshot.
-const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|captureExactBuildSnapshot|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
+const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|deckColorNoteIssues|isKnownCardName|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|captureExactBuildSnapshot|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 let sharedAnalysisRuntime = false;
@@ -440,7 +440,18 @@ function collectDeckNames(payload, out = []) {
   // which draws need a Miracle reveal window. Load them before setup so
   // eligibility does not depend on which player's cards this worker cached.
   collectDeckNames(payload.publicDecklists, out);
+  // Sticker sheets (CR 123.2) are not cards; each has its own route.
+  for (const sheets of Array.isArray(payload.stickerSheets) ? payload.stickerSheets : []) {
+    for (const sheet of Array.isArray(sheets) ? sheets : []) {
+      if (typeof sheet === "string" && sheet.trim()) out.push(stickerSheetRouteName(sheet));
+    }
+  }
   return out;
+}
+
+// Must match generate_baked_registry.sticker_sheet_route_name.
+function stickerSheetRouteName(name) {
+  return `${String(name).trim()} (sticker sheet)`;
 }
 
 function collectNamesForMethod(method, args) {
@@ -451,6 +462,7 @@ function collectNamesForMethod(method, args) {
       names.push(...DEMO_CARD_NAMES);
       break;
     case "filterKnownCardNames":
+    case "deckColorNoteIssues":
       names.push(...(Array.isArray(args?.[0]) ? args[0] : []));
       break;
     case "replayTrustedMatch":
@@ -1135,6 +1147,10 @@ function handleCall(msg) {
         const failed = new Set((registration?.failed || []).map(failure => failure?.name));
         if (source.group?.kind === "dungeon" && !failed.has(source.group.name)) {
           registeredCardRoutes.add(cardRouteKey(source.group.name));
+        }
+        // Sticker sheets live in the engine's sticker-sheet catalog.
+        if (source.group?.kind === "sticker_sheet" && !failed.has(source.group.name)) {
+          registeredCardRoutes.add(cardRouteKey(stickerSheetRouteName(source.group.name)));
         }
       }
     }

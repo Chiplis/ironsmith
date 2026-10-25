@@ -721,6 +721,18 @@ pub fn has_protection_from_source(
     has_protection_from_source_with_view(game, target_id, source_id, &view)
 }
 
+/// Check if a permanent has protection from an object described by a
+/// snapshot that need not exist in the game (for example a token that is
+/// about to be created, CR 303.4i).
+pub fn has_protection_from_snapshot(
+    game: &GameState,
+    target_id: ObjectId,
+    source: &crate::snapshot::ObjectSnapshot,
+) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    has_protection_from_subject_with_view(game, target_id, ObjectSubject::Snapshot(source), &view)
+}
+
 /// Rewrite a "hexproof from [activated/triggered] abilities" quality for a
 /// source that is targeting with an ability not (or no longer) on the stack
 /// (Volatile Stormdrake, CR 702.11d). Ability-kind stack constraints are

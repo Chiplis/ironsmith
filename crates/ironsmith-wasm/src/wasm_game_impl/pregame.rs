@@ -386,6 +386,9 @@ impl WasmGame {
         self.priority_affordability_completed_key = None;
         let player_count = player_names.len();
         self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
+        // CR 802: the app's multiplayer lobbies play Free-for-All with the
+        // attack multiple players option (CR 806.2b / 903.2).
+        self.game.set_attack_multiple_players(true);
         // Card definitions are a session-level catalog, not match state. In the
         // lean WASM build the browser loads per-card sources on demand before
         // validation; resetting the registry here would drop those definitions
@@ -2445,6 +2448,15 @@ impl WasmGame {
             };
 
             match &pregame.stage {
+                PregameStage::StickerSheets { queue } if queue.is_empty() => {
+                    if let Some(pregame) = self.pregame.as_mut() {
+                        pregame.stage = PregameStage::MulliganDecision {
+                            undecided_players: pregame.player_order.clone(),
+                            round_mulliganers: Vec::new(),
+                        };
+                    }
+                    continue;
+                }
                 PregameStage::MulliganDecision {
                     undecided_players,
                     round_mulliganers,
@@ -2547,6 +2559,12 @@ impl WasmGame {
         };
 
         let ctx = match &pregame.stage {
+            PregameStage::StickerSheets { queue } => {
+                let Some((player, offers)) = queue.first() else {
+                    return Ok(None);
+                };
+                Self::sticker_sheet_choice_decision(*player, offers)
+            }
             PregameStage::MulliganDecision {
                 undecided_players, ..
             } => {
@@ -3044,6 +3062,16 @@ impl WasmGame {
                     }
                 }
             }
+            (DecisionContext::SelectOptions(_), UiCommand::SelectOptions { option_indices })
+                if matches!(
+                    self.pregame.as_ref().map(|pregame| &pregame.stage),
+                    Some(PregameStage::StickerSheets { .. })
+                ) =>
+            {
+                if let Err(err) = self.apply_sticker_sheet_choice(&option_indices) {
+                    return restore(self, pending_ctx, JsValue::from_str(&err));
+                }
+            }
             (DecisionContext::Order(order), UiCommand::SelectOptions { option_indices }) => {
                 let legal: Vec<usize> = (0..order.items.len()).collect();
                 if let Err(err) = validate_option_selection(
@@ -3130,12 +3158,19 @@ impl WasmGame {
             let _ = self.game.draw_cards(*player_id, size);
         }
         let pregame_order = self.game.team_apnap_player_order();
-        self.pregame = Some(PregameState::new_with_hand_sizes(
+        let mut pregame = PregameState::new_with_hand_sizes(
             &pregame_order,
             opening_hand_size,
             opening_hand_sizes,
             self.match_format,
-        ));
+        );
+        let sticker_sheet_choices = self.take_sticker_sheet_choices(&pregame_order);
+        if !sticker_sheet_choices.is_empty() {
+            pregame.stage = PregameStage::StickerSheets {
+                queue: sticker_sheet_choices,
+            };
+        }
+        self.pregame = Some(pregame);
         // recompute_ui_decision reports JsValue errors for the UI layer; on
         // the native path an error JsValue cannot exist (its construction
         // panics), so this conversion only runs in wasm builds.
@@ -3144,6 +3179,7 @@ impl WasmGame {
     }
 
     fn reset_runtime_state(&mut self) {
+        self.loop_shortcut = None;
         self.trigger_queue = TriggerQueue::new();
         self.priority_state = PriorityLoopState::new(self.game.players.len());
         self.pregame = None;

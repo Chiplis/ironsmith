@@ -85,7 +85,7 @@ impl TriggerMatcher for BlocksTrigger {
         };
         if let Some(obj) = ctx.game.object(e.blocker) {
             self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-                && is_first_blocked_attacker_for_blocker(ctx.game, e.blocker, e.attacker)
+                && e.is_blocker_block_transition(ctx.game)
                 && (!self.one_or_more || self.is_first_matching_blocker_this_combat(e.blocker, ctx))
         } else {
             false

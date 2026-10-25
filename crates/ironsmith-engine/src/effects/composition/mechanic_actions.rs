@@ -1929,8 +1929,16 @@ impl EffectExecutor for DevourEffect {
                             .unwrap_or_default()
                             .to_vec();
                         let count = sacrifices.outcome.count_or_zero();
-                        game.set_devoured_objects(ctx.source, devoured);
-                        game.set_devoured_count(ctx.source, count.max(0) as u32);
+                        // CR 702.82b: each devour instance adds to the
+                        // permanents this object devoured; a later instance
+                        // never erases an earlier one's sacrifices.
+                        let mut all_devoured = game.devoured_objects(ctx.source).to_vec();
+                        all_devoured.extend(devoured);
+                        let total = game
+                            .devoured_count(ctx.source)
+                            .saturating_add(count.max(0) as u32);
+                        game.set_devoured_objects(ctx.source, all_devoured);
+                        game.set_devoured_count(ctx.source, total);
                         let devoured_count = u32::try_from(count).map_err(|_| {
                             ExecutionError::InternalError(
                                 "devour count exceeds the counter range".into(),

@@ -61,7 +61,31 @@ fn choose_source_of_your_choice_matching_colors(
 ) -> SourceChoiceSelection {
     let mut candidates = Vec::new();
     candidates.extend(game.stack.iter().map(|entry| entry.object_id));
-    candidates.extend(game.battlefield.iter().copied());
+    // CR 702.26b: phased-out permanents are treated as though they don't exist.
+    candidates.extend(
+        game.battlefield
+            .iter()
+            .copied()
+            .filter(|id| !game.is_phased_out(*id)),
+    );
+    // CR 609.7a: a source of damage may also be an object referred to by an
+    // object on the stack, or a face-up object in the command zone.
+    candidates.extend(game.stack.iter().flat_map(|entry| {
+        entry.targets.iter().filter_map(|target| match target {
+            crate::game_state::Target::Object(id) if game.object(*id).is_some() => Some(*id),
+            _ => None,
+        })
+    }));
+    candidates.extend(
+        game.command_zone
+            .iter()
+            .copied()
+            .filter(|id| {
+                game.object(*id).is_some()
+                    && !game.is_face_down(*id)
+                    && !game.is_face_down_conspiracy(*id)
+            }),
+    );
     candidates.sort_by_key(|id| id.0);
     candidates.dedup();
     if let Some(filter) = required_filter {

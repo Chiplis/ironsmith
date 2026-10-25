@@ -23,6 +23,7 @@ pub(super) fn prepare_found_cards(
     destination: Zone,
     chooser: PlayerId,
     overridden: bool,
+    tapped: bool,
 ) -> Result<
     (
         FoundCardsExileReceipt,
@@ -58,7 +59,7 @@ pub(super) fn prepare_found_cards(
             chosen_ids
                 .iter()
                 .copied()
-                .map(|id| (id, BattlefieldEntryOptions::preserve(false)))
+                .map(|id| (id, BattlefieldEntryOptions::preserve(tapped)))
                 .collect(),
         )?;
         if ctx.decision_maker.awaiting_choice() {

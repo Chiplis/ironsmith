@@ -2259,13 +2259,19 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 destination,
                 reveal,
                 progress_tag,
-            }) => f
-                .debug_struct("SearchLibrarySlotsToHand")
-                .field("slots", slots)
-                .field("destination", destination)
-                .field("reveal", reveal)
-                .field("progress_tag", progress_tag)
-                .finish(),
+                tapped,
+            }) => {
+                let mut debug = f.debug_struct("SearchLibrarySlotsToHand");
+                debug
+                    .field("slots", slots)
+                    .field("destination", destination)
+                    .field("reveal", reveal)
+                    .field("progress_tag", progress_tag);
+                if *tapped {
+                    debug.field("tapped", tapped);
+                }
+                debug.finish()
+            }
             Self::Stack(StackActionAst::RetargetStackObject {
                 target,
                 mode,

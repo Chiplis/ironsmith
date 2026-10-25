@@ -337,6 +337,8 @@ pub enum StaticAbilityId {
     SuppressMatchingTriggeredAbilities,
     DoubleDamageFromSourcesYouControlOfChosenType,
     StartingLifeBonus,
+    /// "You are the starting player" (Power Play, CR 103.1c).
+    YouAreTheStartingPlayer,
     BuybackCostReduction,
     LegendRuleDoesntApply,
     LegendRuleDoesntApplyToController,
@@ -360,6 +362,9 @@ pub enum StaticAbilityId {
     DraftRuleText,
     HiddenAgenda,
     DoubleAgenda,
+    /// CR 315.5a / 103.1: a conspiracy that makes its owner the starting
+    /// player (Power Play).
+    StartingPlayer,
     KeywordText,
     KeywordMarker,
     /// "If this enchantment leaves the battlefield, this effect continues
@@ -977,6 +982,7 @@ impl StaticAbilityId {
             | SuppressMatchingTriggeredAbilities
             | DoubleDamageFromSourcesYouControlOfChosenType
             | StartingLifeBonus
+            | YouAreTheStartingPlayer
             | BuybackCostReduction
             | LegendRuleDoesntApply
             | LegendRuleDoesntApplyToController
@@ -1003,6 +1009,7 @@ impl StaticAbilityId {
             | DraftRuleText
             | HiddenAgenda
             | DoubleAgenda
+            | StartingPlayer
             | KeywordText
             | KeywordMarker
             | StaticEffectsContinueUntilEndOfTurnAfterLeaving

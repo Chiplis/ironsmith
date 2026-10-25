@@ -343,6 +343,12 @@ pub(crate) fn create_stack_copy_from_object(
     game.stack.push(copy_entry);
     game.queue_trigger_event(provenance,
         crate::triggers::TriggerEvent::new_with_provenance(added, provenance));
+    // CR 722.3d: a copy of a prepared spell is also a prepared spell.
+    if game.was_cast_as_prepared_spell(original_entry.object_id)
+        || game.was_cast_as_prepared_spell(source.id)
+    {
+        game.record_prepared_spell_cast(copy_id);
+    }
     Ok(Some(copy_id))
 }
 
@@ -438,6 +444,23 @@ pub(crate) fn stack_copy_events(
     }
     if matches!(order, CopyCompletionOrder::TargetsThenCopy) {
         events.extend(spell);
+    }
+    // CR 700.13: putting a copy of a triggered ability that targets an
+    // opponent (or what they control) onto the stack commits a crime. Copying
+    // an activated ability isn't activating it.
+    if entry.is_ability
+        && entry.triggering_event.is_some()
+        && crate::game_loop::targets_commit_crime(game, entry.controller, &entry.targets)
+    {
+        events.push(TriggerEvent::new_with_provenance(
+            crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::CommitCrime,
+                entry.controller,
+                copy_id,
+                1,
+            ),
+            ctx.provenance,
+        ));
     }
     events
 }

@@ -2425,3 +2425,44 @@ fn cr_702_186a_b_infinity_ability_works_only_while_harnessed() {
     run_turn(&mut game, &mut dm);
     assert_eq!(by_name(&game, Zone::Battlefield, "Dead Bear").len(), 1, "CR 702.186a/b: harnessed, it has the ∞ ability; log={:?}", log.borrow());
 }
+
+#[test]
+fn zz_debug_gh() {
+    let mut game = new_game();
+    let whisper = compile("Unending Whisper", "Mana cost: {U}\nType: Sorcery\nDraw a card.\nHarmonize {5}{U}");
+    lands(&mut game, alice(), Subtype::Island, 2);
+    let _big = vanilla(&mut game, alice(), "Big Friend", 4, 4);
+    let card = put(&mut game, &whisper, alice(), Zone::Graveyard);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice());
+    let acts = ironsmith::compute_legal_actions(&game, alice()).unwrap();
+    eprintln!("DBG harmonize card={card:?} acts={acts:?}");
+    for (n, t) in [("Prize Booth", "Type: Artifact — Attraction\nVisit — Claim the prize!\nPrize — Create two Treasure tokens."),
+                   ("Parser Probe", "Type: Artifact — Attraction\nVisit — Claim the prize!\nPrize — Create two Treasure tokens."),
+                   ("Prize Booth", "Type: Artifact — Attraction\nVisit — Create two Treasure tokens.")] {
+        let r = ironsmith_compiler_runtime::compile_to_runtime_definition(n, t, false);
+        eprintln!("DBG prize {n}: {:?}", r.as_ref().err());
+    }
+    let mut g = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let mk = |name: &str, rules: &str| { let mut d = compile(name, &format!("Type: Conspiracy\n{rules}")); d.card.card_types = vec![CardType::Conspiracy]; d };
+    let a1 = mk("Agenda Anthem", "Hidden agenda\nCreatures you control with the chosen name get +1/+1.");
+    let a2 = mk("Second Agenda Anthem", "Hidden agenda\nCreatures you control with the chosen name get +2/+2.");
+    eprintln!("DBG agenda abilities {:#?}", a2.abilities);
+    g.enable_conspiracy(vec![(alice(), vec![ironsmith::ConspiracySetupCard { definition: a1, agenda_names: vec!["Grizzly Bears".into()] }, ironsmith::ConspiracySetupCard { definition: a2, agenda_names: vec!["Runeclaw Bear".into()] }])]).unwrap();
+    for id in g.conspiracy_cards() { eprintln!("DBG agenda {id:?} chosen={:?}", g.chosen_named_option(id)); }
+    for single in [0usize, 1, 2] {
+        let mut g = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let a1 = mk("Agenda Anthem", "Hidden agenda\nCreatures you control with the chosen name get +1/+1.");
+        let a2 = mk("Second Agenda Anthem", "Hidden agenda\nCreatures you control with the chosen name get +2/+2.");
+        let mut setup = vec![];
+        if single != 2 { setup.push(ironsmith::ConspiracySetupCard { definition: a1, agenda_names: vec!["Grizzly Bears".into()] }); }
+        if single != 1 { setup.push(ironsmith::ConspiracySetupCard { definition: a2, agenda_names: vec!["Runeclaw Bear".into()] }); }
+        g.enable_conspiracy(vec![(alice(), setup)]).unwrap();
+        for id in g.conspiracy_cards() { g.turn.priority_player = Some(alice()); ironsmith::special_actions::perform(ironsmith::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id: id }, &mut g, alice(), &mut SelectFirstDecisionMaker).unwrap(); }
+        let b = vanilla(&mut g, alice(), "Grizzly Bears", 2, 2);
+        let r = vanilla(&mut g, alice(), "Runeclaw Bear", 2, 2);
+        g.refresh_continuous_state().unwrap();
+        eprintln!("DBG agenda single={single} bears={:?} rune={:?}", g.current_power(b), g.current_power(r));
+    }
+}

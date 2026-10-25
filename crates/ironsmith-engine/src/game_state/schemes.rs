@@ -68,6 +68,9 @@ impl GameState {
                 }
             } else if variant == ArchenemyVariant::Default {
                 20
+            } else if variant == ArchenemyVariant::Commander {
+                // CR 904.13b: the opposing team's shared life total starts at 60.
+                60
             } else {
                 player.starting_life
             };
@@ -90,6 +93,33 @@ impl GameState {
         }
 
         self.archenemy = Some(state);
+        // CR 904.2/904.13a: Archenemy is Team vs. Team (the archenemy alone
+        // against everyone else) using the shared team turns option.
+        if variant != ArchenemyVariant::SupervillainRumble && self.teams.is_none() {
+            let others = self
+                .turn_store
+                .turn_order
+                .iter()
+                .copied()
+                .filter(|player| !archenemies.contains(player))
+                .collect::<Vec<_>>();
+            let mut teams = vec![archenemies.iter().copied().collect::<Vec<_>>()];
+            let mut listed = others.iter().copied().collect::<HashSet<_>>();
+            listed.extend(archenemies.iter().copied());
+            let mut others = others;
+            others.extend(
+                self.players
+                    .iter()
+                    .map(|player| player.id)
+                    .filter(|player| !listed.contains(player)),
+            );
+            if !others.is_empty() {
+                teams.push(others);
+                if self.set_teams(teams).is_ok() {
+                    let _ = self.enable_shared_team_turns();
+                }
+            }
+        }
         self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
         Ok(())
@@ -200,6 +230,8 @@ impl GameState {
             .expect("Archenemy state exists")
             .face_up
             .push(object);
+        // CR 613.7h: a scheme card receives a timestamp when turned face up.
+        self.effect_store.continuous_effects.record_face_change(object);
         let provenance = ProvNodeId::default();
         self.queue_trigger_event(
             provenance,
@@ -260,6 +292,9 @@ impl GameState {
         let new_id = self.new_object_id();
         object.id = new_id;
         object.stable_id = stable_id;
+        // CR 400.9: the scheme turned face down is a new object without the
+        // previous object's counters.
+        object.counters = Default::default();
         object.last_modified = 0;
         object.zone = Zone::Command;
         for ability in object.abilities_mut() {

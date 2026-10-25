@@ -1465,8 +1465,22 @@ pub(crate) fn native_exile_normal_cast_origin(
     game.object(card_id).is_some_and(|card| {
         card.zone == Zone::Exile
             && (game.adventure_exiled_player(card_id) == Some(player)
-                || (game.is_prepared_spell_copy(card_id) && game.controller_of(card) == player))
+                || (game.is_prepared_spell_copy(card_id)
+                    && prepared_copy_caster(game, card_id, card) == player))
     })
+}
+
+/// CR 722.3c: the prepared permanent's current controller may cast its
+/// prepare spell copy.
+fn prepared_copy_caster(
+    game: &GameState,
+    copy_id: ObjectId,
+    copy: &crate::object::Object,
+) -> PlayerId {
+    game.prepared_spell_source(copy_id)
+        .and_then(|source| game.object(source))
+        .map(|source| game.controller_of(source))
+        .unwrap_or_else(|| game.controller_of(copy))
 }
 
 fn add_exile_cast_actions(
@@ -1487,16 +1501,43 @@ fn add_exile_cast_actions(
             append_blind_exile_intents(game, actions, player, card_id, view)?;
             continue;
         }
-        append_cast_actions_from_zone_for_card(
-            game,
-            actions,
-            player,
-            card_id,
-            card,
-            Zone::Exile,
-            view,
-            exile_has_active_grants,
-        )?;
+        // CR 406.3b: a player allowed to look at a face-down exiled card may
+        // cast it under a permission for spells with certain qualities when
+        // the resulting spell has them; test the face that would be cast.
+        let inspected_face_up = if game.is_face_down(card_id)
+            && game.can_player_look_at_face_down_exiled_card(card_id, player)
+        {
+            game.hypothetical_face_up(card_id)
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+        } else {
+            None
+        };
+        if let Some(face_up) = &inspected_face_up
+            && let Some(face_up_card) = face_up.object(card_id)
+        {
+            let face_up_view = DerivedGameView::new(face_up);
+            append_cast_actions_from_zone_for_card(
+                face_up,
+                actions,
+                player,
+                card_id,
+                face_up_card,
+                Zone::Exile,
+                &face_up_view,
+                exile_has_active_grants,
+            )?;
+        } else {
+            append_cast_actions_from_zone_for_card(
+                game,
+                actions,
+                player,
+                card_id,
+                card,
+                Zone::Exile,
+                view,
+                exile_has_active_grants,
+            )?;
+        }
         // A prepare spell copy waits in exile for exactly one caster: whoever
         // controls the prepared permanent right now.
         // CR 715.3d: the Adventure spell's controller may cast the card.
@@ -1565,8 +1606,13 @@ fn add_hand_alternative_cast_actions(
                 casting_method: CastingMethod::SplitOtherHalf,
             });
         }
+        // CR 118.6 / 702.102: a fused split spell's total cost includes both
+        // halves' mana costs; a half with no mana cost makes it unpayable.
         if summary.has_split_other_half
             && summary.has_fuse
+            && summary.card.mana_cost_owned().is_some()
+            && super::mana::linked_face_definition(cast_ctx.game, summary.card)
+                .is_some_and(|other| other.card.mana_cost.is_some())
             && can_cast_spell_with_context(summary.card, &CastingMethod::Fuse, cast_ctx)
         {
             actions.push(LegalAction::CastSpell {
@@ -1638,14 +1684,31 @@ fn add_battlefield_actions(
                         ability_index,
                     }
                 }
-                crate::static_abilities::StaticAbilityId::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
-                | crate::static_abilities::StaticAbilityId::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn => {
-                    SpecialAction::IgnoreSourceEffect {
-                        source_id,
-                        ability_index,
-                    }
-                }
                 _ => continue,
+            };
+            if special_action_is_legal(can_perform_check(&action, game, player))? {
+                actions.push(LegalAction::SpecialAction(action));
+            }
+        }
+        // CR 116.2d: an ignore-this-effect permission is a current static
+        // ability, so granted copies count and removed ones don't.
+        let current = game
+            .current_abilities(source_id)
+            .unwrap_or_else(|| source.abilities_vec());
+        for (ability_index, ability) in current.iter().enumerate() {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if !matches!(
+                static_ability.id(),
+                crate::static_abilities::StaticAbilityId::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
+                    | crate::static_abilities::StaticAbilityId::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+            ) {
+                continue;
+            }
+            let action = SpecialAction::IgnoreSourceEffect {
+                source_id,
+                ability_index,
             };
             if special_action_is_legal(can_perform_check(&action, game, player))? {
                 actions.push(LegalAction::SpecialAction(action));
@@ -1782,6 +1845,18 @@ fn collect_non_battlefield_source_ids(
             .copied()
             .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
     );
+    // CR 113.6b: an activated ability that states it functions from the
+    // library can be activated there.
+    if let Some(owner) = game.player(player) {
+        non_battlefield_ids.extend(owner.library.iter().copied().filter(|id| {
+            game.object(*id).is_some_and(|obj| {
+                obj.abilities.iter().any(|ability| {
+                    matches!(ability.kind, crate::ability::AbilityKind::Activated(_))
+                        && ability.functions_in(&Zone::Library)
+                })
+            })
+        }));
+    }
     if game.planar_controller() == Some(player) {
         non_battlefield_ids.extend(
             game.face_up_planar_objects()
@@ -1876,9 +1951,19 @@ pub fn compute_legal_actions(
     game: &GameState,
     player: PlayerId,
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
-    with_complete_legality_query(game, |checked| {
+    let mut actions = with_complete_legality_query(game, |checked| {
         compute_legal_actions_checked(checked, player)
-    })
+    })?;
+    // CR 732.3: a fragmented loop that returned the game to an earlier state
+    // forces the chooser to make a different game choice.
+    let forbidden = game.fragmented_loop_forbidden_activations(player);
+    if !forbidden.is_empty() {
+        actions.retain(|action| {
+            !matches!(action, LegalAction::ActivateAbility { source, ability_index }
+                if forbidden.contains(&(*source, *ability_index)))
+        });
+    }
+    Ok(actions)
 }
 
 pub(crate) fn with_complete_legality_query<T>(
@@ -2514,6 +2599,42 @@ fn loyalty_negative_costs_payable(
     required == 0 || game.counter_count(source, crate::CounterType::Loyalty) >= required
 }
 
+/// CR 606.5: a loyalty cost changed by an effect ("cost an additional [+1]",
+/// Carth the Lion) is checked as the single changed cost. Returns the cost the
+/// printed-cost precheck should price, or `None` when no loyalty cost can be
+/// paid.
+fn loyalty_precheck_cost<'a>(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    activated: &'a crate::ability::ActivatedAbility,
+    view: &DerivedGameView<'_>,
+) -> Option<std::borrow::Cow<'a, crate::cost::TotalCost>> {
+    let payable = |cost: &crate::cost::TotalCost| match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            loyalty_negative_costs_payable(game, source, costs)
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
+            branch
+                .as_all()
+                .is_some_and(|costs| loyalty_negative_costs_payable(game, source, costs))
+        }),
+    };
+    if !activated.is_loyalty_ability() || payable(&activated.mana_cost) {
+        return Some(std::borrow::Cow::Borrowed(&activated.mana_cost));
+    }
+    let effective = calculate_effective_activation_total_cost_with_view(
+        game,
+        controller,
+        source,
+        &activated.mana_cost,
+        &[],
+        Some(ActivationCostAbility::of(game, controller, source, activated)),
+        view,
+    );
+    payable(&effective).then_some(std::borrow::Cow::Owned(effective))
+}
+
 fn total_cost_branch_is_payable_with_view(
     game: &GameState,
     controller: PlayerId,
@@ -2691,6 +2812,34 @@ fn player_may_activate_equip_abilities_any_time(
                 crate::ability::AbilityKind::Static(static_ability)
                     if static_ability.id()
                         == crate::static_abilities::StaticAbilityId::EquipAbilitiesAnyTime
+            )
+        })
+    })
+}
+
+fn cost_is_cycle_keyword_action(cost: &crate::costs::Cost) -> bool {
+    cost.effect_ref()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>())
+        .is_some_and(|emit| emit.action == crate::events::KeywordActionKind::Cycle)
+}
+
+fn players_cant_cycle(game: &GameState, view: &DerivedGameView<'_>) -> bool {
+    game.battlefield.iter().copied().any(|object_id| {
+        if game.is_phased_out(object_id) {
+            return false;
+        }
+        let Some(object) = game.object(object_id) else {
+            return false;
+        };
+        let abilities = view
+            .abilities_rc(object_id)
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
+        abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::PlayersCantCycle
             )
         })
     })
@@ -2877,6 +3026,17 @@ fn activation_precheck_with_view(
         return None;
     }
 
+    // CR 702.29f: an effect that stops players from cycling also stops
+    // typecycling; both are activated abilities whose cost cycles the card.
+    if every_cost_branch_requires(&activated.mana_cost, cost_is_cycle_keyword_action)
+        && players_cant_cycle(game, view)
+    {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
+
     if !exhaust_activation_allows(game, controller, source, ability_index, activated, view) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
@@ -2917,22 +3077,14 @@ fn activation_precheck_with_view(
         }
 
         let reason = activated.payment_reason(game, source, controller);
-        let loyalty_costs_payable = match activated.mana_cost.kind() {
-            ironsmith_core::TotalCostKind::All(costs) => {
-                loyalty_negative_costs_payable(game, source, costs)
-            }
-            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
-                branch
-                    .as_all()
-                    .is_some_and(|costs| loyalty_negative_costs_payable(game, source, costs))
-            }),
-        };
-        if activated.is_loyalty_ability() && !loyalty_costs_payable {
+        let Some(precheck_cost) =
+            loyalty_precheck_cost(game, controller, source, activated, view)
+        else {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_precheck_ms(started_at.elapsed_ms());
             }
             return None;
-        }
+        };
         if !crate::cost::prospective_references::activation_reference_preflight(
             game,
             source,
@@ -2945,7 +3097,7 @@ fn activation_precheck_with_view(
                 game,
                 controller,
                 source,
-                &activated.mana_cost,
+                &precheck_cost,
                 reason,
                 view,
             )
@@ -3019,22 +3171,13 @@ fn activation_precheck_with_view(
     }
 
     let reason = activated.payment_reason(game, source, controller);
-    let loyalty_costs_payable = match activated.mana_cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => {
-            loyalty_negative_costs_payable(game, source, costs)
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
-            branch
-                .as_all()
-                .is_some_and(|costs| loyalty_negative_costs_payable(game, source, costs))
-        }),
-    };
-    if activated.is_loyalty_ability() && !loyalty_costs_payable {
+    let Some(precheck_cost) = loyalty_precheck_cost(game, controller, source, activated, view)
+    else {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
         return None;
-    }
+    };
     if !crate::cost::prospective_references::activation_reference_preflight(
         game,
         source,
@@ -3047,7 +3190,7 @@ fn activation_precheck_with_view(
             game,
             controller,
             source,
-            &activated.mana_cost,
+            &precheck_cost,
             reason,
             view,
         )

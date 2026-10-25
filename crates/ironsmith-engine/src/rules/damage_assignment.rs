@@ -87,6 +87,25 @@ pub(crate) fn prepare_processed_damage_assignment(
     {
         plan.ui_ids.push(source);
     }
+    // CR 120.3b/d: counters placed as a result of damage are put there by the
+    // damage source's current controller, not the resolving ability's.
+    let damage_cause = {
+        let mut cause = ctx.cause.clone();
+        let current = observed
+            .object(ctx.source)
+            .filter(|object| {
+                matches!(
+                    object.zone,
+                    crate::zone::Zone::Battlefield | crate::zone::Zone::Stack
+                )
+            })
+            .and_then(|_| game.current_controller(ctx.source))
+            .or_else(|| ctx.source_snapshot.as_ref().map(|source| source.controller));
+        if let Some(controller) = current {
+            cause.source_controller = Some(controller);
+        }
+        cause
+    };
     let consequence = match target {
         DamageTarget::Player(player) => {
             if !observed
@@ -108,7 +127,7 @@ pub(crate) fn prepare_processed_damage_assignment(
                         player,
                         crate::CounterType::Poison,
                         amount,
-                        ctx.cause.clone(),
+                        damage_cause.clone(),
                     )
                     .with_provenance(ctx.provenance),
                 )
@@ -164,7 +183,7 @@ pub(crate) fn prepare_processed_damage_assignment(
                         object.id,
                         crate::CounterType::MinusOneMinusOne,
                         amount,
-                        ctx.cause.clone(),
+                        damage_cause.clone(),
                     )
                     .with_provenance(ctx.provenance),
                 )

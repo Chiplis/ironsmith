@@ -201,9 +201,32 @@ impl GameState {
         Some(state.teams[state.team_index(player)?].clone())
     }
 
+    /// Players sharing `player`'s life total: a Two-Headed Giant team
+    /// (CR 810.9) or the archenemy's opposing team in Archenemy Commander
+    /// (CR 904.13b). Poison counters are not covered (CR 904.13c).
+    pub(crate) fn shared_life_team_members(&self, player: PlayerId) -> Option<Vec<PlayerId>> {
+        if let Some(members) = self.two_headed_giant_team_members(player) {
+            return Some(members);
+        }
+        let state = self.archenemy.as_ref()?;
+        if state.variant != crate::game_state::ArchenemyVariant::Commander
+            || state.archenemies.contains(&player)
+            || self.player(player).is_none()
+        {
+            return None;
+        }
+        Some(
+            self.players
+                .iter()
+                .map(|candidate| candidate.id)
+                .filter(|candidate| !state.archenemies.contains(candidate))
+                .collect(),
+        )
+    }
+
     pub(crate) fn write_shared_life(&mut self, player: PlayerId, life: i32) -> bool {
         let members = self
-            .two_headed_giant_team_members(player)
+            .shared_life_team_members(player)
             .unwrap_or_else(|| vec![player]);
         let mut found = false;
         for member in members {

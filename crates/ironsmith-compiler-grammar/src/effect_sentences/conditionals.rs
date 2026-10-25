@@ -43,18 +43,46 @@ pub fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextErr
 pub fn parse_type_line(
     raw: &str,
 ) -> Result<(Vec<Supertype>, Vec<CardType>, Vec<Subtype>), CardTextError> {
-    shared_values::parse_type_line_with(
+    let (supertypes, card_types, mut subtypes) = shared_values::parse_type_line_with(
         raw,
         parse_supertype_word,
         |word| {
             let lower = word.to_ascii_lowercase();
-            // CR 309.1: "Dungeon" is a card type only on a printed type line;
-            // in rules text "dungeon" names the object, not a filter type.
-            parse_card_type(&lower)
-                .or_else(|| (lower == "dungeon").then_some(crate::types::CardType::Dungeon))
+            // CR 309.1 / 311.1 / 312.1 / 313.1 / 314.1 / 315.2: the
+            // nontraditional card types are card types only on a printed type
+            // line; in rules text these words name the objects, not filters.
+            parse_card_type(&lower).or_else(|| match lower.as_str() {
+                "dungeon" => Some(crate::types::CardType::Dungeon),
+                "plane" => Some(crate::types::CardType::Plane),
+                "phenomenon" => Some(crate::types::CardType::Phenomenon),
+                "vanguard" => Some(crate::types::CardType::Vanguard),
+                "scheme" => Some(crate::types::CardType::Scheme),
+                "conspiracy" => Some(crate::types::CardType::Conspiracy),
+                _ => None,
+            })
         },
         parse_type_line_subtype_word,
-    )
+    )?;
+    // CR 311.3: all words after the dash of a plane's type line are,
+    // collectively, a single planar type. CR 205.3p: Undercity is the one
+    // dungeon type.
+    let front_face = raw.split("//").next().unwrap_or(raw);
+    let subtype_text = front_face
+        .split_once('—')
+        .or_else(|| front_face.split_once(" - "))
+        .map(|(_, rest)| rest.trim());
+    if let Some(subtype_text) = subtype_text.filter(|text| !text.is_empty()) {
+        if card_types.contains(&crate::types::CardType::Plane)
+            && let Some(planar) = Subtype::planar_type_from_name(subtype_text)
+        {
+            subtypes = vec![planar];
+        } else if card_types.contains(&crate::types::CardType::Dungeon)
+            && subtype_text.eq_ignore_ascii_case("Undercity")
+        {
+            subtypes = vec![Subtype::Undercity];
+        }
+    }
+    Ok((supertypes, card_types, subtypes))
 }
 
 /// A printed type line is an unambiguous subtype context, so it reads the full

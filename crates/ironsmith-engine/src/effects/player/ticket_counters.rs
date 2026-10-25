@@ -15,9 +15,25 @@ fn ticket_counter_instruction(
     )
 }
 
+impl crate::effects::CostExecutableEffect for TicketCountersEffect {
+    fn can_execute_as_cost(
+        &self,
+        _game: &GameState,
+        _source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        Ok(())
+    }
+}
+
 impl EffectExecutor for TicketCountersEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
+    }
+
+    // CR 702.33h: getting a ticket counter can be part of a cost.
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
+        Some(self)
     }
 
     fn prepare_simultaneous_player_action(

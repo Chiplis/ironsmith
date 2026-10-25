@@ -46,6 +46,10 @@ impl TransformsTrigger {
         self
     }
 
+    fn watches_transforms_into(&self) -> bool {
+        self.destination_name.is_some() || self.destination_filter.is_some()
+    }
+
     pub(crate) fn this_subject_text(&self) -> String {
         match &self.this_object_surface {
             Some(surface) => surface.display_text(),
@@ -73,12 +77,25 @@ fn destination_is_self_reference(name: &str) -> bool {
 
 impl TriggerMatcher for TransformsTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        if event.kind() != EventKind::Transformed {
-            return false;
-        }
-        let Some(e) = event.downcast::<TransformedEvent>() else {
-            return false;
+        // CR 701.27e: a "transforms into" ability also triggers when the
+        // object converts (CR 701.28a); a bare "transforms" ability doesn't.
+        let e = match event.kind() {
+            EventKind::Transformed => match event.downcast::<TransformedEvent>() {
+                Some(e) => e.clone(),
+                None => return false,
+            },
+            EventKind::Converted if self.watches_transforms_into() => {
+                match event.downcast::<crate::events::other::ConvertedEvent>() {
+                    Some(e) => TransformedEvent {
+                        snapshot: e.snapshot.clone(),
+                        ..TransformedEvent::new(e.permanent)
+                    },
+                    None => return false,
+                }
+            }
+            _ => return false,
         };
+        let e = &e;
         if let Some(filter) = &self.permanent_filter {
             let matches = |snapshot| {
                 super::permanent_lifecycle::matches_completed(filter, snapshot, ctx)
@@ -119,7 +136,11 @@ impl TriggerMatcher for TransformsTrigger {
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
-        Some(vec![EventKind::Transformed])
+        if self.watches_transforms_into() {
+            Some(vec![EventKind::Transformed, EventKind::Converted])
+        } else {
+            Some(vec![EventKind::Transformed])
+        }
     }
 
     fn display(&self) -> String {

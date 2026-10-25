@@ -28,6 +28,8 @@ impl GameState {
         -> DefendingPlayerReference
     {
         let defender = defending_player_for_attack_target(self, target);
+        self.turn_store.attackers_existed_in_combat =
+            Some((self.turn.turn_number, self.turn_store.combat_phases_started_this_turn));
         let state = self.combat_transients_mut();
         let role = match state.current_attacking_roles.get(&attacker).copied() {
             Some(role) => { state.attacking_roles[role.0].last_defender = defender; role }

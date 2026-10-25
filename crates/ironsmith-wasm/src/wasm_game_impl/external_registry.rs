@@ -72,6 +72,7 @@ impl WasmGame {
         match &source.group {
             ExternalCardSourceGroup::Single { name, .. }
             | ExternalCardSourceGroup::Dungeon { name, .. } => vec![name.as_str()],
+            ExternalCardSourceGroup::StickerSheet { .. } => Vec::new(),
             ExternalCardSourceGroup::Linked { layout, faces, .. } if layout == "prepare" => {
                 faces.iter().take(1).map(|face| face.name.as_str()).collect()
             }
@@ -251,7 +252,7 @@ impl WasmGame {
 
     fn register_external_source_metadata(&mut self, source: &ExternalCardSourceFile) {
         match &source.group {
-            ExternalCardSourceGroup::Dungeon { .. } => {}
+            ExternalCardSourceGroup::Dungeon { .. } | ExternalCardSourceGroup::StickerSheet { .. } => {}
             ExternalCardSourceGroup::Single { name, block, score } => {
                 self.remember_external_parse_source(name, name, block);
                 self.remember_external_score(name, *score);
@@ -327,6 +328,16 @@ impl WasmGame {
             let definition = self.compile_external_single_card(name, block)?;
             return Self::register_dungeon_definitions(&[definition]);
         }
+        if let ExternalCardSourceGroup::StickerSheet {
+            name,
+            name_stickers,
+            art_stickers,
+            rows,
+        } = &source.group
+        {
+            let definitions = self.compile_sticker_sheet_rows(name, rows);
+            return Ok(self.register_sticker_sheet(name, name_stickers, *art_stickers, rows, &definitions));
+        }
         if !source.replace_existing {
             let definition_names = Self::external_source_definition_names(&source);
             self.ensure_card_definitions_loaded(definition_names.iter().copied());
@@ -356,7 +367,9 @@ impl WasmGame {
                 has_fuse,
                 ..
             } => self.compile_external_linked_group(layout, faces, *has_fuse)?,
-            ExternalCardSourceGroup::Dungeon { .. } => unreachable!("dungeons return above"),
+            ExternalCardSourceGroup::Dungeon { .. } | ExternalCardSourceGroup::StickerSheet { .. } => {
+                unreachable!("dungeons and sticker sheets return above")
+            }
         };
 
         let claimed_names = Self::external_source_definition_names(&source)
@@ -401,7 +414,8 @@ impl WasmGame {
         for source in sources {
             let failure_name = match &source.group {
                 ExternalCardSourceGroup::Single { name, .. }
-                | ExternalCardSourceGroup::Dungeon { name, .. } => name.clone(),
+                | ExternalCardSourceGroup::Dungeon { name, .. }
+                | ExternalCardSourceGroup::StickerSheet { name, .. } => name.clone(),
                 ExternalCardSourceGroup::Linked {
                     combined_name,
                     faces,
@@ -530,6 +544,24 @@ impl WasmGame {
             .map_err(|err| JsValue::from_str(&format!("invalid card source payload: {err}")))?;
         let artifacts: Vec<CompiledCardArtifact> = serde_wasm_bindgen::from_value(artifacts_js)
             .map_err(|err| JsValue::from_str(&format!("invalid compiled artifact batch: {err}")))?;
+        if let ExternalCardSourceGroup::StickerSheet {
+            name,
+            name_stickers,
+            art_stickers,
+            rows,
+        } = &source.group
+        {
+            let definitions = Self::materialize_compiled_artifact_batch(&artifacts).map_err(|err| {
+                JsValue::from_str(&format!("compiled sticker sheet registration failed: {err}"))
+            })?;
+            let loaded =
+                self.register_sticker_sheet(name, name_stickers, *art_stickers, rows, &definitions);
+            return serde_wasm_bindgen::to_value(&ExternalCardRegistrationSummary {
+                loaded,
+                failed: Vec::new(),
+            })
+            .map_err(|err| JsValue::from_str(&format!("card source summary encode failed: {err}")));
+        }
         if matches!(source.group, ExternalCardSourceGroup::Dungeon { .. }) {
             let loaded = Self::materialize_compiled_artifact_batch(&artifacts)
                 .and_then(|definitions| Self::register_dungeon_definitions(&definitions))

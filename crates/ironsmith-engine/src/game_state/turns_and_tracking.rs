@@ -110,6 +110,22 @@ impl GameState {
 
     /// Whether `player` has paid to ignore a source-wide static effect from
     /// `source` for the rest of the current turn.
+    /// CR 502.2 / 731.2a-b: perform the untap step's day/night check. Both
+    /// transitions look only at the previous turn's active player (or team,
+    /// for shared turns), not every player.
+    pub(crate) fn perform_pending_day_night_check(&mut self) {
+        let Some(spells) = self.turn_store.pending_day_night_check.take() else {
+            return;
+        };
+        if self.has_day_night && self.is_night {
+            if spells >= 2 {
+                self.set_daytime(true);
+            }
+        } else if self.has_day_night && spells == 0 {
+            self.set_daytime(false);
+        }
+    }
+
     pub fn player_ignores_source_static_effect_this_turn(
         &self,
         source: ObjectId,
@@ -453,9 +469,40 @@ impl GameState {
         if len == 0 {
             return None;
         }
-        let mut positions = (0..len).collect::<Vec<_>>();
-        self.shuffle_slice(&mut positions);
-        let starting_player = self.turn_store.turn_order[positions[0]];
+        // CR 103.1c: a face-up conspiracy saying "You are the starting
+        // player" (Power Play) replaces the random determination; if several
+        // players would be the starting player, one of them is chosen at random.
+        let mut forced: Vec<PlayerId> = Vec::new();
+        for id in self.zone_ids(Zone::Command).collect::<Vec<_>>() {
+            let Some(object) = self.object(id) else {
+                continue;
+            };
+            if self.is_face_down(id) {
+                continue;
+            }
+            let has_power_play = object.abilities_vec().iter().any(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::YouAreTheStartingPlayer)
+            });
+            if has_power_play
+                && self.turn_store.turn_order.contains(&object.owner)
+                && !forced.contains(&object.owner)
+            {
+                forced.push(object.owner);
+            }
+        }
+        let starting_player = if forced.is_empty() {
+            let mut positions = (0..len).collect::<Vec<_>>();
+            self.shuffle_slice(&mut positions);
+            self.turn_store.turn_order[positions[0]]
+        } else if forced.len() == 1 {
+            forced[0]
+        } else {
+            let mut positions = (0..forced.len()).collect::<Vec<_>>();
+            self.shuffle_slice(&mut positions);
+            forced[positions[0]]
+        };
         self.set_starting_player(starting_player);
         Some(starting_player)
     }
@@ -855,6 +902,8 @@ impl GameState {
         }
 
         let departing_turn_boundary = self.next_turn_number_if_player_stayed(player);
+        self.record_phased_out_under_departed(player, departing_turn_boundary);
+        self.reveal_face_down_conspiracies(Some(player));
         let departing_team = self.team_index_for(player);
         let was_active_player = self.is_active_player(player);
         let had_priority = self.turn.priority_player == Some(player);
@@ -898,6 +947,25 @@ impl GameState {
         // Hidden cards the player must still disclose at the end of the match
         // (hand, face-down spells and permanents) are snapshotted first.
         self.note_departing_hidden_cards(player);
+        // CR 708.9: the departing player's face-down permanents and spells
+        // are revealed to all players. Identities this peer can't open are
+        // left to the hidden-card end-of-match disclosure.
+        let mut departing_face_down: Vec<ObjectId> = self
+            .battlefield_flags
+            .face_down
+            .iter()
+            .copied()
+            .filter(|id| {
+                self.object(*id).is_some_and(|object| {
+                    object.owner == player
+                        && matches!(object.zone, Zone::Battlefield | Zone::Stack)
+                }) && !self.is_hidden_card_placeholder(*id)
+            })
+            .collect();
+        departing_face_down.sort_unstable();
+        for id in departing_face_down {
+            self.record_face_down_reveal(id, player);
+        }
 
         // CR 800.4a first removes every object the player owns. This is not a
         // zone change, so remove_object deliberately emits no zone-change event.
@@ -1357,8 +1425,12 @@ impl GameState {
             .filter(|candidate| candidate.is_in_game())
             .map(|candidate| candidate.id);
         if self.initiative == Some(player) {
-            let successor =
-                active_player_still_in_game.or_else(|| self.next_player_in_game_after(player));
+            // CR 726.4: the active player takes it; if the active player is
+            // also leaving, the next player in turn order after the active
+            // player does.
+            let successor = active_player_still_in_game
+                .or_else(|| self.next_player_in_game_after(self.turn.active_player))
+                .or_else(|| self.next_player_in_game_after(player));
             self.set_initiative(successor);
             // CR 725.4: the successor takes the initiative, which triggers
             // its venture into Undercity (CR 725.2).
@@ -1830,15 +1902,9 @@ impl GameState {
         }
         self.turn_store.previous_turn_history = completed_turn_history;
         self.turn_store.turn_history.monarch_at_turn_start = self.monarch;
-        // CR 730.2a-b: both transitions look only at the previous turn's
-        // active player (or team, for shared turns), not every player.
-        if self.has_day_night && self.is_night {
-            if max_spells_cast_by_completed_teammate >= 2 {
-                self.set_daytime(true);
-            }
-        } else if self.has_day_night && max_spells_cast_by_completed_teammate == 0 {
-            self.set_daytime(false);
-        }
+        // CR 502.2 / 731.2: the check itself happens in the untap step, which
+        // may be skipped; record the previous turn's count for it.
+        self.turn_store.pending_day_night_check = Some(max_spells_cast_by_completed_teammate);
         self.turn_store.grant_cast_uses_this_turn.clear();
         self.turn_store.cast_spell_lki.clear();
         self.battlefield_flags_mut()
@@ -2304,7 +2370,27 @@ impl GameState {
     }
 
     /// Return the controlling player for the given player, if any effect applies.
+    ///
+    /// CR 723.5: if the controller is itself controlled by another player,
+    /// that player makes the decisions instead (followed until a fixed point
+    /// or a repeat).
     pub fn controlling_player_for(&self, player: PlayerId) -> PlayerId {
+        let mut current = self.direct_controlling_player_for(player);
+        if current == player {
+            return current;
+        }
+        let mut visited = vec![player, current];
+        loop {
+            let next = self.direct_controlling_player_for(current);
+            if next == current || visited.contains(&next) {
+                return current;
+            }
+            visited.push(next);
+            current = next;
+        }
+    }
+
+    fn direct_controlling_player_for(&self, player: PlayerId) -> PlayerId {
         let mut best: Option<(PlayerId, u64)> = None;
         for effect in &self.auxiliary_tracking.player_control_effects {
             if !effect.active
@@ -2318,6 +2404,13 @@ impl GameState {
                 && effect
                     .source
                     .is_some_and(|stable| !self.is_source_on_battlefield(stable))
+            {
+                continue;
+            }
+            // CR 800.4b: a player who has left the game can't control another player.
+            if !self
+                .player(effect.controller)
+                .is_some_and(|candidate| candidate.is_in_game())
             {
                 continue;
             }
@@ -2335,6 +2428,12 @@ impl GameState {
             if effect
                 .source
                 .is_some_and(|stable| !self.is_source_on_battlefield(stable))
+            {
+                continue;
+            }
+            if !self
+                .player(effect.controller)
+                .is_some_and(|candidate| candidate.is_in_game())
             {
                 continue;
             }
@@ -4286,6 +4385,20 @@ impl GameState {
         ) {
             identity = identity.union(other_face.card.color_identity());
         }
+        // CR 903.4b: a color chosen before the game by the commander's own
+        // "is the chosen color" ability is part of its color identity.
+        if let Some(color) = self.chosen_color(object.id)
+            && object.abilities.iter().any(|ability| {
+                matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::SetChosenColor
+                )
+            })
+        {
+            identity = identity.union(crate::color::ColorSet::from(color));
+        }
         identity
     }
 
@@ -4440,6 +4553,7 @@ impl GameState {
 
     pub(super) fn mark_face_down_state_changed(&mut self, id: ObjectId) {
         self.effect_store.continuous_effects.record_face_change(id);
+        self.restamp_object_stickers(id);
         self.mark_object_changed_and_continuous_state_dirty(id);
     }
 

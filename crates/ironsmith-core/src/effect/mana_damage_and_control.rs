@@ -3963,17 +3963,24 @@ impl ChooseCardTypeEffect {
         self
     }
 
+    /// CR 205.2a: every card type, including the nontraditional ones.
     pub fn all_card_types() -> &'static [CardType] {
         &[
             CardType::Artifact,
             CardType::Battle,
+            CardType::Conspiracy,
             CardType::Creature,
+            CardType::Dungeon,
             CardType::Enchantment,
             CardType::Instant,
             CardType::Kindred,
             CardType::Land,
+            CardType::Phenomenon,
+            CardType::Plane,
             CardType::Planeswalker,
+            CardType::Scheme,
             CardType::Sorcery,
+            CardType::Vanguard,
         ]
     }
 

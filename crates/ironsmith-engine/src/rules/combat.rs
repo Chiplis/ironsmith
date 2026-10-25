@@ -74,6 +74,13 @@ pub(crate) fn can_block_with_view(
     if !game.can_block_attacker(blocker.id, attacker.id) {
         return false;
     }
+    // CR 509.1a / 702.26b: a phased-out permanent is treated as though it
+    // doesn't exist, and a blocking creature can't also be a battle.
+    if game.is_phased_out(blocker.id)
+        || view.object_has_card_type(blocker.id, crate::types::CardType::Battle)
+    {
+        return false;
+    }
 
     // Tapped creatures can't block, unless they can block as though they
     // were untapped (CR 509.1a).
@@ -598,6 +605,13 @@ pub(crate) fn can_attack_with_view(
     view: &DerivedGameView<'_>,
 ) -> bool {
     if !game.can_attack(creature.id) {
+        return false;
+    }
+    // CR 508.1a / 702.26b: a phased-out permanent can't be declared as an
+    // attacker, and an attacking creature can't also be a battle.
+    if game.is_phased_out(creature.id)
+        || view.object_has_card_type(creature.id, crate::types::CardType::Battle)
+    {
         return false;
     }
 

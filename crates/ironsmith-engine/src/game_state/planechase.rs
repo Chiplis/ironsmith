@@ -11,6 +11,9 @@ use crate::triggers::{
     Trigger, TriggerEvent, TriggerIdentity, TriggeredAbilityEntry, TriggeredAbilitySourceKind,
 };
 
+/// Structural identity of the CR 901.8 planeswalking game-rule ability.
+const PLANESWALKING_ABILITY_IDENTITY: TriggerIdentity = TriggerIdentity(0x9018);
+
 impl GameState {
     /// Enable ordinary per-player Planechase and create each supplementary deck.
     ///
@@ -154,6 +157,15 @@ impl GameState {
         if phenomena > maximum_phenomena {
             return Err(format!(
                 "a planar deck may contain no more than {maximum_phenomena} phenomenon cards"
+            ));
+        }
+        // CR 312.3: phenomenon cards have no subtypes.
+        if let Some((definition, _)) = cards.iter().find(|(definition, kind)| {
+            *kind == PlanarCardKind::Phenomenon && !definition.card.subtypes.is_empty()
+        }) {
+            return Err(format!(
+                "Phenomenon card {} may not have subtypes",
+                definition.name()
             ));
         }
         let mut names = HashSet::new();
@@ -562,6 +574,9 @@ impl GameState {
             .expect("Planechase state exists")
             .face_up_controllers
             .insert(object, player);
+        // CR 613.7h: a face-up plane, phenomenon or scheme card receives a
+        // timestamp at the time it's turned face up.
+        self.effect_store.continuous_effects.record_face_change(object);
         self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
         Ok(object)
@@ -597,6 +612,9 @@ impl GameState {
         let new_id = self.new_object_id();
         object.id = new_id;
         object.stable_id = stable_id;
+        // CR 400.9 / 901.7a: the face-down card is a new object with no
+        // relation to the old one, including its counters.
+        object.counters = Default::default();
         object.last_modified = 0;
         object.zone = Zone::Command;
         for ability in object.abilities_mut() {
@@ -900,7 +918,7 @@ impl GameState {
                     source_snapshot: None,
                     tagged_objects: HashMap::new(),
                     source_kind: TriggeredAbilitySourceKind::GameRule,
-                    trigger_identity: TriggerIdentity(0x9018),
+                    trigger_identity: PLANESWALKING_ABILITY_IDENTITY,
                 }]);
             }
         }
@@ -964,6 +982,14 @@ impl GameState {
             state.planar_controller = next;
         }
         let next_controller = state.planar_controller;
+        if lost_face {
+            // CR 901.10a: a planeswalking ability on the stack ceases to exist
+            // when a plane leaves the game.
+            self.stack.retain(|entry| {
+                !(entry.trigger_identity == Some(PLANESWALKING_ABILITY_IDENTITY)
+                    && entry.object_id == ObjectId::from_raw(0))
+            });
+        }
         if lost_face && !grand_melee {
             // CR 901.11a: turning the new card face up because the owner of a
             // face-up plane or phenomenon left is a planeswalk, away from the

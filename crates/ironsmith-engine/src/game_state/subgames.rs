@@ -13,6 +13,9 @@ const SUBGAME_NONWINNERS_TAG: &str = "__subgame_nonwinners__";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubgameTransferKind {
     Library,
+    /// A commander in its owner's library keeps its designation (CR 903.3,
+    /// 729.2) while it becomes part of the subgame library.
+    LibraryCommander,
     Commander,
     Vanguard,
     PlanarDeck {
@@ -21,6 +24,10 @@ pub enum SubgameTransferKind {
         communal: bool,
     },
     SchemeDeck {
+        owner: PlayerId,
+    },
+    /// CR 729.2a: an Attraction supplementary deck.
+    AttractionDeck {
         owner: PlayerId,
     },
     Explicit,
@@ -69,6 +76,9 @@ enum ReturnedDestination {
         communal: bool,
     },
     SchemeDeck {
+        owner: PlayerId,
+    },
+    AttractionDeck {
         owner: PlayerId,
     },
 }
@@ -185,7 +195,13 @@ impl GameState {
                     .library
                     .iter()
                     .copied()
-                    .map(|object| (object, SubgameTransferKind::Library)),
+                    .map(|object| {
+                        if self.is_commander(object) {
+                            (object, SubgameTransferKind::LibraryCommander)
+                        } else {
+                            (object, SubgameTransferKind::Library)
+                        }
+                    }),
             );
         }
 
@@ -287,6 +303,17 @@ impl GameState {
             }
         }
 
+        // CR 729.2a: supplementary Attraction decks move into the subgame.
+        if let Some(state) = self.attractions.as_ref() {
+            for (owner, deck) in &state.decks {
+                if participants.contains(owner) {
+                    transfer_ids.extend(deck.iter().copied().map(|object| {
+                        (object, SubgameTransferKind::AttractionDeck { owner: *owner })
+                    }));
+                }
+            }
+        }
+
         let mut seen = HashSet::new();
         transfer_ids.retain(|(object, _)| seen.insert(*object));
         let mut transferred = Vec::with_capacity(transfer_ids.len());
@@ -297,7 +324,7 @@ impl GameState {
                 .object(object_id)
                 .cloned()
                 .ok_or_else(|| format!("subgame transfer object {} is missing", object_id.0))?;
-            let definition = object.to_card_definition();
+            let definition = object.physical_card_definition();
             original_definitions.insert(object.stable_id, definition.clone());
             transfer_kinds.insert(object.stable_id, kind);
             transferred.push((object.stable_id, object.owner, definition, kind));
@@ -323,6 +350,18 @@ impl GameState {
         if let Some(state) = self.archenemy.as_mut() {
             state.scheme_decks.clear();
         }
+        let child_attraction_template = self.attractions.as_ref().map(|state| AttractionState {
+            decks: std::collections::BTreeMap::new(),
+            face_up: Vec::new(),
+            lights: state.lights.clone(),
+            visit_programs: state.visit_programs.clone(),
+        });
+        if let Some(state) = self.attractions.as_mut() {
+            for deck in state.decks.values_mut() {
+                deck.retain(|object| !seen.contains(object));
+            }
+        }
+        let mut child_attractions = child_attraction_template;
 
         let default_life = starting_lives.get(&participants[0]).copied().unwrap_or(20);
         let mut child = GameState::new(names, default_life);
@@ -344,6 +383,7 @@ impl GameState {
         child.free_for_all = self.free_for_all.clone();
         child.team_vs_team = self.team_vs_team.clone();
         child.attack_direction = self.attack_direction;
+        child.attack_multiple_players = self.attack_multiple_players;
         child.teams = self.teams.clone();
         child.deploy_creatures = self.deploy_creatures;
 
@@ -372,7 +412,9 @@ impl GameState {
         });
         for (stable_id, owner, mut definition, kind) in transferred {
             let zone = match kind {
-                SubgameTransferKind::Library | SubgameTransferKind::Explicit => Zone::Library,
+                SubgameTransferKind::Library
+                | SubgameTransferKind::LibraryCommander
+                | SubgameTransferKind::Explicit => Zone::Library,
                 _ => Zone::Command,
             };
             if !matches!(
@@ -387,7 +429,9 @@ impl GameState {
             }
             let child_id = child.create_transferred_object(&definition, owner, zone, stable_id);
             match kind {
-                SubgameTransferKind::Commander => child.set_as_commander(child_id, owner),
+                SubgameTransferKind::Commander | SubgameTransferKind::LibraryCommander => {
+                    child.set_as_commander(child_id, owner)
+                }
                 SubgameTransferKind::Vanguard => {
                     let (hand, life) = vanguard_modifiers
                         .iter()
@@ -418,6 +462,11 @@ impl GameState {
                 SubgameTransferKind::SchemeDeck { owner } => {
                     if let Some(state) = child_schemes.as_mut() {
                         state.scheme_decks.entry(owner).or_default().push(child_id);
+                    }
+                }
+                SubgameTransferKind::AttractionDeck { owner } => {
+                    if let Some(state) = child_attractions.as_mut() {
+                        state.decks.entry(owner).or_default().push(child_id);
                     }
                 }
                 SubgameTransferKind::Library | SubgameTransferKind::Explicit => {}
@@ -454,6 +503,12 @@ impl GameState {
                 child.shuffle_slice(deck);
             }
             child.archenemy = Some(state);
+        }
+        if let Some(mut state) = child_attractions {
+            for deck in state.decks.values_mut() {
+                child.shuffle_slice(deck);
+            }
+            child.attractions = Some(state);
         }
 
         let start_index = (child_seed as usize) % participants.len();
@@ -625,7 +680,7 @@ impl GameState {
                 .object(object)
                 .cloned()
                 .ok_or_else(|| "the parent-game card is missing".to_string())?
-                .to_card_definition();
+                .physical_card_definition();
             if is_nontraditional(&definition) {
                 return Err(
                     "only a traditional card may be brought into a subgame this way".to_string(),
@@ -686,12 +741,63 @@ impl GameState {
             .filter(|player| !winners.contains(player))
             .collect::<Vec<_>>();
 
+        // CR 729.5a: Attractions return to their decks; cards still in a
+        // subgame Attraction deck keep their order above any opened ones.
+        let child_attraction_positions: HashMap<StableId, usize> = self
+            .attractions
+            .as_ref()
+            .map(|state| {
+                state
+                    .decks
+                    .values()
+                    .flat_map(|deck| deck.iter().enumerate())
+                    .filter_map(|(index, object)| {
+                        self.object(*object).map(|card| (card.stable_id, index + 1))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut returned = Vec::new();
         for object in self.objects_in_deterministic_order() {
             if object.kind != ObjectKind::Card {
                 continue;
             }
-            let current_definition = object.to_card_definition();
+            // CR 729.5/730.3: each physical card of a merged permanent
+            // returns to its owner's library as its own card.
+            if let Some(merged) = self
+                .commander_tracking
+                .merged_permanents
+                .get(&object.stable_id)
+            {
+                for component in &merged.components {
+                    let physical = &component.destination_object;
+                    if physical.kind != ObjectKind::Card {
+                        continue;
+                    }
+                    let stable_id = component.object.stable_id;
+                    let kind = frame.transfer_kinds.get(&stable_id).copied();
+                    let definition = frame
+                        .original_definitions
+                        .get(&stable_id)
+                        .cloned()
+                        .unwrap_or_else(|| physical.physical_card_definition());
+                    if is_nontraditional(&definition) {
+                        continue;
+                    }
+                    returned.push(ReturnedCard {
+                        stable_id,
+                        owner: physical.owner,
+                        definition,
+                        destination: ReturnedDestination::Library,
+                        commander: matches!(
+                    kind,
+                    Some(SubgameTransferKind::Commander | SubgameTransferKind::LibraryCommander)
+                ),
+                    });
+                }
+                continue;
+            }
+            let current_definition = object.physical_card_definition();
             let kind = frame.transfer_kinds.get(&object.stable_id).copied();
             let definition = frame
                 .original_definitions
@@ -700,7 +806,9 @@ impl GameState {
                 .unwrap_or(current_definition);
             let destination = match kind {
                 Some(SubgameTransferKind::Vanguard) => ReturnedDestination::Vanguard,
-                Some(SubgameTransferKind::Commander) if object.zone == Zone::Command => {
+                Some(SubgameTransferKind::Commander | SubgameTransferKind::LibraryCommander)
+                    if object.zone == Zone::Command =>
+                {
                     ReturnedDestination::Commander
                 }
                 Some(SubgameTransferKind::PlanarDeck {
@@ -715,6 +823,9 @@ impl GameState {
                 Some(SubgameTransferKind::SchemeDeck { owner }) => {
                     ReturnedDestination::SchemeDeck { owner }
                 }
+                Some(SubgameTransferKind::AttractionDeck { owner }) => {
+                    ReturnedDestination::AttractionDeck { owner }
+                }
                 _ if !is_nontraditional(&definition) => ReturnedDestination::Library,
                 _ => continue,
             };
@@ -723,7 +834,10 @@ impl GameState {
                 owner: object.owner,
                 definition,
                 destination,
-                commander: matches!(kind, Some(SubgameTransferKind::Commander)),
+                commander: matches!(
+                    kind,
+                    Some(SubgameTransferKind::Commander | SubgameTransferKind::LibraryCommander)
+                ),
             });
         }
 
@@ -745,6 +859,7 @@ impl GameState {
         let mut libraries_to_shuffle = std::collections::BTreeSet::new();
         let mut returned_planar = Vec::new();
         let mut returned_schemes = Vec::new();
+        let mut returned_attractions = Vec::new();
         let mut returned_vanguards = std::collections::BTreeMap::new();
         for mut card in returned {
             let zone = match card.destination {
@@ -782,6 +897,13 @@ impl GameState {
                 } => returned_planar.push((owner, object, kind, communal)),
                 ReturnedDestination::SchemeDeck { owner } => {
                     returned_schemes.push((owner, object));
+                }
+                ReturnedDestination::AttractionDeck { owner } => {
+                    let position = child_attraction_positions
+                        .get(&card.stable_id)
+                        .copied()
+                        .unwrap_or(0);
+                    returned_attractions.push((owner, position, object));
                 }
             }
         }
@@ -851,6 +973,17 @@ impl GameState {
                 self.shuffle_slice(deck);
             }
             self.archenemy = Some(state);
+        }
+
+        if !returned_attractions.is_empty()
+            && let Some(state) = self.attractions.as_mut()
+        {
+            // Decks are bottom-to-top; opened Attractions (position 0) go
+            // to the bottom.
+            returned_attractions.sort_by_key(|(_, position, _)| *position);
+            for (owner, _, object) in returned_attractions {
+                state.decks.entry(owner).or_default().push(object);
+            }
         }
 
         if !nonwinner_effects.is_empty() && !nonwinners.is_empty() {
