@@ -33,7 +33,7 @@ test('orders every item and allocates an exact distribution', async () => {
     reason: 'ordering', options: [{ index: 8 }, { index: 4 }] }),
   { type: 'select_options', option_indices: [8, 4] });
   assert.deepEqual(await choose({ kind: 'select_options', min: 0, max: 4,
-    description: 'Damage (assign exactly 4 total)', options: [{ index: 2, repeatable: true, max_count: 4 }] }),
+    reason: 'Distribute', description: 'Damage (assign exactly 4 total)', options: [{ index: 2, repeatable: true, max_count: 4 }] }),
   { type: 'select_options', option_indices: [2, 2, 2, 2] });
 });
 test('selects available cards, permits partial searches, and handles empty optional targets', async () => {
@@ -85,5 +85,5 @@ test('uses the native contract for related targets and aggregate object choices'
 });
 
 test('accepts a distribution with no recipients', () => {
-  assert.deepEqual(defaultOptionSelection({ min: 0, max: 4, description: 'Damage (assign exactly 4 total)', options: [] }), []);
+  assert.deepEqual(defaultOptionSelection({ min: 0, max: 4, reason: 'Distribute', description: 'Damage (assign exactly 4 total)', options: [] }), []);
 });

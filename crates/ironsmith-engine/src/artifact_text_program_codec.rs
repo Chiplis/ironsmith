@@ -153,6 +153,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
         // with each definition's source text; only children change vocabulary.
         return encoded("ChooseModeEffect", ironsmith_core::ChooseModeEffect {
             faces_dilemma: model.faces_dilemma,
+            decision_labels: model.decision_labels.clone(),
             modes: model.modes.iter().map(|mode| Ok(ironsmith_core::EffectMode {
                 source_text: mode.source_text.clone(), effects: children(&mode.effects)?,
             })).collect::<Result<_, RuntimePayloadEncodingError>>()?,

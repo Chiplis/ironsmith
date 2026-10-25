@@ -9,7 +9,9 @@ export function completeManaProfile(entry) {
 }
 
 export function entryColors(entry) {
-  return (completeManaProfile(entry)?.colors || []).filter((color) => /^[WUBRGC]$/.test(color));
+  // Unresolved cards can add colors, but do not invalidate colors already
+  // identified in the deck. Keep those decks discoverable by their known colors.
+  return (entry?.manaProfile?.colors || []).filter((color) => /^[WUBRGC]$/.test(color));
 }
 
 // The synchronizer records the deck's most expensive nonland as `artCard`;

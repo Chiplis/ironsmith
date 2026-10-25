@@ -14,11 +14,12 @@ const SHORTCUTS = [
   { keys: ["."], action: "Open or close your hand" },
   { keys: ["Esc"], action: "Cancel placing a card, or close a menu" },
   { keys: ["Tab"], action: "Move focus between controls" },
+  { keys: ["Double-click"], scope: "on a hand card", action: "Play or cast that card, keeping any required choices manual" },
   { keys: ["?"], action: "Show this list" },
 ];
 
 const TIPS = [
-  "Click a phase on the turn track to add a stop: once, every time, or off. By default a pass stops at both main phases and at declare attackers.",
+  "Click a phase on the turn track to add a stop: once, every time, or off. Each player has a separate track. By default a pass stops at both main phases on every player’s turn.",
   "In local games the table follows the active player, so you can play both sides. Turn this off in Settings.",
 ];
 
@@ -37,7 +38,11 @@ export default function KeyboardShortcutsOverlay() {
   const ui = useUiText();
   const [showOnStart, setShowOnStart] = useShowShortcutsOnStart();
   const [open, setOpen] = useState(false);
-  const [startChecked, setStartChecked] = useState(false);
+  // Lobby links skip the automatic offer, even if joining later changes the URL.
+  const [startChecked, setStartChecked] = useState(() => (
+    typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).has("lobby")
+  ));
   const close = useCallback(() => setOpen(false), []);
   const rootRef = useModalFocus(close, open);
   const gameReady = Boolean(state?.players?.length);

@@ -1,7 +1,7 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
+  allDecksMeta,
   extractDeckLinks,
   extractArchetypeLinks,
   extractEventCollections,
@@ -11,12 +11,9 @@ import {
   normalizeFormat,
   parseDeckPage,
 } from "./sources/mtgtop8.mjs";
+import { validateDeckCatalogEntry } from "../../web/ui/src/lib/deck-catalog-import.js";
 import { normalizeCompetitiveDecks } from "./normalize.mjs";
-import { buildSearchIndex } from "./index.mjs";
-import { enrichDeckWithManaProfile, resolveCardMetadata } from "./card-metadata.mjs";
-
-const DEFAULT_OUTPUT_DIR = fileURLToPath(new URL("../../catalog", import.meta.url));
-const DEFAULT_CARD_ROOT = fileURLToPath(new URL("../../web/ui/public/cards", import.meta.url));
+import { DEFAULT_OUTPUT_DIR, enrichDecks, readJsonOr, writeCatalogDecks, writeJsonAtomic } from "./catalog-store.mjs";
 
 function argument(name, fallback = "") {
   const index = process.argv.indexOf(`--${name}`);
@@ -32,12 +29,6 @@ function integerArgument(name, fallback) {
   return Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
-async function writeJsonAtomic(path, value) {
-  const temporaryPath = `${path}.tmp-${process.pid}`;
-  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(temporaryPath, path);
-}
-
 async function readState(statePath) {
   try {
     return JSON.parse(await readFile(statePath, "utf8"));
@@ -47,69 +38,38 @@ async function readState(statePath) {
   }
 }
 
-async function readJsonOr(path, fallback) {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return fallback;
-    throw error;
-  }
-}
-
-function catalogEntry(deck) {
-  return {
-    id: deck.id,
-    format: deck.format,
-    name: deck.name,
-    archetype: deck.archetype,
-    colors: deck.colors,
-    mechanics: deck.mechanics,
-    collections: deck.collections,
-    ...(deck.manaProfile ? { manaProfile: deck.manaProfile } : {}),
-    ...(deck.artCard ? { artCard: deck.artCard } : {}),
-    cardNames: deck.cardNames,
-    event: deck.event,
-    date: deck.date,
-    placement: deck.placement,
-    mainboardCount: deck.mainboard.reduce((total, card) => total + card.count, 0),
-    sideboardCount: deck.sideboard.reduce((total, card) => total + card.count, 0),
-    commanderCount: deck.commander.reduce((total, card) => total + card.count, 0),
-    source: deck.source,
-    sourceUrl: deck.sourceUrl,
-    tags: deck.tags,
-    cards: [...new Set([
-      ...deck.mainboard.map((card) => card.name),
-      ...deck.sideboard.map((card) => card.name),
-      ...deck.commander.map((card) => card.name),
-    ])].sort(),
-    hash: deck.hash,
-    detail: `details/${deck.id}.json`,
-  };
-}
-
 async function sync() {
   const outputDir = resolve(argument("output", DEFAULT_OUTPUT_DIR));
   const format = normalizeFormat(argument("format", "modern"));
   const formatDir = join(outputDir, format.slug);
-  const detailsDir = join(formatDir, "details");
   const statePath = join(outputDir, "state", `mtgtop8-${format.slug}.json`);
   const eventLimit = integerArgument("events", 1);
   const deckLimit = integerArgument("limit", 24);
   const collectionDeckLimit = integerArgument("collection-limit", Math.max(1, Math.floor(deckLimit / 2)));
   const recentEventLimit = integerArgument("recent-events", 20);
   const majorEventLimit = integerArgument("major-events", 5);
-  const meta = integerArgument("meta", 54);
+  const meta = process.argv.includes("--meta") ? integerArgument("meta", 54)
+    : allDecksMeta(await fetchText(`https://mtgtop8.com/format?f=${format.code}`));
   const page = integerArgument("page", 0);
-  const monoMeta = integerArgument("mono-meta", 51);
+  const monoMeta = integerArgument("mono-meta", meta);
   const archetypeLimit = integerArgument("archetype-limit", 6);
   const archetypeDeckLimit = integerArgument("archetype-decks", 4);
   const includeMono = hasFlag("include-mono") || page === 0;
   if (!deckLimit) throw new Error("--limit must be greater than zero");
 
+  const existingIndex = await readJsonOr(join(formatDir, "index.json"), { decks: [] });
+  const savedIds = new Set();
+  if (hasFlag("skip-existing")) {
+    for (const entry of existingIndex.decks || []) {
+      if (!entry.detail) continue;
+      const detail = await readJsonOr(join(formatDir, entry.detail), null);
+      if (detail?.id === entry.id && detail.format === format.slug && validateDeckCatalogEntry(detail).valid) savedIds.add(entry.id);
+    }
+  }
   const state = await readState(statePath);
-  const formatHtml = await fetchText(formatUrl({ format: format.code, meta, page }), { minDelayMs: 0 });
+  const formatHtml = await fetchText(formatUrl({ format: format.code, meta, page }));
   const monoFormatHtml = includeMono && monoMeta !== meta
-    ? await fetchText(formatUrl({ format: format.code, meta: monoMeta, page: 0 }), { minDelayMs: 0 })
+    ? await fetchText(formatUrl({ format: format.code, meta: monoMeta, page: 0 }))
     : formatHtml;
   const monoArchetypes = includeMono
     ? extractArchetypeLinks(monoFormatHtml, { limit: archetypeLimit })
@@ -147,9 +107,10 @@ async function sync() {
       eventHtmlCache.set(event.id, eventHtml);
       const deckLinks = extractDeckLinks(eventHtml, {
         eventId: event.id,
-        limit: (page === 0 ? collectionDeckLimit : deckLimit) - groupDeckCount,
+        limit: hasFlag("skip-existing") ? Number.MAX_SAFE_INTEGER : (page === 0 ? collectionDeckLimit : deckLimit) - groupDeckCount,
       });
       for (const deckLink of deckLinks) {
+        if (savedIds.has(`mtgtop8-${deckLink.eventId}-${deckLink.deckId}`)) continue;
         if (groupDeckCount >= (page === 0 ? collectionDeckLimit : deckLimit)) break;
         const deckHtml = deckHtmlCache.has(deckLink.deckId)
           ? deckHtmlCache.get(deckLink.deckId)
@@ -168,6 +129,7 @@ async function sync() {
           ? { ...parsed, collections: [...new Set([...(previous.collections || []), ...(parsed.collections || [])])] }
           : parsed);
         groupDeckCount += 1;
+        if (rawDecksById.size % 50 === 0) console.log(`${format.slug}: fetched ${rawDecksById.size} decks on page ${page || 1}`);
       }
     }
   }
@@ -195,7 +157,12 @@ async function sync() {
   }
 
   const rawDecks = [...rawDecksById.values()];
-  const normalizedDecks = normalizeCompetitiveDecks(rawDecks);
+  console.log(`${format.slug}: fetched ${rawDecks.length} decks; validating and enriching card metadata`);
+  const normalizedDecks = normalizeCompetitiveDecks(rawDecks).filter((deck) => {
+    const validation = validateDeckCatalogEntry(deck);
+    if (!validation.valid) console.warn(`Skipping ${deck.id}: ${validation.errors.join("; ")}`);
+    return validation.valid;
+  });
   if (hasFlag("dry-run")) {
     console.log(JSON.stringify({
       events: events.length,
@@ -208,41 +175,13 @@ async function sync() {
     return;
   }
 
-  await mkdir(detailsDir, { recursive: true });
-  await mkdir(join(outputDir, "state"), { recursive: true });
-  const metadataPath = join(outputDir, "state", "scryfall-cards.json");
-  const metadataCache = await readJsonOr(metadataPath, {});
-  const cardNames = [...new Set(normalizedDecks.flatMap((deck) => deck.mainboard.map((card) => card.name)))];
-  const cardMetadata = await resolveCardMetadata(cardNames, { cache: metadataCache, localRoot: DEFAULT_CARD_ROOT });
-  const decks = normalizedDecks.map((deck) => enrichDeckWithManaProfile(deck, cardMetadata));
+  const decks = await enrichDecks(normalizedDecks, {
+    outputDir, label: format.slug, allowNetwork: hasFlag("metadata-network"),
+  });
   const metadataSource = [...new Set(decks
     .map((deck) => deck.manaProfile?.metadataCoverage?.source)
     .filter(Boolean))].sort().join("+") || "none";
-  for (const deck of decks) {
-    await writeJsonAtomic(join(detailsDir, `${deck.id}.json`), deck);
-  }
-  await writeJsonAtomic(metadataPath, cardMetadata);
-
-  const indexPath = join(formatDir, "index.json");
-  const searchIndexPath = join(formatDir, "search-index.json");
-  let existing = { schemaVersion: 1, format: format.slug, generatedAt: "", decks: [] };
-  try {
-    existing = JSON.parse(await readFile(indexPath, "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  const merged = new Map((existing.decks || []).map((entry) => [entry.id, entry]));
-  for (const deck of decks) merged.set(deck.id, catalogEntry(deck));
-  const generatedAt = new Date().toISOString();
-  const indexEntries = [...merged.values()].sort((left, right) => right.date.localeCompare(left.date));
-  await writeJsonAtomic(indexPath, {
-    ...existing,
-    schemaVersion: 1,
-    format: format.slug,
-    generatedAt,
-    decks: indexEntries,
-  });
-  await writeJsonAtomic(searchIndexPath, buildSearchIndex(indexEntries, { generatedAt }));
+  const { generatedAt } = await writeCatalogDecks(decks, { outputDir, format: format.slug });
   await writeJsonAtomic(statePath, {
     ...state,
     schemaVersion: 1,

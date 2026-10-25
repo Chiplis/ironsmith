@@ -5,6 +5,7 @@ import {
   extractEventCollections,
   extractArchetypeLinks,
   extractDeckLinks,
+  allDecksMeta,
   formatUrl,
   modernFormatUrl,
   decodeResponseBody,
@@ -29,6 +30,28 @@ test("builds a bounded Modern catalog URL", () => {
 test("normalizes supported formats for MTGTop8 URLs", () => {
   assert.deepEqual(normalizeFormat("pioneer"), { slug: "pioneer", code: "PI" });
   assert.equal(formatUrl({ format: "standard", meta: 54 }), "https://mtgtop8.com/format?a=&f=ST&meta=54");
+  for (const [slug, code] of Object.entries({ commander: "cEDH", standard: "ST", vintage: "VI", legacy: "LE", pauper: "PAU", pioneer: "PI", modern: "MO" })) {
+    assert.deepEqual(normalizeFormat(slug), { slug, code });
+    assert.deepEqual(normalizeFormat(code), { slug, code });
+  }
+  assert.equal(normalizeFormat("EDH").slug, "edh");
+  assert.throws(() => normalizeFormat("modren"), /Unsupported/);
+});
+
+test("discovers each format's all-decks filter rather than using Modern's meta", () => {
+  assert.equal(allDecksMeta('<a href="?f=cEDH&meta=239">All 2026 Decks</a><a href="?f=cEDH&amp;meta=240"><div>All decks</div></a>'), 240);
+  assert.equal(allDecksMeta('<a href="?f=MO&meta=54">All Modern decks</a>'), 54);
+  assert.throws(() => allDecksMeta("no filters"), /no all-decks filter/);
+});
+
+test("extracts Commanders stored in MTGTop8's sb card rows", () => {
+  const html = '<div class=O14>COMMANDER</div><div id=sb1 class="deck_line">1 <span>Partner A</span></div><div id=sb2 class="deck_line">1 <span>Partner B</span></div><div id=md1 class="deck_line">98 <span>Island</span></div>';
+  const deck = parseDeckPage(html, { format: "cEDH" });
+  assert.equal(deck.format, "commander");
+  assert.equal(deck.commander.length, 2);
+  assert.deepEqual(deck.sideboard, []);
+  assert.deepEqual(deck.mainboard, [{ name: "Island", count: 98 }]);
+  assert.match(extractDeckLinks('<a href=?e=1&d=2&f=cEDH>Deck</a>')[0].url, /f=cEDH$/);
 });
 
 test("extracts unique event links from a format page", () => {

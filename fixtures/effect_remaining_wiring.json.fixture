@@ -1,0 +1,125 @@
+[
+  {
+    "name": "Barbarian Class",
+    "oracle_id": "59faa1b9-17aa-4f2c-a8f8-17ab50392b36",
+    "mana_cost": "{R}",
+    "type_line": "Enchantment \u2014 Class",
+    "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nIf you would roll one or more dice, instead roll that many dice plus one and ignore the lowest roll.\n{1}{R}: Level 2\nWhenever you roll one or more dice, target creature you control gets +2/+0 and gains menace until end of turn.\n{2}{R}: Level 3\nCreatures you control have haste."
+  },
+  {
+    "name": "Deflecting Palm",
+    "oracle_id": "dc5dffc8-fac5-4956-bac4-1ad2cc16f6be",
+    "mana_cost": "{R}{W}",
+    "type_line": "Instant",
+    "oracle_text": "The next time a source of your choice would deal damage to you this turn, prevent that damage. If damage is prevented this way, Deflecting Palm deals that much damage to that source's controller."
+  },
+  {
+    "name": "Fifty Feet of Rope",
+    "oracle_id": "66aa6905-86f9-4800-988d-ffebafd4a9dc",
+    "mana_cost": "{1}",
+    "type_line": "Artifact",
+    "oracle_text": "Climb Over \u2014 {T}: Target Wall can't block this turn.\nTie Up \u2014 {3}, {T}: Target creature doesn't untap during its controller's next untap step.\nRappel Down \u2014 {4}, {T}: Venture into the dungeon. Activate only as a sorcery. (Enter the first room or advance to the next room.)"
+  },
+  {
+    "name": "Flamerush Rider",
+    "oracle_id": "f797a325-ec2a-4142-b0ff-90cac1356da9",
+    "mana_cost": "{4}{R}",
+    "type_line": "Creature \u2014 Human Warrior",
+    "oracle_text": "Whenever this creature attacks, create a token that's a copy of another target attacking creature and that's tapped and attacking. Exile the token at end of combat.\nDash {2}{R}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)",
+    "power": "3",
+    "toughness": "3"
+  },
+  {
+    "name": "Hyena Umbra",
+    "oracle_id": "354affb3-1be7-4a9e-91da-2989eb54f62d",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature gets +1/+1 and has first strike.\nUmbra armor (If enchanted creature would be destroyed, instead remove all damage from it and destroy this Aura.)"
+  },
+  {
+    "name": "Illicit Auction",
+    "oracle_id": "dea8c725-455e-4668-877a-df388fe22255",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player may bid life for control of target creature. You start the bidding with a bid of 0. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature. (This effect lasts indefinitely.)"
+  },
+  {
+    "name": "Order of Succession",
+    "oracle_id": "1b95970c-e7eb-41c4-a8d2-9889b64b3c63",
+    "mana_cost": "{3}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose left or right. Starting with you and proceeding in the chosen direction, each player chooses a creature controlled by the next player in that direction. Each player gains control of the creature they chose."
+  },
+  {
+    "name": "Past in Flames",
+    "oracle_id": "37a18736-5fe2-4897-809b-013497bdd890",
+    "mana_cost": "{3}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each instant and sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.\nFlashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+  },
+  {
+    "name": "Pir's Whim",
+    "oracle_id": "01c2b66a-66d1-4282-a078-b1fa737c57f4",
+    "mana_cost": "{3}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "For each player, choose friend or foe. Each friend searches their library for a land card, puts it onto the battlefield tapped, then shuffles. Each foe sacrifices an artifact or enchantment of their choice."
+  },
+  {
+    "name": "Portent",
+    "oracle_id": "e744dbb6-2d56-462a-8d49-d79c73944048",
+    "mana_cost": "{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top three cards of target player's library, then put them back in any order. You may have that player shuffle.\nDraw a card at the beginning of the next turn's upkeep."
+  },
+  {
+    "name": "Primordial Mist",
+    "oracle_id": "afc9e1d3-b012-49e9-8d22-89abbee03c22",
+    "mana_cost": "{4}{U}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your end step, you may manifest the top card of your library. (Put it onto the battlefield face down as a 2/2 creature. Turn it face up any time for its mana cost if it's a creature card.)\nExile a face-down permanent you control face up: You may play that card this turn. (You still pay its costs. Timing rules still apply.)"
+  },
+  {
+    "name": "Prismatic Strands",
+    "oracle_id": "8e414ad6-ba19-44a1-a291-2e420734a6dd",
+    "mana_cost": "{2}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Prevent all damage that sources of the color of your choice would deal this turn.\nFlashback\u2014Tap an untapped white creature you control. (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+  },
+  {
+    "name": "Samite Healer",
+    "oracle_id": "95a0ca48-d924-47f4-86ed-42c673ee778c",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature \u2014 Human Cleric",
+    "oracle_text": "{T}: Prevent the next 1 damage that would be dealt to any target this turn.",
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "name": "Shifting Loyalties",
+    "oracle_id": "0ee9a743-c678-4a76-b106-53f57a84848d",
+    "mana_cost": "{5}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Exchange control of two target permanents that share a card type. (Artifact, creature, enchantment, land, and planeswalker are card types.)"
+  },
+  {
+    "name": "Soul Summons",
+    "oracle_id": "0f5b79ca-9f80-420b-a6c5-bb2a9a95c7e7",
+    "mana_cost": "{1}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Manifest the top card of your library. (Put it onto the battlefield face down as a 2/2 creature. Turn it face up any time for its mana cost if it's a creature card.)"
+  },
+  {
+    "name": "Timesifter",
+    "oracle_id": "99f8805f-6618-4838-a4e7-a3660e3b087f",
+    "mana_cost": "{5}",
+    "type_line": "Artifact",
+    "oracle_text": "At the beginning of each upkeep, each player exiles the top card of their library. The player who exiled the card with the greatest mana value takes an extra turn after this one. If two or more players' cards are tied for greatest, the tied players repeat this process until the tie is broken."
+  },
+  {
+    "name": "Wrong Turn",
+    "oracle_id": "d1cfbbcc-4aee-4400-b5a8-18713829ae72",
+    "mana_cost": "{2}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Target opponent gains control of target creature. (If an attacking or blocking creature changes controllers, it's removed from combat.)"
+  }
+]

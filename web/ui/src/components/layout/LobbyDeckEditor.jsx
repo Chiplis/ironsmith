@@ -52,6 +52,7 @@ export default function LobbyDeckEditor({
   readyText = "",
   cardProblems = {},
   legalityText = "",
+  configurationText = "",
   onChange,
 }) {
   const ui = useUiText();
@@ -153,6 +154,7 @@ export default function LobbyDeckEditor({
           </>
         ) : null}
         {legalityText ? <span className="lobby-deck-legality is-error text-[#f0a9a0]" role="status">{legalityText}</span> : null}
+        {configurationText ? <span className="lobby-deck-legality is-error text-[#f0a9a0]" role="status">{configurationText}</span> : null}
         <span>{readyText ? ui(readyText) : formatDeckRequirement(activeFormat)}</span>
       </div>
     </div>

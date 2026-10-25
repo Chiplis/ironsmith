@@ -1,3 +1,4 @@
+import { handManaCostPresentation } from "@/lib/hand-mana-cost";
 import { customCardAssets } from "@/lib/custom-card-assets";
 import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import { arenaPermanentKind } from '@/lib/mobile-arena';
@@ -14,7 +15,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useChosenObjectIdAmong } from "@/context/ObjectSelectionContext";
 import SelectionCheckBadge from "./SelectionCheckBadge";
-import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
+import { cancelMotion, uiSpring } from "@/lib/motion/anime";
+import { animateEffect as animate, createEffectTimeline as createTimeline } from "@/lib/motion/native-effects";
 import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -669,6 +671,7 @@ export default function GameCard({
   bumpDirection = 0,
   variant = "battlefield",
   onClick,
+  onDoubleClick,
   onKeyboardActivate,
   onKeyboardNavigation,
   onContextMenu,
@@ -740,7 +743,9 @@ export default function GameCard({
     return () => { request++; window.removeEventListener("ironsmith:hand-action-hover", onActionHover); };
   }, [card, variant]);
   const shownHandFace = variant === "hand" && handFace?.id === card.id && handFace.sourceName === card.name ? handFace.face : null;
-  const presentationCard = shownHandFace ? {...shownHandFace, id:card.id} : card;
+  const shownCard = shownHandFace ? {...shownHandFace, id:card.id} : card;
+  const presentationCard = variant === "hand" ? handManaCostPresentation(shownCard, state) : shownCard;
+  const displayedHandManaCost = presentationCard.display_mana_cost ?? presentationCard.card_faces?.[0]?.display_mana_cost ?? presentationCard.mana_cost;
   const name = presentationCard.name || "";
   // English name stays the lookup key everywhere (art, mana parsing, DOM
   // attributes); only user-facing labels use the localized name.
@@ -1403,6 +1408,7 @@ export default function GameCard({
       data-member-object-ids={(Array.isArray(card.member_ids) ? card.member_ids : []).join(",")}
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
+      data-hand-mana-cost={variant === "hand" ? displayedHandManaCost : undefined}
       data-foil={isFoil ? "true" : undefined}
       data-hand-irregular-corners={variant === "hand" && repairedHandArt?.source === artUrl && repairedHandArt.hasIrregularCorners ? "true" : undefined}
       title={ui(suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${displayName} (${groupSize} grouped permanents)` : displayName))}
@@ -1410,7 +1416,9 @@ export default function GameCard({
       tabIndex={keyboardInteractive ? 0 : undefined}
       aria-label={ui(keyboardInteractive ? `${displayName}${isPlayable ? ", playable" : ""}` : undefined)}
       aria-pressed={keyboardInteractive && isInspected ? true : undefined}
+      aria-description={variant === "hand" && displayedHandManaCost != null ? `Mana cost preview: ${displayedHandManaCost}` : undefined}
       onClick={debouncedOnClick}
+      onDoubleClick={onDoubleClick}
       onKeyDown={(event) => {
         if (!keyboardInteractive) return;
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
@@ -1550,6 +1558,11 @@ export default function GameCard({
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
           <span className="card-action-border" aria-hidden="true" />
+        )}
+        {variant === "battlefield" && card?.chosen_values?.length > 0 && (
+          <div className="battlefield-chosen-values" aria-label={ui("Chosen values")}>
+            {card.chosen_values.map(value => <span key={value} title={value}>{value}</span>)}
+          </div>
         )}
         {chosenObjectId != null && (
           <SelectionCheckBadge objectId={chosenObjectId} />

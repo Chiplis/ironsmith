@@ -6,7 +6,7 @@ import CardCreationControls from '../src/components/layout/CardCreationControls'
 import '../src/index.css';
 const game = {
   autocompleteCardNames: async query => ['Lightning Bolt','Yavimaya, Cradle of Growth'].filter(name=>name.toLowerCase().includes(query.toLowerCase())),
-  previewCustomCard: async draft => { if(draft.faces.some(face=>!face.name || !face.cardTypes.length)) throw new Error('Card requires name and type'); return {canCreate:true,faces:draft.faces.map(face=>({...face,compiledText:[face.oracleText]}))}; },
+  previewCustomCard: async draft => { (window.buildPreviewCalls ??= []).push(draft); if(draft.faces.some(face=>!face.name || !face.cardTypes.length)) throw new Error('Card requires name and type'); return {canCreate:true,faces:draft.faces.map(face=>({...face,compiledText:[face.oracleText]}))}; },
   createCustomCard: async payload => { window.lastAdded = {custom:payload}; },
   addCardToZone: async (...args) => { window.lastAdded = {catalog:args}; },
 };

@@ -59,10 +59,10 @@ export async function createCardGlintLiveView(canvas,{onReady,onError}={}) {
     renderer = await browser.createRenderer({canvas,wasmUrl:cardGlintAsset('renderer_bg.wasm'),etching:'rust',invalidate:paint,onError});
   } catch (error) {unlisten(); throw error;}
   // Match physical display pixels independently of decorative graphics quality.
-  // Bound extreme zoom while retaining at least the source face resolution.
+  // Small previews need only their displayed pixels, not a full-size render target.
   const resize = () => {
     const rect = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-    const scale = Math.min(2, Math.max(1, rect.width * dpr / 732, rect.height * dpr / 1020));
+    const scale = Math.min(2, Math.max(1 / 732, rect.width * dpr / 732, rect.height * dpr / 1020));
     const width = Math.round(732 * scale), height = Math.round(1020 * scale);
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width; canvas.height = height; paint();

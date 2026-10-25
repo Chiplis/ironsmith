@@ -261,8 +261,8 @@ can copy the list.
 4. Choose a player and a zone, then click **Compile**. The card enters the
    game.
 
-To get started quickly, the forge fills itself in with a random card from your
-deck (**New Sample** picks another).
+To get started quickly, the forge fills itself in with a random card from any
+deck at the table (**New Sample** picks another).
 
 ### Add Card
 

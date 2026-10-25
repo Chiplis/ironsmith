@@ -1,9 +1,10 @@
 // Choreography for CardStackPile: how each entry arrives on the stack and how
 // it leaves, chosen from what put it there and where it goes. The light is
-// drawn by lib/motion/stack-fx.js; the card itself moves with anime.js on its
-// .card-stack-motion node (which owns that node's transform).
+// drawn by lib/motion/stack-fx.js; card movement owns .card-stack-motion.
+// Materialization and view pops use browser-managed compositor animations.
 
-import { cancelMotion, createTimeline, spring } from "@/lib/motion/anime";
+import { cancelMotion, spring } from "@/lib/motion/anime";
+import { createEffectTimeline as createTimeline } from "@/lib/motion/native-effects";
 import {
   burst,
   chargePulse,
@@ -18,6 +19,8 @@ import { castOrigin } from "@/lib/stack-cast-origins";
 import { getZoneAnchorRect } from "@/lib/zone-anchors";
 import { getPlayerTargetRect } from "@/hooks/useCardPositions";
 import { samePlayerId } from "@/lib/player-display";
+
+import { animateCompositor, compositorEase } from "@/lib/motion/compositor";
 
 const MATERIALIZE_MS = 1100;
 const ARRIVAL_WATCHDOG_MS = 3500;
@@ -164,16 +167,13 @@ export function materialize(node, rgb, { subtle = false, onComplete = () => {} }
   }, MATERIALIZE_MS);
   shockwave({ at: rect, rgb, radius: Math.max(rect.width, rect.height) * (subtle ? 0.5 : 0.75) });
   burst({ at: { x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.42 }, rgb, kind: "impact", count: subtle ? 18 : 46 });
-  return createTimeline({
-    autoplay: true,
-    onComplete: () => {
-      node.style.transform = "";
-    },
-  }).add(node, {
-    scale: [subtle ? 1.05 : 1.16, 1],
-    rotate: [subtle ? 0 : -2.5, 0],
+  return animateCompositor(node, [
+    { transform: `scale(${subtle ? 1.05 : 1.16}) rotate(${subtle ? 0 : -2.5}deg)` },
+    { transform: "scale(1) rotate(0deg)" },
+  ], {
     duration: 620,
-    ease: spring({ duration: 620, bounce: 0.34 }),
+    easing: compositorEase(spring({ duration: 620, bounce: 0.34 }).ease),
+    onComplete: () => { node.style.transform = ""; },
   });
 }
 
@@ -367,16 +367,15 @@ export function playExit({ node, entry, state, inspectId, owner, rgb, onMotion }
 /** The entry the chevrons (or a click) brought into view springs forward. */
 export function playViewPop(node) {
   if (!node || prefersReducedMotion() || node.dataset.arriving || node.style.opacity === "0") return null;
-  return createTimeline({
-    autoplay: true,
-    onComplete: () => {
-      node.style.transform = "";
-    },
-  }).add(node, {
-    y: [0, -16, 0],
-    scale: [1, 1.07, 1],
+  return animateCompositor(node, [
+    { transform: "translateY(0px) scale(1)", easing: compositorEase(spring({ duration: 460, bounce: 0.3 }).ease) },
+    { transform: "translateY(-16px) scale(1.07)", easing: compositorEase(spring({ duration: 460, bounce: 0.3 }).ease) },
+    { transform: "translateY(0px) scale(1)" },
+  ], {
     duration: 460,
-    ease: spring({ duration: 460, bounce: 0.3 }),
+    onComplete: () => { node.style.transform = ""; },
+    // Anime applies easing per segment for multi-value properties.
+    easing: "linear",
   });
 }
 

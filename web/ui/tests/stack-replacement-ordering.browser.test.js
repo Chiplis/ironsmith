@@ -28,6 +28,33 @@ test("replacement choices share trigger arrows and require explicit single-effec
     assert.equal(ordering.isReplacementOrderingDecision({ ...optional, options: [...optional.options, { index: 12, description: "Another replacement" }] }), true);
     assert.equal(ordering.isReplacementOrderingDecision({ ...optional, options: [optional.options[0], { ...optional.options[1], object_id: 41 }] }), true);
 
+    const triggerOrdering = await vite.ssrLoadModule("/src/lib/trigger-ordering.js");
+    for (const reason of ["Ordering", "Order blockers", "Order attackers"]) {
+      assert.equal(triggerOrdering.isTriggerOrderingDecision({ ...triggers, reason,
+        description: "Order cards for the bottom of your library", context_text: "Put a spell on the stack",
+        options: [{ index: 0, description: "Trigger Happy\nRules text" }, { index: 1, description: "Stack of cards" }],
+      }), false);
+    }
+    assert.equal(triggerOrdering.isTriggerOrderingDecision({ ...triggers, choice_kind: "order" }), false);
+    assert.equal(triggerOrdering.isTriggerOrderingDecision({ ...replacement, choice_kind: "trigger_order" }), true);
+    const typedOptional = { ...optional, choice_kind: "replacement_effect" };
+    assert.equal(ordering.isEffectOrderingDecision(ordering.presentOptionalReplacementDecision(typedOptional)), false);
+    assert.equal(ordering.isEffectOrderingDecision({ ...replacement, choice_kind: "options" }), false);
+
+    for (const fixture of ["names", "modes"]) {
+      for (const suffix of ["", "&mobile", "&typed", "&typed&mobile"]) {
+        const page = await browser.newPage({ viewport: { width: suffix.includes("mobile") ? 700 : 1100, height: 850 } });
+        await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/stack-replacement-ordering.html?${fixture}${suffix}`);
+        const label = fixture === "names" ? "Pay No Heed" : /Pay.*Draw a card/;
+        const row = page.locator(".decision-option-row").filter({ hasText: label }).first();
+        await row.waitFor({ state: "visible" });
+        assert.deepEqual(await page.evaluate(() => window.__commands), []);
+        await row.click();
+        assert.deepEqual(await page.evaluate(() => window.__commands), [{ type: "select_options", option_indices: [0] }]);
+        await page.close();
+      }
+    }
+
     for (const description of ["Choose the replacement word", "Choose the replacement mana color"]) {
       assert.equal(ordering.isEffectOrderingDecision({ ...replacement, description }), false);
     }

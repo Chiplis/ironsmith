@@ -7,11 +7,47 @@ import {
   evaluateLobbyDeckSubmission,
   isLobbyDeckReady,
   parseDeckList,
+  parseCommanderList,
+  parseDeckFoilNames,
+  parseDeckPrintPreferences,
   parseSideboardList,
   parseStickerList,
   readDefaultLobbyDeck,
   saveDefaultLobbyDeck,
+  splitSavedLobbyDeck,
 } from "../src/lib/decklists.js";
+
+test("MTGO sideboard headers separate cards and serialize as Sideboard", () => {
+  for (const header of ["SIDEBOARD:", "Sideboard:", " sideboard : ", "SIDEBOARD"]) {
+    const text = `2 Island\r\n${header}\r\n1 Negate\r\n`;
+    assert.deepEqual(parseDeckList(text), ["Island", "Island"]);
+    assert.deepEqual(parseSideboardList(text), ["Negate"]);
+    assert.equal(deckListText(parseDeckList(text), parseSideboardList(text)),
+      "2 Island\n\nSideboard\n1 Negate");
+  }
+  const saved = splitSavedLobbyDeck("Commander\n1 Atraxa, Grand Unifier\nSIDEBOARD:\n1 Negate");
+  assert.equal(saved.commanderText, "1 Atraxa, Grand Unifier");
+  assert.deepEqual(parseSideboardList(saved.deckText), ["Negate"]);
+});
+
+test("combined card names import their first half across deck sections and print preferences", () => {
+  const text = [
+    "2 Unholy Annex / Ritual Chamber (DSK) 118 *F*",
+    "1 Fire // Ice [MH2:290]",
+    "1 Wear/Tear",
+    "SIDEBOARD:",
+    "1 Valakut Awakening // Valakut Stoneforge",
+  ].join("\n");
+  assert.deepEqual(parseDeckList(text), ["Unholy Annex", "Unholy Annex", "Fire", "Wear"]);
+  assert.deepEqual(parseSideboardList(text), ["Valakut Awakening"]);
+  assert.deepEqual(parseCommanderList("1 Esika, God of the Tree / The Prismatic Bridge"),
+    ["Esika, God of the Tree"]);
+  assert.deepEqual(parseDeckFoilNames(text), ["Unholy Annex"]);
+  assert.deepEqual(parseDeckPrintPreferences(text), [
+    { name: "Unholy Annex", setCode: "DSK", collectorNumber: "118" },
+    { name: "Fire", setCode: "MH2", collectorNumber: "290" },
+  ]);
+});
 
 test("non-Commander lobbies accept at least 60 main-deck cards", () => {
   const planes = Array.from({ length: 10 }, (_, index) => `Plane ${index}`);

@@ -7,12 +7,6 @@ import { createZoneSanctuary } from './zone-sanctuary.js';
 import { placeForgeScenery } from './forge-scenery.js';
 
 const ASSETS = `${import.meta.env.BASE_URL}theme/forge-arena/`;
-const vertexShader = 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}';
-const noiseShader = `
-  float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-  float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.)),f.x),f.y);}
-  float fbm(vec2 p){return noise(p)*.55+noise(p*2.03)*.28+noise(p*4.11)*.17;}
-`;
 
 export function createForgeScene(host, quality = 'high') {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: quality === 'high', powerPreference: 'low-power' });
@@ -21,10 +15,7 @@ export function createForgeScene(host, quality = 'high') {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
-  renderer.shadowMap.enabled = quality === 'high';
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.shadowMap.autoUpdate = false;
-  renderer.shadowMap.needsUpdate = true;
+  renderer.shadowMap.enabled = false;
   host.append(renderer.domElement);
   const scene = new THREE.Scene();
   const projection = createTablePerspective();
@@ -33,10 +24,7 @@ export function createForgeScene(host, quality = 'high') {
   scene.add(new THREE.HemisphereLight(0x7394c6, 0x080b17, 0.35));
   const daylight = new THREE.DirectionalLight(0xaecbff, 1.8);
   daylight.position.set(-300, 450, 700);
-  daylight.castShadow = quality === 'high';
-  daylight.shadow.mapSize.set(1024, 1024);
-  daylight.shadow.normalBias = 1;
-  daylight.shadow.bias = -.0002;
+
   scene.add(daylight, daylight.target);
   const seatLights = new Map();
   let seatLayout = { width: 1, height: 1, seats: [] }, lightConfiguration = '';
@@ -53,9 +41,7 @@ export function createForgeScene(host, quality = 'high') {
       let light = seatLights.get(spec.owner);
       if (!light) {
         light = new THREE.SpotLight();
-        light.penumbra = 1; light.decay = 2; light.castShadow = quality === 'high';
-        light.shadow.mapSize.set(512, 512); light.shadow.bias = -.0002;
-        light.shadow.normalBias = .6;
+        light.penumbra = 1; light.decay = 2;
         seatLights.set(spec.owner, light); scene.add(light, light.target);
       }
       light.color.set(spec.color);
@@ -67,18 +53,15 @@ export function createForgeScene(host, quality = 'high') {
       const incidence = (spec.z - spec.targetZ) / distance;
       light.intensity = distance * distance * 1.3 / Math.max(.25, incidence);
       light.distance = distance * 2.6; light.angle = spec.angle;
-      light.shadow.camera.near = 1; light.shadow.camera.far = light.distance;
-      light.shadow.camera.updateProjectionMatrix();
     }
-    renderer.shadowMap.needsUpdate = true;
     host.dataset.playerLights = specifications.map(spec => `${spec.owner}:${spec.color}`).join(',');
   }
   const resources = new Set();
-  let disposed = false, lost = false, width = 1, height = 1, combat = false, pixelRatio = 0;
-  let pulseAt = -Infinity, previousTime = 0, placements = [], shadowLayout = "";
+  let disposed = false, lost = false, width = 1, height = 1, pixelRatio = 0;
+  let placements = [];
   const own = resource => { resources.add(resource); return resource; };
   const plane = own(new THREE.PlaneGeometry(1, 1));
-  const ready = () => { if (!disposed) { renderer.shadowMap.needsUpdate = true; host.dispatchEvent(new Event('forgeassetsready')); } };
+  const ready = () => { if (!disposed) host.dispatchEvent(new Event('forgeassetsready')); };
   function rememberModel(group) {
     group.traverse(object => {
       if (object.geometry) resources.add(object.geometry);
@@ -88,13 +71,12 @@ export function createForgeScene(host, quality = 'high') {
       }
     });
   }
-  // The terrain is an albedo map on a rough, shadow-receiving surface. Light
-  // transport, material response and geometric occlusion determine illumination.
+  // Sanctuary terrain and stone remain lit by the players, without cast shadows.
   const floorMaterial = own(new THREE.MeshStandardMaterial({
     color: 0xa4aab5, roughness: .97, metalness: 0,
   }));
   const floor = new THREE.Mesh(plane, floorMaterial);
-  floor.position.z = -60; floor.receiveShadow = true; floor.visible = false; scene.add(floor);
+  floor.position.z = -60; floor.visible = false; scene.add(floor);
   new THREE.TextureLoader().load(`${ASSETS}terrain.png`, texture => {
     if (disposed) { texture.dispose(); return; }
     own(texture); texture.colorSpace = THREE.SRGBColorSpace;
@@ -103,29 +85,16 @@ export function createForgeScene(host, quality = 'high') {
     host.dataset.terrain = 'ready'; ready();
   }, undefined, () => { if (!disposed) host.dataset.terrain = 'fallback'; });
 
-  // Feathered contact shading: retain the landscape instead of enclosing each
-  // card in an opaque rectangular platform.
-  const shadowMaterial = own(new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, vertexShader,
-    fragmentShader: `varying vec2 vUv;void main(){vec2 q=abs(vUv-.5)*2.;float a=1.-smoothstep(.35,1.,max(q.x,q.y));gl_FragColor=vec4(.015,.022,.025,a*.28);}`,
-  }));
   const sanctuary = createZoneSanctuary(scene, own);
-  // Shadow-only geometry tracks the DOM cards without repainting their artwork.
-  // Cards sit above the stone; their shadows share the scenery's moon direction.
-  const cardShadowGeometry = own(new THREE.BoxGeometry(1, 1, 1));
-  const cardShadowMaterial = own(new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
-  const cardShadows = [];
 
   const props = Array.from({ length: 6 }, (_, index) => {
     const group = new THREE.Group(); scene.add(group);
-    const shadow = new THREE.Mesh(plane, shadowMaterial); scene.add(shadow);
-    return { group, shadow, index, kind: index === 2 || index === 3 ? 'pit' : 'rock', ready: false, size: 0 };
+    return { group, index, kind: index === 2 || index === 3 ? 'pit' : 'rock', ready: false, size: 0 };
   });
   const loader = new GLTFLoader();
   for (const [kind, file] of [['rock', 'rock_face_02/rock_face_02.gltf'], ['pit', 'stone_fire_pit/stone_fire_pit.gltf']]) {
     loader.load(`${ASSETS}${file}`, gltf => {
       gltf.scene.traverse(object => {
-        if (object.isMesh) { object.castShadow = true; object.receiveShadow = true; }
         for (const material of Array.isArray(object.material) ? object.material : object.material ? [object.material] : []) {
           material.color?.multiply(new THREE.Color(kind === 'rock' ? 0x657c94 : 0x8d969e));
           material.roughness = 0.95;
@@ -150,25 +119,13 @@ export function createForgeScene(host, quality = 'high') {
     }, undefined, () => { if (!disposed) host.dataset.modelFallback = 'true'; });
   }
 
-  const flames = props.filter(p => p.kind === 'pit').map(prop => {
-    const material = own(new THREE.ShaderMaterial({
-      uniforms: { time: { value: 0 }, power: { value: 1 } }, transparent: true, depthWrite: false,
-      blending: THREE.AdditiveBlending, vertexShader,
-      fragmentShader: `varying vec2 vUv; uniform float time,power; ${noiseShader}
-        void main(){vec2 p=(vUv-.5)*2.;float r=length(p);
-          float ring=pow(.5+.5*sin(r*30.-time*.7),5.)*.16;
-          float a=(1.-smoothstep(.5,1.,r))*(.18+ring);
-          gl_FragColor=vec4(.24,.58,1.,a*power);}`,
-    }));
-    const mesh = new THREE.Mesh(plane, material); scene.add(mesh);
-    const light = new THREE.PointLight(0x93c9ff, 0, 250, 1.5); scene.add(light);
-    return { prop, mesh, material, light };
-  });
   const onLost = event => { event.preventDefault(); lost = true; host.dataset.renderer = 'fallback'; renderer.domElement.style.visibility = 'hidden'; };
   const onRestored = () => { lost = false; host.dataset.renderer = 'webgl'; renderer.domElement.style.visibility = ''; };
   renderer.domElement.addEventListener('webglcontextlost', onLost);
   renderer.domElement.addEventListener('webglcontextrestored', onRestored);
   host.dataset.renderer = 'webgl';
+  host.dataset.effects = 'player-lights';
+  host.dataset.shadows = 'none';
   return {
     layout(layout, zones) {
       seatLayout = layout;
@@ -184,45 +141,18 @@ export function createForgeScene(host, quality = 'high') {
         lightConfiguration = '';
         daylight.position.set(width * .15, height * .25, 750);
         daylight.target.position.set(width * .55, -height * .65, -60);
-        const extent = Math.max(width, height) * .85;
-        Object.assign(daylight.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 3500 });
-        daylight.shadow.camera.updateProjectionMatrix();
       }
-      const nextShadowLayout = JSON.stringify([layout.width, layout.height, layout.cardShadows, [...zones.values()].map(z => z.rect)]);
-      if (nextShadowLayout !== shadowLayout) { renderer.shadowMap.needsUpdate = true; shadowLayout = nextShadowLayout; }
       sanctuary.layout(new Map([...zones].map(([key, zone]) => [key, { ...zone, rect: projection.rect(zone.rect, -22) }])));
-      const footprints = layout.cardShadows || [];
-      while (cardShadows.length < footprints.length) {
-        const mesh = new THREE.Mesh(cardShadowGeometry, cardShadowMaterial);
-        mesh.castShadow = true; scene.add(mesh); cardShadows.push(mesh);
-      }
-      cardShadows.forEach((mesh, index) => {
-        const footprint = footprints[index]; mesh.visible = Boolean(footprint);
-        if (!footprint) return;
-        const r = projection.rect(footprint, -54);
-        mesh.position.set((r.left + r.right) / 2, -(r.top + r.bottom) / 2, -54);
-        mesh.scale.set(r.right - r.left, r.bottom - r.top, 1);
-      });
       placements = placeForgeScenery(width, height, [...layout.obstacles, ...[...zones.values()].map(z => z.rect)]);
     },
-    signal(next, pulse, now) { illuminatePlayers(next); combat = next.combat; if (pulse) pulseAt = now; },
-    pulse(now) { pulseAt = now; },
-    interact(x, y, now) {
-      const hit = props.some(prop => prop.group.visible && Math.hypot(x - (prop.screenX ?? 0), y - (prop.screenY ?? 0)) < prop.size / 2);
-      if (hit) pulseAt = now;
-      return hit;
-    },
-    draw(now, reducedMotion) {
+    signal(next) { illuminatePlayers(next); },
+    interact() { return false; },
+    draw() {
       if (lost || disposed) return;
-      const dt = Math.min(0.1, Math.max(0, (now - previousTime) / 1000)); previousTime = now;
-      const t = reducedMotion ? 0 : now / 1000;
-      const pulse = reducedMotion ? 0 : Math.max(0, 1 - (now - pulseAt) / 1400);
-      daylight.intensity = 1.8 + pulse * .08 + (combat ? .035 : 0);
       props.forEach((prop, index) => {
         const target = placements[index]; if (!target) return;
-        // Retreat immediately; restore scenery gradually as space becomes free.
-        if (Math.abs(target.size - prop.size) > 1 || target.x !== prop.screenX || target.y !== prop.screenY) renderer.shadowMap.needsUpdate = true;
-        prop.size = target.size < prop.size || reducedMotion ? target.size : THREE.MathUtils.damp(prop.size, target.size, 5, dt);
+        // Keep scenery clear of cards without animating the background.
+        prop.size = target.size;
         prop.group.visible = prop.ready && prop.size > 26;
         prop.screenX = target.x; prop.screenY = target.y;
         const center = projection.point(target.x, target.y, 10);
@@ -230,23 +160,9 @@ export function createForgeScene(host, quality = 'high') {
         const worldSize = prop.size * center.distanceTo(edge);
         prop.group.position.copy(center);
         prop.group.scale.setScalar(worldSize);
-        prop.shadow.visible = prop.group.visible;
-        prop.shadow.position.copy(projection.point(target.x + prop.size * .1, target.y + prop.size * .12, -35));
-        prop.shadow.scale.set(worldSize * 1.7, worldSize * 1.3, 1);
       });
-      flames.forEach(({ prop, mesh, material, light }) => {
-        mesh.visible = prop.group.visible;
-        mesh.position.set(prop.group.position.x, prop.group.position.y, prop.size * 0.55 + 10);
-        mesh.scale.set(prop.size * 0.55, prop.size * 0.4, 1);
-        material.uniforms.time.value = t; material.uniforms.power.value = 1 + pulse * 0.6;
-        light.position.set(prop.group.position.x, prop.group.position.y, prop.size * 0.5 + 10);
-        light.intensity = prop.group.visible ? 18 + pulse * 18 : 0;
-      });
-      sanctuary.draw(t, pulse);
       renderer.render(scene, camera);
-      // Continue only while a game cue or scenery relocation is settling.
-      return !reducedMotion && (pulse > 0 || props.some((prop, index) =>
-        placements[index] && Math.abs(prop.size - placements[index].size) > .5));
+      return false;
     },
     dispose() {
       disposed = true;

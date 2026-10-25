@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import gzip
 import json
 from pathlib import Path
@@ -170,6 +171,59 @@ def is_legal_in_supported_paper_format(card, formats=SUPPORTED_PAPER_FORMATS):
     return any(legalities.get(fmt) in {"legal", "restricted"} for fmt in formats)
 
 
+# download_scryfall_cards.py stamps this on cards that are previewed on
+# Scryfall but not legal in any format yet; the build keeps them so lobbies can
+# opt into playing them ("Allow unreleased cards").
+UNRELEASED_MARKER = "ironsmith_unreleased"
+
+UNRELEASED_EXCLUDED_SET_TYPES = frozenset(
+    {"funny", "token", "memorabilia", "minigame", "alchemy", "treasure_chest", "vanguard"}
+)
+
+NON_PLAYABLE_LAYOUTS = frozenset(
+    {
+        "token",
+        "double_faced_token",
+        "emblem",
+        "planar",
+        "scheme",
+        "vanguard",
+        "art_series",
+        "reversible_card",
+    }
+)
+
+
+def is_marked_unreleased(card):
+    return card.get(UNRELEASED_MARKER) is True
+
+
+def is_unreleased_card(card, today=None):
+    """A paper card Scryfall previews ahead of its release date, while every
+    format still reports it as not legal. (Released cards that are legal
+    nowhere, such as playtest cards, stay out.)"""
+    legalities = card.get("legalities") or {}
+    if any(value != "not_legal" for value in legalities.values()):
+        return False
+    released_at = str(card.get("released_at") or "").strip()
+    try:
+        released = datetime.date.fromisoformat(released_at)
+    except ValueError:
+        return False
+    today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    if released <= today:
+        return False
+    if "playtest" in (card.get("promo_types") or []):
+        return False
+    if is_non_paper_print(card) or card.get("oversized") or card.get("has_acorn"):
+        return False
+    if (card.get("border_color") or "").strip().lower() in {"silver", "gold"}:
+        return False
+    if (card.get("set_type") or "").strip().lower() in UNRELEASED_EXCLUDED_SET_TYPES:
+        return False
+    return (card.get("layout") or "").strip().lower() not in NON_PLAYABLE_LAYOUTS
+
+
 def is_non_playable(card, type_line, oracle_text):
     border_color = (card.get("border_color") or "").strip().lower()
     if border_color == "silver":
@@ -179,20 +233,15 @@ def is_non_playable(card, type_line, oracle_text):
         return True
 
     legalities = card.get("legalities") or {}
-    if legalities and all(value == "not_legal" for value in legalities.values()):
+    if (
+        legalities
+        and all(value == "not_legal" for value in legalities.values())
+        and not is_marked_unreleased(card)
+    ):
         return True
 
     layout = (card.get("layout") or "").strip().lower()
-    if layout in {
-        "token",
-        "double_faced_token",
-        "emblem",
-        "planar",
-        "scheme",
-        "vanguard",
-        "art_series",
-        "reversible_card",
-    }:
+    if layout in NON_PLAYABLE_LAYOUTS:
         return True
 
     if type_line:

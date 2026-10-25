@@ -17,14 +17,14 @@ function useSettled(value,delay) {
 }
 
 // Keep the preview face rectangular; only the finish follows the pointer.
-export default function CardGlintLivePreview({face,presentation,onBorderClick,onRarityClick,labels={}}) {
+export default function CardGlintLivePreview({face,presentation,onBorderClick,onRarityClick,labels={},liveEnabled=true}) {
   const still = useRef(null), stage = useRef(null);
   const [api,setApi] = useState(null), [stillKey,setStillKey] = useState(null), [stillFailed,setStillFailed] = useState(false);
   const key = useMemo(() => face ? JSON.stringify(face) : '', [face]);
   // Prepare only the settled draft, not every keystroke.
   const settledKey = useSettled(key,140);
   const settled = useMemo(() => settledKey ? JSON.parse(settledKey) : null, [settledKey]);
-  const [liveCanvas,live] = useCardGlintLive(settled,presentation);
+  const [liveCanvas,live] = useCardGlintLive(settled,presentation,{enabled:liveEnabled});
   const fallback = live.mode === 'unavailable' || live.mode === 'off';
 
   useEffect(() => {
@@ -61,7 +61,8 @@ export default function CardGlintLivePreview({face,presentation,onBorderClick,on
     <div className="card-glint-live__tilt" onPointerMove={onPointerMove} onPointerLeave={() => live.pointer(null)}>
       <canvas ref={liveCanvas} className="card-glint-live__canvas" hidden={fallback}
         role="img" aria-label={face ? `${face.name}: ${face.typeLine}. ${face.rulesText}` : undefined}/>
-      <canvas ref={still} className="card-glint-live__canvas" hidden={!fallback} aria-hidden="true"/>
+      <canvas ref={still} className="card-glint-live__canvas" hidden={!fallback}
+        role="img" aria-label={face ? `${face.name}: ${face.typeLine}. ${face.rulesText}` : undefined}/>
       {shown && onBorderClick && BORDER_RAILS.map(([left,top,width,height],index) =>
         <button key={index} type="button" className="card-glint-live__target" tabIndex={index ? -1 : 0}
           style={{left:`${left}%`,top:`${top}%`,width:`${width}%`,height:`${height}%`}}

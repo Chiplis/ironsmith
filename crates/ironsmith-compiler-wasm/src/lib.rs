@@ -58,6 +58,9 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
     compiled.definition.card.transforming_dfc = input.linked_face_layout.as_deref() == Some("transform");
     let wire_definition = wire_definition_from_serializable(&compiled.definition)
         .map_err(|error| format!("failed to encode compiled definition: {error}"))?;
+    let wire_definition = ironsmith_text::with_choice_decision_labels(wire_definition, |wire|
+        ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire)
+            .map_err(|error| error.to_string()))?;
     let runtime_definition =
         ironsmith_runtime_catalog::artifact_materializer::materialize_definition(
             wire_definition.clone(),

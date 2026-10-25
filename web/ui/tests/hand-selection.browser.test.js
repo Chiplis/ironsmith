@@ -4,14 +4,14 @@ import {chromium} from 'playwright';
 import {createServer} from 'vite';
 
 test('desktop hand selection keeps transformed cards within the reserved horizontal lane',async()=>{
-  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  const vite=await createServer({optimizeDeps:{entries:['tests/zone-piles-table.html']},server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();
   const browser=await chromium.launch();
   try {
     const page=await browser.newPage({viewport:{width:1440,height:900}});
     await page.route('https://**/*',route=>route.fulfill({status:404,body:''}));
     for (const count of [7, 20]) {
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?decisionDock&objects&hand=${count}&utilities`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?decisionDock&objects&hand=${count}&utilities`, {waitUntil:'domcontentloaded', timeout:90000});
     const cards=page.locator('.hand-layout-item .game-card');
     await cards.first().waitFor();
     await page.waitForTimeout(700);

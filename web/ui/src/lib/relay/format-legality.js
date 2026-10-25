@@ -1,5 +1,6 @@
 import { indexFormatCatalog, installFormatAliases } from './format-catalog-index.js';
 import { PUBLIC_FORMATS, usesCommanders } from './formats.js';
+import { deckCardBaseName, deckColorNoteProblem } from '../deck-color-notes.js';
 let catalog;
 let loading;
 export async function loadFormatCatalog() {
@@ -30,7 +31,9 @@ export async function loadFormatCatalog() {
 }
 export const formatCatalogDate = () => catalog?.sourceUpdatedAt;
 const key = name => String(name || '').trim().toLowerCase();
-function lookup(cards, name) {
+function lookup(cards, written) {
+  // "Cryptic Spires ({W}{B})" is Cryptic Spires with its circled colors.
+  const name = deckCardBaseName(written);
   const exact = cards[key(name)];
   if (exact) return exact;
   // Deck imports commonly use the front face of double-faced cards, and
@@ -66,6 +69,11 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
   // Card name as the deck wrote it → why that card keeps the deck from starting.
   const cardProblems = {};
   const flag = (name, message) => { errors.push(message); cardProblems[name] ||= message; };
+  // Deck-list configuration a legal card still needs before the match starts
+  // (the colors circled for Cryptic Spires). It never makes a deck illegal.
+  const configurationErrors = [];
+  const configurationProblems = {};
+  const configure = (name, message) => { configurationErrors.push(message); configurationProblems[name] ||= message; };
   if (!data?.cards) return { ready: false, errors: ['Card legality catalog has not loaded.'], cardProblems };
   const commanderFormat = usesCommanders(format);
   if (commanderFormat) {
@@ -84,6 +92,8 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
   for (const [name, count] of requested) {
     const card = lookup(data.cards, name);
     if (!card) { flag(name, `Unknown card: ${name}.`); continue; }
+    const noteProblem = deckColorNoteProblem(card.name, card.rules, name);
+    if (noteProblem) configure(name, `${noteProblem}.`);
     counts.set(card.name, (counts.get(card.name) || 0) + count);
     found.set(card.name, card);
     written.set(card.name, name);
@@ -121,7 +131,29 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
       }
     }
   }
-  return { ready: errors.length === 0, errors: [...new Set(errors)], cardProblems };
+  return {
+    ready: errors.length === 0, errors: [...new Set(errors)], cardProblems,
+    configurationErrors: [...new Set(configurationErrors)], configurationProblems,
+  };
+}
+
+/**
+ * Deck-list configuration problems for any format, legality aside: every
+ * circled-color note that is missing or does not fit its card. `null` until
+ * the card catalog has loaded.
+ */
+export function deckConfigurationProblems(deck = [], commanders = [], sideboard = [], data = catalog) {
+  if (!data?.cards) return null;
+  const errors = [];
+  const cardProblems = {};
+  for (const name of new Set([...deck, ...sideboard, ...commanders])) {
+    const card = lookup(data.cards, name);
+    const problem = card && deckColorNoteProblem(card.name, card.rules, name);
+    if (!problem) continue;
+    errors.push(`${problem}.`);
+    cardProblems[name] ||= `${problem}.`;
+  }
+  return { errors: [...new Set(errors)], cardProblems };
 }
 // Checks every deck of a saved configuration against each chosen format;
 // `decks` holds { index, deck, commanders, sideboard } card-name lists.

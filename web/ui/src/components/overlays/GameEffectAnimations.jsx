@@ -8,7 +8,10 @@ import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { buildPlayerVitals, collectGameEffectEvents } from "@/lib/game-effect-events";
 import { getZoneAnchorRect, rectCenter } from "@/lib/zone-anchors";
 import { getCardRect, getPlayerTargetRect } from "@/hooks/useCardPositions";
-import { animate, createTimeline, cancelMotion } from "@/lib/motion/anime";
+import { cancelMotion } from "@/lib/motion/anime";
+import { animateEffect as animate, createEffectTimeline as createTimeline } from "@/lib/motion/native-effects";
+
+import { animateCompositor, powerEase } from "@/lib/motion/compositor";
 
 const FLIGHT_MS = 880;
 const DRAW_FLIGHT_MS = 760;
@@ -140,30 +143,12 @@ function CardFlight({ effect, onDone }) {
         "ironsmith:hand-flight-landed", { detail: { objectId: effect.handObjectId } }
       ));
     };
-    motionRef.current = createTimeline({ autoplay: true, onComplete: revealHandCard }).add(node, {
-      keyframes: [
-        { translateX: 0, translateY: 0, scale: 0.5, opacity: 0, rotate: 0, duration: 0 },
-        { scale: 0.96, opacity: 1, duration: duration * 0.18, ease: "out(2)" },
-        {
-          translateX: dx * 0.55 + px,
-          translateY: dy * 0.55 + py,
-          scale: 1.04,
-          rotate: spin * 0.55,
-          duration: duration * 0.42,
-          ease: "inOut(1.4)",
-        },
-        {
-          translateX: dx,
-          translateY: dy,
-          scale: 0.5,
-          rotate: spin,
-          opacity: 0,
-          duration: duration * 0.4,
-          ease: "in(1.7)",
-        },
-      ],
-      delay: effect.delayMs,
-    });
+    motionRef.current = animateCompositor(node, [
+      { transform: "translate(0px, 0px) scale(0.5) rotate(0deg)", opacity: 0, offset: 0, easing: powerEase("out", 2) },
+      { transform: "translate(0px, 0px) scale(0.96) rotate(0deg)", opacity: 1, offset: 0.18, easing: powerEase("inOut", 1.4) },
+      { transform: `translate(${dx * 0.55 + px}px, ${dy * 0.55 + py}px) scale(1.04) rotate(${spin * 0.55}deg)`, opacity: 1, offset: 0.6, easing: powerEase("in", 1.7) },
+      { transform: `translate(${dx}px, ${dy}px) scale(0.5) rotate(${spin}deg)`, opacity: 0, offset: 1 },
+    ], { duration, delay: effect.delayMs, onComplete: revealHandCard });
 
     const timer = window.setTimeout(
       () => onDoneRef.current(),
@@ -185,11 +170,13 @@ function CardFlight({ effect, onDone }) {
 
     const elapsed = startedAtRef.current == null ? 0 : performance.now() - startedAtRef.current;
     const flipAt = Math.max(0, effect.delayMs + effect.durationMs * 0.3 - elapsed);
-    flipMotionRef.current = createTimeline({ autoplay: true }).add(flipNode, {
-      rotateY: [0, 180],
+    flipMotionRef.current = animateCompositor(flipNode, [
+      { transform: "rotateY(0deg)" },
+      { transform: "rotateY(180deg)" },
+    ], {
       duration: effect.durationMs * 0.4,
       delay: flipAt,
-      ease: "inOut(2)",
+      easing: powerEase("inOut", 2),
     });
     return () => {
       cancelMotion(flipMotionRef.current);
@@ -500,12 +487,10 @@ function HudFlourish({ effect, onDone }) {
       }));
     }
     if (ring) {
-      motionsRef.current.push(createTimeline({ autoplay: true }).add(ring, {
-        keyframes: [
-          { scale: 0.3, opacity: 0.9, duration: 0 },
-          { scale: 1.9, opacity: 0, duration: 820, ease: "out(2)" },
-        ],
-      }));
+      motionsRef.current.push(animateCompositor(ring, [
+        { transform: "scale(0.3)", opacity: 0.9 },
+        { transform: "scale(1.9)", opacity: 0 },
+      ], { duration: 820, easing: powerEase("out", 2) }));
     }
     const motions = motionsRef.current;
     const timer = window.setTimeout(() => onDoneRef.current(), HUD_FLOURISH_MS + CLEANUP_TAIL_MS);
@@ -736,12 +721,10 @@ function LevelUpRing({ effect, onDone }) {
     const ring = root.querySelector(".game-fx-levelup-ring");
     const label = root.querySelector(".game-fx-levelup-label");
     if (ring) {
-      motionsRef.current.push(createTimeline({ autoplay: true }).add(ring, {
-        keyframes: [
-          { scale: 0.4, opacity: 0.95, duration: 0 },
-          { scale: 1.7, opacity: 0, duration: 760, ease: "out(2.2)" },
-        ],
-      }));
+      motionsRef.current.push(animateCompositor(ring, [
+        { transform: "scale(0.4)", opacity: 0.95 },
+        { transform: "scale(1.7)", opacity: 0 },
+      ], { duration: 760, easing: powerEase("out", 2.2) }));
     }
     if (label) {
       motionsRef.current.push(createTimeline({ autoplay: true }).add(label, {

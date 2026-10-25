@@ -1,3 +1,5 @@
+import { handManaCostPresentation } from "@/lib/hand-mana-cost";
+import { animateEffect as animate } from "@/lib/motion/native-effects";
 import { customCardAssets } from "@/lib/custom-card-assets";
 import { cardDisplayTypeLine } from "@/lib/card-display-type-line";
 import { customCardFlavorText } from "@/lib/custom-card-flavor";
@@ -23,7 +25,7 @@ import { getPlayerAccent } from "@/lib/player-colors";
 import { resolveStackInspectObjectId } from "@/lib/inspector-selection";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
-import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
+import { cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { useI18n } from "@/i18n/I18nContext";
 import { loadTranslatedCardView } from "@/i18n/cardTranslations";
@@ -2348,8 +2350,15 @@ export default function HoverArtOverlay({
     || displayRulesLines.length > 0
   );
 
+  const chosenValues = details?.chosen_values || cardSnapshot?.chosen_values || [];
+  const chosenValuesBadge = chosenValues.length > 0 ? (
+    <div className="inspector-chosen-values" aria-label={ui("Chosen values")}>
+      {chosenValues.map(value => <span key={value}>{value}</span>)}
+    </div>
+  ) : null;
+
   if (isCardFrameMode) {
-    const liveCard = {...hoveredStackObject, ...previewCard, ...cardSnapshot, ...details};
+    const liveCard = handManaCostPresentation({...hoveredStackObject, ...previewCard, ...cardSnapshot, ...details}, state);
     const faceIndex = cardFrameFaceIndex(liveCard, sourceImageUrl || imageUrl);
     const display = {name: displayObjectName, type_line_display: displayTypeLine,
       mana_cost: displayManaCost, oracle_text: displayRulesText, flavor_text: flavorText};
@@ -2367,6 +2376,7 @@ export default function HoverArtOverlay({
         rulesView={isMiniatureFrame ? null : rulesView} onActivate={onInteractiveAction}
         highlighted={highlightedRuleLineIndices} stats={displayStatsText} counters={displayCountersLine}
         zone={displayZoneLine} badges={displayTypeLineBadges} onReadyChange={onCardFrameReadyChange}/>
+      {chosenValuesBadge}
     </div>;
   }
 
@@ -2382,7 +2392,8 @@ export default function HoverArtOverlay({
         style={{ ...inspectorShaderRevealStyle, ...typography.style }}
       data-card-era={typography.era}
       >
-        <div className="absolute inset-0 bg-[radial-gradient(92%_92%_at_50%_14%,rgba(188,150,92,0.28),rgba(8,13,20,0)_62%),linear-gradient(180deg,rgba(16,12,9,0.96),rgba(8,7,7,0.98))]" />
+      {chosenValuesBadge}
+      <div className="absolute inset-0 bg-[radial-gradient(92%_92%_at_50%_14%,rgba(188,150,92,0.28),rgba(8,13,20,0)_62%),linear-gradient(180deg,rgba(16,12,9,0.96),rgba(8,7,7,0.98))]" />
         <div className="absolute inset-[10px] overflow-hidden rounded-none border border-[rgba(177,145,98,0.38)] bg-[rgba(16,12,10,0.94)] shadow-[0_0_0_1px_rgba(196,164,112,0.12),0_0_28px_rgba(156,118,62,0.18),0_28px_52px_rgba(0,0,0,0.48)]">
           <div className="absolute inset-0 bg-[radial-gradient(78%_62%_at_50%_24%,rgba(210,178,112,0.12),rgba(6,10,16,0)_62%)]" />
           <div className="absolute inset-[10px] rounded-none border border-white/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))]" />
@@ -2502,6 +2513,7 @@ export default function HoverArtOverlay({
       style={{ ...inspectorShaderRevealStyle, ...typography.style }}
       data-card-era={typography.era}
     >
+      {chosenValuesBadge}
       <div className="absolute inset-0 bg-[radial-gradient(120%_84%_at_50%_18%,rgba(188,150,92,0.16),rgba(6,11,18,0)_52%),linear-gradient(180deg,rgba(16,12,9,0.94),rgba(7,8,9,0.98))]" />
       {showImageBackdrop && (
         <div className={cn(

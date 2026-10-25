@@ -16,7 +16,7 @@ export default function CardFramePresentation({card,imageUrl,faceIndex=0,rulesVi
   const fallbackCard=source ? {...printable,flavor_text:'',
     ...(printable.card_faces ? {card_faces:printable.card_faces.map((face,index)=>index===faceIndex?{...face,flavor_text:''}:face)} : {})} : printable;
   useLayoutEffect(()=>{onReadyChange?.(true);},[onReadyChange]);
-  return <div className="card-frame-presentation" data-frame-presentation={rulesView?'inspector':'miniature'} data-render-ready="true">
+  return <div className="card-frame-presentation" data-frame-presentation={rulesView?'inspector':'miniature'} data-render-ready="true" data-displayed-mana-cost={printable.card_faces?.[faceIndex]?.display_mana_cost ?? printable.display_mana_cost ?? printable.card_faces?.[faceIndex]?.mana_cost ?? printable.mana_cost}>
     <div className="card-frame-presentation__visual">
     {rulesSourceFrame(printable) ? <SimpleCardFrame card={rulesSourceCard(printable)}
       rulesContent={rulesView&&<CardFrameRules name={card.name} rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}/>}/>

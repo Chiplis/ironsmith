@@ -41,6 +41,7 @@ export function usePeerLobby({setState}) {
     window.submissions.push({command,time:performance.now()});
     const before=window.currentState, kind=command.action_ref?.kind;
     const next={...before,snapshot_id:before.snapshot_id+1};
+    if(command.type==='priority_yield') next.pass_intents=[0];
     if(kind==='cast_spell'||kind==='activate_ability') {
       next.stack_size=1;next.stack_objects=[{id:next.snapshot_id,controller:0,name:'Test spell'}];
     } else {next.decision={...before.decision,player:1};next.priority_player=1;}
@@ -93,7 +94,7 @@ test('real provider times only opponent phase stops and preserves stack priority
     };
     const hold = page.getByRole('button', { name: 'Hold Priority', exact: true });
     await load(priority(0));
-    await page.getByRole('button', { name: /^Auto-pass:/ }).click();
+    assert.equal(await page.getByRole('button', { name: /^Auto-pass:/ }).getAttribute('data-resolve-mode'), 'safe');
     for (const action of ['Cast', 'Activate']) {
       await load(priority(action === 'Cast' ? 1 : 10));
       await page.getByRole('button', { name: action, exact: true }).click();
@@ -181,7 +182,7 @@ test('real provider times only opponent phase stops and preserves stack priority
 
     // Hovering the actual stack object freezes and resumes the same countdown.
     await load(priority(242, { stack_size: 1, stack_objects: [{ id: 81, controller: 1, name: 'Test spell' }] }));
-    await page.evaluate(() => window.context.setAutoResolveMode('all'));
+    await page.evaluate(() => window.context.setAutoResolveMode('off'));
     await hold.waitFor();
     await page.locator('.stack-card').hover();
     await page.waitForFunction(() => window.context.postActionPriorityWindow?.pausedAt != null);
@@ -189,7 +190,7 @@ test('real provider times only opponent phase stops and preserves stack priority
     assert.equal(await page.evaluate(() => window.submissions.length), 0, 'stack hover prevents automatic resolution');
     await page.mouse.move(0, 0);
     await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
-    await page.evaluate(() => window.context.setAutoResolveMode('regular'));
+    await page.evaluate(() => window.context.setAutoResolveMode('safe'));
 
     // Clicking Hold keeps an opponent-turn phase pause beyond the deadline.
     await load(priority(25));
@@ -201,12 +202,12 @@ test('real provider times only opponent phase stops and preserves stack priority
     await page.getByRole('button', { name: 'Resolve', exact: true }).click();
     await page.waitForFunction(() => window.submissions.length === 1);
 
-    // Disabling the chevron cancels an active phase countdown.
+    // The yellow clock cancels an active phase countdown.
     await load(priority(27));
     await upkeep.click();
     await page.evaluate(state => window.publish(state), priority(28, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
     await hold.waitFor();
-    await page.evaluate(() => window.context.setAutoResolveEnabled(false));
+    await page.evaluate(() => window.context.setAutoResolveMode('all'));
     await page.waitForTimeout(2200);
     assert.equal(await hold.count(), 0);
     assert.equal(await page.evaluate(() => window.submissions.length), 0);
@@ -223,7 +224,7 @@ test('real provider times only opponent phase stops and preserves stack priority
     assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'none');
     await page.evaluate(state => window.publish(state), priority(31, { phase: 'combat phase', step: 'declare blockers' }));
     await page.getByRole('navigation', { name: 'Combat steps' }).waitFor();
-    assert.deepEqual(await page.locator('.phase-track-group > nav').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['Combat steps', 'Turn phases']);
+    assert.deepEqual(await page.locator('.phase-track-group nav').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['Turn phases', 'Combat steps']);
     const combatIcons = await page.getByRole('navigation', { name: 'Combat steps' }).locator('svg').evaluateAll(nodes => nodes.map(node => node.getAttribute('class')));
     assert.equal(new Set(combatIcons).size, 6, 'each combat step has a dedicated icon');
     const blockers = page.getByRole('button', { name: /^Blockers:/ });
@@ -251,45 +252,42 @@ test('real provider times only opponent phase stops and preserves stack priority
     await page.waitForFunction(() => window.context.state?.snapshot_id === 33);
     assert.equal(await damage.locator('..').getAttribute('data-phase-active'), 'true');
     assert.equal(await firstStrike.locator('..').getAttribute('data-phase-active'), 'false');
-    // Stack additions always stop by default, regardless of their controller.
-    for (const controller of [0, 1]) {
-      await page.evaluate(() => window.context.setAutoResolveEnabled(false));
-      await load(priority(40 + controller, { stack_size: 1, stack_objects: [{ id: 70, controller }] }));
-      await page.waitForTimeout(150);
-      assert.equal(await page.evaluate(() => window.submissions.length), 0);
-      await page.evaluate(() => window.context.setAutoResolveEnabled(true));
-      await page.waitForTimeout(2200);
-      assert.equal(await page.evaluate(() => window.submissions.length), 0, 'chevron only automates phase pauses');
-    }
-    // Cycle all modes through the actual control and check planner-aware stack passing.
-    await page.evaluate(() => window.context.setAutoResolveEnabled(false));
-    await load(priority(45, { stack_size: 1, stack_objects: [{ id: 80, controller: 1 }],
-      decision: { kind: 'priority', player: 0, analysis_complete: false,
-        actions: actions.map(a => ({ ...a, payment_proven: false })) } }));
-    const chevron = page.getByRole('button', { name: /^Auto-pass:/ });
-    await chevron.click();
-    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'regular');
-    await chevron.click();
-    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'safe');
+    // A fresh browser defaults to white; each click persists the next clock mode.
+    await page.evaluate(() => localStorage.removeItem('ironsmith.autoResolveEnabled'));
+    await load(priority(45, { stack_size: 1, stack_objects: [{ id: 80, controller: 1 }] }));
+    const clock = page.getByRole('button', { name: /^Auto-pass:/ });
+    assert.equal(await clock.getAttribute('data-resolve-mode'), 'safe');
+    assert.equal(await clock.locator('svg.lucide-clock').count(), 1);
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.battlefield-auto-pass-toggle')).borderTopColor === 'rgb(255, 255, 255)');
-    await hold.waitFor();
+    assert.equal(await hold.count(), 0);
     await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'unfinished planner cannot auto-resolve');
-    await page.evaluate(() => window.publish({ ...window.currentState,
-      decision: { ...window.currentState.decision, analysis_complete: true } }));
+    assert.equal(await page.evaluate(() => window.submissions.length), 0);
+    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
     await page.waitForFunction(() => window.submissions.length === 1);
-    await load(priority(46, { stack_size: 1, stack_objects: [{ id: 81, controller: 1 }] }));
-    await hold.waitFor();
-    await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'safe mode holds playable responses');
-    await chevron.click();
-    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'all');
+    await clock.click();
+    assert.equal(await clock.getAttribute('data-resolve-mode'), 'all');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.battlefield-auto-pass-toggle')).borderTopColor === 'rgb(255, 212, 92)');
-    // Explicitly selecting all mode resumes this previously held response.
+    await load(priority(46, { stack_size: 1, stack_objects: [{ id: 81, controller: 1, ability_kind: 'triggered' }] }));
+    assert.equal(await clock.getAttribute('data-resolve-mode'), 'all', 'yellow survives reload');
+    assert.equal(await hold.count(), 0);
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0);
+    await clock.click();
+    assert.equal(await clock.getAttribute('data-resolve-mode'), 'off');
+    await load(priority(47, { stack_size: 1, stack_objects: [{ id: 82, controller: 0 }] }));
+    assert.equal(await clock.getAttribute('data-resolve-mode'), 'off', 'off survives reload');
     await hold.waitFor();
+    await hold.hover();
+    await page.waitForFunction(() => window.context.postActionPriorityWindow?.pausedAt != null);
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0);
+    await hold.click();
+    assert.equal(await hold.count(), 0);
+    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
     await page.waitForFunction(() => window.submissions.length === 1);
-    await chevron.click();
-    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'off');
+    await clock.click();
+    await load(priority(48));
+    assert.equal(await clock.getAttribute('data-resolve-mode'), 'safe', 'white survives reload');
     await load(priority(50));
     await upkeep.click();
     await upkeep.click();
@@ -321,114 +319,40 @@ test('real provider times only opponent phase stops and preserves stack priority
       await page.waitForFunction(count => window.submissions.length === count + 1, before);
     }
 
-    // Pass continues across empty-stack phases, yields to the remote player,
-    // and stops at the configured step without consuming that stop.
+    // The engine publishes consent while passing continues, then revokes it at a stop.
     await load(priority(70));
-    await page.evaluate(() => window.context.setAutoResolveEnabled(true));
     await page.evaluate(() => {
       window.context.cyclePriorityStop('step:DeclareBlockers');
       window.context.startPhaseAdvance();
     });
     await page.waitForFunction(() => window.submissions.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {
+      type:'priority_yield', mode:'phases', stops:['step:DeclareBlockers'],
+    });
     await page.waitForTimeout(100);
     assert.equal(await page.evaluate(() => window.submissions.length), 1, 'never submits remote priority');
-    await page.evaluate(state => window.publish(state), priority(72, { phase: 'combat phase', step: 'begin combat' }));
+    await page.evaluate(state => window.publish(state), priority(72, {
+      phase:'combat phase',step:'begin combat',pass_intents:[0],
+    }));
     await page.waitForFunction(() => window.submissions.length === 2);
-    await page.evaluate(state => window.publish(state), priority(74, { phase: 'combat phase', step: 'declare blockers' }));
+    await page.evaluate(state => window.publish(state), priority(74, {
+      phase:'combat phase',step:'declare blockers',pass_intents:[],
+    }));
     await page.waitForFunction(() => window.context.phasePassing === false);
     assert.equal(await page.evaluate(() => window.submissions.length), 2);
     assert.equal(await page.evaluate(() => window.context.priorityStops['step:DeclareBlockers']), 'once');
 
-    // A tracker pause ends this run while preserving saved automation preferences.
-    await page.waitForTimeout(350); // Let the previous automatic pass cooldown finish.
-    assert.equal(await page.evaluate(() => window.context.autoPassEnabled), true);
-    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), true);
-    await page.evaluate(() => { window.context.setAutoPassEnabled(false); window.context.setAutoResolveEnabled(false); });
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 3);
-    await page.evaluate(state => window.publish(state), priority(75, {
-      phase: 'combat phase', step: 'declare blockers', stack_size: 1,
-      stack_objects: [{ id: 900, controller: 0, name: 'Test spell' }],
-    }));
-    await page.waitForTimeout(200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 3, 'manual action after a pause does not resume passing');
-    await page.evaluate(state => window.publish(state), priority(76, { active_player: 1 }));
-    await page.waitForTimeout(200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 3, 'off-turn smart auto-pass stays stopped');
-
-    await load(priority(76));
-    await page.evaluate(() => window.context.startPhaseAdvance());
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), priority(78, {
-      phase: 'combat phase', step: 'declare attackers',
-      decision: { kind: 'attackers', player: 0, attacker_options: [{ creature: 7, must_attack: false }] },
-    }));
-    await page.waitForFunction(() => window.submissions.length === 2);
-    assert.deepEqual(await page.evaluate(() => window.submissions[1].command),
-      { type: 'declare_attackers', declarations: [] });
-
-    // An attackers-step stop must take effect before the empty declaration.
-    await load(priority(90));
-    await page.evaluate(() => {
-      window.context.cyclePriorityStop('step:DeclareAttackers');
-      window.context.startPhaseAdvance();
-    });
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), priority(92, {
-      phase: 'combat phase', step: 'declare attackers',
-      decision: { kind: 'attackers', player: 0, attacker_options: [] },
-    }));
-    await page.waitForFunction(() => window.context.phasePassing === false);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1);
-
-    // Even a later blockers pause overrides automatic no-attack combat.
-    await load(priority(93));
-    await page.evaluate(() => {
-      window.context.cyclePriorityStop('step:DeclareBlockers');
-      window.context.startPhaseAdvance();
-    });
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), priority(95, {
-      phase: 'combat phase', step: 'declare attackers',
-      decision: { kind: 'attackers', player: 0, attacker_options: [{ creature: 7, must_attack: false }] },
-    }));
-    await page.waitForFunction(() => window.context.phasePassing === false);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'blockers pause overrides no-attack shortcut');
-
-    await load(priority(94));
-    await page.evaluate(() => window.context.startPhaseAdvance());
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), priority(96, {
-      phase: 'combat phase', step: 'declare attackers',
-      decision: { kind: 'attackers', player: 0, attacker_options: [{ creature: 7, must_attack: true }] },
-    }));
-    await page.waitForFunction(() => window.context.phasePassing === false);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'mandatory attacks remain manual');
-
+    // Per-player UI preferences are lowered to ordinary stops for this turn's consent.
     await load(priority(80));
-    await page.evaluate(() => window.context.startPhaseAdvance());
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), priority(82, { turn_number: 2 }));
-    await page.waitForFunction(() => window.context.phasePassing === false);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'does not pass the next turn');
-    // End turn bypasses selected stops, including no-attack combat.
-    await load(priority(100));
     await page.evaluate(() => {
-      window.context.cyclePriorityStop('phase:Main2');
-      window.context.cyclePriorityStop('step:DeclareAttackers');
-      window.context.togglePhasePassing();
+      window.context.cyclePriorityStop('phase:Main2', 0);
+      window.context.cyclePriorityStop('phase:Upkeep', 1);
+      window.context.startPhaseAdvance();
     });
     await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), priority(102, {
-      phase: 'combat phase', step: 'declare attackers',
-      decision: { kind: 'attackers', player: 0, attacker_options: [] },
-    }));
-    await page.waitForFunction(() => window.submissions.length === 2);
-    await page.evaluate(state => window.publish(state), priority(104, { phase: 'second main phase' }));
-    await page.waitForFunction(() => window.submissions.length === 3);
-    await page.evaluate(state => window.publish(state), priority(106, { turn_number: 2 }));
-    await page.waitForFunction(() => window.context.phasePassing === false);
-    assert.equal(await page.evaluate(() => window.submissions.length), 3);
+    assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {
+      type:'priority_yield',mode:'phases',stops:['phase:Main2'],
+    });
 
     // Devourer's pregame reveal and acknowledged upkeep look must not strand
     // phase passing on a retained viewed_cards snapshot.
@@ -438,14 +362,18 @@ test('real provider times only opponent phase stops and preserves stack priority
       await page.evaluate(() => window.context.startPhaseAdvance());
       await page.waitForFunction(() => window.submissions.length === 1);
     }
-    // A genuinely new Look still pauses; Done Looking releases it without
-    // needing an unrelated engine snapshot or toggling Go To twice.
-    await load(priority(210, {phase:'beginning phase', step:'upkeep', viewed_cards:{...reveal, zone:'Library', visibility:'private'}}));
-    await page.evaluate(() => window.context.startPhaseAdvance());
-    await page.waitForTimeout(150);
+    // With no legal blockers the signed local answer is automatic, unless full control is on.
+    await load(priority(300));
+    await page.getByRole('button', { name: 'Full control', exact: true }).click();
+    const emptyBlocks = priority(301, { phase:'combat phase', step:'declare blockers',
+      decision:{kind:'blockers',player:0,blocker_options:[{attacker:7,valid_blockers:[]}]} });
+    await page.evaluate(state => window.publish(state), emptyBlocks);
+    await page.waitForTimeout(200);
     assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    await page.evaluate(() => window.dispatchEvent(new Event('ironsmith:look-done')));
+    assert.equal(await page.evaluate(() => window.context.holdRule), 'always');
+    await page.getByRole('button', { name: 'Full control', exact: true }).click();
     await page.waitForFunction(() => window.submissions.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {type:'declare_blockers',declarations:[]});
 
     await load(priority(110, { decision: { kind: 'mana_payment', player: 0 } }));
     assert.equal(await page.getByRole('button', {name:'Auto-pass', exact:true}).count(), 0);

@@ -881,6 +881,7 @@ function findInspectorImageElement(effects) {
 
 function ShaderCanvas({ effects, quality }) {
   const canvasRef = useRef(null);
+  const wakeRef = useRef(null);
   const shaderEffects = useMemo(
     () => effects
       .filter((effect) => (
@@ -895,6 +896,7 @@ function ShaderCanvas({ effects, quality }) {
 
   useEffect(() => {
     effectsRef.current = shaderEffects;
+    wakeRef.current?.();
   }, [shaderEffects]);
 
   useEffect(() => {
@@ -1034,11 +1036,11 @@ function ShaderCanvas({ effects, quality }) {
     };
 
     const render = (now) => {
+      frameId = null;
       const activeEffects = effectsRef.current.slice(0, MAX_SHADER_EFFECTS);
       if (activeEffects.length === 0) {
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-        frameId = window.requestAnimationFrame(render);
         return;
       }
 
@@ -1089,9 +1091,14 @@ function ShaderCanvas({ effects, quality }) {
 
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
-    frameId = window.requestAnimationFrame(render);
+    wakeRef.current = () => {
+      if (frameId == null) frameId = window.requestAnimationFrame(render);
+    };
+    frameId = null;
+    wakeRef.current();
 
     return () => {
+      wakeRef.current = null;
       window.cancelAnimationFrame(frameId);
       window.removeEventListener("resize", resizeCanvas);
       if (pendingInspectorImage) {

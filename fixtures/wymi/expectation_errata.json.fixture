@@ -1,0 +1,42 @@
+[
+  {
+    "source_index": 64,
+    "assertions": [
+      0,
+      1
+    ],
+    "reason": "The authored HasNoManaCost copy exception must remove the mana costs of both copied Room halves. Upstream removes only the outer ManaCost field and accidentally retains both nested door costs. Both halves and their characteristics are copiable under CR 709.5\u2013709.5b; the copy exception changes their mana costs under CR 707.2 and 707.9b.",
+    "rules_url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt",
+    "changes": [
+      {
+        "path": "/expected/Doors/Left/ManaCost",
+        "from": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 1
+          },
+          {
+            "_ManaSymbol": "ManaCostR"
+          }
+        ],
+        "to": null
+      },
+      {
+        "path": "/expected/Doors/Right/ManaCost",
+        "from": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 3
+          },
+          {
+            "_ManaSymbol": "ManaCostU"
+          },
+          {
+            "_ManaSymbol": "ManaCostU"
+          }
+        ],
+        "to": null
+      }
+    ]
+  }
+]

@@ -36,22 +36,29 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
   const textKey=shown.map(value=>cardFrameRules(value)+'\n'+(value.flavor_text??'')).join('\n');
   useLayoutEffect(()=>{
     const box=rules.current;
-    let frame=0;
+    let frame=0,lastWidth=-1,lastHeight=-1;
     const fit=()=>{
-      if(!box.clientHeight||!box.clientWidth)return;
+      const width=box.clientWidth,height=box.clientHeight;
+      if(!width||!height || (width===lastWidth && height===lastHeight))return;
+      lastWidth=width;lastHeight=height;
       box.style.removeProperty('font-size');
       const preferred=parseFloat(getComputedStyle(box).fontSize);
+      // Most temporary frames already fit (and some have no rules at all).
+      // Do not run ten write/layout cycles before replacing them with canvas.
+      const fits=()=>box.scrollHeight<=box.clientHeight+1 && box.scrollWidth<=box.clientWidth+1;
+      if(fits())return;
       let low=Math.min(7,preferred),high=preferred;
       for(let i=0;i<10;i++){
         const size=(low+high)/2;box.style.fontSize=`${size}px`;
-        if(box.scrollHeight>box.clientHeight+1||box.scrollWidth>box.clientWidth+1)high=size;else low=size;
+        if(fits())low=size;else high=size;
       }
       box.style.fontSize=`${low}px`;
     };
     const schedule=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(fit);};
+    const fontsChanged=()=>{lastWidth=-1;schedule();};
     const observer=new ResizeObserver(schedule);observer.observe(box);
-    fit();document.fonts.addEventListener('loadingdone',schedule);
-    return()=>{observer.disconnect();cancelAnimationFrame(frame);document.fonts.removeEventListener('loadingdone',schedule);};
+    fit();document.fonts.addEventListener('loadingdone',fontsChanged);
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);document.fonts.removeEventListener('loadingdone',fontsChanged);};
   },[textKey]);
   const stats=face.power!=null&&face.toughness!=null?`${face.power}/${face.toughness}`
     :face.power_toughness??face.defense??face.loyalty;
@@ -60,7 +67,7 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
     style={{...tone.style,...(sourceFrame ? {'--rules-source-color':sourceFrame.color} : {})}} aria-label={face.name||card.name||ui('Card details')}>
     {stock&&<img className="simple-card-frame__stock" src={`${import.meta.env.BASE_URL}card-frames/default/${frameKey}.webp`} alt=""/>}
     <header className="simple-card-frame__heading" style={box('title')}><strong>{face.name||card.name}</strong>
-      <ManaCostIcons cost={face.mana_cost??card.mana_cost} size="1em" /></header>
+      <ManaCostIcons cost={face.display_mana_cost??card.display_mana_cost??face.mana_cost??card.mana_cost} size="1em" /></header>
     <div className="simple-card-frame__art" style={box('art')}>
       {sourceFrame&&<div className="rules-source-emblem" aria-hidden="true"><span>{sourceFrame.symbol}</span><strong>{sourceFrame.label}</strong></div>}
       {(art||!sourceFrame)&&<LoadingCardArt src={art} pending={!imageUrl} colors={colors} variant="hand" alt="" decoding="async" referrerPolicy="no-referrer"/>}
@@ -68,7 +75,7 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
     <div className="simple-card-frame__type" style={box('type')}>{type||ui('Card')}</div>
     <div className="simple-card-frame__rules" ref={rules} style={box('rules')}>
       {rulesContent?<>{rulesContent}{face.flavor_text&&<p className="simple-card-frame__flavor">{face.flavor_text}</p>}</>:shown.map((part,index)=><section key={index}>
-        {index>0&&<><header className="simple-card-frame__heading"><strong>{part.name}</strong><ManaCostIcons cost={part.mana_cost} size="1em"/></header>
+        {index>0&&<><header className="simple-card-frame__heading"><strong>{part.name}</strong><ManaCostIcons cost={part.display_mana_cost??part.mana_cost} size="1em"/></header>
           <div className="simple-card-frame__type">{part.type_line_display??part.type_line}</div></>}
         {cardFrameRules(part).split('\n').filter(Boolean).map((line,i)=><p key={i}><SymbolText text={line}/></p>)}
         {part.flavor_text&&<p className="simple-card-frame__flavor">{part.flavor_text}</p>}

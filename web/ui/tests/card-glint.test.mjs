@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cardGlintFace} from '../src/lib/card-glint/card.mjs';
+import {cardFrameSnapshot} from '../src/lib/card-frame-snapshot.mjs';
 import {measuredRegions,cardGlintActionsCovered} from '../src/lib/card-glint/interactions.mjs';
 
 test('live text, colors and stats override physical printing metadata', () => {
@@ -159,4 +160,24 @@ test('loyalty abilities retain their layout when live types become creature',()=
   assert.equal(cardGlintFace({...card,oracle_text:'Pay 2 life: Draw a card.'}).layout,'normal');
   assert.equal(cardGlintFace({...card,layout:'adventure'}).layout,'adventure');
   assert.equal(cardGlintFace({...card,oracle_text:'[-X]: Draw X cards.'}).layout,'planeswalker');
+});
+
+
+test('basic land frames retain their palette before and after printing metadata arrives',()=>{
+  for (const [subtype,color] of [['Plains','W'],['Island','U'],['Swamp','B'],['Mountain','R'],['Forest','G']]) {
+    const type_line=`Basic Land — ${subtype}`;
+    // Hand/zone snapshots may only acquire their subtype from the printing.
+    const lightweight=JSON.parse(cardFrameSnapshot({name:subtype,card_types:['land'],colors:[]}));
+    const printed=cardGlintFace(lightweight,{printing:{type_line}});
+    assert.deepEqual(printed.frameColors,[color]);
+    assert.deepEqual(printed.colors,[]);
+    const full={...lightweight,type_line};
+    assert.deepEqual(cardGlintFace(full).frameColors,[color]);
+    assert.deepEqual(cardGlintFace({...full,color_identity:[]}).frameColors,[color]);
+    assert.deepEqual(cardGlintFace({...lightweight,color_identity:[color]}).frameColors,[color]);
+    assert.deepEqual(cardGlintFace(lightweight,{printing:{type_line:'Land',color_identity:[color]}}).frameColors,[color]);
+  }
+  assert.deepEqual(cardGlintFace({type_line:'Land',color_identity:[]},{printing:{color_identity:['G']}}).frameColors,[]);
+  assert.deepEqual(cardGlintFace({type_line:'Basic Land',name:'Wastes'}).frameColors,[]);
+  assert.deepEqual(cardGlintFace({type_line:'Land — Forest',intrinsic_mana:[]}).frameColors,[]);
 });

@@ -11,7 +11,7 @@ const DEFAULT_LOBBY_DECK_STORAGE_KEY = "ironsmith.defaultLobbyDeck.v1";
 
 const MAIN_DECK_HEADER = /^Deck$/i;
 const COMMANDER_HEADER = /^(Commander|Commanders)$/i;
-const EXTRA_DECK_HEADER = /^(Sideboard|Companion|Maybeboard)$/i;
+const EXTRA_DECK_HEADER = /^(Sideboard|Companion|Maybeboard)\s*:?$/i;
 // Unfinity sticker sheets (CR 123.2) a player brings. Sheets are not cards.
 const STICKERS_HEADER = /^Stickers$/i;
 const CARD_LINE = /^(\d+)x?\s+(.+)$/;
@@ -34,6 +34,9 @@ function normalizeCardName(raw) {
   return stripFinishMarkers(raw)
     .replace(/\s*(?:\([a-z0-9]{2,8}\)|\[[a-z0-9]{2,8}\])\s*\d*[a-z]?\*?\s*$/i, "")
     .replace(/\s*\[[a-z0-9]{2,8}:\d+[a-z]?\]\s*$/i, "")
+    // MTGO exports use a single slash; other exports use two. The registry
+    // identifies these combined cards by their first face or half.
+    .split(/\s*\/+\s*/, 1)[0]
     .trim();
 }
 

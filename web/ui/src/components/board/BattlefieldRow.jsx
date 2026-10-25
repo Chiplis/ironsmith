@@ -24,7 +24,8 @@ import {
 } from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
 import useNewCards from "@/hooks/useNewCards";
-import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
+import { cancelMotion, uiSpring } from "@/lib/motion/anime";
+import { createEffectTimeline as createTimeline } from "@/lib/motion/native-effects";
 import {
   ALL_PAPER_LANES,
   battlefieldGridSlotAtPoint,

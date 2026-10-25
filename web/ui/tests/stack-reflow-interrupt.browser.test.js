@@ -1,11 +1,18 @@
-import test from "node:test";
+import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 
-test("interrupting the stack reflow leaves every entry in flow", async () => {
-  const vite = await createServer({server:{host:"127.0.0.1",port:0},logLevel:"silent"});
+// Reuse one fixture server so sequential cases don't cancel and restart the
+// same process-scoped dependency optimizer while its cache is being written.
+let vite;
+before(async () => {
+  vite = await createServer({optimizeDeps:{entries:['tests/stack-reflow-interrupt.html']},server:{host:"127.0.0.1",port:0,hmr:false,watch:null},logLevel:"silent"});
   await vite.listen();
+});
+after(async () => { await vite?.close(); });
+
+test("interrupting the stack reflow leaves every entry in flow", async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport:{width:1400,height:700}});
@@ -26,13 +33,11 @@ test("interrupting the stack reflow leaves every entry in flow", async () => {
       }
     }
     assert.deepEqual(errors, []);
-  } finally { await browser.close(); await vite.close(); }
+  } finally { await browser.close(); }
 });
 
 
 test("resolved stack entries disappear when later spells arrive", async () => {
-  const vite = await createServer({server:{host:"127.0.0.1",port:0},logLevel:"silent"});
-  await vite.listen();
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport:{width:1400,height:700}});
@@ -46,12 +51,10 @@ test("resolved stack entries disappear when later spells arrive", async () => {
     const ids = await page.locator('.stack-timeline-entry [data-object-id], .stack-timeline-entry[data-object-id]').evaluateAll(nodes => nodes.map(node => node.dataset.objectId));
     assert.ok(ids.length > 0);
     assert.deepEqual([...new Set(ids)], ['15']);
-  } finally { await browser.close(); await vite.close(); }
+  } finally { await browser.close(); }
 });
 
 test("shared ability ids do not orphan resolved Top tiles on desktop or mobile", async () => {
-  const vite = await createServer({server:{host:"127.0.0.1",port:0},logLevel:"silent"});
-  await vite.listen();
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport:{width:1400,height:700}});
@@ -77,10 +80,10 @@ test("shared ability ids do not orphan resolved Top tiles on desktop or mobile",
         await page.evaluate(entries => window.__showStack(entries), entries);
         await page.waitForTimeout(450);
         const names = await page.locator(".stack-card").evaluateAll(nodes => nodes.map(node => node.dataset.cardName));
-        assert.deepEqual(names, entries.map(entry => entry.name), `stale entries in ${mode || "desktop"}`);
+        assert.deepEqual(names, entries.map(entry => entry.name), `stale entries in ${mode || "desktop"}; errors: ${errors.join(" | ")}`);
         if (!mode) assert.equal(await page.locator(".stack-card-position--top").count(), 1);
       }
     }
     assert.deepEqual(errors, []);
-  } finally { await browser.close(); await vite.close(); }
+  } finally { await browser.close(); }
 });

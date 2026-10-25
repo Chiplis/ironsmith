@@ -10,7 +10,8 @@ import { stackEntryAimedObjectIds, stackEntryIsLegalTarget, stackEntryTargetObje
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { STACK_EXIT_MS } from "@/hooks/useStackPresence";
-import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
+import { cancelMotion, uiSpring } from "@/lib/motion/anime";
+import { createEffectTimeline as createTimeline } from "@/lib/motion/native-effects";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";

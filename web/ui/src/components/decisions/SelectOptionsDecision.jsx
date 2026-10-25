@@ -1,3 +1,4 @@
+import { isOrderingDecision, isDistributionDecision, isCounterOptionsDecision, isPaymentDecision, isSpellCastFlowDecision } from "@/lib/decision-semantics";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -55,24 +56,6 @@ function isCastOptionDescription(text) {
 
 function isPlayOptionDescription(text) {
   return /^\s*play\b/i.test(String(text || ""));
-}
-
-function isPaymentDecision(decision) {
-  if (!decision || decision.kind !== "select_options") return false;
-  const reason = String(decision.reason || "").toLowerCase();
-  if (reason.includes("next cost")) return false;
-  if (isPaymentOptionDescription(decision.description || "")) return true;
-  return (decision.options || []).some((opt) =>
-    isPaymentOptionDescription(opt.description),
-  );
-}
-
-function isSpellCastFlowDecision(decision) {
-  if (!decision || decision.kind !== "select_options") return false;
-  if (isCastOptionDescription(decision.description || "")) return true;
-  return (decision.options || []).some((opt) =>
-    isCastOptionDescription(opt.description),
-  );
 }
 
 function isColorChoiceDecision(decision) {
@@ -479,10 +462,8 @@ export default function SelectOptionsDecision({
   layout = "panel",
   toolbarSearchTarget = null,
 }) {
-  const reason = (decision.reason || "").toLowerCase();
-
   // Dispatch to sub-type based on decision metadata
-  if (reason === "ordering" || reason.startsWith("order ") || isReplacementOrderingDecision(decision)) {
+  if (isOrderingDecision(decision) || isReplacementOrderingDecision(decision)) {
     return (
       <OrderingDecision
         decision={decision}
@@ -494,7 +475,7 @@ export default function SelectOptionsDecision({
       />
     );
   }
-  if (decision.distribute || reason.includes("distribut")) {
+  if (isDistributionDecision(decision)) {
     return (
       <DistributeDecision
         decision={decision}
@@ -506,7 +487,7 @@ export default function SelectOptionsDecision({
       />
     );
   }
-  if (decision.counter_type || reason.includes("counter")) {
+  if (isCounterOptionsDecision(decision)) {
     return (
       <CountersDecision
         decision={decision}
@@ -798,10 +779,10 @@ function SingleSelectDecision({
   const singleSubmitLabel = useMemo(() => {
     if (!singleLegalOption) return t("decision.submitPlain");
     const description = String(singleLegalOption.description || "").trim();
-    if (isCastOptionDescription(description)) return t("decision.cast");
-    if (isPlayOptionDescription(description)) return t("decision.play");
+    if (castFlowDecision && isCastOptionDescription(description)) return t("decision.cast");
+    if (castFlowDecision && isPlayOptionDescription(description)) return t("decision.play");
     return t("decision.submit", { progress: "1/1" });
-  }, [singleLegalOption, t]);
+  }, [singleLegalOption, castFlowDecision, t]);
   const contextual = useMemo(
     () => {
       // A mana-ability window is a single global payment step. Its sources

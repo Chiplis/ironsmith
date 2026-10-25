@@ -285,6 +285,14 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             .map_err(|error| CompilerIntegrationError::ArtifactEncoding {
                 detail: error.to_string(),
             })?;
+        let wire = ironsmith_text::with_choice_decision_labels(wire, |wire|
+            ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire)
+                .map_err(|error| error.to_string()))
+            .map_err(|detail| CompilerIntegrationError::ArtifactEncoding { detail })?;
+        let effect = if effect.downcast_ref::<ironsmith::effects::ChooseModeEffect>().is_some() {
+            ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire.clone())
+                .map_err(|error| CompilerIntegrationError::ArtifactMaterialization { detail: error.to_string() })?
+        } else { effect };
         let json = serde_json::to_string(&wire).map_err(|error| {
             CompilerIntegrationError::ArtifactEncoding {
                 detail: error.to_string(),
@@ -731,6 +739,10 @@ pub fn compile_builder_to_artifact(
                 detail: error.to_string(),
             }
         })?;
+    let wire_definition = ironsmith_text::with_choice_decision_labels(wire_definition, |wire|
+        ironsmith_runtime_catalog::artifact_materializer::materialize_effect(wire)
+            .map_err(|error| error.to_string()))
+        .map_err(|detail| CompilerIntegrationError::ArtifactEncoding { detail })?;
     let rendered_definition = into_runtime_definition(compiled.definition.clone())?;
     let canonical_text = rendered_definition.canonical_text.clone();
     let ability_labels = rendered_definition.ability_labels.clone();

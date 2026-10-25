@@ -19,7 +19,7 @@ test('forge follows crowded zones, preserves input, resizes, and releases GPU re
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/forge-board.html`);
     await page.waitForSelector('.forge-board[data-renderer="webgl"] canvas');
     await page.waitForFunction(() => Number(document.querySelector('.forge-board').dataset.zoneCount) === 3);
-    await page.waitForSelector('.forge-board[data-models="6"][data-terrain="ready"]');
+    await page.waitForSelector('.forge-board[data-models="6"][data-terrain="ready"][data-effects="player-lights"][data-shadows="none"]');
     await page.locator('.battlefield-row button').first().click();
     assert.equal(await page.locator('output').textContent(), '1');
     const scenarios = [
@@ -48,7 +48,17 @@ test('forge follows crowded zones, preserves input, resizes, and releases GPU re
     }
     await page.evaluate(() => window.forgeScenario({ counts: [3, 7], hand: 7, accents: { 0: '#33aaff', 1: '#bb55ee' } }));
     await page.waitForFunction(() => document.querySelector('.forge-board').dataset.playerLights === '0:#33aaff,1:#bb55ee');
-    await page.waitForTimeout(1900);
+    await page.waitForFunction(() => {
+      const now = performance.now();
+      if (window.lastSettledForgeDraws !== window.forgeDraws) {
+        window.lastSettledForgeDraws = window.forgeDraws;
+        window.lastForgeDrawAt = now;
+      }
+      return now - window.lastForgeDrawAt > 300;
+    }, null, { timeout: 8000 });
+    const settledDraws = await page.evaluate(() => window.forgeDraws);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.forgeDraws), settledDraws, 'the sanctuary must sleep without ambient effects, even with full motion enabled');
     await page.screenshot({ path: '/tmp/ironsmith-forge-board.png' });
     await page.setViewportSize({ width: 760, height: 390 });
     await page.waitForTimeout(250);
@@ -111,6 +121,9 @@ test('real WASM puzzle mounts the forge on desktop and mobile', async () => {
     assert.ok(await page.locator('.battlefield-row .game-card').count() >= 3);
     assert.equal(await page.locator('.table-shell').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
     assert.ok(await page.locator('.battlefield-artwork-card').count() >= 3);
+    assert.equal(await page.locator('.forge-board').getAttribute('data-effects'), 'player-lights');
+    assert.equal(await page.locator('.forge-board').getAttribute('data-shadows'), 'none');
+    assert.equal(await page.locator('.battlefield-row[data-bf-side="top"] .arena-permanent[data-kind="creature"]').first().evaluate(el => getComputedStyle(el).boxShadow), 'none');
     assert.ok(await page.locator('.battlefield-small-land').count() >= 2);
     const creature = page.locator('.battlefield-row[data-bf-side="bottom"] .battlefield-artwork-card').filter({ has: page.locator('[data-kind="creature"]') }).first();
     const land = page.locator('.battlefield-small-land').first();

@@ -9,18 +9,11 @@ export function createZoneSanctuary(scene, own) {
   const stone = own(new THREE.MeshStandardMaterial({ color: 0x344354, roughness: .94, metalness: .08 }));
   const dark = own(new THREE.MeshStandardMaterial({ color: 0x111c2c, roughness: 1 }));
   const silver = own(new THREE.MeshStandardMaterial({ color: 0x7f9cba, roughness: .6, metalness: .55 }));
-  const rift = own(new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,
-    uniforms: { time: { value: 0 } },
-    vertexShader: 'varying vec2 p;void main(){p=uv*2.-1.;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `varying vec2 p;uniform float time;void main(){float edge=exp(-pow((p.x+.08*sin(p.y*13.))*18.,2.));float fade=1.-smoothstep(.55,1.,abs(p.y));gl_FragColor=vec4(.32,.48,.95,edge*fade*(.28+.04*sin(time)));}`,
-  }));
+  const rift = own(new THREE.MeshBasicMaterial({ color: 0x111c2c }));
   function make(type) {
     const group = new THREE.Group();
     function mesh(geometry, material, x, y, z, w, h, depth = 1) {
       const m = new THREE.Mesh(geometry, material);
-      m.castShadow = material === stone || material === silver;
-      m.receiveShadow = true;
       m.position.set(x, y, z); m.scale.set(w, h, depth); group.add(m); return m;
     }
     if (type === 'exile') {
@@ -50,6 +43,5 @@ export function createZoneSanctuary(scene, own) {
         group.scale.set(r.right - r.left, r.bottom - r.top, 1);
       }
     },
-    draw(time) { rift.uniforms.time.value = time; },
   };
 }

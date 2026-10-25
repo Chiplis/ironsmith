@@ -1,0 +1,121 @@
+[
+  {
+    "name": "Akroma's Will",
+    "mana_cost": "{3}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n• Creatures you control gain flying, vigilance, and double strike until end of turn.\n• Creatures you control gain lifelink, indestructible, and protection from each color until end of turn."
+  },
+  {
+    "name": "Anger of the Gods",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Anger of the Gods deals 3 damage to each creature. If a creature dealt damage this way would die this turn, exile it instead."
+  },
+  {
+    "name": "Attune with Aether",
+    "mana_cost": "{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle. You get {E}{E} (two energy counters)."
+  },
+  {
+    "name": "Birthday Escape",
+    "mana_cost": "{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Draw a card. The Ring tempts you."
+  },
+  {
+    "name": "Burn Trail",
+    "mana_cost": "{3}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Burn Trail deals 3 damage to any target.\nConspire (As you cast this spell, you may tap two untapped creatures you control that share a color with it. When you do, copy it and you may choose a new target for the copy.)"
+  },
+  {
+    "name": "Dark Ritual",
+    "mana_cost": "{B}",
+    "type_line": "Instant",
+    "oracle_text": "Add {B}{B}{B}."
+  },
+  {
+    "name": "Deflecting Palm",
+    "mana_cost": "{R}{W}",
+    "type_line": "Instant",
+    "oracle_text": "The next time a source of your choice would deal damage to you this turn, prevent that damage. If damage is prevented this way, Deflecting Palm deals that much damage to that source's controller."
+  },
+  {
+    "name": "Electrodominance",
+    "mana_cost": "{X}{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Electrodominance deals X damage to any target. You may cast a spell with mana value X or less from your hand without paying its mana cost."
+  },
+  {
+    "name": "Exchange of Words",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, choose two target creatures. For as long as this enchantment remains on the battlefield, exchange the text boxes of those creatures."
+  },
+  {
+    "name": "Geological Appraiser",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Creature — Human Artificer",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "When this creature enters, if you cast it, discover 3. (Exile cards from the top of your library until you exile a nonland card with mana value 3 or less. Cast it without paying its mana cost or put it into your hand. Put the rest on the bottom in a random order.)"
+  },
+  {
+    "name": "Inaction Injunction",
+    "mana_cost": "{1}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Detain target creature an opponent controls. (Until your next turn, that creature can't attack or block and its activated abilities can't be activated.)\nDraw a card."
+  },
+  {
+    "name": "Iona, Shield of Emeria",
+    "mana_cost": "{6}{W}{W}{W}",
+    "type_line": "Legendary Creature — Angel",
+    "power": "7",
+    "toughness": "7",
+    "oracle_text": "Flying\nAs Iona enters, choose a color.\nYour opponents can't cast spells of the chosen color."
+  },
+  {
+    "name": "Mind Bend",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target permanent by replacing all instances of one color word with another or one basic land type with another. (For example, you may change \"nonblack creature\" to \"nongreen creature\" or \"forestwalk\" to \"islandwalk.\" This effect lasts indefinitely.)"
+  },
+  {
+    "name": "Ob Nixilis, the Adversary",
+    "mana_cost": "{1}{B}{R}",
+    "type_line": "Legendary Planeswalker — Nixilis",
+    "loyalty": "3",
+    "oracle_text": "Casualty X. The copy isn't legendary and has starting loyalty X. (As you cast this spell, you may sacrifice a creature with power X. When you do, copy this spell. The copy becomes a token.)\n+1: Each opponent loses 2 life unless they discard a card. If you control a Demon or Devil, you gain 2 life.\n−2: Create a 1/1 red Devil creature token with \"When this token dies, it deals 1 damage to any target.\"\n−7: Target player draws seven cards and loses 7 life."
+  },
+  {
+    "name": "Ponder",
+    "mana_cost": "{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Look at the top three cards of your library, then put them back in any order. You may shuffle.\nDraw a card."
+  },
+  {
+    "name": "Redirect",
+    "mana_cost": "{U}{U}",
+    "type_line": "Instant",
+    "oracle_text": "You may choose new targets for target spell."
+  },
+  {
+    "name": "Shifting Loyalties",
+    "mana_cost": "{5}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Exchange control of two target permanents that share a card type. (Artifact, creature, enchantment, land, and planeswalker are card types.)"
+  },
+  {
+    "name": "Surging Flame",
+    "mana_cost": "{1}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Ripple 4 (When you cast this spell, you may reveal the top four cards of your library. You may cast spells with the same name as this spell from among those cards without paying their mana costs. Put the rest on the bottom of your library.)\nSurging Flame deals 2 damage to any target."
+  },
+  {
+    "name": "Violent Outburst",
+    "mana_cost": "{1}{R}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)\nCreatures you control get +1/+0 until end of turn."
+  }
+]

@@ -28,5 +28,14 @@
   "oracle_id": "7fca65b8-01fe-4858-97c6-f97ae82cd801",
   "oracle_text": "When this enchantment enters, exile all graveyards.\nWhenever a player casts a spell, counter it if a card with the same name is in a graveyard or a nontoken permanent with the same name is on the battlefield.",
   "text": "Mana cost: {3}{U}{U}\nType: World Enchantment\nWhen this enchantment enters, exile all graveyards.\nWhenever a player casts a spell, counter it if a card with the same name is in a graveyard or a nontoken permanent with the same name is on the battlefield."
- }
+ },
+{
+ "name": "Canoptek Wraith",
+ "oracle_id": "61849685-b407-4ed0-aafc-ec3a003200b9",
+ "oracle_text": "Wraith Form — This creature can't be blocked.\nTransdimensional Scout — When this creature deals combat damage to a player, you may pay {3} and sacrifice it. If you do, choose a land you control. Then search your library for up to two basic land cards which have the same name as the chosen land, put them onto the battlefield tapped, then shuffle.",
+ "mana_cost": "{3}",
+ "type_line": "Artifact Creature — Wraith",
+ "power": "2",
+ "toughness": "1"
+}
 ]

@@ -21,7 +21,7 @@ for (const card of JSON.parse(source)) {
     // Previewed on Scryfall but legal nowhere yet (scripts/download_scryfall_cards.py).
     ...(card.ironsmith_unreleased === true ? { unreleased: true } : {}),
     // Only rules relevant to deck construction, keeping the catalog small.
-    rules: oracle.split('\n').filter(line => /deck can have|commander|partner|background|friends forever|Doctor's companion/i.test(line)).join('\n'),
+    rules: oracle.split('\n').filter(line => /deck can have|as you create your deck|commander|partner|background|friends forever|Doctor's companion/i.test(line)).join('\n'),
   };
 }
 const metadata = JSON.parse(await readFile(new URL(`${cardsFile.href}.scryfall-bulk-data.json`), 'utf8'));

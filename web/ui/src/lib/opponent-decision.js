@@ -1,3 +1,5 @@
+import { isObjectSelectionValid } from "./object-selection-validation.js";
+import { isDistributionDecision } from './decision-semantics.js';
 import { initialCounterDraft, parseCounterAllocationChoice } from './counter-choice.js';
 import { improvePayment } from './payment-analysis.js';
 import { priorityCommandForAction } from './sync-commands.js';
@@ -6,7 +8,7 @@ import { priorityCommandForAction } from './sync-commands.js';
 // A greedy selection can strand a required choice even when a solution exists.
 export function defaultOptionSelection(decision) {
   const options = (decision.options || []).filter(option => option.legal !== false);
-  const distribution = /assign exactly \d+ total/.test(decision.description || '');
+  const distribution = isDistributionDecision(decision);
   if (distribution && options.length === 0) return [];
   const min = distribution ? decision.max : decision.min;
   const max = decision.max;
@@ -46,6 +48,14 @@ export async function buildOpponentDecisionCommand(state, game) {
       return indices && { type: 'select_options', option_indices: indices };
     }
     case 'select_objects': {
+      if (decision.selection_alternatives?.length) {
+        for (const rule of decision.selection_alternatives) {
+          const ids = rule.candidate_indices.map(index => decision.candidates[index])
+            .filter(card => card && card.legal !== false).slice(0, rule.min).map(card => card.id);
+          if (isObjectSelectionValid(decision, ids)) return { type: 'select_objects', object_ids: ids };
+        }
+        return null;
+      }
       const legal = (decision.candidates || []).filter(card => card.legal !== false);
       const count = decision.allow_partial_completion ? Math.min(decision.min, legal.length) : decision.min;
       if (legal.length < count) return null;

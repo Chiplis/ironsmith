@@ -15,6 +15,8 @@ scripts/__pycache__*
 !/fixtures/audit/*.json
 !/fixtures/determinism/*.json
 !/crates/ironsmith-compiled-artifact/fixtures/v3.json
+!/crates/ironsmith-compiled-artifact/fixtures/v19-duration-player.json
+!/crates/ironsmith-compiled-artifact/fixtures/v19-relative-boundaries.json
 !/web/ui/package.json
 !/web/ui/tests/card-frame-regression-cases.json
 !/tools/deck-catalog/package.json

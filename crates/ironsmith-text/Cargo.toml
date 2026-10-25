@@ -5,6 +5,9 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
+serde = "1.0.228"
+serde_json = "1.0.149"
 engine = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
 ironsmith-core = { path = "../ironsmith-core", default-features = false }
 memchr = "2.8"
@@ -13,7 +16,6 @@ memchr = "2.8"
 stacker = "0.1.23"
 
 [dev-dependencies]
-ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
 ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false, features = ["serialization"] }
 ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 

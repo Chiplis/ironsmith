@@ -832,6 +832,8 @@ struct SyncVanguard {
 #[serde(rename_all = "camelCase")]
 struct SyncPriorityRuntime {
     pass_intents: std::collections::BTreeMap<u8, PassIntent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    loop_shortcut: Option<LoopShortcut>,
     #[serde(default)]
     runner_awaiting_priority: bool,
     #[serde(default)]
@@ -1854,6 +1856,7 @@ impl WasmGame {
             },
             priority_runtime: SyncPriorityRuntime {
                 pass_intents: self.pass_intents.clone(),
+                loop_shortcut: self.loop_shortcut.clone(),
                 runner_awaiting_priority: self.runner_awaiting_priority,
                 runner_pending_decision: self.runner_pending_decision,
                 turn_runner_state: self

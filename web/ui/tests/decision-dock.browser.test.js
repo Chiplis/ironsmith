@@ -3,6 +3,67 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
+test('Keep hand shares one row with auto-resolve and loop controls', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.route('https://**/*', route => route.fulfill({status:404,body:''}));
+    for (const width of [1440, 1280, 1024]) {
+      await page.setViewportSize({width, height:900});
+      await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?decisionDock&keepHand&loopControls`);
+      const dock = page.locator('[data-human-action-dock]');
+      const keep = dock.getByRole('button', {name:'Keep hand',exact:true});
+      await keep.waitFor({state:'visible'});
+      await page.waitForTimeout(700);
+      const main = await keep.boundingBox();
+      const auto = await dock.locator('.battlefield-auto-pass-toggle').boundingBox();
+      const loop = await dock.getByRole('button', {name:'Record loop',exact:true}).boundingBox();
+      const bounds = await dock.boundingBox();
+      assert.ok(auto.x >= main.x + main.width, 'auto-resolve is right of Keep hand');
+      assert.ok(loop.x >= auto.x + auto.width, 'loop follows auto-resolve');
+      for (const icon of [auto, loop]) {
+        assert.ok(Math.abs(icon.y + icon.height / 2 - main.y - main.height / 2) < 2, 'icons share the main action row');
+        assert.ok(icon.x + icon.width <= bounds.x + bounds.width + 1, 'icons fit inside the dock');
+      }
+    }
+  } finally {await browser.close();await vite.close();}
+});
+
+test('long action labels shrink inside narrow buttons with quick controls', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport:{width:1280,height:900}});
+    await page.route('https://**/*', route => route.fulfill({status:404,body:''}));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?decisionDock&motion&loopControls`);
+    const dock = page.locator('[data-human-action-dock]');
+    await dock.waitFor({state:'visible'});
+    await page.getByRole('button',{name:'Next decision',exact:true}).click();
+    await page.waitForTimeout(700);
+    // Check the constrained button from the report and refit after resizing.
+    for (const width of [1280, 1440]) {
+      await page.setViewportSize({width, height:900});
+      await page.waitForTimeout(350);
+      const metrics = await dock.locator('.action-strip-main-title-text').first().evaluate(node => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const text = range.getBoundingClientRect();
+        const button = node.closest('.action-strip-main-region').getBoundingClientRect();
+        return {text:{left:text.left,right:text.right,top:text.top,bottom:text.bottom},button:{left:button.left,right:button.right,top:button.top,bottom:button.bottom},font:parseFloat(getComputedStyle(node).fontSize),label:node.textContent};
+      });
+      assert.match(metrics.label, /Declare attackers/i);
+      assert.ok(metrics.text.left >= metrics.button.left && metrics.text.right <= metrics.button.right, `text fits horizontally: ${JSON.stringify(metrics)}`);
+      assert.ok(metrics.text.top >= metrics.button.top && metrics.text.bottom <= metrics.button.bottom, `text fits vertically: ${JSON.stringify(metrics)}`);
+      assert.ok(metrics.font <= 14, 'label never exceeds the preferred size');
+      if (metrics.button.right - metrics.button.left <= 110) assert.ok(metrics.font < 14, 'constrained label shrinks');
+    }
+    await dock.screenshot({path:'/tmp/ironsmith-action-label-fit.png'});
+  } finally {await browser.close();await vite.close();}
+});
+
 test('decision fits beside hand and zones, and overflowing targets scroll', async () => {
   const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();

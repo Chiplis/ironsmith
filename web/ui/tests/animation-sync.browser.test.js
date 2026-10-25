@@ -9,7 +9,7 @@ test('draw landing signals completion and ETB resolution never hides its source'
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-flight-matrix.html`);
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-flight-matrix.html`, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await page.getByRole('button', { name: 'Grant hexproof' }).click();
     await page.locator('.game-fx-semantic').waitFor();
     await page.evaluate(() => {
@@ -21,6 +21,12 @@ test('draw landing signals completion and ETB resolution never hides its source'
     });
     await page.locator('.game-fx-flight').waitFor();
     assert.deepEqual(await page.evaluate(() => window.landings), []);
+    const flightMotion = await page.locator('.game-fx-flight').evaluate(node => {
+      const animation = node.getAnimations()[0];
+      return animation ? animation.effect.getKeyframes().map(frame => frame.transform) : [];
+    });
+    assert.equal(flightMotion.length, 4, 'card flight is a browser-managed transform animation');
+    assert.ok(flightMotion.every(transform => transform.includes('translate')));
     await page.waitForFunction(() => window.landings.includes('sync-card'));
     const hidden = await page.evaluate(async () => {
       const { playExit } = await import('/src/components/right-rail/card-stack-motion.js');

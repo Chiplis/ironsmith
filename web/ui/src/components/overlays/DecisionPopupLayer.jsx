@@ -1,5 +1,7 @@
+import { animateEffect as animate } from "@/lib/motion/native-effects";
 import { selectedPriorityAdvanceLabel } from '@/lib/priority-stops';
 import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
+import { LoopShortcutButton } from "@/components/decisions/LoopShortcutControls";
 import useUiText from "@/i18n/useUiText";
 import { LOOK_DONE_EVENT, temporaryLookView } from "@/lib/look-pile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +24,7 @@ import useRematchMainAction from "@/hooks/useRematchMainAction";
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import useDecisionRollout from "@/hooks/useDecisionRollout";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
-import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
+import { cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { KeywordHelpersProvider, ManaSymbol, SymbolText } from "@/lib/mana-symbols";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
 import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
@@ -1670,6 +1672,7 @@ function MobileBattleDecisionLayer({
 
   const decisionIdentity = [
     decision?.kind || "",
+    decision?.choice_kind || "",
     decision?.player ?? "",
     decision?.source_id ?? "",
     decision?.source_name || "",
@@ -2431,11 +2434,21 @@ function ActionStripMainTitleText({ children }) {
 
     textElement.style.removeProperty("--action-strip-main-title-size");
     const availableWidth = Math.max(1, container.clientWidth);
-    const naturalWidth = Math.max(1, textElement.scrollWidth);
-    const baseSize = 14;
-    const minSize = 7;
-    const nextSize = Math.max(minSize, Math.min(baseSize, baseSize * (availableWidth / naturalWidth)));
-    textElement.style.setProperty("--action-strip-main-title-size", `${nextSize}px`);
+    const availableHeight = Math.max(1, container.clientHeight);
+    const baseSize = parseFloat(getComputedStyle(textElement).fontSize) || 14;
+    const fits = () => textElement.scrollWidth <= availableWidth
+      && textElement.scrollHeight <= availableHeight;
+    if (fits()) return;
+
+    let lower = 0.5;
+    let upper = baseSize;
+    for (let step = 0; step < 10; step += 1) {
+      const size = (lower + upper) / 2;
+      textElement.style.setProperty("--action-strip-main-title-size", `${size}px`);
+      if (fits()) lower = size;
+      else upper = size;
+    }
+    textElement.style.setProperty("--action-strip-main-title-size", `${lower}px`);
   }, []);
 
   useLayoutEffect(() => {
@@ -2446,8 +2459,9 @@ function ActionStripMainTitleText({ children }) {
     const container = textElement?.parentElement;
     const observer = new ResizeObserver(() => fitText());
     if (container) observer.observe(container);
-    if (textElement) observer.observe(textElement);
-    return () => observer.disconnect();
+    let active = true;
+    document.fonts?.ready.then(() => { if (active) fitText(); });
+    return () => { active = false; observer.disconnect(); };
   }, [children, fitText]);
 
   return (
@@ -2533,6 +2547,7 @@ function PriorityBar({
   // A deep stack splits the main button into Resolve / Resolve all, laid out
   // like the opening hand's Keep hand / Mulligan pair.
   const showResolveAllButton = showPriorityAdvanceButton
+    && !state?.loop_shortcut
     && resolvingStackPriority
     && stackSize > 1
     && !openingHandMulliganAction;
@@ -2561,6 +2576,7 @@ function PriorityBar({
   );
   const decisionIdentity = [
     decision?.kind || "",
+    decision?.choice_kind || "",
     decision?.player ?? "",
     decision?.source_id ?? "",
     decision?.source_name || "",
@@ -3825,6 +3841,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
     useDecisionButtonAccent(state, decision, playerAccentOverrides);
   const decisionIdentity = [
     decision?.kind || "",
+    decision?.choice_kind || "",
     decision?.player ?? "",
     decision?.source_id ?? "",
     decision?.source_name || "",
@@ -4046,7 +4063,7 @@ export default function DecisionPopupLayer({
   dockSubmitFooter = false,
   quickControls = null,
 }) {
-  const { state, surrenderRequested } = useGame();
+  const { state, surrenderRequested, loopShortcut } = useGame();
   const decision = useMemo(
     () => presentOptionalReplacementDecision(state?.decision || null),
     [state?.decision],
@@ -4062,6 +4079,18 @@ export default function DecisionPopupLayer({
       );
     }
     return <div className="priority-inline-panel pointer-events-auto h-full w-full">{confirmation}</div>;
+  }
+
+  if (loopShortcut?.replayingTargets && !state?.game_over) {
+    const controls = quickControls || <LoopShortcutButton />;
+    if (mobileBattle) {
+      if (mobileBattleDockHidden) return null;
+      return renderMobileBattlePortal(
+        <div className="mobile-decision-dock mobile-decision-dock--inline pointer-events-auto">{controls}</div>,
+        mobileBattlePortalTarget
+      );
+    }
+    return <div className="priority-inline-panel pointer-events-auto h-full w-full">{controls}</div>;
   }
 
   if (!decision) {

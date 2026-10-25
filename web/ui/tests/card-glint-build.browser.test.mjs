@@ -1,4 +1,5 @@
 import test from 'node:test';
+import process from 'node:process';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {createServer} from 'vite';
@@ -11,13 +12,25 @@ const settled = page => page.waitForFunction(() => {
 test('Build previews finish, print effects and printing styles with card-glint', {timeout:600000}, async () => {
   const vite=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},logLevel:'error'});
   await vite.listen();
-  const browser=await chromium.launch();
+  const browser=await chromium.launch({args:process.env.CARD_GLINT_TEST_ANGLE ? [`--use-angle=${process.env.CARD_GLINT_TEST_ANGLE}`] : []});
   try {
     const page=await browser.newPage({viewport:{width:500,height:1100}}), errors=[];
+    // Exercise the actual finish renderer even on headless software GPUs.
+    // Build's normal capability fallback is covered by build-performance.
+    await page.addInitScript(() => {
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function(type, options) {
+        return getContext.call(this, type, type === 'webgl2'
+          ? { ...options, failIfMajorPerformanceCaveat: false } : options);
+      };
+    });
+    page.setDefaultTimeout(150000);
     page.on('pageerror',error=>{errors.push(error.message);console.error(error.stack);});
     page.on('console',message=>{if(message.type()==='error') console.error(message.text());});
     const url=`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint-build.html`;
     await page.goto(url,{waitUntil:'domcontentloaded',timeout:200000});
+    await settled(page);
+    await page.getByRole('checkbox',{name:'Preview finish effects',exact:true}).click();
     await settled(page);
     const stage=page.locator('[data-card-glint-live]');
     assert.equal(await stage.getAttribute('data-card-glint-live'),'live','WebGL renderer paints the preview');
@@ -89,6 +102,8 @@ test('Build previews finish, print effects and printing styles with card-glint',
     // Without the WebGL renderer the static Canvas2D face still shows the frame.
     await page.route('**/card-glint/**/browser.js',route=>route.abort());
     await page.goto(url,{waitUntil:'domcontentloaded',timeout:200000});
+    await settled(page);
+    await page.getByRole('checkbox',{name:'Preview finish effects',exact:true}).click();
     await settled(page);
     assert.equal(await stage.getAttribute('data-card-glint-live'),'static');
     const opaque=await page.locator('.card-glint-live__canvas:not([hidden])').evaluate(canvas=>{

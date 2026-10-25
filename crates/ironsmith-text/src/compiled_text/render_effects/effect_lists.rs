@@ -7042,8 +7042,8 @@ pub(super) fn describe_reveal_top_and_or_choice_rest_bottom_structural(
     }) {
         return None;
     }
-    let remainder =
-        remainder_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let remainder = remainder_effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
     if remainder.tag != look.tag
         || remainder.keep_tagged.as_ref() != Some(&chosen_tag)
         || remainder.player != look.player
@@ -7091,8 +7091,60 @@ pub(super) fn describe_reveal_top_and_or_choice_rest_bottom_structural(
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
         crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
     };
+    // Only a complete set of unconstrained, independent type choices can
+    // be described as "for each card type". A partial set keeps its list.
+    let card_types = [
+        CardType::Artifact,
+        CardType::Battle,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Instant,
+        CardType::Kindred,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Sorcery,
+    ];
+    let mut seen = Vec::new();
+    let each_card_type = chooses.len() == card_types.len()
+        && chooses.iter().all(|choose| {
+            let [card_type] = choose.filter.card_types.as_slice() else {
+                return false;
+            };
+            let expected = ObjectFilter {
+                card_types: vec![*card_type],
+                ..ObjectFilter::default()
+            }
+            .in_zone(Zone::Library)
+            .match_tagged(
+                look.tag.clone(),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            )
+            .match_tagged(
+                chosen_tag.clone(),
+                crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+            );
+            let valid = card_types.contains(card_type)
+                && !seen.contains(card_type)
+                && choose.filter == expected
+                && choose.count == ChoiceCount::up_to(1)
+                && choose.count_value.is_none()
+                && choose.aggregate_constraint.is_none()
+                && choose.zone == Some(Zone::Library)
+                && choose.additional_zones.is_empty()
+                && !choose.replace_tagged_objects
+                && !choose.reveal;
+            seen.push(*card_type);
+            valid
+        });
+    let selection = if each_card_type {
+        format!(
+            "For each card type, you may put a card of that type from among the revealed cards {destination}"
+        )
+    } else {
+        format!("You may put {choice} from among them {destination}")
+    };
     Some(format!(
-        "Reveal {revealed}. You may put {choice} from among them {destination}. Put the rest on the bottom of your library{order}"
+        "Reveal {revealed}. {selection}. Put the rest on the bottom of your library{order}"
     ))
 }
 
@@ -32484,4 +32536,57 @@ fn describe_simultaneous_tap_untap_snapshots(effects: &[Effect]) -> Option<Strin
         return None;
     };
     Some(format!("Simultaneously {left} and {right}"))
+}
+
+#[cfg(test)]
+mod revealed_card_type_iteration_tests {
+    use super::*;
+
+    const ORACLE: &str = "When Atraxa enters, reveal the top ten cards of your library. For each card type, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order.";
+
+    fn definition() -> crate::CardDefinition {
+        crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Atraxa, Grand Unifier",
+        )
+        .card_types(vec![CardType::Creature])
+        .parse_text(ORACLE)
+        .unwrap()
+    }
+
+    fn effects() -> Vec<Effect> {
+        definition()
+            .abilities
+            .into_iter()
+            .find_map(|ability| {
+                if let AbilityKind::Triggered(triggered) = ability.kind {
+                    Some(triggered.effects.segments[0].default_effects.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn complete_card_type_choices_render_as_iteration() {
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition()),
+            [ORACLE]
+        );
+    }
+
+    #[test]
+    fn partial_or_duplicate_card_type_choices_keep_explicit_list() {
+        let mut partial = effects();
+        partial.remove(1);
+        let text = describe_reveal_top_and_or_choice_rest_bottom_structural(&partial).unwrap();
+        assert!(!text.contains("For each card type"), "{text}");
+        assert!(text.contains("and/or"), "{text}");
+
+        let mut duplicate = effects();
+        duplicate[1] = duplicate[2].clone();
+        let text = describe_reveal_top_and_or_choice_rest_bottom_structural(&duplicate).unwrap();
+        assert!(!text.contains("For each card type"), "{text}");
+    }
 }

@@ -10,6 +10,34 @@ export function cardMetadataKey(name) {
   return text(name).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US");
 }
 
+export async function readBulkCardMetadata(path) {
+  let cards;
+  try {
+    cards = JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw error;
+  }
+  if (!Array.isArray(cards)) cards = cards.data;
+  if (!Array.isArray(cards)) throw new Error(`Invalid Scryfall bulk card data: ${path}`);
+  const metadata = {};
+  for (const card of cards.filter((card) => card?.name)) {
+    const front = card.card_faces?.[0];
+    const payload = front ? {
+      ...card,
+      colors: card.colors || front.colors,
+      mana_cost: card.mana_cost || front.mana_cost,
+      type_line: front.type_line || card.type_line,
+    } : card;
+    const entry = { ...normalizeMetadata(card.name, payload), source: "local-scryfall-bulk" };
+    metadata[cardMetadataKey(card.name)] = entry;
+    // Tournament exports often print only the front face of an Adventure or
+    // double-faced card; the bulk file names both halves together.
+    if (front?.name) metadata[cardMetadataKey(front.name)] = entry;
+  }
+  return metadata;
+}
+
 function cardRouteKey(name) {
   return text(name)
     .normalize("NFKD")
@@ -48,7 +76,7 @@ export async function fetchCardMetadata(name, {
   if (typeof fetchImpl !== "function") throw new Error("A fetch implementation is required");
   const query = encodeURIComponent(text(name));
   const response = await fetchImpl(`https://api.scryfall.com/cards/named?exact=${query}`, {
-    signal,
+    signal: signal || AbortSignal.timeout(30_000),
     headers: { "user-agent": "IronSmith deck catalog (github actions; contact repository owner)" },
   });
   if (response?.status === 404) return normalizeMetadata(name, null);
@@ -108,6 +136,10 @@ export async function resolveCardMetadata(names, {
 
   for (const name of uniqueNames) {
     const key = cardMetadataKey(name);
+    if (result[key]?.source === "local-scryfall-bulk" && result[key].status === "ok") {
+      onResolve(result[key]);
+      continue;
+    }
     const local = await readLocalCardMetadata(name, { root: localRoot });
     if (local) {
       result[key] = local;

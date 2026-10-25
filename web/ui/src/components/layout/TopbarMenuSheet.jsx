@@ -467,7 +467,7 @@ export default function TopbarMenuSheet({
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox
                     checked={autoResolveEnabled}
-                    title={ui("Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Hold Priority. Turn off to pause until you act.")}
+                    title={ui("Keep Resolve available while any spell is on the stack.")}
                     onCheckedChange={(value) => setAutoResolveEnabled(Boolean(value))}
                   />
                   {t("action.autoPass")}

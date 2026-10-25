@@ -4,7 +4,7 @@ import {chromium} from 'playwright';
 import {createServer} from 'vite';
 
 test('destruction uses stack embers and a smooth fade, then cleans up', async()=>{
-  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
+  const vite=await createServer({optimizeDeps:{entries:['tests/death-stack-style.html']},server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
   const browser=await chromium.launch();
   try {
     const page=await browser.newPage({viewport:{width:700,height:500}}), errors=[];
@@ -17,15 +17,25 @@ test('destruction uses stack embers and a smooth fade, then cleans up', async()=
     }]}})));
     await fire();
     await page.locator('.zone-death-card').waitFor();
-    const sample=await page.locator('.zone-death-card').evaluate(n=>{
-      const animation=n.getAnimations()[0];
+    const sample=await page.waitForFunction(()=>{
+      const n=document.querySelector('.zone-death-card');
+      const animation=n?.getAnimations()[0];
+      if (!animation) return false;
       animation.pause(); animation.currentTime=300;
       return {opacity:Number(getComputedStyle(n).opacity),clip:getComputedStyle(n).clipPath};
-    });
+    }).then(handle=>handle.jsonValue());
     assert.ok(sample.opacity>0 && sample.opacity<1);
     assert.equal(sample.clip,'none');
     assert.equal(await page.locator('.zone-death-ash,.zone-death-soul').count(),0);
-    assert.ok(await page.locator('.stack-fx-canvas').evaluate(c=>c.getContext('2d').getImageData(0,0,c.width,c.height).data.some((v,i)=>i%4===3 && v>0)));
+    assert.ok(await page.locator('.stack-fx-canvas').evaluate(async canvas=>{
+      const gl=canvas.getContext('webgl2');
+      // Read in the next rAF, after the renderer's queued frame, before the
+      // browser discards the default framebuffer for presentation.
+      await new Promise(requestAnimationFrame);
+      const pixels=new Uint8Array(canvas.width*canvas.height*4);
+      gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      return pixels.some((value,index)=>index%4===3 && value>0);
+    }));
     await page.screenshot({path:'/tmp/death-stack-style.png'});
     await page.locator('.zone-death-effect').waitFor({state:'detached'});
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.stack-fx-canvas')).display==='none');

@@ -39,7 +39,9 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     });
     return () => {cancelled = true;};
   }, [face,imageUrl,printing]);
-  const result = finished?.face === face ? finished.result : null;
+  // A warmed face is ready on its first render. Mounting the text fallback
+  // before the layout effect paints this cache hit needlessly runs its fitter.
+  const result = finished?.face === face ? finished.result : peekCardGlintFrame(face);
   const presentation = inspector ? cardPresentation(card) : null;
   const [liveCanvas,live] = useCardGlintLive(face,presentation,{enabled:Boolean(presentation)});
   const foil = live.mode === 'live' && live.current;

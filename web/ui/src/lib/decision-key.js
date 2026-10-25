@@ -1,6 +1,7 @@
 export function decisionKey(decision) {
   const metaKey = [
     decision.kind || "",
+    decision.choice_kind || "",
     decision.player ?? "",
     decision.source_id ?? "",
     decision.source_name || "",
@@ -34,7 +35,8 @@ export function decisionKey(decision) {
       .join("|") + `|${metaKey}`;
   }
   if (decision.candidates) {
-    return decision.candidates.map((c) => c.id).join(",") + `|${metaKey}`;
+    return decision.candidates.map((c) => c.id).join(",") + `|${metaKey}`
+      + (decision.selection_alternatives?.length ? `|${JSON.stringify(decision.selection_alternatives)}` : "");
   }
   if (decision.options) {
     return decision.options

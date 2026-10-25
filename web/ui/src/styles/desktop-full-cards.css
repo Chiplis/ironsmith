@@ -837,7 +837,7 @@
     display: none;
   }
 
-  /* While » auto-resolves (white "safe" or gold "all" glow), tiny motes of
+  /* While the clock is enabled (white "safe" or gold "all" glow), tiny motes of
      that glow drift up from it and fade, like an aura. Two layers of uneven
      dots on different, unsynced cycles keep the rise from looking regular. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"]) {
@@ -953,6 +953,31 @@
    that row's room instead of overflowing it. */
 @layer fc-dock-sizing {
   @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
+    /* The measured title owns its font size, including nested symbol text.
+       Bound the label to the button and wrap only between complete words. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-title-row {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      height: 100% !important;
+      align-items: center !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-title-text,
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-title-text * {
+      font-size: var(--action-strip-main-title-size, 14px) !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+      line-height: 1.15 !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-title-text {
+      width: 100% !important;
+      min-width: 0 !important;
+      flex: 0 1 auto !important;
+    }
+
     /* Preserve control shapes as taller menus grow upward in their lane. */
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
       width: var(--decision-dock-lane-width, 340px) !important;
@@ -1048,6 +1073,27 @@
 
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls {
       flex: 0 0 auto !important;
+    }
+
+    /* A single text action yields space to the quick icons instead of
+       pushing them onto another row. Paired text actions may still wrap. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:has(> .decision-quick-controls):not(:has(.action-strip-command-region ~ .action-strip-command-region)) {
+      flex-wrap: nowrap !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:has(> .decision-quick-controls):not(:has(.action-strip-command-region ~ .action-strip-command-region)) > .action-strip-layout {
+      flex: 0 1 190px !important;
+      min-width: 100px !important;
+      flex-wrap: nowrap !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:has(> .decision-quick-controls):not(:has(.action-strip-command-region ~ .action-strip-command-region)) > .action-strip-layout > .action-strip-command-region {
+      flex: 1 1 0 !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:has(> .decision-quick-controls):not(:has(.action-strip-command-region ~ .action-strip-command-region)) > .action-strip-layout .action-strip-main-region {
+      width: 100% !important;
+      min-width: 0 !important;
     }
 
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.mana-payment-submit-row, .action-strip-submit-row, .combat-decision-actions) :is(.decision-main-button, .action-strip-main-region) {

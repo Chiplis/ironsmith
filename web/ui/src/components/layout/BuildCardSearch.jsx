@@ -12,6 +12,7 @@ export default function BuildCardSearch({ onSelect, disabled, actions, secondary
   const [options, setOptions] = useState([]);
   const [error, setError] = useState("");
   useEffect(() => {
+    if (!includeCustom) return undefined;
     let active = true;
     const load = async () => {
       const results = await Promise.allSettled([loadBundledCustomCards(), listSavedCustomCards()]);
@@ -22,7 +23,7 @@ export default function BuildCardSearch({ onSelect, disabled, actions, secondary
     void load();
     window.addEventListener(CUSTOM_CARD_LIBRARY_CHANGED, load);
     return () => { active = false; window.removeEventListener(CUSTOM_CARD_LIBRARY_CHANGED, load); };
-  }, []);
+  }, [includeCustom]);
   useEffect(() => {
     let active = true;
     const timer = setTimeout(async () => {

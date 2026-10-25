@@ -122,6 +122,9 @@ pub struct Card {
     /// predating this flag leaves it false.
     #[cfg_attr(feature = "serde", serde(default))]
     pub transforming_dfc: bool,
+    /// Printed partner for a meld front; `other_face` identifies the meld result.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub meld_partner_name: Option<String>,
     /// True if this is a token (not a real card)
     pub is_token: bool,
 }
@@ -487,6 +490,7 @@ impl CardBuilder {
             other_face_name: self.other_face_name,
             linked_face_layout: self.linked_face_layout,
             transforming_dfc: self.transforming_dfc,
+            meld_partner_name: None,
             is_token: self.is_token,
         }
     }

@@ -15,8 +15,10 @@ from urllib.parse import urlparse
 
 from stream_scryfall_blocks import (
     SUPPORTED_PAPER_FORMATS,
+    UNRELEASED_MARKER,
     is_legal_in_supported_paper_format,
     is_non_paper_print,
+    is_unreleased_card,
     iter_cards,
 )
 
@@ -27,7 +29,7 @@ DEFAULT_METADATA_SUFFIX = ".scryfall-bulk-data.json"
 BULK_DATA_URL = "https://api.scryfall.com/bulk-data/default-cards"
 USER_AGENT = "ironsmith/1.0 (https://github.com/chiplis/ironsmith)"
 ACCEPT = "application/json;q=0.9,*/*;q=0.8"
-FILTER_VERSION = 2
+FILTER_VERSION = 3
 
 
 def fetch_json(url: str) -> dict:
@@ -136,7 +138,9 @@ def write_download_metadata(
     )
 
 
-def should_keep_card(card: dict) -> bool:
+def should_keep_card(card: dict, today=None) -> bool:
+    if is_unreleased_card(card, today):
+        return True
     return is_legal_in_supported_paper_format(card) and not is_non_paper_print(card)
 
 
@@ -181,7 +185,7 @@ def first_printing_priority(card: dict) -> tuple:
     )
 
 
-def write_filtered_cards(source: Path, destination: Path) -> tuple[int, int]:
+def write_filtered_cards(source: Path, destination: Path, today=None) -> tuple[int, int]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     total = 0
     selected: dict[tuple[str, str], dict] = {}
@@ -189,7 +193,7 @@ def write_filtered_cards(source: Path, destination: Path) -> tuple[int, int]:
 
     for card in iter_cards(source):
         total += 1
-        if not should_keep_card(card):
+        if not should_keep_card(card, today):
             continue
 
         identity = card_identity_key(card)
@@ -205,6 +209,8 @@ def write_filtered_cards(source: Path, destination: Path) -> tuple[int, int]:
     kept_cards = []
     for identity, card in selected.items():
         canonical_card = dict(card)
+        if is_unreleased_card(card, today):
+            canonical_card[UNRELEASED_MARKER] = True
         first_printed_set_name = str(
             earliest_printings.get(identity, {}).get("set_name") or ""
         ).strip()
@@ -239,7 +245,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Download Scryfall Default Cards and keep only paper cards that are "
-            f"legal or restricted in any of: {', '.join(fmt.title() for fmt in SUPPORTED_PAPER_FORMATS)}."
+            f"legal or restricted in any of: {', '.join(fmt.title() for fmt in SUPPORTED_PAPER_FORMATS)}, "
+            f"plus unreleased paper cards (marked {UNRELEASED_MARKER})."
         )
     )
     parser.add_argument(

@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Mogis's Marauder",
+    "text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Berserker\nPower/Toughness: 2/2\nWhen this creature enters, up to X target creatures each gain intimidate and haste until end of turn, where X is your devotion to black. (A creature with intimidate can't be blocked except by artifact creatures and/or creatures that share a color with it. Each {B} in the mana costs of permanents you control counts toward your devotion to black.)"
+  },
+  {
+    "name": "Shadow of Mortality",
+    "text": "Mana cost: {13}{B}{B}\nType: Creature \u2014 Avatar\nPower/Toughness: 7/7\nIf your life total is less than your starting life total, this spell costs {X} less to cast, where X is the difference."
+  },
+  {
+    "name": "Spellstutter Sprite",
+    "text": "Mana cost: {1}{U}\nType: Creature \u2014 Faerie Wizard\nPower/Toughness: 1/1\nFlash\nFlying\nWhen this creature enters, counter target spell with mana value X or less, where X is the number of Faeries you control."
+  },
+  {
+    "name": "Venerable Warsinger",
+    "text": "Mana cost: {1}{R}{W}\nType: Creature \u2014 Spirit Cleric\nPower/Toughness: 3/3\nVigilance, trample\nWhenever this creature deals combat damage to a player, you may return target creature card with mana value X or less from your graveyard to the battlefield, where X is the amount of damage this creature dealt to that player."
+  },
+  {
+    "name": "Voyager Drake",
+    "text": "Mana cost: {3}{U}\nType: Creature \u2014 Drake\nPower/Toughness: 3/3\nMultikicker {U} (You may pay an additional {U} any number of times as you cast this spell.)\nFlying\nWhen this creature enters, up to X target creatures gain flying until end of turn, where X is the number of times this creature was kicked."
+  },
+  {
+    "name": "Zethi, Arcane Blademaster",
+    "text": "Mana cost: {1}{W}{U}\nType: Legendary Creature \u2014 Human Soldier\nPower/Toughness: 3/3\nMultikicker {W/U}\nWhen Zethi, Arcane Blademaster enters, exile up to X target instant cards from your graveyard, where X is the number of times Zethi was kicked. Put a kick counter on each of them.\nWhenever Zethi attacks, copy each exiled card you own with a kick counter on it. You may cast the copies."
+  },
+  {
+    "name": "Myr Battlesphere",
+    "text": "Mana cost: {7}\nType: Artifact Creature \u2014 Myr Construct\nPower/Toughness: 4/7\nWhen this creature enters, create four 1/1 colorless Myr artifact creature tokens.\nWhenever this creature attacks, you may tap X untapped Myr you control. If you do, this creature gets +X/+0 until end of turn and deals X damage to the player or planeswalker it's attacking."
+  },
+  {
+    "name": "Phyrexian Obliterator",
+    "text": "Mana cost: {B}{B}{B}{B}\nType: Creature \u2014 Phyrexian Horror\nPower/Toughness: 5/5\nTrample\nWhenever a source deals damage to this creature, that source's controller sacrifices that many permanents of their choice."
+  },
+  {
+    "name": "Shriekwood Devourer",
+    "text": "Mana cost: {5}{G}{G}\nType: Creature \u2014 Treefolk\nPower/Toughness: 7/5\nTrample\nWhenever you attack with one or more creatures, untap up to X lands, where X is the greatest power among those creatures."
+  },
+  {
+    "name": "Heroic Feast",
+    "text": "Mana cost: {2}{G}\nType: Enchantment\nWhen this enchantment enters, create a Food token. (It's an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")\nWhenever you gain life, choose up to that many target creatures you control. Put a +1/+1 counter on each of them."
+  }
+]

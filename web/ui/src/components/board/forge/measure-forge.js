@@ -78,9 +78,6 @@ export function createForgeMeasurer(root) {
       .filter(field => field.battlefieldScene).flatMap(projectedCards);
     const obstacles = [...root.querySelectorAll(OBSTACLES)].filter(el => !el.closest('.battlefield-scene'))
       .map(rectOf).filter(Boolean).concat(sceneCards);
-    const cardShadows = [...root.querySelectorAll('.battlefield-row .game-card')]
-      .filter(el => !el.closest('.battlefield-scene')).map(card => rectOf(card.querySelector('.arena-permanent') || card))
-      .filter(Boolean).concat(sceneCards).slice(0, 200);
     const seatsByOwner = new Map();
     for (const el of root.querySelectorAll(SEATS)) {
       const rect = rectOf(el);
@@ -90,6 +87,6 @@ export function createForgeMeasurer(root) {
       seatsByOwner.set(owner, previous ? unionRect(previous, rect) : rect);
     }
     const seats = [...seatsByOwner].map(([owner, rect]) => ({ owner, rect }));
-    return { width, height, zones, obstacles, cardShadows, seats };
+    return { width, height, zones, obstacles, seats };
   };
 }

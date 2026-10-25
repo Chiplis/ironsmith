@@ -266,6 +266,7 @@ where
             payload.allow_repeat,
         );
         converted.faces_dilemma = payload.faces_dilemma;
+        converted.decision_labels = payload.decision_labels.clone();
         converted.choose_count = payload.choose_count.clone();
         converted.common_prefix_effects = payload
             .common_prefix_effects

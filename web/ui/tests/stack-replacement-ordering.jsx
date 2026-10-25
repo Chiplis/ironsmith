@@ -29,7 +29,14 @@ const agents = params.has("copy")
   : [agent(40, 1), agent(41, 2)];
 const search = { id: 60, stable_id: 60, name: "Demonic Tutor", type_line: "Sorcery", zone: "Stack", controller: 0, owner: 0, oracle_text: "Search your library for a card.", compiled_text: ["Search your library for a card."] };
 const cards = Object.fromEntries([...agents, search].map(card => [card.id, card]));
-const decision = params.has("text-change") ? {
+const decision = params.has("names") || params.has("modes") ? {
+  kind: "select_options", player: 0, min: 1, max: 1,
+  choice_kind: params.has("typed") ? (params.has("modes") ? "modes" : "options") : undefined,
+  reason: params.has("modes") ? "Modal choice" : null,
+  description: params.has("modes") ? "Choose mode for Test" : "Choose a card name",
+  options: (params.has("modes") ? ["Pay {2}. Draw a card.", "Draw a card."] :
+    ["Pay No Heed", "Pay Your Debts", "Cast Down", "Play with Fire"]).map((description, index) => ({ index, description, legal: true })),
+} : params.has("text-change") ? {
   kind: "select_options", player: 0, min: 1, max: 1,
   reason: "Replacement effect", // Compatibility with older engine snapshots.
   description: "Choose the replacement word",

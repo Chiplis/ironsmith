@@ -2,25 +2,12 @@ import { normalizeDecisionText } from "@/components/decisions/decisionText";
 
 export function isTriggerOrderingDecision(decision) {
   if (!decision || decision.kind !== "select_options") return false;
-  const reason = String(decision.reason || "").toLowerCase();
-  const isOrderingReason = reason === "ordering" || reason.startsWith("order ");
-  if (!isOrderingReason) return false;
-  const optionCount = (decision.options || []).length;
-  if (optionCount <= 1) return false;
-  const description = String(decision.description || "").toLowerCase();
-  const contextText = String(decision.context_text || "").toLowerCase();
-  const consequenceText = String(decision.consequence_text || "").toLowerCase();
-  const optionTexts = (decision.options || []).map((option) => String(option?.description || "").toLowerCase());
-  return (
-    description.includes("trigger")
-    || description.includes("stack")
-    || reason.includes("trigger")
-    || contextText.includes("trigger")
-    || contextText.includes("stack")
-    || consequenceText.includes("trigger")
-    || consequenceText.includes("stack")
-    || optionTexts.some((text) => text.includes("\n"))
-  );
+  if ((decision.options || []).length <= 1) return false;
+  if (decision.choice_kind) return decision.choice_kind === "trigger_order";
+  const reason = String(decision.reason || "").trim().toLowerCase();
+  const description = String(decision.description || "").trim().toLowerCase();
+  return reason === "order triggers"
+    || (reason === "ordering" && description.startsWith("order triggered abilities."));
 }
 
 export function buildTriggerOrderingKey(decision) {

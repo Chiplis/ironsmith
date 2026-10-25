@@ -14,27 +14,29 @@ export default function useDecisionControlMotion(rootRef) {
     const root = rootRef.current;
     if (!root) return;
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frame = 0;
     const update = () => {
-      for (const selector of selectors) {
+      frame = 0;
+      // Sample interrupted poses together, then cancel together. Starting an
+      // animation for one HUD node must not invalidate the next node's read.
+      const samples = selectors.map(selector => {
         const node = root.querySelector(selector);
         const previous = positions.current.get(selector);
-        if (!node) {
-          previous?.animation?.cancel();
-          positions.current.delete(selector);
-          continue;
-        }
-        // Cancel our own transform before reading the final layout, otherwise
-        // ResizeObserver/React updates would mistake animation for a new layout.
         const progress = previous?.animation?.effect?.getComputedTiming().progress ?? 1;
-        // Timing progress is linear; read the actual eased visual position
-        // so an interrupted animation cannot jump backwards.
-        const visualStyle = previous?.animation ? getComputedStyle(node) : null;
-        const translation = visualStyle?.translate.split(" ").map(parseFloat) || [0, 0];
-        const scale = visualStyle?.scale.split(" ").map(parseFloat) || [1, 1];
-        const animationTime = previous?.animation?.currentTime;
-        previous?.animation?.cancel();
-        const rect = node.getBoundingClientRect();
-        const visible = rect.width > 0 && rect.height > 0 && getComputedStyle(node).visibility !== "hidden";
+        const visualStyle = previous?.animation && node ? getComputedStyle(node) : null;
+        return { selector, node, previous, progress,
+          translation: visualStyle?.translate.split(" ").map(parseFloat) || [0, 0],
+          scale: visualStyle?.scale.split(" ").map(parseFloat) || [1, 1],
+          animationTime: previous?.animation?.currentTime };
+      });
+      for (const { previous } of samples) previous?.animation?.cancel();
+      for (const sample of samples) {
+        if (!sample.node) continue;
+        sample.rect = sample.node.getBoundingClientRect();
+        sample.visible = sample.rect.width > 0 && sample.rect.height > 0 && getComputedStyle(sample.node).visibility !== "hidden";
+      }
+      for (const { selector, node, previous, progress, translation, scale, animationTime, rect, visible } of samples) {
+        if (!node) { positions.current.delete(selector); continue; }
         if (previous?.node === node && visible === previous.visible && !preference.matches
           && Math.abs(previous.x - rect.x) < .1 && Math.abs(previous.y - rect.y) < .1
           && Math.abs(previous.width - rect.width) < .1 && Math.abs(previous.height - rect.height) < .1) {
@@ -62,16 +64,19 @@ export default function useDecisionControlMotion(rootRef) {
         positions.current.set(selector, entry);
       }
     };
-    update();
-    const resize = new ResizeObserver(update);
-    const mutations = new MutationObserver(update);
+    // Commit and observer notifications share one measurement pass before
+    // paint instead of repeatedly flushing layout during the same update.
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+    schedule();
+    const resize = new ResizeObserver(schedule);
+    const mutations = new MutationObserver(schedule);
     resize.observe(root);
-    for (const { node } of positions.current.values()) {
+    for (const node of selectors.map(selector => root.querySelector(selector)).filter(Boolean)) {
       resize.observe(node);
       mutations.observe(node, { attributes: true, attributeFilter: ["style", "class"], childList: true, subtree: true, characterData: true });
     }
-    preference.addEventListener("change", update);
-    return () => { resize.disconnect(); mutations.disconnect(); preference.removeEventListener("change", update); };
+    preference.addEventListener("change", schedule);
+    return () => { cancelAnimationFrame(frame); resize.disconnect(); mutations.disconnect(); preference.removeEventListener("change", schedule); };
   });
 
   useLayoutEffect(() => () => {

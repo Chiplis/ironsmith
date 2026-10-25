@@ -1,5 +1,6 @@
 import { priorityStepKey } from '@/lib/priority-stops';
 import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
+import { LoopShortcutButton } from "@/components/decisions/LoopShortcutControls";
 import useUiText from "@/i18n/useUiText";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useGame } from "@/context/GameContext";
@@ -117,13 +118,14 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     playerAccentOverrides,
     surrenderRequested,
     setSurrenderRequested,
+    loopShortcut,
   } = useGame();
   const { t } = useI18n();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
   const [visibleHoverGroups, setVisibleHoverGroups] = useState([]);
   const hideHoverGroupsTimerRef = useRef(null);
-  const decision = state?.decision;
+  const decision = loopShortcut?.replayingTargets ? null : state?.decision;
   const gameOver = state?.game_over || null;
   const rematch = multiplayer?.rematch || null;
   const rawPeerWait = multiplayer?.peerWait || null;
@@ -335,6 +337,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             <div className="flex h-full min-h-[110px] items-center px-2 text-[16px] font-bold text-[#ff9b9b]">
               {t("action.surrenderConfirm")}
             </div>
+          ) : loopShortcut?.replayingTargets ? (
+            <LoopShortcutButton />
           ) : decision ? (
             <DecisionRouter
               decision={decision}

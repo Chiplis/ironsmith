@@ -65,6 +65,7 @@ pub fn try_merge_modal_into_remove_mode(
     effects.push(crate::effect::Effect::new(
         crate::effects::ChooseModeEffect {
             faces_dilemma: choose_mode.faces_dilemma,
+            decision_labels: choose_mode.decision_labels.clone(),
             modes,
             common_prefix_effects: choose_mode.common_prefix_effects.clone(),
             chooser: choose_mode.chooser.clone(),

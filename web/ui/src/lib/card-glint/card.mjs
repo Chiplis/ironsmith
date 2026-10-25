@@ -1,6 +1,7 @@
 import {cardFlavorSource} from '../card-flavor-source.js';
 import {cardDisplayTypeLine} from '../card-display-type-line.js';
 import {cardArtCropUrl} from '../card-image-variants.js';
+import {cardIntrinsicManaColors} from '../land-mana-choices.js';
 import {cardPresentation,cardPrintingChoice} from './printing-choices.mjs';
 
 const rules = card => {
@@ -48,6 +49,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   const type = cardTypeLine(face, card, print === card ? null : print);
   const signature = String(face.characteristic_signature ?? '').match(/^colors:([^\n]*)/m);
   const cost = face.mana_cost ?? card.mana_cost ?? '';
+  const displayedCost = face.display_mana_cost ?? card.display_mana_cost ?? cost;
   const palette = colors(signature ? signature[1] : face.colors ?? face.color_indicator ?? [...cost.matchAll(/[WUBRG]/g)].map(m => m[0]));
   const text = rules(face);
   // Becoming a creature does not remove loyalty abilities. Keep their roomy,
@@ -68,7 +70,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
     artifact: /\bArtifact\b/.test(type), land: /\bLand\b/.test(type),
     creature: /\bCreature\b/.test(type), legendary: /\bLegendary\b/.test(type),
     colors: palette,
-    manaSymbols: [...cost.matchAll(/\{([^{}]+)\}/g)].map(m => m[1]),
+    manaSymbols: [...displayedCost.matchAll(/\{([^{}]+)\}/g)].map(m => m[1]),
     rulesText: text,
     rulesParagraphs: [
       ...text.split('\n').filter(Boolean).map(text => ({role:'rules',runs:[{text}]})),
@@ -86,7 +88,14 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   };
   const chosen = presentation === undefined ? cardPresentation(card) : presentation;
   if (chosen?.rarity) result.rarity = chosen.rarity;
-  if (result.land && !palette.length) result.frameColors = colors([...(card.color_identity ?? card.colorIdentity ?? []), ...(card.intrinsic_mana ?? [])]);
+  if (result.land && !palette.length) {
+    // Lightweight snapshots can lack identity and intrinsic-mana metadata.
+    // Derive intrinsic mana from the resolved canonical type, too: passing an
+    // empty frameColors array suppresses the painter's basic-land fallback.
+    const intrinsic = cardIntrinsicManaColors({...card,...face,type_line:type});
+    const identity = card.color_identity ?? card.colorIdentity ?? print.color_identity ?? print.colorIdentity ?? [];
+    result.frameColors = colors([...colors(identity), ...intrinsic]);
+  }
   if (result.layout === 'flip') result.frameTemplate = 'flip';
   else if (/\bBattle\b/.test(type)) result.frameTemplate = 'battle';
   else if (print.frame === 'future') result.frameTemplate = 'future';

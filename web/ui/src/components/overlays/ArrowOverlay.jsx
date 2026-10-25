@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useCombatArrows } from "@/context/useCombatArrows";
-import { animate, cancelMotion } from "@/lib/motion/anime";
+import { cancelMotion } from "@/lib/motion/anime";
+import { animateEffect as animate } from "@/lib/motion/native-effects";
 import { getCardElement, getCardRect, getPlayerTargetRect, centerOf } from "@/hooks/useCardPositions";
 
 const ARROW_DASH_ARRAY = "12 6";

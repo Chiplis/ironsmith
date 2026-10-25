@@ -1,6 +1,7 @@
+import {createPriorityStops} from "../src/lib/priority-stops";
 import useCardStackMode from "@/hooks/useCardStackMode";
 import TopbarUtilityControls from "../src/components/layout/TopbarUtilityControls";
-import React, { useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
@@ -29,17 +30,21 @@ function Fixture(){
  const targetLook = new URLSearchParams(location.search).has("targetLook");
  const [appearance,setAppearance]=useBattlefieldAppearance();
  const [result,setResult]=useState('none');
- const [perspective,setPerspective]=useState(0);
+ const [holdRule,setHoldRule]=useState('never');
+ const [priorityController]=useState(()=>createPriorityStops({initialStops:{'phase:Main':'always','phase:Main2':'always'}}));
+ const prioritySnapshot=useSyncExternalStore(priorityController.subscribe,priorityController.getSnapshot);
+ const [perspective,setPerspective]=useState(Number(new URLSearchParams(location.search).get("perspective") || 0));
  const multiplayer = new URLSearchParams(location.search).has('multiplayer') ? {mode:'in_match',role:'client'} : {mode:'idle'};
  const [motionStep,setMotionStep]=useState(0);
  const [targeting,setTargeting]=useState(false);
- const state={viewed_cards: new URLSearchParams(location.search).has("look") ? {subject:0,zone:"library",cards:[{id:7001,name:"Island",zone:"library",position:0},{id:7002,name:"Forest",zone:"library",position:1}]} : undefined,players,perspective,priority_player:0,active_player:0,decision:targeting?{kind:"targets",player:0,requirements:[{description:"Target card in a graveyard",min_targets:1,max_targets:1,legal_targets:[{kind:"object",object:1000},{kind:"object",object:1001}]}]}:{kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Pass priority",index:0}]},stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
+ const state={viewed_cards: new URLSearchParams(location.search).has("look") ? {subject:0,zone:"library",cards:[{id:7001,name:"Island",zone:"library",position:0},{id:7002,name:"Forest",zone:"library",position:1}]} : undefined,players,perspective,priority_player:new URLSearchParams(location.search).has("otherPriority")?1:0,active_player:0,decision:targeting?{kind:"targets",player:0,requirements:[{description:"Target card in a graveyard",min_targets:1,max_targets:1,legal_targets:[{kind:"object",object:1000},{kind:"object",object:1001}]}]}:{kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Pass priority",index:0}]},stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
  const libraryVisible = Number(new URLSearchParams(location.search).get("libraryVisible") || 0);
  if (libraryVisible) state.players = players.map((player) => player.id !== 0 ? player : {
    ...player, can_view_library_top: true, library_top: "Island",
    persistent_look_cards: [{id:7101,name:"Island",type_line:"Basic Land — Island",zone:"library",position:0},
      {id:7102,name:"Forest",type_line:"Basic Land — Forest",zone:"library",position:1}].slice(0, libraryVisible),
  });
+ if (new URLSearchParams(location.search).has("playerCount")) state.players = players.slice(0,Number(new URLSearchParams(location.search).get("playerCount")));
  if (new URLSearchParams(location.search).has("singleOpponent")) state.players = players.slice(0,2);
  if (new URLSearchParams(location.search).has("decisionDock")) {
    state.decision = {kind:"targets",player:0,description:"Target player creates X 0/1 colorless Eldrazi Spawn creature tokens.",requirements:Array.from({length:2},(_,i)=>({description:i ? "Target player scries X, then draws a card." : "Target player creates X tokens.",min_targets:1,max_targets:1,legal_targets:Array.from({length:Number(new URLSearchParams(location.search).get("options") || 2)},(_,j)=>({kind:"player",player:j,name:players[j]?.name || `Player ${j}`}))}))};
@@ -78,10 +83,24 @@ function Fixture(){
    const replacement = new URLSearchParams(location.search).get("effectOrder") === "replacement";
    state.decision = {kind:"select_options",player:0,reason:replacement ? "replacement effect" : "ordering",description:replacement ? "Choose which replacement effect to apply" : "Order triggered abilities on the stack",min:replacement ? 1 : 2,max:replacement ? 1 : 2,options:[{index:0,description:"Ornithopter",object_id:1},{index:1,description:"Myr Moonvessel",object_id:2}]};
  }
+ if (new URLSearchParams(location.search).has("keepHand")) {
+   state.stack=[];
+   state.stack_objects=[];
+   state.decision={kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Keep hand",index:0}]};
+ }
  if (new URLSearchParams(location.search).has("pregame")) {
    state.decision={kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Keep hand",index:0},{kind:"use_pregame_action",label:"Use Serum Powder",index:1}]};
  }
- return <I18nProvider><GameContext.Provider value={{state,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer,playerAccentOverrides:{},game:null,holdRule:"never",setHoldRule:()=>{},effectOrderingState:{order:[1,0]},dispatch:async(command)=>setResult(JSON.stringify(command)),dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+ if (new URLSearchParams(location.search).has("playableHand")) {
+   state.stack=[]; state.stack_objects=[];
+   state.decision={kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Pass priority",index:0},
+     ...players[0].hand_cards.map((card,index)=>({kind:"cast_spell",index:index+1,label:`Cast ${card.name}`,object_id:card.id,action_ref:{kind:"cast_spell",spell_id:card.id,casting_method:{kind:"normal"}}}))]};
+ }
+ if (new URLSearchParams(location.search).has("chosenValues")) {
+   state.players=state.players.map(player=>({...player,battlefield:player.battlefield.map((card,index)=>({...card,
+     chosen_values:index===3?["Type: Human"]:index===4?["Choice: odd"]:index===5?["Color: blue","Number: 3"]:[]}))}));
+ }
+ return <I18nProvider><GameContext.Provider value={{state,loopShortcut:new URLSearchParams(location.search).has("loopControls") ? {startRecording:()=>{}} : null,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer,playerAccentOverrides:{},game:null,holdRule,setHoldRule,priorityStops:prioritySnapshot.stops,cyclePriorityStop:(key,player)=>priorityController.cycleStop(key,state,player),effectOrderingState:{order:[1,0]},dispatch:async(command)=>setResult(JSON.stringify(command)),dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
  <main style={{height:"96vh"}}>{(new URLSearchParams(location.search).has("motion") || new URLSearchParams(location.search).has("stableDecisions") || new URLSearchParams(location.search).has("combatCycle")) && <button onClick={()=>setMotionStep(s=>(s+1)%4)}>Next decision</button>}<button onClick={()=>setAppearance("compactCards",!appearance.compactCards)}>Toggle battlefield style</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore middleUtilityControls={new URLSearchParams(location.search).has("utilities") ? <TopbarUtilityControls playerNames={["Alice", "Bob"]} startingLife={20} /> : null} onChangePerspective={setPerspective} legalTargetObjectIds={targetLook ? new Set([7001,7002]) : targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  {new URLSearchParams(location.search).has("decisionDock") && <div data-bottom-dock style={{position:'fixed',left:0,right:0,bottom:8,height:96,pointerEvents:'none'}}><div className="hand-reveal-shell" data-open="false" style={{position:'absolute',left:'50%',bottom:0,height:96}}><div className="hand-reveal-body" style={{height:'100%'}}><HandZone player={players[0]} isExpanded={false} layout="mobile-fan" /></div></div></div>}
  <DragOverlay />

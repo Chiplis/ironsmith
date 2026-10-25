@@ -31,3 +31,6 @@ pub use compiled_text::{
     ability_surface_text, ability_surface_texts, canonical_compiled_lines, compile_effect_list,
     compiled_text_lines, debug_compiled_lines, semantic_audit_lines, unprocessed_compiled_lines,
 };
+
+mod choice_decision_labels;
+pub use choice_decision_labels::with_choice_decision_labels;

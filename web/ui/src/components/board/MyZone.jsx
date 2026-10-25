@@ -750,7 +750,7 @@ export default function MyZone({
                       cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
                     }}
                   >
-                    <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                    <span className={cn(isActivePlayer && "battlefield-name-text--active")} data-name-active={isActivePlayer} data-name-priority={isPriorityPlayer}>
                       {playerDisplayName(state?.players || [], player)}
                     </span>
                     {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}

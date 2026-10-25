@@ -1,9 +1,10 @@
+import { animateEffect as animate } from "@/lib/motion/native-effects";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import HoverArtOverlay from "./HoverArtOverlay";
 import { useHover } from "@/context/HoverContext";
 import { useGame } from "@/context/GameContext";
 import { resolveInspectorObjectId } from "@/lib/inspector-selection";
-import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
+import { cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { playerAccentVars } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";

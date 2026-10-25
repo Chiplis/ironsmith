@@ -13,7 +13,7 @@ export function localCardBuildSource(payload) {
     const lines = String(source.block || '').split('\n');
     let i = 0;
     for (; i < lines.length; i++) {
-      const match = /^(Mana cost|Type|Color indicator|Power\/Toughness|Loyalty|Defense):\s*(.*)$/.exec(lines[i]);
+      const match = /^(Mana cost|Type|Color indicator|Power\/Toughness|Loyalty|Defense|First printed set):\s*(.*)$/.exec(lines[i]);
       if (!match) break;
       const [, key, value] = match;
       if (key === 'Mana cost') face.mana_cost = value;

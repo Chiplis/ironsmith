@@ -3,7 +3,7 @@ import useUiText from "@/i18n/useUiText";
 import SocialLinks from "./SocialLinks";
 import PublicLobbySearch from './PublicLobbySearch';
 import { PUBLIC_FORMATS, isLegalityFormat, relayBaseUrl, usesCommanders } from '@/lib/relay/formats';
-import { validateFormatDeck, formatCatalogDate, loadFormatCatalog } from '@/lib/relay/format-legality';
+import { validateFormatDeck, deckConfigurationProblems, formatCatalogDate, loadFormatCatalog } from '@/lib/relay/format-legality';
 import { useEffect, useMemo, useState } from "react";
 import { readStoredPlayerName, sanitizeStoredPlayerName, writeStoredPlayerName } from "@/lib/player-name";
 import LocalLobbySearch from "./LocalLobbySearch";
@@ -313,13 +313,27 @@ export default function LobbyOverlay({
 
   const createFormatChosen = Boolean(createFormat);
   const lobbyChecksLegality = lobbyActive && isLegalityFormat(activeFormat);
-  const catalogReady = useFormatCatalogReady(lobbyChecksLegality || isLegalityFormat(createFormat));
+  // Any deck being edited also needs the catalog: it tells which legal cards
+  // still need deck-list configuration (circled colors), in every format.
+  const catalogReady = useFormatCatalogReady(
+    lobbyChecksLegality || isLegalityFormat(createFormat) || lobbyActive || createDeckCount > 0
+  );
   const lobbyAllowsUnreleased = multiplayer.allowUnreleased === true;
   // The local seat's deck against the lobby format, card by card; the host
   // runs the same check on every seat and shares the problems with the table.
   const localDeckStatus = lobbyChecksLegality && catalogReady && !multiplayer.matchStarted ? validateFormatDeck(activeFormat,
     parseDeckList(multiplayer.localDeckText || ''), parseCommanderList(multiplayer.localCommanderText || ''),
     parseSideboardList(multiplayer.localDeckText || ''), undefined, { allowUnreleased: lobbyAllowsUnreleased }) : null;
+  // Missing circled colors never make a deck illegal; they are shown as an
+  // error to fix before the match can start.
+  const localDeckConfiguration = lobbyActive && catalogReady && !multiplayer.matchStarted
+    ? deckConfigurationProblems(parseDeckList(multiplayer.localDeckText || ''),
+      parseCommanderList(multiplayer.localCommanderText || ''), parseSideboardList(multiplayer.localDeckText || ''))
+    : null;
+  const createDeckConfiguration = !lobbyActive && catalogReady && createDeckCount > 0
+    ? deckConfigurationProblems(parseDeckList(createDeckText), parseCommanderList(createCommanderText),
+      parseSideboardList(createDeckText))
+    : null;
   const createDeckStatus = !lobbyActive && isLegalityFormat(createFormat) && catalogReady && createDeckCount > 0
     ? validateFormatDeck(createFormat, parseDeckList(createDeckText), parseCommanderList(createCommanderText),
       parseSideboardList(createDeckText), undefined, { allowUnreleased })
@@ -682,6 +696,9 @@ export default function LobbyOverlay({
                           {createDeckStatus.ready ? ui("Your deck meets the format restrictions.") : createDeckStatus.errors.slice(0, 4).join(" ")}
                         </span>
                       ) : null}
+                      {createDeckConfiguration?.errors.length ? (
+                        <span className="text-[#f0a9a0]" role="status">{createDeckConfiguration.errors.slice(0, 3).join(" ")}</span>
+                      ) : null}
                       {isLegalityFormat(createFormat) && allowUnreleased ? <span>{ui("Unreleased cards are allowed.")}</span> : null}
                       <span>{ui("Main deck:")}{" "}
                         {usesCommanders(createFormat)
@@ -782,8 +799,9 @@ export default function LobbyOverlay({
                 {!multiplayer.matchStarted ? (
                   <LobbyDeckEditor
                     format={activeFormat}
-                    cardProblems={localDeckStatus?.cardProblems || {}}
+                    cardProblems={{ ...(localDeckConfiguration?.cardProblems || {}), ...(localDeckStatus?.cardProblems || {}) }}
                     legalityText={localDeckStatus && !localDeckStatus.ready ? localDeckStatus.errors.slice(0, 3).join(" ") : ""}
+                    configurationText={localDeckConfiguration?.errors.slice(0, 3).join(" ") || ""}
                     deckText={multiplayer.localDeckText}
                     commanderText={multiplayer.localCommanderText}
                     deckCount={multiplayer.localDeckCount}

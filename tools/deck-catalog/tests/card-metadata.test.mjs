@@ -1,6 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildManaProfile, cardMetadataKey, deckArtCard, enrichDeckWithManaProfile, manaValue, resolveCardMetadata } from "../card-metadata.mjs";
+import { buildManaProfile, cardMetadataKey, deckArtCard, enrichDeckWithManaProfile, manaValue, readBulkCardMetadata, resolveCardMetadata } from "../card-metadata.mjs";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+test("enriches from local Scryfall bulk data without requesting the API", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "deck-metadata-test-"));
+  try {
+    const path = join(directory, "cards.json");
+    await writeFile(path, JSON.stringify([
+      { name: "Island", colors: [], color_identity: [], produced_mana: ["U"], type_line: "Basic Land — Island", mana_cost: "" },
+      { name: "Brazen Borrower // Petty Theft", color_identity: ["U"], card_faces: [{name: "Brazen Borrower", mana_cost: "{1}{U}{U}", colors: ["U"], type_line: "Creature — Faerie Rogue"}] },
+    ]));
+    const cache = await readBulkCardMetadata(path);
+    const metadata = await resolveCardMetadata(["Island"], { cache, allowNetwork: false, fetchImpl: async () => assert.fail("Unexpected metadata request") });
+    const profile = buildManaProfile({ mainboard: [{ name: "Island", count: 60 }] }, metadata);
+    assert.equal(profile.metadataCoverage.complete, true);
+    assert.deepEqual(profile.sourceCounts, { U: 60 });
+    assert.equal(cache[cardMetadataKey("Brazen Borrower")].manaCost, "{1}{U}{U}");
+    assert.equal(cache[cardMetadataKey("Brazen Borrower")].typeLine, "Creature — Faerie Rogue");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("builds mana and land profile from resolved card metadata", () => {
   const deck = {

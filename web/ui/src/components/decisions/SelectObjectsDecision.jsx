@@ -1,3 +1,4 @@
+import { isObjectSelectionValid } from "@/lib/object-selection-validation";
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -99,8 +100,7 @@ export default function SelectObjectsDecision({
     };
   }, [canAct, candidates, chooseObject]);
 
-  const canSubmit = selected.length <= max
-    && (allowPartialCompletion || selected.length >= min);
+  const canSubmit = isObjectSelectionValid(decision, selected);
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
   const submitRangeLabel = allowPartialCompletion
     ? `0-${max}`
@@ -166,7 +166,7 @@ export default function SelectObjectsDecision({
               hideDescription={hideDescription}
               layout={layout}
             />
-            {!stripLayout && (
+            {!stripLayout && !decision.selection_alternatives?.length && (
               <div className="decision-helper-text text-[13px] leading-snug">
                 {allowPartialCompletion
                   ? t("decision.selectUpTo", { max })

@@ -51,3 +51,120 @@
 }
 @keyframes priority-hold-drain { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(100% 0 0 0); } }
 @media (prefers-reduced-motion: reduce) { .priority-hold-window-fill { animation-timing-function: steps(1, end); } }
+
+/* Each player's turn owns its own stop controls. Duels share a row;
+   Commander uses two rows without repeating the combat detail strip. */
+.phase-track-player-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; }
+.phase-track-player { min-width: 0; border-top: 1px solid #564365; padding-top: 4px; }
+.phase-track-player-heading { display: flex; align-items: center; gap: 8px; padding: 0 8px 4px; font-size: 11px; color: #c9b4e6; }
+.phase-track-player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 450; }
+.phase-track-player[data-active-turn="true"] { border-top-color: #f6d64a; }
+.phase-track-player[data-active-turn="true"] .phase-track-player-name { font-weight: 850; }
+.phase-track-player[data-has-priority="true"] .phase-track-player-name { color: #8ae4ac; }
+.phase-track-turn-cue, .phase-track-priority-cue { font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
+.phase-track-turn-cue { color: #f6d64a; }
+.phase-track-priority-cue { color: #8ae4ac; }
+.phase-track-group--players .phase-track-player .phase-track-stop-icon { width: 14px; height: 14px; flex-basis: 14px; }
+.phase-track-group--players .phase-track-player[data-active-turn="true"] .phase-track-cell[data-phase-active="true"] .phase-track-stop-icon { filter: drop-shadow(0 0 3px #f6d64a); outline: 1px solid #f6d64a; outline-offset: 3px; border-radius: 3px; }
+.table-shell.table-shell[data-focused-hud="true"] > .table-phase-divider > .topbar-phase-shell:has(.phase-track-group--players) { width: calc(100% - 48px) !important; margin: 0 auto !important; padding-block: 5px; }
+.table-shell[data-focused-hud="true"] > .table-phase-divider .phase-track-group--players .phase-track-stop-button { height: 32px; min-height: 32px; gap: 3px; }
+.table-shell .topbar-phase-shell .phase-track-group--players .phase-track-step-label { font-size: 9px !important; }
+.table-shell .topbar-phase-shell .phase-track-group--players .phase-track-cell[data-phase-active="true"] .phase-track-step-label { font-size: 10px !important; }
+[data-turn-priority="true"] :is(.battlefield-name, .battlefield-name-text--active) { color: #8ae4ac !important; }
+[data-turn-active="true"] .battlefield-name { font-weight: 850; }
+@media (max-width: 600px) {
+  .phase-track-player-grid { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+.player-full-control { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border: 1px solid #665777; border-radius: 3px; color: #c9b4e6; background: #15111c; font-size: 10px; pointer-events: auto; }
+.player-full-control[aria-pressed="true"] { color: #8ae4ac; border-color: #8ae4ac; background: #14231b; }
+.battlefield-chosen-values { position: absolute; z-index: 8; left: 3px; right: 3px; bottom: 22%; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; pointer-events: none; }
+.battlefield-chosen-values span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; padding: 2px 4px; background: #0c151eee; border: 1px solid #9ac6dc; border-radius: 3px; color: #e4f5ff; font: 600 10px/1.2 sans-serif; text-shadow: none; }
+/* Leave the stack inspector and navigation their existing lanes. */
+@media (min-width: 721px) {
+  .table-shell.table-shell[data-focused-hud="true"] > .table-phase-divider > .topbar-phase-shell:has(.phase-track-group--players) {
+    min-width: 0 !important; max-width: none !important; width: calc(100% - 440px) !important; margin-left: 290px !important; margin-right: 150px !important;
+  }
+}
+[data-name-active="true"] { font-weight: 850 !important; }
+[data-name-active="false"] { font-weight: 450 !important; }
+[data-name-priority="true"] { color: #8ae4ac !important; -webkit-text-fill-color: #8ae4ac !important; }
+.inspector-chosen-values { position: absolute; z-index: 90; bottom: 12px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; pointer-events: none; }
+.inspector-chosen-values span { padding: 4px 7px; background: #0c151ef5; border: 1px solid #9ac6dc; border-radius: 3px; color: #e4f5ff; font: 600 12px/1.3 sans-serif; }
+
+/* Opponent trackers use the same columns as the fields above them. The
+   local track keeps the original eight-cell span and icon alignment. */
+.phase-track-group--fields .phase-track-player-grid { display: block; }
+.phase-track-opponents { display: grid; grid-template-columns: repeat(var(--phase-opponent-count), minmax(0, 1fr)); gap: 0; }
+.phase-track-group--fields .phase-track-player--self { margin-top: 6px; }
+@media (min-width: 721px) {
+  .table-shell.table-shell[data-focused-hud="true"][data-multiplayer-board="true"] > .table-phase-divider > .topbar-phase-shell:has(.phase-track-group--fields) {
+    width: 100% !important; min-width: 0 !important; margin: 0 !important;
+  }
+  .phase-track-group--fields :is(.phase-track-player--self, .phase-track-local-combat) {
+    width: var(--phase-track-span, 100%);
+    margin-left: calc(var(--phase-track-start, 0px) - var(--phase-track-span, 100%) / 16);
+  }
+  .phase-track-group--fields .phase-track-player--self .phase-track-player-heading { padding-left: calc(var(--phase-track-span, 100%) / 16); }
+}
+.phase-track-duel-legend { display: flex; align-items: center; gap: 20px; }
+.phase-track-duel-legend > div { display: flex; align-items: center; gap: 3px; }
+.phase-track-duel-legend .phase-track-player-heading { padding: 0; }
+.phase-track-opponent-hand, .phase-track--shared [data-opponent-stop="true"] .phase-track-stop-icon { transform: rotate(180deg); }
+.phase-track--shared .phase-track-cell { flex-direction: column; align-items: center; }
+.phase-track-shared-stops { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.phase-track--shared .phase-track-stop-button { width: 28px; }
+.phase-track--shared .phase-track-stop-button[data-stop="once"] .phase-track-stop-icon { stroke: #f6d64a; fill: #bd8aff; }
+.phase-track--shared .phase-track-stop-button[data-stop="always"] .phase-track-stop-icon { stroke: #f6d64a; fill: #f6d64a; filter: drop-shadow(0 0 3px #f6d64a); }
+.phase-track--shared .phase-track-cell[data-phase-active="true"] .phase-track-stop-icon { width: 16px; height: 16px; flex-basis: 16px; }
+.phase-track--shared [data-active-turn="true"] .phase-track-stop-button { border-bottom: 1px solid #f6d64a; }
+
+/* Lift only the local stop hands; opponent hands retain their row position. */
+.phase-track-player--self .phase-track-stop-icon,
+.phase-track-group--duel .phase-track-player-stop:first-child .phase-track-stop-icon {
+  translate: 0 -6px;
+}
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
+  .table-shell[data-focused-hud="true"] > .table-phase-divider > .navigation-utility-controls {
+    top: var(--phase-brand-top, auto) !important;
+    bottom: auto !important;
+  }
+}
+/* The raised hands extend past their button's normal box. */
+.phase-track-player--self :is(.phase-track, .phase-track-cell, .phase-track-stop-button),
+.phase-track-group--duel :is(.phase-track, .phase-track-cell, .phase-track-player-stop, .phase-track-stop-button) {
+  overflow: visible !important;
+}
+
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
+  .table-shell[data-focused-hud="true"] > .table-phase-divider > .navigation-utility-controls .topbar-brand-links {
+    position: absolute;
+    top: var(--phase-links-top, 100%);
+    left: 0;
+    right: 0;
+  }
+}
+
+/* Duels begin at the table's left edge. Untap houses the two seat/status
+   labels rather than disabled stop hands, leaving room for Turn/Priority. */
+@media (min-width: 721px) {
+  .table-shell.table-shell[data-focused-hud="true"] > .table-phase-divider > .topbar-phase-shell:has(.phase-track-group--duel) {
+    width: calc(100% - var(--middle-brand-width, 121px) - 64px) !important;
+    margin-left: 24px !important;
+    margin-right: 0 !important;
+  }
+}
+.phase-track-group--duel .phase-track--shared:not(.phase-track--combat) .phase-track-steps {
+  grid-template-columns: minmax(180px, 1.35fr) repeat(7, minmax(0, 1fr));
+}
+.phase-track-group--duel .phase-track--shared:not(.phase-track--combat) .phase-track-cell {
+  display: grid;
+  grid-template-rows: 32px auto;
+  justify-items: center;
+  align-items: center;
+}
+.phase-track-group--duel .phase-track-duel-legend { display: grid; gap: 2px; width: 100%; min-width: 0; }
+.phase-track-group--duel .phase-track-duel-legend > div { min-width: 0; }
+.phase-track-group--duel .phase-track-duel-legend .phase-track-player-heading { min-width: 0; gap: 6px; }
+.phase-track-group--duel .phase-track-duel-legend :is(svg, .phase-track-turn-cue, .phase-track-priority-cue) { flex-shrink: 0; }
+.phase-track-group--duel [data-phase-name="Untap"] { border-bottom: 0 !important; }
+.phase-track-group--duel [data-phase-name="Untap"]::after { display: none !important; }

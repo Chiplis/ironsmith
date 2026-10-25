@@ -6,16 +6,21 @@ set -euo pipefail
 
 TOOL_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 FORMATS=("$@")
-if [[ ${#FORMATS[@]} -eq 0 ]]; then FORMATS=(modern pioneer standard); fi
+if [[ ${#FORMATS[@]} -eq 0 ]]; then FORMATS=(commander standard vintage legacy pauper pioneer modern paupercommander); fi
 
+status=0
 for format in "${FORMATS[@]}"; do
   echo "Synchronizing ${format}..."
-  node "${TOOL_DIR}/sync.mjs" \
-    --format "$format" \
-    --page 0 \
-    --events 5 \
-    --limit 24 \
-    --collection-limit 12 \
-    --recent-events 20 \
-    --major-events 5
+  if node "${TOOL_DIR}/ensure-catalog.mjs" "$format"; then
+    node "${TOOL_DIR}/enrich.mjs" --format "$format" --offline \
+      --output "${DECK_CATALOG_OUTPUT:-${TOOL_DIR}/../../catalog}" || status=1
+  else
+    status=1
+  fi
 done
+
+# Make downloaded decks available to an already-running frontend as well.
+if [[ -z "${DECK_CATALOG_OUTPUT:-}" ]]; then
+  node "${TOOL_DIR}/../../web/ui/scripts/sync-deck-catalog-assets.mjs"
+fi
+exit "$status"

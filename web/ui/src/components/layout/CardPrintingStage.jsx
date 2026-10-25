@@ -42,6 +42,7 @@ function PresentationChoices({ label, options, value, onChange, translate = true
 
 // card-glint's style catalog, with each style's support for this card.
 function usePrintingStyles(face) {
+  const faceKey = face ? JSON.stringify(face) : null;
   const [api, setApi] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -49,20 +50,21 @@ function usePrintingStyles(face) {
     return () => { cancelled = true; };
   }, []);
   return useMemo(() => {
-    if (!api?.printingStyles || !face) return [];
-    const { printingChoice: _choice, ...source } = face;
+    if (!api?.printingStyles || !faceKey) return [];
+    const { printingChoice: _choice, ...source } = JSON.parse(faceKey);
     return api.printingStyles.map((style) => {
       const frames = api.printingStyleOptions(source, style);
       const supported = frames.find((frame) => frame.supported);
       return { style, frames, disabled: !supported, reason: supported ? undefined : frames[0]?.reason };
     });
-  }, [api, face]);
+  }, [api, faceKey]);
 }
 
 // The live preview and printing controls. Clicking the card's border or set
 // symbol cycles the border color or rarity.
 export default function CardPrintingStage({ draft, faceIndex, printing, onPresentationChange }) {
   const ui = useUiText();
+  const [previewEffects, setPreviewEffects] = useState(false);
   const presentation = draft.presentation;
   const face = useMemo(() => cardGlintDraftFace(draft, faceIndex, printing), [draft, faceIndex, printing]);
   // Style support depends on the card, not on the chosen style.
@@ -76,6 +78,7 @@ export default function CardPrintingStage({ draft, faceIndex, printing, onPresen
       <div className="card-forge-printing-card">
         <CardGlintLivePreview
           face={face}
+          liveEnabled={previewEffects}
           presentation={presentation}
           onBorderClick={() => change({ borderColor: cyclePresentation(CARD_BORDER_COLORS, presentation.borderColor) })}
           onRarityClick={() => change({ rarity: cyclePresentation(CARD_RARITIES, presentation.rarity) })}
@@ -88,6 +91,11 @@ export default function CardPrintingStage({ draft, faceIndex, printing, onPresen
         />
       </div>
       <div className="card-forge-printing-controls">
+        <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide"
+          title={ui("Preview foil and print textures (uses more graphics resources)")}>
+          <Checkbox checked={previewEffects} onCheckedChange={(checked) => setPreviewEffects(checked === true)}
+            className="h-3.5 w-3.5" />{ui("Preview finish effects")}
+        </label>
         <PresentationChoices label={ui("Finish")} options={CARD_GLINT_FINISHES} value={presentation.finish}
           onChange={(finish) => change({ finish })} />
         <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide"

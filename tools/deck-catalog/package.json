@@ -1,6 +1,7 @@
 {
   "name": "ironsmith-deck-catalog",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",

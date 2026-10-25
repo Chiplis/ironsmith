@@ -436,6 +436,11 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     const row = container.querySelector(".battlefield-row");
     let frame;
     const measure = () => {
+      const writes = [];
+      let moved = false;
+      const write = (element, property, value) => {
+        if (element.style.getPropertyValue(property) !== value) writes.push(() => element.style.setProperty(property, value));
+      };
       const bounds = container.getBoundingClientRect();
       const cards = Array.from(container.querySelectorAll(".battlefield-row-card"))
         .map((card) => card.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
@@ -463,13 +468,13 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
           pileWidth = Math.min(pileWidth, cardHeight * 63 / 88);
         }
       }
-      piles.style.setProperty("--zone-pile-width", `${pileWidth}px`);
+      write(piles, "--zone-pile-width", `${pileWidth}px`);
       if (board) {
-        board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
+        write(board, "--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
         const zoneTop = Math.max(0, top - boardBounds.top);
         const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - containerClientTop);
         const nextPilesTop = bounds.top + containerClientTop + pilesTop;
-        piles.style.setProperty("--zone-piles-top", `${pilesTop}px`);
+        write(piles, "--zone-piles-top", `${pilesTop}px`);
         if (piles.dataset.localZonePiles === "true") {
           let lift = 0;
           const column = piles.querySelector(":scope > .zone-icon-row, :scope > .zone-pile-slot")?.getBoundingClientRect();
@@ -490,8 +495,9 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
             const currentShift = parseFloat(piles.style.getPropertyValue("--local-zone-rows-shift")) || 0;
             const left = Math.min(...rows.map((rect) => rect.left));
             const right = Math.max(...rows.map((rect) => rect.right));
-            const restingTop = Math.min(...rows.map((rect) => rect.top)) - currentShift;
-            const restingBottom = Math.max(...rows.map((rect) => rect.bottom)) - currentShift;
+            const pileDelta = nextPilesTop - pilesBounds.top;
+            const restingTop = Math.min(...rows.map((rect) => rect.top)) - currentShift + pileDelta;
+            const restingBottom = Math.max(...rows.map((rect) => rect.bottom)) - currentShift + pileDelta;
             const floor = boardBounds.bottom - LOCAL_PILES_CLEARANCE;
             const ceiling = [...document.querySelectorAll('[data-opponent-zone-piles="true"] .zone-icon-row')]
               .map((row) => row.getBoundingClientRect())
@@ -512,21 +518,21 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
             shift = Math.max(ceiling - restingTop, shift);
             const nextShift = `${Math.round(shift)}px`;
             if (piles.style.getPropertyValue("--local-zone-rows-shift") !== nextShift) {
-              piles.style.setProperty("--local-zone-rows-shift", nextShift);
-              window.dispatchEvent(new Event(ZONE_PILES_MOVED_EVENT));
+              write(piles, "--local-zone-rows-shift", nextShift);
+              moved = true;
             }
           }
           const nextLift = `${Math.round(lift)}px`;
           if (piles.style.getPropertyValue("--local-piles-lift") !== nextLift) {
-            piles.style.setProperty("--local-piles-lift", nextLift);
-            window.dispatchEvent(new Event(ZONE_PILES_MOVED_EVENT));
+            write(piles, "--local-piles-lift", nextLift);
+            moved = true;
           }
         }
         // Chat hangs 6px under Exile; give it whatever the board has left.
-        piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
+        write(piles, "--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
         // The stack anchor is independent of the zone column.
         const stackTop = 12;
-        board.style.setProperty("--stack-area-top", `${stackTop}px`);
+        write(board, "--stack-area-top", `${stackTop}px`);
         // Card positions only determine whether a mana rail precedes the stack.
         const fieldCards = [...(row?.querySelectorAll('.game-card') || [])]
           .map(card => card.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
@@ -539,16 +545,20 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
             .reduce((right, rect) => Math.max(right, rect.right), 0)
           : 0;
         const railLeft = manaRight > 0 ? manaRight + 6 : 0;
-        board.style.setProperty('--stack-mana-clearance', `${railLeft}px`);
+        write(board, '--stack-mana-clearance', `${railLeft}px`);
         // The battlefield reserves this lane. Deriving its width from the
         // first card creates a feedback loop as that card moves out of its way.
         const railWidth = `${Math.max(240, Math.min(360, window.innerWidth * .24))}px`;
-        if (board.style.getPropertyValue('--stack-frame-rail-width') !== railWidth) board.style.setProperty('--stack-frame-rail-width', railWidth);
-        board.style.setProperty('--stack-frame-rail-left', `${railLeft - boardBounds.left}px`);
+        if (board.style.getPropertyValue('--stack-frame-rail-width') !== railWidth) write(board, '--stack-frame-rail-width', railWidth);
+        write(board, '--stack-frame-rail-left', `${railLeft - boardBounds.left}px`);
       }
+      // Every geometry read above sees the same layout. Apply changes together;
+      // ResizeObserver supplies another measurement if pile dimensions change.
+      for (const apply of writes) apply();
+      if (moved) window.dispatchEvent(new Event(ZONE_PILES_MOVED_EVENT));
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
-    measure();
+    schedule();
     // The action dock for a new decision mounts and grows after this commit.
     const settleTimers = piles.dataset.localZonePiles === "true" ? [120, 450].map((delay) => setTimeout(schedule, delay)) : [];
     const observer = new ResizeObserver(schedule);

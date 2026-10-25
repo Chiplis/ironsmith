@@ -18,7 +18,22 @@ const TURN_STOPS = [
   ['Main2'], ['End'], ['Cleanup'],
 ];
 
+// Unscoped preferences apply to every turn; a seat override can explicitly be off.
+export const playerPriorityStopKey = (key, player) => `player:${player}:${key}`;
+export function priorityStopMode(stops, key, player) {
+  const scoped = playerPriorityStopKey(key, player);
+  return (stops[scoped] ?? stops[key]) === 'off' ? undefined : (stops[scoped] ?? stops[key]);
+}
+export function priorityStopsForPlayer(stops, player) {
+  const keys = new Set(Object.keys(stops).map(key => key.replace(/^player:\d+:/, '')));
+  return Object.fromEntries([...keys].flatMap(key => {
+    const mode = priorityStopMode(stops, key, player);
+    return mode ? [[key, mode]] : [];
+  }));
+}
+
 export function nextSelectedPriorityStop(state, stops = {}) {
+  stops = priorityStopsForPlayer(stops, state?.active_player);
   const phase = normalizePhaseStep(state?.phase, state?.step);
   const step = priorityStepKey(state);
   const current = TURN_STOPS.findIndex(([candidatePhase, candidateStep]) =>
@@ -29,6 +44,7 @@ export function nextSelectedPriorityStop(state, stops = {}) {
 }
 
 export function selectedPriorityAdvanceLabel(state, stops, passing, t) {
+  stops = priorityStopsForPlayer(stops || {}, state?.active_player);
   if (passing) return t('action.skippingPhase', {
     phase: currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t),
   });
@@ -45,12 +61,10 @@ export function selectedPriorityAdvanceLabel(state, stops, passing, t) {
   return t('action.goToPhase', { phase: destination });
 }
 
-// Out of the box a pass stops where most turns need a decision (like Arena):
-// both main phases and the declare-attackers step. "Every time" stops are
+// Out of the box a pass stops at both main phases on every player’s turn. "Every time" stops are
 // remembered per browser; "once" stops only live for the current game.
 export const DEFAULT_PRIORITY_STOPS = Object.freeze({
   'phase:Main': 'always',
-  'step:DeclareAttackers': 'always',
   'phase:Main2': 'always',
 });
 export const PRIORITY_STOPS_STORAGE_KEY = 'ironsmith.priorityStops';
@@ -60,6 +74,10 @@ export function readStoredPriorityStops(storage = globalThis.localStorage) {
     const raw = storage?.getItem(PRIORITY_STOPS_STORAGE_KEY);
     if (raw == null) return { ...DEFAULT_PRIORITY_STOPS };
     const saved = JSON.parse(raw);
+    if (saved?.version === 2 && saved.stops && typeof saved.stops === 'object') {
+      return Object.fromEntries(Object.entries(saved.stops).filter(([key, mode]) =>
+        /^(player:\d+:)?(phase|step):\w+$/.test(key) && ['always', 'off'].includes(mode)));
+    }
     return Object.fromEntries((Array.isArray(saved) ? saved : [])
       .filter(key => typeof key === 'string' && /^(phase|step):\w+$/.test(key))
       .map(key => [key, 'always']));
@@ -71,7 +89,8 @@ export function readStoredPriorityStops(storage = globalThis.localStorage) {
 function storePriorityStops(storage, stops) {
   try {
     storage?.setItem(PRIORITY_STOPS_STORAGE_KEY,
-      JSON.stringify(Object.keys(stops).filter(key => stops[key] === 'always')));
+      JSON.stringify({ version: 2, stops: Object.fromEntries(Object.entries(stops)
+        .filter(([, mode]) => mode === 'always' || mode === 'off')) }));
   } catch { /* Stops still work for this session without storage. */ }
 }
 
@@ -112,10 +131,12 @@ export function createPriorityStops({
       window = null; changed = true;
     }
     if (heldKey && (!isLocalPriority(state) || heldKey !== priorityKey(state) || state.game_over)) heldKey = null;
-    const timedStop = phaseStopsEnabled && !state.game_over && isLocalPriority(state)
+    const timedStop = phaseStopsEnabled && resolveMode !== "all" && !state.game_over && isLocalPriority(state)
       && Number(state.active_player) !== Number(state.perspective)
       && Number(state.stack_size || 0) === 0 && selectedStop(state);
-    const timedResolve = phaseStopsEnabled && ['safe', 'all'].includes(resolveMode)
+    // White keeps spells manual even when abilities are above them.
+    const hasSpell = (state.stack_objects || []).some(entry => !entry.ability_kind);
+    const timedResolve = (resolveMode === 'off' || (resolveMode === 'safe' && !hasSpell))
       && !state.game_over && isLocalPriority(state) && !state.mana_payment
       && Number(state.stack_size || 0) > 0;
     if (window?.kind === 'stack-resolve' && !timedResolve) {
@@ -138,26 +159,34 @@ export function createPriorityStops({
     [`phase:${normalizePhaseStep(state?.phase, state?.step)}`, `phase:${phaseSerial}`],
     [`step:${priorityStepKey(state)}`, `step:${stepSerial}`],
   ];
-  const selectedStop = state => candidates(state).find(([key, visit]) => stops[key] && !consumed.has(`${key}|${visit}`)
-    && !(key === 'step:DeclareAttackers' && attackersDeclaredIn === phaseSerial));
+  const stopKey = (key, state) => Object.hasOwn(stops, playerPriorityStopKey(key, state?.active_player))
+    ? playerPriorityStopKey(key, state.active_player) : key;
+  const selectedStop = state => candidates(state).map(([key, visit]) => [stopKey(key, state), visit, key])
+    .find(([key, visit, base]) => stops[key] && stops[key] !== 'off' && !consumed.has(`${key}|${visit}`)
+      && !(base === 'step:DeclareAttackers' && attackersDeclaredIn === phaseSerial));
   const stopReason = state => {
     observe(state);
     if (!isLocalTurnDecision(state)) return null;
     if (heldKey) return 'priority held';
     if (window?.kind === 'stack-resolve') return 'timed stack resolve';
     const stop = selectedStop(state);
-    return stop ? `stop at ${stop[0].split(':')[1]}` : null;
+    return stop ? `stop at ${stop[0].split(':').at(-1)}` : null;
   };
   const releaseStops = state => {
     observe(state);
     if (state?.decision?.kind === 'attackers') attackersDeclaredIn = phaseSerial;
     let changed = false;
-    for (const [key, visit] of candidates(state)) {
-      if (!stops[key]) continue;
+    for (const [base, visit] of candidates(state)) {
+      const key = stopKey(base, state);
+      if (!stops[key] || stops[key] === 'off') continue;
       consumed.add(`${key}|${visit}`);
-      if (stops[key] === 'once') { delete stops[key]; changed = true; }
+      if (stops[key] === 'once') {
+        if (key.startsWith('player:')) stops[key] = 'off';
+        else delete stops[key];
+        changed = true;
+      }
     }
-    if (changed) publish();
+    if (changed) { if (storage) storePriorityStops(storage, stops); publish(); }
   };
   return {
     setResolveMode(mode) {
@@ -175,16 +204,20 @@ export function createPriorityStops({
     observe,
     windowFor: state => Boolean(window && isLocalPriority(state) && window.key === priorityKey(state)),
     stopReason,
-    cycleStop(key, state) {
+    cycleStop(key, state, player) {
       observe(state);
       stops = { ...stops };
-      if (!stops[key]) stops[key] = 'once';
-      else if (stops[key] === 'once') stops[key] = 'always';
+      const mode = player == null ? stops[key] : priorityStopMode(stops, key, player);
+      const base = key;
+      if (player != null) key = playerPriorityStopKey(key, player);
+      if (!mode || mode === 'off') stops[key] = 'once';
+      else if (mode === 'once') stops[key] = 'always';
+      else if (player != null) stops[key] = 'off';
       else delete stops[key];
       if (storage) storePriorityStops(storage, stops);
       // Setting a stop on the current step should take effect immediately.
       for (const [candidate, visit] of candidates(state)) {
-        if (candidate === key) consumed.delete(`${candidate}|${visit}`);
+        if (candidate === base) consumed.delete(`${key}|${visit}`);
       }
       observe(state);
       publish();
@@ -245,21 +278,8 @@ export function createPriorityStops({
       observe(state);
       if (!window || window.id !== id || !isLocalPriority(state)
         || window.pausedAt != null || window.startedAt === null || now() < window.startedAt + window.duration) return false;
-      if (window.kind === 'stack-resolve') {
-        if (state.viewed_cards && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return false;
-        if (resolveMode === 'safe') {
-          if (state.decision.analysis_complete === false) return false;
-          const playable = (state.decision.actions || []).some(action =>
-            !['pass_priority', 'activate_mana_ability', 'untap_land'].includes(action.kind)
-            && action.payment_proven !== false);
-          if (playable) {
-            heldKey = window.key;
-            window = null;
-            publish();
-            return false;
-          }
-        }
-      }
+      if (window.kind === 'stack-resolve' && state.viewed_cards
+        && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return false;
       heldKey = window.key;
       window = null;
       publish();

@@ -3,84 +3,91 @@
 // and the sparks, embers and rings a card leaves behind. One fixed canvas,
 // drawn additively, alive only while an effect is.
 
+import { StackFxRenderer } from "./stack-fx-renderer.js";
+
 const TAU = Math.PI * 2;
-const MAX_PARTICLES = 900;
-
 let canvas = null;
-let ctx = null;
-let dpr = 1;
+let renderer = null;
 let frame = null;
-let lastTime = 0;
+let unavailable = false;
 const effects = new Set();
-const particles = [];
 
-// Reduced motion, or a page nobody is looking at (animation frames are
-// paused there, so a flourish would only play late on return): no light.
 export function prefersReducedMotion() {
-  if (typeof window === "undefined") return false;
-  return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.hidden);
+  if (typeof window === "undefined") return true;
+  return Boolean(window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.hidden);
+}
+
+function stopEffects() {
+  if (frame != null) cancelAnimationFrame(frame);
+  frame = null;
+  for (const effect of effects) effect.cancel?.();
+  effects.clear();
+  if (canvas) canvas.style.display = "none";
 }
 
 function ensureCanvas() {
-  if (canvas || typeof document === "undefined") return Boolean(canvas);
+  if (renderer) return true;
+  if (unavailable || typeof document === "undefined") return false;
   canvas = document.createElement("canvas");
   canvas.className = "stack-fx-canvas";
   canvas.setAttribute("aria-hidden", "true");
+  try { renderer = new StackFxRenderer(canvas); }
+  catch (error) {
+    unavailable = true;
+    canvas = null;
+    console.warn("[stack fx] GPU effects unavailable", error);
+    return false;
+  }
   document.body.appendChild(canvas);
-  ctx = canvas.getContext("2d");
   const resize = () => {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.round(window.innerWidth * dpr);
-    canvas.height = Math.round(window.innerHeight * dpr);
+    if (!renderer) return;
+    renderer.resize(window.innerWidth, window.innerHeight, Math.min(2, window.devicePixelRatio || 1));
     canvas.style.width = `${window.innerWidth}px`;
     canvas.style.height = `${window.innerHeight}px`;
   };
   resize();
   window.addEventListener("resize", resize);
+  canvas.addEventListener("webglcontextlost", event => {
+    event.preventDefault();
+    stopEffects();
+    renderer = null;
+    unavailable = true;
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    try { renderer = new StackFxRenderer(canvas); unavailable = false; resize(); }
+    catch (error) { console.warn("[stack fx] GPU restore failed", error); }
+  });
   return true;
 }
 
 function start() {
   if (frame != null || !ensureCanvas()) return;
-  lastTime = performance.now();
   canvas.style.display = "block";
   frame = requestAnimationFrame(tick);
 }
 
 function tick(now) {
-  const dt = Math.min(48, now - lastTime);
-  lastTime = now;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.globalCompositeOperation = "lighter";
-  // One broken effect must not stop the loop (and every effect after it).
-  for (const effect of [...effects]) {
-    try {
-      if (effect.step(now, dt) === false) effects.delete(effect);
-    } catch (error) {
+  renderer.begin();
+  // Only effect geometry and moving-target anchors remain on the CPU. Every
+  // particle's position, spin, fading and glow are evaluated by GPU shaders.
+  for (const effect of effects) {
+    try { if (effect.step(now) === false) effects.delete(effect); }
+    catch (error) {
       effects.delete(effect);
+      effect.cancel?.();
       console.error("[stack fx] effect failed", error);
     }
   }
-  try {
-    stepParticles(dt);
-  } catch (error) {
-    particles.length = 0;
-    console.error("[stack fx] particles failed", error);
-  }
-  ctx.globalCompositeOperation = "source-over";
-  if (effects.size === 0 && particles.length === 0) {
+  renderer.render(now);
+  if (effects.size === 0 && now >= renderer.until) {
     frame = null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas.style.display = "none";
     return;
   }
   frame = requestAnimationFrame(tick);
 }
 
-function rgba(rgb, alpha) {
-  return `rgba(${rgb}, ${Math.max(0, Math.min(1, alpha))})`;
-}
+function emit(particle) { renderer.emit(particle); }
 
 function center(rectOrPoint) {
   if (!rectOrPoint) return null;
@@ -93,68 +100,6 @@ const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2);
 const easeOut = (t) => 1 - (1 - t) ** 3;
 const easeIn = (t) => t * t * t;
-
-// ---- particles -------------------------------------------------------------
-
-function emit(particle) {
-  if (particles.length >= MAX_PARTICLES) particles.shift();
-  particles.push({ age: 0, rotation: 0, spin: 0, gravity: 0, drag: 0.94, ...particle });
-}
-
-function drawStar(x, y, size, alpha, rgb) {
-  ctx.strokeStyle = rgba(rgb, alpha);
-  ctx.lineWidth = Math.max(0.6, size * 0.22);
-  ctx.beginPath();
-  ctx.moveTo(x - size, y);
-  ctx.lineTo(x + size, y);
-  ctx.moveTo(x, y - size);
-  ctx.lineTo(x, y + size);
-  ctx.stroke();
-}
-
-function stepParticles(dt) {
-  for (let index = particles.length - 1; index >= 0; index -= 1) {
-    const p = particles[index];
-    p.age += dt;
-    if (p.age >= p.life) {
-      particles.splice(index, 1);
-      continue;
-    }
-    const k = dt / 16;
-    p.vx *= p.drag ** k;
-    p.vy = p.vy * p.drag ** k + p.gravity * k;
-    p.x += p.vx * k;
-    p.y += p.vy * k;
-    p.rotation += p.spin * k;
-    const life = 1 - p.age / p.life;
-    const alpha = p.alpha * (p.flicker ? 0.55 + 0.45 * Math.sin(p.age * 0.05 + p.seed) : 1) * life;
-    const size = p.size * (p.shrink === false ? 1 : 0.35 + 0.65 * life);
-    if (p.kind === "star") {
-      drawStar(p.x, p.y, size * 2.4, alpha, p.rgb);
-    } else if (p.kind === "shard") {
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rotation);
-      ctx.fillStyle = rgba(p.rgb, alpha);
-      ctx.beginPath();
-      ctx.moveTo(0, -size * 1.6);
-      ctx.lineTo(size, size);
-      ctx.lineTo(-size * 0.8, size * 0.6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    } else {
-      const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size * 3);
-      glow.addColorStop(0, rgba("255, 255, 255", alpha));
-      glow.addColorStop(0.25, rgba(p.rgb, alpha * 0.9));
-      glow.addColorStop(1, rgba(p.rgb, 0));
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, size * 3, 0, TAU);
-      ctx.fill();
-    }
-  }
-}
 
 // ---- comets ----------------------------------------------------------------
 
@@ -176,31 +121,14 @@ function controlPoint(a, b, bow) {
 }
 
 function drawHead(x, y, radius, rgb, alpha = 1) {
-  const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 4);
-  glow.addColorStop(0, rgba("255, 255, 255", alpha));
-  glow.addColorStop(0.18, rgba("255, 255, 255", alpha * 0.9));
-  glow.addColorStop(0.35, rgba(rgb, alpha * 0.8));
-  glow.addColorStop(1, rgba(rgb, 0));
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(x, y, radius * 4, 0, TAU);
-  ctx.fill();
+  renderer.glow(x, y, radius * 4, rgb, alpha);
 }
 
 function drawLightning(points, rgb, alpha) {
-  if (points.length < 2) return;
-  const jagged = points.map((point, index) => (
-    index === 0 || index === points.length - 1
-      ? point
-      : { x: point.x + (Math.random() - 0.5) * 14, y: point.y + (Math.random() - 0.5) * 14 }
-  ));
-  for (const [width, color] of [[7, rgba(rgb, alpha * 0.35)], [3, rgba(rgb, alpha)], [1.2, rgba("255, 255, 255", alpha)]]) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    jagged.forEach((point, index) => (index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)));
-    ctx.stroke();
+  const jagged = points.map((point, index) => index === 0 || index === points.length - 1
+    ? point : { x: point.x + (Math.random() - 0.5) * 14, y: point.y + (Math.random() - 0.5) * 14 });
+  for (const [width, color, opacity] of [[7, rgb, alpha * 0.35], [3, rgb, alpha], [1.2, "255, 255, 255", alpha]]) {
+    for (let i = 1; i < jagged.length; i++) renderer.line(jagged[i - 1], jagged[i], width, color, opacity);
   }
 }
 
@@ -222,7 +150,7 @@ export function launchComet({
 } = {}) {
   const origin = center(from);
   const end0 = center(to);
-  if (!origin || !end0 || prefersReducedMotion()) return Promise.resolve();
+  if (!origin || !end0 || prefersReducedMotion() || !ensureCanvas()) return Promise.resolve();
   const distance = Math.hypot(end0.x - origin.x, end0.y - origin.y);
   const total = duration ?? {
     star: 420 + distance * 0.42,
@@ -261,6 +189,7 @@ export function launchComet({
   return new Promise((resolve) => {
     let landed = false;
     effects.add({
+      cancel: () => resolve(),
       step(now) {
         const raw = clamp01((now - began) / total);
         const end = center(to) || end0;
@@ -284,25 +213,16 @@ export function launchComet({
             const a = trail[index - 1];
             const b = trail[index];
             const share = index / trail.length;
-            ctx.strokeStyle = rgba(rgb, share * (style === "wisp" ? 0.6 : 0.9));
-            ctx.lineWidth = (style === "spark" ? 3.5 : 11) * size * share;
-            ctx.lineCap = "butt";
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.stroke();
+            renderer.line(a, b, (style === "spark" ? 3.5 : 11) * size * share,
+              rgb, share * (style === "wisp" ? 0.6 : 0.9));
           }
         }
         // A white-hot core along the front of the trail.
         if (style !== "bolt" && trail.length > 2) {
           const core = trail.filter((sample) => sample.t >= t - trailSpan * 0.35);
-          ctx.strokeStyle = rgba("255, 255, 255", 0.75);
-          ctx.lineWidth = (style === "spark" ? 1.2 : 2.4) * size;
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.beginPath();
-          core.forEach((sample, index) => (index ? ctx.lineTo(sample.x, sample.y) : ctx.moveTo(sample.x, sample.y)));
-          ctx.stroke();
+          for (let i = 1; i < core.length; i++) {
+            renderer.line(core[i - 1], core[i], (style === "spark" ? 1.2 : 2.4) * size, "255, 255, 255", 0.75);
+          }
         }
         drawHead(point.x, point.y, (style === "spark" ? 3.5 : style === "bolt" ? 4.5 : 8) * size, rgb);
         // Shed sparks and the odd four-point star.
@@ -344,7 +264,7 @@ export function launchComet({
  * `rect` spreads the emission over an area instead of a point.
  */
 export function burst({ at, rect = null, rgb = "183, 156, 255", accentRgb = null, kind = "impact", count = null }) {
-  if (prefersReducedMotion()) return;
+  if (prefersReducedMotion() || !ensureCanvas()) return;
   const origin = center(at || rect);
   if (!origin) return;
   const amount = count ?? { impact: 46, sparks: 36, embers: 70, shards: 34 }[kind] ?? 40;
@@ -377,22 +297,14 @@ export function burst({ at, rect = null, rgb = "183, 156, 255", accentRgb = null
 /** A ring that expands from a point and fades: the shockwave of a landing. */
 export function shockwave({ at, rgb = "183, 156, 255", radius = 90, duration = 520, width = 3 }) {
   const origin = center(at);
-  if (!origin || prefersReducedMotion()) return;
+  if (!origin || prefersReducedMotion() || !ensureCanvas()) return;
   const began = performance.now();
   effects.add({
     step(now) {
       const t = clamp01((now - began) / duration);
       const r = radius * easeOut(t);
-      ctx.strokeStyle = rgba(rgb, (1 - t) * 0.9);
-      ctx.lineWidth = width * (1 - t) + 0.5;
-      ctx.beginPath();
-      ctx.arc(origin.x, origin.y, r, 0, TAU);
-      ctx.stroke();
-      ctx.strokeStyle = rgba("255, 255, 255", (1 - t) * 0.6);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(origin.x, origin.y, r * 0.82, 0, TAU);
-      ctx.stroke();
+      renderer.ring(origin.x, origin.y, r, width * (1 - t) + 0.5, rgb, (1 - t) * 0.9);
+      renderer.ring(origin.x, origin.y, r * 0.82, 1, "255, 255, 255", (1 - t) * 0.6);
       return t < 1;
     },
   });
@@ -406,52 +318,33 @@ export function shockwave({ at, rgb = "183, 156, 255", radius = 90, duration = 5
  */
 export function sigil({ rect, rgb = "183, 156, 255", duration = 700 }) {
   const origin = center(rect);
-  if (!origin || prefersReducedMotion()) return Promise.resolve();
+  if (!origin || prefersReducedMotion() || !ensureCanvas()) return Promise.resolve();
   const base = rect?.width ? Math.max(rect.width, rect.height) * 0.55 : 40;
   const began = performance.now();
   return new Promise((resolve) => {
     let peaked = false;
     effects.add({
+      cancel: () => resolve(),
       step(now) {
         const t = clamp01((now - began) / duration);
         const grow = easeOut(Math.min(1, t * 1.6));
         const fade = t < 0.55 ? 1 : 1 - (t - 0.55) / 0.45;
         const spin = t * Math.PI * 0.9;
-        ctx.save();
-        ctx.translate(origin.x, origin.y);
+        const point = (angle, radius) => ({ x: origin.x + Math.cos(angle) * radius, y: origin.y + Math.sin(angle) * radius });
         for (const [scale, direction, ticks] of [[1, 1, 12], [0.72, -1, 8]]) {
           const radius = base * scale * grow;
-          ctx.rotate(spin * direction);
-          ctx.strokeStyle = rgba(rgb, 0.85 * fade);
-          ctx.lineWidth = 1.6;
-          ctx.beginPath();
-          ctx.arc(0, 0, radius, 0, TAU);
-          ctx.stroke();
-          for (let index = 0; index < ticks; index += 1) {
-            const angle = (index / ticks) * TAU;
-            ctx.beginPath();
-            ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
-            ctx.lineTo(Math.cos(angle) * (radius + 7), Math.sin(angle) * (radius + 7));
-            ctx.stroke();
+          renderer.ring(origin.x, origin.y, radius, 1.6, rgb, 0.85 * fade);
+          for (let index = 0; index < ticks; index++) {
+            const angle = index / ticks * TAU + spin * direction;
+            renderer.line(point(angle, radius), point(angle, radius + 7), 1.6, rgb, 0.85 * fade);
           }
-          ctx.rotate(-spin * direction);
         }
-        // Rays
-        for (let index = 0; index < 8; index += 1) {
-          const angle = (index / 8) * TAU + spin * 0.5;
+        for (let index = 0; index < 8; index++) {
+          const angle = index / 8 * TAU + spin * 0.5;
           const inner = base * 0.3 * grow;
           const outer = base * (1.25 + 0.2 * Math.sin(t * 12 + index)) * grow;
-          const gradient = ctx.createLinearGradient(Math.cos(angle) * inner, Math.sin(angle) * inner, Math.cos(angle) * outer, Math.sin(angle) * outer);
-          gradient.addColorStop(0, rgba("255, 255, 255", 0.7 * fade));
-          gradient.addColorStop(1, rgba(rgb, 0));
-          ctx.strokeStyle = gradient;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-          ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-          ctx.stroke();
+          renderer.line(point(angle, inner), point(angle, outer), 2, "255, 255, 255", 0.7 * fade, 0);
         }
-        ctx.restore();
         if (!peaked && t >= 0.4) {
           peaked = true;
           resolve();
@@ -468,11 +361,12 @@ export function sigil({ rect, rgb = "183, 156, 255", duration = 700 }) {
  * two pulses. Resolves when the charge releases.
  */
 export function chargePulse({ rect, rgb = "183, 156, 255", duration = 360 }) {
-  if (!rect || prefersReducedMotion()) return Promise.resolve();
+  if (!rect || prefersReducedMotion() || !ensureCanvas()) return Promise.resolve();
   const began = performance.now();
   return new Promise((resolve) => {
     let released = false;
     effects.add({
+      cancel: () => resolve(),
       step(now) {
         // rAF stamps can trail the performance.now() an effect began at.
         const elapsed = Math.max(0, now - began);
@@ -481,22 +375,11 @@ export function chargePulse({ rect, rgb = "183, 156, 255", duration = 360 }) {
           const local = Math.max(0, Math.min(1, (t - offset) / 0.68));
           if (local <= 0 || local >= 1) continue;
           const grow = 4 + easeOut(local) * 18;
-          ctx.strokeStyle = rgba(rgb, (1 - local) * 0.95);
-          ctx.lineWidth = 2.5 * (1 - local) + 0.5;
-          const radius = 10;
-          const x = rect.left - grow;
-          const y = rect.top - grow;
-          const w = rect.width + grow * 2;
-          const h = rect.height + grow * 2;
-          ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
-          else ctx.rect(x, y, w, h);
-          ctx.stroke();
+          renderer.rect(rect.left - grow, rect.top - grow, rect.width + grow * 2, rect.height + grow * 2,
+            rgb, (1 - local) * 0.95, true);
         }
-        // Inner flash while charging.
         const charge = Math.min(1, elapsed / duration);
-        ctx.fillStyle = rgba(rgb, 0.18 * Math.sin(charge * Math.PI));
-        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+        renderer.rect(rect.left, rect.top, rect.width, rect.height, rgb, 0.18 * Math.sin(charge * Math.PI));
         if (!released && elapsed >= duration) {
           released = true;
           resolve();

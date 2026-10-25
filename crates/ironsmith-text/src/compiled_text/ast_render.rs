@@ -3216,11 +3216,40 @@ fn describe_structural_repeated_cascade_grant_pair(
     let [first, second, ..] = abilities else {
         return None;
     };
-    let (first_filter, first_condition, first_granted) = modeled_object_static_grant(first)?;
-    let (second_filter, second_condition, second_granted) = modeled_object_static_grant(second)?;
+    // Cascade functions on the stack. Other object-grant matchers require
+    // battlefield abilities, so inspect these stack grants directly.
+    fn stack_grant(
+        ability: &Ability,
+    ) -> Option<(&ObjectFilter, crate::static_abilities::StaticAbility)> {
+        if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+            return None;
+        }
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+            &static_ability.compiled_model()?.payload
+        else {
+            return None;
+        };
+        if grant.condition.is_some()
+            || grant.set_quantifier_surface.is_some()
+            || !grant.additional_abilities.is_empty()
+            || grant.ability.functional_zones.as_slice() != [Zone::Stack]
+        {
+            return None;
+        }
+        let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+            return None;
+        };
+        Some((
+            &grant.filter,
+            crate::static_abilities::StaticAbility::from_model(granted.clone()),
+        ))
+    }
+    let (first_filter, first_granted) = stack_grant(first)?;
+    let (second_filter, second_granted) = stack_grant(second)?;
     if first_filter != second_filter
-        || first_condition.is_some()
-        || second_condition.is_some()
         || first_filter.stack_kind != Some(crate::filter::StackObjectKind::Spell)
         || first_granted.id() != crate::static_abilities::StaticAbilityId::Cascade
         || second_granted.id() != crate::static_abilities::StaticAbilityId::Cascade
@@ -3263,13 +3292,29 @@ mod repeated_cascade_grant_tests {
             ironsmith_core::StaticAbility::cascade();
         let granted = ironsmith_core::Ability {
             kind: ironsmith_core::AbilityKind::Static(cascade),
-            functional_zones: vec![Zone::Battlefield],
+            functional_zones: vec![Zone::Stack],
         };
         let model: crate::static_abilities::CompiledStaticAbility =
             ironsmith_core::StaticAbility::new(ironsmith_core::GrantObjectAbilityForFilter::new(
                 filter, granted, "Cascade",
             ));
         Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model))
+    }
+
+    #[test]
+    fn parsed_stack_cascade_grants_preserve_quoted_keyword_list() {
+        let oracle = "Colorless spells you cast from your hand with mana value 7 or greater have \"Cascade, cascade.\"";
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Repeated Cascade Probe",
+        )
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .unwrap();
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            [oracle]
+        );
     }
 
     #[test]

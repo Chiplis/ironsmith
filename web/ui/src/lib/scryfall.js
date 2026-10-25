@@ -1,4 +1,5 @@
 import { localCardBuildSource, cardBuildDraft } from "./card-build-draft.js";
+import { deckCardBaseName } from "./deck-color-notes.js";
 import { customCardAssets, customCardImageUrl } from "./custom-card-assets.js";
 import { localizedPrintingFlavor } from './printing-flavor.js';
 import { printingForImageFace } from './card-printing-face.js';
@@ -259,8 +260,9 @@ function prefersLiveScryfallCard(cardName) {
 const STABLE_CARD_ASSET_FETCH_OPTIONS = CARD_ASSET_FETCH_OPTIONS;
 
 export function cardRouteKey(name) {
-  const normalized = String(name || "")
-    .trim()
+  // A decklist's circled-color note ("Cryptic Spires ({W}{B})") is not part
+  // of the card's name or its assets.
+  const normalized = deckCardBaseName(name)
     .toLocaleLowerCase("en-US")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -270,7 +272,7 @@ export function cardRouteKey(name) {
 }
 
 function namedCardParams(cardName, printPreference = null) {
-  const query = String(cardName || "").trim();
+  const query = deckCardBaseName(cardName);
   const params = new URLSearchParams();
   const setCode = normalizePrintPreference(printPreference)?.setCode || "";
 
@@ -1145,5 +1147,11 @@ export async function fetchCardFaceSource(cardName) {
 }
 
 export async function fetchCardBuildDraft(cardName) {
-  return cardBuildDraft(await fetchCardFaceSource(cardName));
+  // Rules come from the engine, independently of image/printing requests and
+  // their shared caches. A missing baked source must not wait on Scryfall.
+  const embedded = await readEmbeddedCardSource(cardRouteKey(cardName));
+  const payload = embedded === undefined ? await fetchLocalCardPayload(cardName) : embedded;
+  const source = localCardBuildSource(payload);
+  if (!source) throw new Error(`No local card source for "${cardName}"`);
+  return cardBuildDraft(source);
 }

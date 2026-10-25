@@ -1,0 +1,4713 @@
+[
+  {
+    "id": 0,
+    "rule": {
+      "_Rule": "Flying"
+    },
+    "text": "Flying",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 1,
+    "rule": {
+      "_Rule": "Vigilance"
+    },
+    "text": "Vigilance",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 2,
+    "rule": {
+      "_Rule": "CDA_Color",
+      "args": {
+        "_SettableColor": "Devoid"
+      }
+    },
+    "text": "Devoid",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 3,
+    "rule": {
+      "_Rule": "Ingest"
+    },
+    "text": "Ingest",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 4,
+    "rule": {
+      "_Rule": "Trample"
+    },
+    "text": "Trample",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 5,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "EntersTapped"
+          }
+        ]
+      ]
+    },
+    "text": "This land enters tapped.",
+    "origin": "Akoum Teeth"
+  },
+  {
+    "id": 6,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "TapPermanent",
+          "args": {
+            "_Permanent": "ThisPermanent"
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "AddMana",
+              "args": {
+                "_ManaProduce": "ManaProduceR"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{T}: Add {R}.",
+    "origin": "Akoum Teeth"
+  },
+  {
+    "id": 7,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPlayerCastsASpell",
+          "args": [
+            {
+              "_Players": "SinglePlayer",
+              "args": {
+                "_Player": "You"
+              }
+            },
+            {
+              "_Spells": "Or",
+              "args": [
+                {
+                  "_Spells": "IsCreatureType",
+                  "args": "Spirit"
+                },
+                {
+                  "_Spells": "IsSpellType",
+                  "args": "Arcane"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "MayAction",
+              "args": {
+                "_Action": "PutACounterOfTypeOnPermanent",
+                "args": [
+                  {
+                    "_CounterType": "KiCounter"
+                  },
+                  {
+                    "_Permanent": "ThisPermanent"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.",
+    "origin": "Hired Muscle"
+  },
+  {
+    "id": 8,
+    "rule": {
+      "_Rule": "TriggerI",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersEndStep",
+          "args": {
+            "_Players": "AnyPlayer"
+          }
+        },
+        {
+          "_Condition": "PermanentPassesFilter",
+          "args": [
+            {
+              "_Permanent": "ThisPermanent"
+            },
+            {
+              "_Permanents": "HasNumCountersOfType",
+              "args": [
+                {
+                  "_Comparison": "GreaterThanOrEqualTo",
+                  "args": {
+                    "_GameNumber": "Integer",
+                    "args": 2
+                  }
+                },
+                {
+                  "_CounterType": "KiCounter"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "MayAction",
+              "args": {
+                "_Action": "FlipPermanent",
+                "args": {
+                  "_Permanent": "ThisPermanent"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of the end step, if there are two or more ki counters on this creature, you may flip it.",
+    "origin": "Hired Muscle"
+  },
+  {
+    "id": 9,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "RemoveACounterOfTypeFromPermanent",
+          "args": [
+            {
+              "_CounterType": "KiCounter"
+            },
+            {
+              "_Permanent": "ThisPermanent"
+            }
+          ]
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetPermanent",
+                "args": {
+                  "_Permanents": "IsCardtype",
+                  "args": "Creature"
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "CreatePermanentLayerEffectUntil",
+                  "args": [
+                    {
+                      "_Permanent": "Ref_TargetPermanent"
+                    },
+                    [
+                      {
+                        "_LayerEffect": "AddAbility",
+                        "args": [
+                          {
+                            "_Rule": "Fear"
+                          }
+                        ]
+                      }
+                    ],
+                    {
+                      "_Expiration": "UntilEndOfTurn"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Remove a ki counter from Scarmaker: Target creature gains fear until end of turn. (It can't be blocked except by artifact creatures and/or black creatures.)",
+    "origin": "Scarmaker"
+  },
+  {
+    "id": 10,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "Or",
+          "args": [
+            {
+              "_Trigger": "WhenAPermanentEntersTheBattlefield",
+              "args": {
+                "_Permanents": "SinglePermanent",
+                "args": {
+                  "_Permanent": "ThisPermanent"
+                }
+              }
+            },
+            {
+              "_Trigger": "WhenAPermanentTransforms",
+              "args": {
+                "_Permanents": "SinglePermanent",
+                "args": {
+                  "_Permanent": "ThisPermanent"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetPermanent",
+                "args": {
+                  "_Permanents": "And",
+                  "args": [
+                    {
+                      "_Permanents": "IsCardtype",
+                      "args": "Creature"
+                    },
+                    {
+                      "_Permanents": "ControlledByAPlayer",
+                      "args": {
+                        "_Players": "Opponent"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "ExilePermanentUntil",
+                  "args": [
+                    {
+                      "_Permanent": "Ref_TargetPermanent"
+                    },
+                    {
+                      "_Expiration": "UntilPermanentLeavesBattlefield",
+                      "args": {
+                        "_Permanent": "ThisPermanent"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature enters or transforms into Brutal Cathar, exile target creature an opponent controls until this creature leaves the battlefield.",
+    "origin": "Brutal Cathar"
+  },
+  {
+    "id": 11,
+    "rule": {
+      "_Rule": "Daybound"
+    },
+    "text": "Daybound",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 12,
+    "rule": {
+      "_Rule": "FirstStrike"
+    },
+    "text": "First strike",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 13,
+    "rule": {
+      "_Rule": "Ward",
+      "args": {
+        "_Cost": "PayLife",
+        "args": {
+          "_GameNumber": "Integer",
+          "args": 3
+        }
+      }
+    },
+    "text": "Ward\u2014Pay 3 life.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 14,
+    "rule": {
+      "_Rule": "Nightbound"
+    },
+    "text": "Nightbound",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 15,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "And",
+          "args": [
+            {
+              "_Cost": "PayMana",
+              "args": [
+                {
+                  "_ManaSymbol": "ManaCostGeneric",
+                  "args": 1
+                }
+              ]
+            },
+            {
+              "_Cost": "TapPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "DrawACard"
+            },
+            {
+              "_Action": "ExileACardFromHand"
+            },
+            {
+              "_Action": "If",
+              "args": [
+                {
+                  "_Condition": "NumDifferentManaValuesAmongCardsInExileIs",
+                  "args": [
+                    {
+                      "_Comparison": "GreaterThanOrEqualTo",
+                      "args": {
+                        "_GameNumber": "Integer",
+                        "args": 5
+                      }
+                    },
+                    {
+                      "_CardsInExile": "WasExiledWithPermanent",
+                      "args": {
+                        "_Permanent": "ThisPermanent"
+                      }
+                    }
+                  ]
+                },
+                [
+                  {
+                    "_Action": "GainLife",
+                    "args": {
+                      "_GameNumber": "Integer",
+                      "args": 5
+                    }
+                  },
+                  {
+                    "_Action": "UntapPermanent",
+                    "args": {
+                      "_Permanent": "ThisPermanent"
+                    }
+                  },
+                  {
+                    "_Action": "TransformPermanent",
+                    "args": {
+                      "_Permanent": "ThisPermanent"
+                    }
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{1}, {T}: Draw a card, then exile a card from your hand. If cards with five or more different mana values are exiled with Azor's Gateway, you gain 5 life, untap Azor's Gateway, and transform it.",
+    "origin": "Azor's Gateway"
+  },
+  {
+    "id": 16,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "TapPermanent",
+          "args": {
+            "_Permanent": "ThisPermanent"
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "AddManaRepeated",
+              "args": [
+                {
+                  "_ManaProduce": "AnyManaColor"
+                },
+                {
+                  "_GameNumber": "LifeTotalOfPlayer",
+                  "args": {
+                    "_Player": "You"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{T}: Add X mana of any one color, where X is your life total.",
+    "origin": "Sanctum of the Sun"
+  },
+  {
+    "id": 17,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPlayerUnlocksADoor",
+          "args": [
+            {
+              "_Players": "SinglePlayer",
+              "args": {
+                "_Player": "You"
+              }
+            },
+            {
+              "_Permanents": "SinglePermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetPermanent",
+                "args": {
+                  "_Permanents": "And",
+                  "args": [
+                    {
+                      "_Permanents": "IsCardtype",
+                      "args": "Creature"
+                    },
+                    {
+                      "_Permanents": "ControlledByAPlayer",
+                      "args": {
+                        "_Players": "Opponent"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "PermanentDealsDamage",
+                  "args": [
+                    {
+                      "_Permanent": "ThisPermanent"
+                    },
+                    {
+                      "_GameNumber": "TheNumberOfCardsInPlayersHand",
+                      "args": {
+                        "_Player": "You"
+                      }
+                    },
+                    {
+                      "_DamageRecipient": "Permanent",
+                      "args": {
+                        "_Permanent": "Ref_TargetPermanent"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "When you unlock this door, this Room deals damage equal to the number of cards in your hand to target creature an opponent controls.",
+    "origin": "Roaring Furnace"
+  },
+  {
+    "id": 18,
+    "rule": {
+      "_Rule": "PlayerEffect",
+      "args": [
+        {
+          "_Player": "You"
+        },
+        [
+          {
+            "_PlayerEffect": "HasNoMaximumHandSize"
+          }
+        ]
+      ]
+    },
+    "text": "You have no maximum hand size.",
+    "origin": "Steaming Sauna"
+  },
+  {
+    "id": 19,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersEndStep",
+          "args": {
+            "_Players": "SinglePlayer",
+            "args": {
+              "_Player": "You"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "DrawACard"
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of your end step, draw a card.",
+    "origin": "Steaming Sauna"
+  },
+  {
+    "id": 20,
+    "rule": {
+      "_Rule": "Morph",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 4
+          },
+          {
+            "_ManaSymbol": "ManaCostR"
+          }
+        ]
+      }
+    },
+    "text": "Morph {4}{R}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 21,
+    "rule": {
+      "_Rule": "SpellActions",
+      "args": {
+        "_Actions": "Targeted",
+        "args": [
+          [
+            {
+              "_Target": "TargetSpell",
+              "args": {
+                "_Spells": "AnySpell"
+              }
+            }
+          ],
+          {
+            "_Actions": "ActionList",
+            "args": [
+              {
+                "_Action": "CounterSpell",
+                "args": {
+                  "_Spell": "Ref_TargetSpell"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "text": "Counter target spell.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 22,
+    "rule": {
+      "_Rule": "PlayerEffect",
+      "args": [
+        {
+          "_Player": "You"
+        },
+        [
+          {
+            "_PlayerEffect": "DecreaseSpellCost",
+            "args": [
+              {
+                "_Spells": "And",
+                "args": [
+                  {
+                    "_Spells": "IsFaceDown"
+                  },
+                  {
+                    "_Spells": "IsCardtype",
+                    "args": "Creature"
+                  }
+                ]
+              },
+              [
+                {
+                  "_CostReductionSymbol": "CostReduceGeneric",
+                  "args": 1
+                }
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "Face-down creature spells you cast cost {1} less to cast.",
+    "origin": "Obscuring Aether"
+  },
+  {
+    "id": 23,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "PayMana",
+          "args": [
+            {
+              "_ManaSymbol": "ManaCostGeneric",
+              "args": 1
+            },
+            {
+              "_ManaSymbol": "ManaCostG"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "TurnPermanentFaceDown",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{1}{G}: Turn this enchantment face down. (It becomes a 2/2 creature.)",
+    "origin": "Obscuring Aether"
+  },
+  {
+    "id": 24,
+    "rule": {
+      "_Rule": "Reach"
+    },
+    "text": "Reach",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 25,
+    "rule": {
+      "_Rule": "Megamorph",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 5
+          },
+          {
+            "_ManaSymbol": "ManaCostG"
+          }
+        ]
+      }
+    },
+    "text": "Megamorph {5}{G}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 26,
+    "rule": {
+      "_Rule": "Disguise",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 4
+          },
+          {
+            "_ManaSymbol": "ManaCostRG"
+          },
+          {
+            "_ManaSymbol": "ManaCostRG"
+          }
+        ]
+      }
+    },
+    "text": "Disguise {4}{R/G}{R/G}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 27,
+    "rule": {
+      "_Rule": "Ward",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 2
+          }
+        ]
+      }
+    },
+    "text": "Ward {2}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 28,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureDealsCombatDamageToAPlayer",
+          "args": [
+            {
+              "_Permanents": "SinglePermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            },
+            {
+              "_Players": "AnyPlayer"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "MayActions",
+              "args": [
+                {
+                  "_Action": "CopyCardWithTheNotedName"
+                },
+                {
+                  "_Action": "MayAction",
+                  "args": {
+                    "_Action": "CastCopiedCardWithoutPaying"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature deals combat damage to a player, you may copy the card with the noted name. You may cast the copy without paying its mana cost.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 29,
+    "rule": {
+      "_Rule": "ReplaceWouldLeaveTheBattlefield",
+      "args": [
+        {
+          "_ReplacableEventWouldLeaveTheBattlefield": "PermanentWouldLeaveTheBattlefield",
+          "args": {
+            "_Permanent": "ThisPermanent"
+          }
+        },
+        [
+          {
+            "_ReplacementActionWouldLeaveTheBattlefield": "ExileItInstead"
+          }
+        ]
+      ]
+    },
+    "text": "If this creature would leave the battlefield, exile it instead.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 30,
+    "rule": {
+      "_Rule": "Haste"
+    },
+    "text": "Haste",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 31,
+    "rule": {
+      "_Rule": "Flash"
+    },
+    "text": "Flash",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 32,
+    "rule": {
+      "_Rule": "Cascade"
+    },
+    "text": "Cascade",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 33,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "EnteredTheBattlefieldThisTurn"
+                  },
+                  {
+                    "_CopyEffects": "NoCopyEffects"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of any permanent that entered this turn.",
+    "origin": "Sakashima's Protege"
+  },
+  {
+    "id": 34,
+    "rule": {
+      "_Rule": "Myriad"
+    },
+    "text": "Myriad",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 35,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "IsCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "RemoveSupertypes",
+                        "args": [
+                          "Legendary"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "AddCardtypes",
+                        "args": [
+                          "Artifact"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "AddAbility",
+                        "args": [
+                          {
+                            "_Rule": "Myriad"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad. (Whenever it attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)",
+    "origin": "Auton Soldier"
+  },
+  {
+    "id": 36,
+    "rule": {
+      "_Rule": "Crew",
+      "args": 3
+    },
+    "text": "Crew 3",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 37,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "And",
+                    "args": [
+                      {
+                        "_Permanents": "IsCardtype",
+                        "args": "Creature"
+                      },
+                      {
+                        "_Permanents": "ControlledByAPlayer",
+                        "args": {
+                          "_Players": "Opponent"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "SetCardtypes",
+                        "args": [
+                          "Artifact"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "SetArtifactTypes",
+                        "args": [
+                          "Vehicle"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "AddAbility",
+                        "args": [
+                          {
+                            "_Rule": "Crew",
+                            "args": 3
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this Vehicle enter as a copy of a creature an opponent controls, except it's a Vehicle artifact with crew 3 and it loses all other card types.",
+    "origin": "Imposter Mech"
+  },
+  {
+    "id": 38,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "IfElsePassesFilter",
+            "args": [
+              {
+                "_Permanents": "WasEmbalmed"
+              },
+              [
+                {
+                  "_ReplacementActionWouldEnter": "MayActions",
+                  "args": [
+                    {
+                      "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                      "args": [
+                        {
+                          "_Permanents": "IsCardtype",
+                          "args": "Creature"
+                        },
+                        {
+                          "_CopyEffects": "CopyEffects",
+                          "args": [
+                            {
+                              "_CopyEffect": "HasNoManaCost"
+                            },
+                            {
+                              "_CopyEffect": "SetColor",
+                              "args": {
+                                "_SettableColor": "SimpleColorList",
+                                "args": [
+                                  "White"
+                                ]
+                              }
+                            },
+                            {
+                              "_CopyEffect": "AddCreatureTypes",
+                              "args": [
+                                "Zombie"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              [
+                {
+                  "_ReplacementActionWouldEnter": "MayActions",
+                  "args": [
+                    {
+                      "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                      "args": [
+                        {
+                          "_Permanents": "IsCardtype",
+                          "args": "Creature"
+                        },
+                        {
+                          "_CopyEffects": "NoCopyEffects"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of any creature on the battlefield, except if this creature was embalmed, the token has no mana cost, it's white, and it's a Zombie in addition to its other types.",
+    "origin": "Vizier of Many Faces"
+  },
+  {
+    "id": 39,
+    "rule": {
+      "_Rule": "Embalm",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 3
+          },
+          {
+            "_ManaSymbol": "ManaCostU"
+          },
+          {
+            "_ManaSymbol": "ManaCostU"
+          }
+        ]
+      }
+    },
+    "text": "Embalm {3}{U}{U}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 40,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfACardInAPlayersGraveyard",
+                "args": [
+                  {
+                    "_CardsInGraveyard": "IsCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_Players": "AnyPlayer"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "SetPT",
+                        "args": {
+                          "_PT": "PT",
+                          "args": [
+                            4,
+                            4
+                          ]
+                        }
+                      },
+                      {
+                        "_CopyEffect": "AddColor",
+                        "args": {
+                          "_SettableColor": "SimpleColorList",
+                          "args": [
+                            "Black"
+                          ]
+                        }
+                      },
+                      {
+                        "_CopyEffect": "AddCreatureTypes",
+                        "args": [
+                          "Zombie"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of any creature card in a graveyard, except it's a 4/4 black Zombie in addition to its other colors and types.",
+    "origin": "Lazotep Convert"
+  },
+  {
+    "id": 41,
+    "rule": {
+      "_Rule": "Lifelink"
+    },
+    "text": "Lifelink",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 42,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "PayMana",
+          "args": [
+            {
+              "_ManaSymbol": "ManaCostGeneric",
+              "args": 2
+            },
+            {
+              "_ManaSymbol": "ManaCostU"
+            },
+            {
+              "_ManaSymbol": "ManaCostU"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "CreateFutureTrigger",
+              "args": [
+                {
+                  "_FutureTrigger": "AtTheBeginningOfTheNextEndStep"
+                },
+                {
+                  "_Actions": "ActionList",
+                  "args": [
+                    {
+                      "_Action": "PutPermanentIntoItsOwnersHand",
+                      "args": {
+                        "_Permanent": "ThisPermanent"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{2}{U}{U}: Return this creature to its owner's hand at the beginning of the next end step.",
+    "origin": "Sakashima the Impostor"
+  },
+  {
+    "id": 43,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "IsCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "SetName",
+                        "args": "Sakashima the Impostor"
+                      },
+                      {
+                        "_CopyEffect": "AddSupertypes",
+                        "args": [
+                          "Legendary"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "AddAbility",
+                        "args": [
+                          {
+                            "_Rule": "Activated",
+                            "args": [
+                              {
+                                "_Cost": "PayMana",
+                                "args": [
+                                  {
+                                    "_ManaSymbol": "ManaCostGeneric",
+                                    "args": 2
+                                  },
+                                  {
+                                    "_ManaSymbol": "ManaCostU"
+                                  },
+                                  {
+                                    "_ManaSymbol": "ManaCostU"
+                                  }
+                                ]
+                              },
+                              {
+                                "_Actions": "ActionList",
+                                "args": [
+                                  {
+                                    "_Action": "CreateFutureTrigger",
+                                    "args": [
+                                      {
+                                        "_FutureTrigger": "AtTheBeginningOfTheNextEndStep"
+                                      },
+                                      {
+                                        "_Actions": "ActionList",
+                                        "args": [
+                                          {
+                                            "_Action": "PutPermanentIntoItsOwnersHand",
+                                            "args": {
+                                              "_Permanent": "ThisPermanent"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have Sakashima the Impostor enter as a copy of any creature on the battlefield, except its name is Sakashima the Impostor, it's legendary in addition to its other types, and it has \"{2}{U}{U}: Return Sakashima the Impostor to its owner's hand at the beginning of the next end step.\"",
+    "origin": "Sakashima the Impostor"
+  },
+  {
+    "id": 44,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfACardInAPlayersGraveyard",
+                "args": [
+                  {
+                    "_CardsInGraveyard": "IsCardtype",
+                    "args": "Land"
+                  },
+                  {
+                    "_Players": "AnyPlayer"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "AddLandTypes",
+                        "args": [
+                          "Cave"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "_ReplacementActionWouldEnter": "EntersTapped"
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this land enter tapped as a copy of any land card in a graveyard, except it's a Cave in addition to its other types.",
+    "origin": "Echoing Deeps"
+  },
+  {
+    "id": 45,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "TapPermanent",
+          "args": {
+            "_Permanent": "ThisPermanent"
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "AddMana",
+              "args": {
+                "_ManaProduce": "ManaProduceC"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{T}: Add {C}.",
+    "origin": "Echoing Deeps"
+  },
+  {
+    "id": 46,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersUpkeep",
+          "args": {
+            "_Players": "SinglePlayer",
+            "args": {
+              "_Player": "You"
+            }
+          }
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetPermanent",
+                "args": {
+                  "_Permanents": "IsCardtype",
+                  "args": "Creature"
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "MayAction",
+                  "args": {
+                    "_Action": "CreatePermanentLayerEffect",
+                    "args": [
+                      {
+                        "_Permanent": "ThisPermanent"
+                      },
+                      [
+                        {
+                          "_LayerEffect": "IsACopyOfPermanent",
+                          "args": [
+                            {
+                              "_Permanent": "Ref_TargetPermanent"
+                            },
+                            {
+                              "_CopyEffects": "CopyEffects",
+                              "args": [
+                                {
+                                  "_CopyEffect": "KeepColor"
+                                },
+                                {
+                                  "_CopyEffect": "AddAbilityVariable",
+                                  "args": {
+                                    "_AbilityVariable": "ThisAbility"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of your upkeep, you may have this creature become a copy of target creature, except it doesn't copy that creature's color and it has this ability.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 47,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "IsCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "KeepColor"
+                      },
+                      {
+                        "_CopyEffect": "AddAbility",
+                        "args": [
+                          {
+                            "_Rule": "TriggerA",
+                            "args": [
+                              {
+                                "_Trigger": "AtTheBeginningOfAPlayersUpkeep",
+                                "args": {
+                                  "_Players": "SinglePlayer",
+                                  "args": {
+                                    "_Player": "You"
+                                  }
+                                }
+                              },
+                              {
+                                "_Actions": "Targeted",
+                                "args": [
+                                  [
+                                    {
+                                      "_Target": "TargetPermanent",
+                                      "args": {
+                                        "_Permanents": "IsCardtype",
+                                        "args": "Creature"
+                                      }
+                                    }
+                                  ],
+                                  {
+                                    "_Actions": "ActionList",
+                                    "args": [
+                                      {
+                                        "_Action": "MayAction",
+                                        "args": {
+                                          "_Action": "CreatePermanentLayerEffect",
+                                          "args": [
+                                            {
+                                              "_Permanent": "ThisPermanent"
+                                            },
+                                            [
+                                              {
+                                                "_LayerEffect": "IsACopyOfPermanent",
+                                                "args": [
+                                                  {
+                                                    "_Permanent": "Ref_TargetPermanent"
+                                                  },
+                                                  {
+                                                    "_CopyEffects": "CopyEffects",
+                                                    "args": [
+                                                      {
+                                                        "_CopyEffect": "KeepColor"
+                                                      },
+                                                      {
+                                                        "_CopyEffect": "AddAbilityVariable",
+                                                        "args": {
+                                                          "_AbilityVariable": "ThisAbility"
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of any creature on the battlefield, except it doesn't copy that creature's color and it has \"At the beginning of your upkeep, you may have this creature become a copy of target creature, except it doesn't copy that creature's color and it has this ability.\"",
+    "origin": "Vesuvan Doppelganger"
+  },
+  {
+    "id": 48,
+    "rule": {
+      "_Rule": "VanishingEnters",
+      "args": 3
+    },
+    "text": "Vanishing 3",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 49,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "IsCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "AddAbilityIfItDoesntHaveAbility",
+                        "args": [
+                          {
+                            "_Rule": "VanishingEnters",
+                            "args": 3
+                          },
+                          {
+                            "_CheckHasable": "AnyVanishing"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of any creature on the battlefield, except it has vanishing 3 if that creature doesn't have vanishing.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 50,
+    "rule": {
+      "_Rule": "Shroud"
+    },
+    "text": "Shroud",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 51,
+    "rule": {
+      "_Rule": "VanishingEnters",
+      "args": 4
+    },
+    "text": "Vanishing 4",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 52,
+    "rule": {
+      "_Rule": "Prototype",
+      "args": {
+        "ManaCost": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 2
+          },
+          {
+            "_ManaSymbol": "ManaCostU"
+          },
+          {
+            "_ManaSymbol": "ManaCostU"
+          }
+        ],
+        "CardPT": {
+          "Power": 3,
+          "Toughness": 3
+        }
+      }
+    },
+    "text": "Prototype {2}{U}{U} \u2014 3/3",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 53,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "And",
+                    "args": [
+                      {
+                        "_Permanents": "Or",
+                        "args": [
+                          {
+                            "_Permanents": "IsCardtype",
+                            "args": "Artifact"
+                          },
+                          {
+                            "_Permanents": "IsCardtype",
+                            "args": "Creature"
+                          }
+                        ]
+                      },
+                      {
+                        "_Permanents": "ControlledByAPlayer",
+                        "args": {
+                          "_Players": "SinglePlayer",
+                          "args": {
+                            "_Player": "You"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "AddCardtypes",
+                        "args": [
+                          "Artifact",
+                          "Creature"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "KeepPT"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of an artifact or creature you control, except it's an artifact creature in addition to its other types, and its power and toughness are equal to this creature's power and toughness.",
+    "origin": "Hulking Metamorph"
+  },
+  {
+    "id": 54,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAVehicleBecoemsCrewedForTheFirstTimeEachTurn",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetPermanent",
+                "args": {
+                  "_Permanents": "And",
+                  "args": [
+                    {
+                      "_Permanents": "And",
+                      "args": [
+                        {
+                          "_Permanents": "IsNonSupertype",
+                          "args": "Legendary"
+                        },
+                        {
+                          "_Permanents": "IsCardtype",
+                          "args": "Creature"
+                        }
+                      ]
+                    },
+                    {
+                      "_Permanents": "CrewedVehicleThisTurn",
+                      "args": {
+                        "_Permanent": "ThisPermanent"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "CreatePermanentLayerEffectUntil",
+                  "args": [
+                    {
+                      "_Permanent": "ThisPermanent"
+                    },
+                    [
+                      {
+                        "_LayerEffect": "IsACopyOfPermanent",
+                        "args": [
+                          {
+                            "_Permanent": "Ref_TargetPermanent"
+                          },
+                          {
+                            "_CopyEffects": "CopyEffects",
+                            "args": [
+                              {
+                                "_CopyEffect": "SetPT",
+                                "args": {
+                                  "_PT": "PT",
+                                  "args": [
+                                    4,
+                                    3
+                                  ]
+                                }
+                              },
+                              {
+                                "_CopyEffect": "AddArtifactTypes",
+                                "args": [
+                                  "Vehicle"
+                                ]
+                              },
+                              {
+                                "_CopyEffect": "AddCardtypes",
+                                "args": [
+                                  "Artifact"
+                                ]
+                              },
+                              {
+                                "_CopyEffect": "AddAbility",
+                                "args": [
+                                  {
+                                    "_Rule": "Flying"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ],
+                    {
+                      "_Expiration": "UntilEndOfTurn"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this Vehicle becomes crewed for the first time each turn, until end of turn, this Vehicle becomes a copy of target nonlegendary creature that crewed it this turn, except it's 4/3, it's a Vehicle artifact in addition to its other types, and it has flying.",
+    "origin": "Mindlink Mech"
+  },
+  {
+    "id": 55,
+    "rule": {
+      "_Rule": "Crew",
+      "args": 1
+    },
+    "text": "Crew 1",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 56,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "Or",
+          "args": [
+            {
+              "_Trigger": "WhenAPermanentEntersTheBattlefield",
+              "args": {
+                "_Permanents": "SinglePermanent",
+                "args": {
+                  "_Permanent": "ThisPermanent"
+                }
+              }
+            },
+            {
+              "_Trigger": "WhenAPermanentTransforms",
+              "args": {
+                "_Permanents": "SinglePermanent",
+                "args": {
+                  "_Permanent": "ThisPermanent"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "CreateTokens",
+              "args": [
+                {
+                  "_CreatableToken": "TokenWithPT",
+                  "args": [
+                    {
+                      "_PT": "PT",
+                      "args": [
+                        2,
+                        2
+                      ]
+                    },
+                    {
+                      "_TokenColorList": "Colors",
+                      "args": [
+                        "Green"
+                      ]
+                    },
+                    [],
+                    [
+                      "Creature"
+                    ],
+                    {
+                      "_TokenSubtypes": "SubtypesList",
+                      "args": [
+                        "Wolf"
+                      ]
+                    },
+                    []
+                  ]
+                }
+              ]
+            },
+            {
+              "_Action": "GainLife",
+              "args": {
+                "_GameNumber": "Integer",
+                "args": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature enters or transforms into Huntmaster of the Fells, create a 2/2 green Wolf creature token and you gain 2 life.",
+    "origin": "Huntmaster of the Fells"
+  },
+  {
+    "id": 57,
+    "rule": {
+      "_Rule": "TriggerI",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersUpkeep",
+          "args": {
+            "_Players": "AnyPlayer"
+          }
+        },
+        {
+          "_Condition": "NumSpellsCastLastTurnIs",
+          "args": [
+            {
+              "_Comparison": "EqualTo",
+              "args": {
+                "_GameNumber": "Integer",
+                "args": 0
+              }
+            },
+            {
+              "_Spells": "AnySpell"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "TransformPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of each upkeep, if no spells were cast last turn, transform this creature.",
+    "origin": "Huntmaster of the Fells"
+  },
+  {
+    "id": 58,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "And",
+          "args": [
+            {
+              "_Cost": "PayMana",
+              "args": [
+                {
+                  "_ManaSymbol": "ManaCostGeneric",
+                  "args": 4
+                }
+              ]
+            },
+            {
+              "_Cost": "TapPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "Investigate"
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{4}, {T}: Investigate. (Create a colorless Clue artifact token with \"{2}, Sacrifice this artifact: Draw a card.\")",
+    "origin": "Havengul Laboratory"
+  },
+  {
+    "id": 59,
+    "rule": {
+      "_Rule": "TriggerI",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersEndStep",
+          "args": {
+            "_Players": "SinglePlayer",
+            "args": {
+              "_Player": "You"
+            }
+          }
+        },
+        {
+          "_Condition": "PlayerPassesFilter",
+          "args": [
+            {
+              "_Player": "You"
+            },
+            {
+              "_Players": "SacrificedNumPermanentsThisTurn",
+              "args": [
+                {
+                  "_Comparison": "GreaterThanOrEqualTo",
+                  "args": {
+                    "_GameNumber": "Integer",
+                    "args": 3
+                  }
+                },
+                {
+                  "_Permanents": "IsArtifactType",
+                  "args": "Clue"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "TransformPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of your end step, if you sacrificed three or more Clues this turn, transform Havengul Laboratory.",
+    "origin": "Havengul Laboratory"
+  },
+  {
+    "id": 60,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPermanentTransforms",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetPlayerOrPermanent",
+                "args": [
+                  {
+                    "_Players": "Opponent"
+                  },
+                  {
+                    "_Permanents": "IsCardtype",
+                    "args": "Planeswalker"
+                  }
+                ]
+              },
+              {
+                "_Target": "TargetPermanent",
+                "args": {
+                  "_Permanents": "And",
+                  "args": [
+                    {
+                      "_Permanents": "IsCardtype",
+                      "args": "Creature"
+                    },
+                    {
+                      "_Permanents": "ControlledByPlayer",
+                      "args": {
+                        "_Player": "PlayerOrControllerOfPermanent",
+                        "args": {
+                          "_PlayerOrPermanent": "Ref_TargetPlayerOrPermanent"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "PermanentDealsMultipleDamage",
+                  "args": [
+                    {
+                      "_Permanent": "Trigger_ThatPermanent"
+                    },
+                    [
+                      {
+                        "_DamageToRecipients": "DamageToRecipients",
+                        "args": [
+                          {
+                            "_GameNumber": "Integer",
+                            "args": 2
+                          },
+                          {
+                            "_DamageRecipient": "Ref_TargetPlayerOrPermanent"
+                          }
+                        ]
+                      },
+                      {
+                        "_DamageToRecipients": "DamageToRecipients",
+                        "args": [
+                          {
+                            "_GameNumber": "Integer",
+                            "args": 2
+                          },
+                          {
+                            "_DamageRecipient": "Permanent",
+                            "args": {
+                              "_Permanent": "Ref_TargetPermanent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature transforms into Ravager of the Fells, it deals 2 damage to target opponent or planeswalker and 2 damage to up to one target creature that player or that planeswalker's controller controls.",
+    "origin": "Ravager of the Fells"
+  },
+  {
+    "id": 61,
+    "rule": {
+      "_Rule": "TriggerI",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersUpkeep",
+          "args": {
+            "_Players": "AnyPlayer"
+          }
+        },
+        {
+          "_Condition": "APlayerPassesFilter",
+          "args": [
+            {
+              "_Players": "AnyPlayer"
+            },
+            {
+              "_Players": "NumSpellsCastLastTurnIs",
+              "args": [
+                {
+                  "_Comparison": "GreaterThanOrEqualTo",
+                  "args": {
+                    "_GameNumber": "Integer",
+                    "args": 2
+                  }
+                },
+                {
+                  "_Spells": "AnySpell"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "TransformPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of each upkeep, if a player cast two or more spells last turn, transform this creature.",
+    "origin": "Ravager of the Fells"
+  },
+  {
+    "id": 62,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPermanentTransforms",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetGraveyardCard",
+                "args": {
+                  "_CardsInGraveyard": "And",
+                  "args": [
+                    {
+                      "_CardsInGraveyard": "IsCardtype",
+                      "args": "Creature"
+                    },
+                    {
+                      "_CardsInGraveyard": "InAPlayersGraveyard",
+                      "args": {
+                        "_Players": "SinglePlayer",
+                        "args": {
+                          "_Player": "You"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "PutGraveyardCardOntoBattlefield",
+                  "args": [
+                    {
+                      "_GraveyardCard": "Ref_TargetGraveyardCard"
+                    },
+                    [
+                      {
+                        "_ReplacementActionWouldEnter": "EntersNormally"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "When this land transforms into Havengul Mystery, return target creature card from your graveyard to the battlefield.",
+    "origin": "Havengul Mystery"
+  },
+  {
+    "id": 63,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPermanentLeavesTheBattlefield",
+          "args": {
+            "_Permanents": "PutOntoBattlefieldByPermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "TransformPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever a creature you control leaves the battlefield, transform this land.",
+    "origin": "Havengul Mystery"
+  },
+  {
+    "id": 64,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "And",
+          "args": [
+            {
+              "_Cost": "TapPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            },
+            {
+              "_Cost": "PayLife",
+              "args": {
+                "_GameNumber": "Integer",
+                "args": 1
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "AddMana",
+              "args": {
+                "_ManaProduce": "ManaProduceB"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{T}: Add {B}.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 65,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPermanentEntersTheBattlefield",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "EachPlayerAction",
+              "args": [
+                {
+                  "_Players": "AnyPlayer"
+                },
+                {
+                  "_Action": "MillNumberCards",
+                  "args": {
+                    "_GameNumber": "Integer",
+                    "args": 3
+                  }
+                }
+              ]
+            },
+            {
+              "_Action": "EachPlayerAction",
+              "args": [
+                {
+                  "_Players": "Opponent"
+                },
+                {
+                  "_Action": "DiscardACard"
+                }
+              ]
+            },
+            {
+              "_Action": "DrawACard"
+            }
+          ]
+        }
+      ]
+    },
+    "text": "When this battle enters, each player mills three cards, then each opponent discards a card and you draw a card.",
+    "origin": "Invasion of Amonkhet"
+  },
+  {
+    "id": 66,
+    "rule": {
+      "_Rule": "TriggerI",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersEndStep",
+          "args": {
+            "_Players": "AnyPlayer"
+          }
+        },
+        {
+          "_Condition": "ANumberOfPermanentsDiedThisTurn",
+          "args": [
+            {
+              "_Comparison": "GreaterThanOrEqualTo",
+              "args": {
+                "_GameNumber": "Integer",
+                "args": 3
+              }
+            },
+            {
+              "_Permanents": "IsCardtype",
+              "args": "Creature"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "FlipPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of the end step, if three or more creatures died this turn, flip Kuon.",
+    "origin": "Kuon, Ogre Ascendant"
+  },
+  {
+    "id": 67,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersUpkeep",
+          "args": {
+            "_Players": "AnyPlayer"
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "PlayerAction",
+              "args": [
+                {
+                  "_Player": "Trigger_ThatPlayer"
+                },
+                {
+                  "_Action": "SacrificeAPermanent",
+                  "args": {
+                    "_Permanents": "IsCardtype",
+                    "args": "Creature"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of each player's upkeep, that player sacrifices a creature of their choice.",
+    "origin": "Kuon's Essence"
+  },
+  {
+    "id": 68,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "EntersWithLayerEffectOfChoice",
+            "args": [
+              [
+                {
+                  "_LayerEffect": "SetCopiablePT",
+                  "args": {
+                    "_PT": "PT",
+                    "args": [
+                      3,
+                      3
+                    ]
+                  }
+                },
+                {
+                  "_LayerEffect": "AddCopiableCardtype",
+                  "args": "Artifact"
+                },
+                {
+                  "_LayerEffect": "AddCopiableCardtype",
+                  "args": "Creature"
+                }
+              ],
+              [
+                {
+                  "_LayerEffect": "SetCopiablePT",
+                  "args": {
+                    "_PT": "PT",
+                    "args": [
+                      2,
+                      2
+                    ]
+                  }
+                },
+                {
+                  "_LayerEffect": "AddCopiableCardtype",
+                  "args": "Artifact"
+                },
+                {
+                  "_LayerEffect": "AddCopiableCardtype",
+                  "args": "Creature"
+                },
+                {
+                  "_LayerEffect": "AddCopiableAbility",
+                  "args": [
+                    {
+                      "_Rule": "Flying"
+                    }
+                  ]
+                }
+              ],
+              [
+                {
+                  "_LayerEffect": "SetCopiablePT",
+                  "args": {
+                    "_PT": "PT",
+                    "args": [
+                      3,
+                      3
+                    ]
+                  }
+                },
+                {
+                  "_LayerEffect": "AddCopiableCreatureType",
+                  "args": "Wall"
+                },
+                {
+                  "_LayerEffect": "AddCopiableCardtype",
+                  "args": "Artifact"
+                },
+                {
+                  "_LayerEffect": "AddCopiableCardtype",
+                  "args": "Creature"
+                },
+                {
+                  "_LayerEffect": "AddCopiableAbility",
+                  "args": [
+                    {
+                      "_Rule": "Defender"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "As this creature enters, it becomes your choice of a 3/3 artifact creature, a 2/2 artifact creature with flying, or a 1/6 Wall artifact creature with defender in addition to its other types. (A creature with defender can't attack.)",
+    "origin": "Primal Clay"
+  },
+  {
+    "id": 69,
+    "rule": {
+      "_Rule": "Defender"
+    },
+    "text": "Defender",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 70,
+    "rule": {
+      "_Rule": "CDA_Types",
+      "args": {
+        "_CDA_Types": "Changeling"
+      }
+    },
+    "text": "Changeling",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 71,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "ControlledByAPlayer",
+                    "args": {
+                      "_Players": "SinglePlayer",
+                      "args": {
+                        "_Player": "You"
+                      }
+                    }
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "AddSupertypes",
+                        "args": [
+                          "Legendary",
+                          "Snow"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "_ReplacementActionWouldEnter": "If",
+                "args": [
+                  {
+                    "_Condition": "APermanentWasCopiedThisWay",
+                    "args": {
+                      "_Permanents": "IsCardtype",
+                      "args": "Creature"
+                    }
+                  },
+                  [
+                    {
+                      "_ReplacementActionWouldEnter": "EntersWithNumberCounters",
+                      "args": [
+                        {
+                          "_GameNumber": "Integer",
+                          "args": 2
+                        },
+                        {
+                          "_CounterType": "PTCounter",
+                          "args": [
+                            1,
+                            1
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "_ReplacementActionWouldEnter": "EntersWithLayerEffect",
+                      "args": [
+                        {
+                          "_LayerEffect": "AddCopiableAbility",
+                          "args": [
+                            {
+                              "_Rule": "CDA_Types",
+                              "args": {
+                                "_CDA_Types": "Changeling"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have Moritte enter as a copy of a permanent you control, except it's legendary and snow in addition to its other types and, if it's a creature, it enters with two additional +1/+1 counters on it and has changeling.",
+    "origin": "Moritte of the Frost"
+  },
+  {
+    "id": 72,
+    "rule": {
+      "_Rule": "CDA_Power",
+      "args": {
+        "_GameNumber": "TheNumberOfPermanentsOnTheBattlefield",
+        "args": {
+          "_Permanents": "And",
+          "args": [
+            {
+              "_Permanents": "IsCardtype",
+              "args": "Artifact"
+            },
+            {
+              "_Permanents": "ControlledByAPlayer",
+              "args": {
+                "_Players": "SinglePlayer",
+                "args": {
+                  "_Player": "You"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "text": "Cephalopod Sentry's power is equal to the number of artifacts you control.",
+    "origin": "Cephalopod Sentry"
+  },
+  {
+    "id": 73,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "IsCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "SetPT",
+                        "args": {
+                          "_PT": "PT",
+                          "args": [
+                            7,
+                            7
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of any creature on the battlefield, except it's 7/7.",
+    "origin": "Quicksilver Gargantuan"
+  },
+  {
+    "id": 74,
+    "rule": {
+      "_Rule": "CDA_Toughness",
+      "args": {
+        "_GameNumber": "TheNumberOfPermanentsOnTheBattlefield",
+        "args": {
+          "_Permanents": "IsLandType",
+          "args": "Forest"
+        }
+      }
+    },
+    "text": "Traproot Kami's toughness is equal to the number of Forests on the battlefield.",
+    "origin": "Traproot Kami"
+  },
+  {
+    "id": 75,
+    "rule": {
+      "_Rule": "CDA_Power",
+      "args": {
+        "_GameNumber": "TheNumberOfPermanentsOnTheBattlefield",
+        "args": {
+          "_Permanents": "And",
+          "args": [
+            {
+              "_Permanents": "IsCardtype",
+              "args": "Creature"
+            },
+            {
+              "_Permanents": "ControlledByAPlayer",
+              "args": {
+                "_Players": "SinglePlayer",
+                "args": {
+                  "_Player": "You"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "text": "Burrowguard Mentor's power and toughness are each equal to the number of creatures you control.",
+    "origin": "Burrowguard Mentor"
+  },
+  {
+    "id": 76,
+    "rule": {
+      "_Rule": "CDA_Toughness",
+      "args": {
+        "_GameNumber": "TheNumberOfPermanentsOnTheBattlefield",
+        "args": {
+          "_Permanents": "And",
+          "args": [
+            {
+              "_Permanents": "IsCardtype",
+              "args": "Creature"
+            },
+            {
+              "_Permanents": "ControlledByAPlayer",
+              "args": {
+                "_Players": "SinglePlayer",
+                "args": {
+                  "_Player": "You"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "text": "Burrowguard Mentor's power and toughness are each equal to the number of creatures you control.",
+    "origin": "Burrowguard Mentor"
+  },
+  {
+    "id": 77,
+    "rule": {
+      "_Rule": "CDA_Color",
+      "args": {
+        "_SettableColor": "AllColors"
+      }
+    },
+    "text": "Sphinx of the Guildpact is all colors.",
+    "origin": "Sphinx of the Guildpact"
+  },
+  {
+    "id": 78,
+    "rule": {
+      "_Rule": "HexproofFrom",
+      "args": {
+        "_Protectable": "FromColor",
+        "args": {
+          "_ProtectableColor": "Monocolored"
+        }
+      }
+    },
+    "text": "Hexproof from monocolored (This creature can't be the target of monocolored spells or abilities your opponents control.)",
+    "origin": "Sphinx of the Guildpact"
+  },
+  {
+    "id": 79,
+    "rule": {
+      "_Rule": "CDA_ColorButNotColorIdentity",
+      "args": {
+        "_SettableColor": "AllColors"
+      }
+    },
+    "text": "Fallaji Wayfarer is all colors. This ability doesn't affect its color identity. (It can be in any deck whose commander's color identity includes green.)",
+    "origin": "Fallaji Wayfarer"
+  },
+  {
+    "id": 80,
+    "rule": {
+      "_Rule": "StackSpellsEffect",
+      "args": [
+        {
+          "_Spells": "And",
+          "args": [
+            {
+              "_Spells": "IsMulticolored"
+            },
+            {
+              "_Spells": "CastByPlayer",
+              "args": {
+                "_Player": "You"
+              }
+            }
+          ]
+        },
+        [
+          {
+            "_SpellEffect": "Convoke"
+          }
+        ]
+      ]
+    },
+    "text": "Multicolored spells you cast have convoke. (Your creatures can help cast those spells. Each creature you tap while casting a multicolored spell pays for {1} or one mana of a color that creature is.)",
+    "origin": "Fallaji Wayfarer"
+  },
+  {
+    "id": 81,
+    "rule": {
+      "_Rule": "Deathtouch"
+    },
+    "text": "Deathtouch",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 82,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "TapPermanent",
+          "args": {
+            "_Permanent": "ThisPermanent"
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "AddMana",
+              "args": {
+                "_ManaProduce": "ManaProduceU"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{T}: Add {U}.",
+    "origin": "Machine God's Effigy"
+  },
+  {
+    "id": 83,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "IsCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "SetCardtypes",
+                        "args": [
+                          "Artifact"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "AddAbility",
+                        "args": [
+                          {
+                            "_Rule": "Activated",
+                            "args": [
+                              {
+                                "_Cost": "TapPermanent",
+                                "args": {
+                                  "_Permanent": "ThisPermanent"
+                                }
+                              },
+                              {
+                                "_Actions": "ActionList",
+                                "args": [
+                                  {
+                                    "_Action": "AddMana",
+                                    "args": {
+                                      "_ManaProduce": "ManaProduceU"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this artifact enter as a copy of any creature on the battlefield, except it's an artifact and it has \"{T}: Add {U}.\" (It's not a creature.)",
+    "origin": "Machine God's Effigy"
+  },
+  {
+    "id": 84,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "MayActions",
+            "args": [
+              {
+                "_ReplacementActionWouldEnter": "EnterAsACopyOfAPermanent",
+                "args": [
+                  {
+                    "_Permanents": "And",
+                    "args": [
+                      {
+                        "_Permanents": "IsCardtype",
+                        "args": "Creature"
+                      },
+                      {
+                        "_Permanents": "ControlledByAPlayer",
+                        "args": {
+                          "_Players": "Opponent"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "_CopyEffects": "CopyEffects",
+                    "args": [
+                      {
+                        "_CopyEffect": "AddCreatureTypes",
+                        "args": [
+                          "Faerie",
+                          "Shapeshifter"
+                        ]
+                      },
+                      {
+                        "_CopyEffect": "AddAbility",
+                        "args": [
+                          {
+                            "_Rule": "Flying"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "You may have this creature enter as a copy of a creature an opponent controls, except it's a Faerie Shapeshifter in addition to its other types and it has flying.",
+    "origin": "Malleable Impostor"
+  },
+  {
+    "id": 85,
+    "rule": {
+      "_Rule": "CDA_Types",
+      "args": {
+        "_CDA_Types": "HasAllCreatureTypes"
+      }
+    },
+    "text": "Mistform Ultimus is every creature type (even if this card isn't on the battlefield).",
+    "origin": "Mistform Ultimus"
+  },
+  {
+    "id": 86,
+    "rule": {
+      "_Rule": "AsPermanentEnters",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_ReplacementActionWouldEnter": "ChooseACreatureType"
+          }
+        ]
+      ]
+    },
+    "text": "As this creature enters, choose a creature type.",
+    "origin": "Adaptive Automaton"
+  },
+  {
+    "id": 87,
+    "rule": {
+      "_Rule": "CDA_Types",
+      "args": {
+        "_CDA_Types": "AddCreatureTypeVariable",
+        "args": {
+          "_CreatureTypeVariable": "TheChosenCreatureType"
+        }
+      }
+    },
+    "text": "This creature is the chosen type in addition to its other types.",
+    "origin": "Adaptive Automaton"
+  },
+  {
+    "id": 88,
+    "rule": {
+      "_Rule": "EachPermanentLayerEffect",
+      "args": [
+        {
+          "_Permanents": "And",
+          "args": [
+            {
+              "_Permanents": "Other",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            },
+            {
+              "_Permanents": "IsCardtype",
+              "args": "Creature"
+            },
+            {
+              "_Permanents": "ControlledByAPlayer",
+              "args": {
+                "_Players": "SinglePlayer",
+                "args": {
+                  "_Player": "You"
+                }
+              }
+            },
+            {
+              "_Permanents": "IsCreatureTypeVariable",
+              "args": {
+                "_CreatureTypeVariable": "TheChosenCreatureType"
+              }
+            }
+          ]
+        },
+        [
+          {
+            "_StaticLayerEffect": "AdjustPT",
+            "args": [
+              1,
+              1
+            ]
+          }
+        ]
+      ]
+    },
+    "text": "Other creatures you control of the chosen type get +1/+1.",
+    "origin": "Adaptive Automaton"
+  },
+  {
+    "id": 89,
+    "rule": {
+      "_Rule": "CDA_Types",
+      "args": {
+        "_CDA_Types": "AddCreatureTypes",
+        "args": [
+          "Cleric",
+          "Rogue",
+          "Warrior",
+          "Wizard"
+        ]
+      }
+    },
+    "text": "Stonework Packbeast is also a Cleric, Rogue, Warrior, and Wizard.",
+    "origin": "Stonework Packbeast"
+  },
+  {
+    "id": 90,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "PayMana",
+          "args": [
+            {
+              "_ManaSymbol": "ManaCostGeneric",
+              "args": 2
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "AddMana",
+              "args": {
+                "_ManaProduce": "AnyManaColor"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{2}: Add one mana of any color.",
+    "origin": "Stonework Packbeast"
+  },
+  {
+    "id": 91,
+    "rule": {
+      "_Rule": "CDA_Types",
+      "args": {
+        "_CDA_Types": "HasAllNonbasicLandTypes"
+      }
+    },
+    "text": "This land is every nonbasic land type. (Nonbasic land types include Cave, Desert, Gate, Lair, Locus, Mine, Power-Plant, Sphere, Tower, and Urza's.)",
+    "origin": "Planar Nexus"
+  },
+  {
+    "id": 92,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "And",
+          "args": [
+            {
+              "_Cost": "PayMana",
+              "args": [
+                {
+                  "_ManaSymbol": "ManaCostGeneric",
+                  "args": 1
+                }
+              ]
+            },
+            {
+              "_Cost": "TapPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "AddMana",
+              "args": {
+                "_ManaProduce": "AnyManaColor"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{1}, {T}: Add one mana of any color.",
+    "origin": "Planar Nexus"
+  },
+  {
+    "id": 93,
+    "rule": {
+      "_Rule": "Mutate",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 2
+          },
+          {
+            "_ManaSymbol": "ManaCostW"
+          },
+          {
+            "_ManaSymbol": "ManaCostW"
+          }
+        ]
+      }
+    },
+    "text": "Mutate {2}{W}{W}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 94,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureMutates",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "CreateTokens",
+              "args": [
+                {
+                  "_CreatableToken": "NumberTokens",
+                  "args": [
+                    {
+                      "_GameNumber": "Integer",
+                      "args": 2
+                    },
+                    {
+                      "_CreatableToken": "TokenWithPT",
+                      "args": [
+                        {
+                          "_PT": "PT",
+                          "args": [
+                            1,
+                            1
+                          ]
+                        },
+                        {
+                          "_TokenColorList": "Colors",
+                          "args": [
+                            "White"
+                          ]
+                        },
+                        [],
+                        [
+                          "Creature"
+                        ],
+                        {
+                          "_TokenSubtypes": "SubtypesList",
+                          "args": [
+                            "Cat"
+                          ]
+                        },
+                        [
+                          {
+                            "_Rule": "Lifelink"
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature mutates, create two 1/1 white Cat creature tokens with lifelink.",
+    "origin": "Cubwarden"
+  },
+  {
+    "id": 95,
+    "rule": {
+      "_Rule": "Mutate",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 3
+          },
+          {
+            "_ManaSymbol": "ManaCostR"
+          }
+        ]
+      }
+    },
+    "text": "Mutate {3}{R}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 96,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureMutates",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "MayCost",
+              "args": {
+                "_Cost": "DiscardACard"
+              }
+            },
+            {
+              "_Action": "If",
+              "args": [
+                {
+                  "_Condition": "CostWasPaid"
+                },
+                [
+                  {
+                    "_Action": "DrawACard"
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature mutates, you may discard a card. If you do, draw a card.",
+    "origin": "Cloudpiercer"
+  },
+  {
+    "id": 97,
+    "rule": {
+      "_Rule": "Mutate",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 2
+          },
+          {
+            "_ManaSymbol": "ManaCostW"
+          }
+        ]
+      }
+    },
+    "text": "Mutate {2}{W}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 98,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureMutates",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "PutACounterOfTypeOnPermanent",
+              "args": [
+                {
+                  "_CounterType": "PTCounter",
+                  "args": [
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "_Permanent": "Trigger_ThatCreature"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature mutates, put a +1/+1 counter on it.",
+    "origin": "Vulpikeet"
+  },
+  {
+    "id": 99,
+    "rule": {
+      "_Rule": "Mutate",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 3
+          },
+          {
+            "_ManaSymbol": "ManaCostB"
+          }
+        ]
+      }
+    },
+    "text": "Mutate {3}{B}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 100,
+    "rule": {
+      "_Rule": "Menace"
+    },
+    "text": "Menace",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 101,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureMutates",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "EachPlayerAction",
+              "args": [
+                {
+                  "_Players": "Opponent"
+                },
+                {
+                  "_Action": "DiscardACard"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature mutates, each opponent discards a card.",
+    "origin": "Cavern Whisperer"
+  },
+  {
+    "id": 102,
+    "rule": {
+      "_Rule": "Mutate",
+      "args": {
+        "_Cost": "PayMana",
+        "args": [
+          {
+            "_ManaSymbol": "ManaCostGeneric",
+            "args": 3
+          },
+          {
+            "_ManaSymbol": "ManaCostG"
+          }
+        ]
+      }
+    },
+    "text": "Mutate {3}{G}",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 103,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureMutates",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "TargetPermanent",
+                "args": {
+                  "_Permanents": "IsNonCardtype",
+                  "args": "Creature"
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "DestroyPermanent",
+                  "args": {
+                    "_Permanent": "Ref_TargetPermanent"
+                  }
+                },
+                {
+                  "_Action": "PlayerAction",
+                  "args": [
+                    {
+                      "_Player": "ControllerOfTargetPermanent"
+                    },
+                    {
+                      "_Action": "CreateTokens",
+                      "args": [
+                        {
+                          "_CreatableToken": "TokenWithPT",
+                          "args": [
+                            {
+                              "_PT": "PT",
+                              "args": [
+                                3,
+                                3
+                              ]
+                            },
+                            {
+                              "_TokenColorList": "Colors",
+                              "args": [
+                                "Green"
+                              ]
+                            },
+                            [],
+                            [
+                              "Creature"
+                            ],
+                            {
+                              "_TokenSubtypes": "SubtypesList",
+                              "args": [
+                                "Beast"
+                              ]
+                            },
+                            []
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever this creature mutates, destroy target noncreature permanent. Its controller creates a 3/3 green Beast creature token.",
+    "origin": "Sawtusk Demolisher"
+  },
+  {
+    "id": 104,
+    "rule": {
+      "_Rule": "TriggerI",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersEndStep",
+          "args": {
+            "_Players": "SinglePlayer",
+            "args": {
+              "_Player": "You"
+            }
+          }
+        },
+        {
+          "_Condition": "PlayerPassesFilter",
+          "args": [
+            {
+              "_Player": "You"
+            },
+            {
+              "_Players": "LostLifeAmountThisTurn",
+              "args": {
+                "_Comparison": "GreaterThanOrEqualTo",
+                "args": {
+                  "_GameNumber": "Integer",
+                  "args": 2
+                }
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "CreateTokens",
+              "args": [
+                {
+                  "_CreatableToken": "TokenWithPT",
+                  "args": [
+                    {
+                      "_PT": "PT",
+                      "args": [
+                        2,
+                        2
+                      ]
+                    },
+                    {
+                      "_TokenColorList": "Colors",
+                      "args": [
+                        "Black"
+                      ]
+                    },
+                    [],
+                    [
+                      "Creature"
+                    ],
+                    {
+                      "_TokenSubtypes": "SubtypesList",
+                      "args": [
+                        "Zombie"
+                      ]
+                    },
+                    []
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of your end step, if you lost 2 or more life this turn, create a 2/2 black Zombie creature token.",
+    "origin": "The Book of Vile Darkness"
+  },
+  {
+    "id": 105,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "And",
+          "args": [
+            {
+              "_Cost": "TapPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            },
+            {
+              "_Cost": "And",
+              "args": [
+                {
+                  "_Cost": "ExilePermanent",
+                  "args": {
+                    "_Permanent": "ThisPermanent"
+                  }
+                },
+                {
+                  "_Cost": "ExileAPermanent",
+                  "args": {
+                    "_Permanents": "And",
+                    "args": [
+                      {
+                        "_Permanents": "IsCardtype",
+                        "args": "Artifact"
+                      },
+                      {
+                        "_Permanents": "ControlledByAPlayer",
+                        "args": {
+                          "_Players": "SinglePlayer",
+                          "args": {
+                            "_Player": "You"
+                          }
+                        }
+                      },
+                      {
+                        "_Permanents": "IsNamed",
+                        "args": {
+                          "_NameFilter": "NamedCard",
+                          "args": "Eye of Vecna"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "_Cost": "ExileAPermanent",
+                  "args": {
+                    "_Permanents": "And",
+                    "args": [
+                      {
+                        "_Permanents": "IsCardtype",
+                        "args": "Artifact"
+                      },
+                      {
+                        "_Permanents": "ControlledByAPlayer",
+                        "args": {
+                          "_Players": "SinglePlayer",
+                          "args": {
+                            "_Player": "You"
+                          }
+                        }
+                      },
+                      {
+                        "_Permanents": "IsNamed",
+                        "args": {
+                          "_NameFilter": "NamedCard",
+                          "args": "Hand of Vecna"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "CreateTokens",
+              "args": [
+                {
+                  "_CreatableToken": "NamedTokenWithPTAndWithCopyEffects",
+                  "args": [
+                    "Vecna",
+                    {
+                      "_PT": "PT",
+                      "args": [
+                        8,
+                        8
+                      ]
+                    },
+                    {
+                      "_TokenColorList": "Colors",
+                      "args": [
+                        "Black"
+                      ]
+                    },
+                    [
+                      "Legendary"
+                    ],
+                    [
+                      "Creature"
+                    ],
+                    {
+                      "_TokenSubtypes": "SubtypesList",
+                      "args": [
+                        "Zombie",
+                        "God"
+                      ]
+                    },
+                    [
+                      {
+                        "_Rule": "Indestructible"
+                      }
+                    ],
+                    {
+                      "_TokenCopyEffects": "TokenCopyEffects",
+                      "args": [
+                        {
+                          "_TokenCopyEffect": "AddAbilityFromEachExiledHasable",
+                          "args": [
+                            {
+                              "_CardsInExile": "TheExiledCards"
+                            },
+                            [
+                              {
+                                "_CheckHasable": "TriggeredAbility"
+                              }
+                            ]
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "{T}, Exile The Book of Vile Darkness and artifacts you control named Eye of Vecna and Hand of Vecna: Create Vecna, a legendary 8/8 black Zombie God creature token with indestructible and all triggered abilities of the exiled cards.",
+    "origin": "The Book of Vile Darkness"
+  },
+  {
+    "id": 106,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPermanentEntersTheBattlefield",
+          "args": {
+            "_Permanents": "SinglePermanent",
+            "args": {
+              "_Permanent": "ThisPermanent"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "DrawACard"
+            },
+            {
+              "_Action": "LoseLife",
+              "args": {
+                "_GameNumber": "Integer",
+                "args": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "When Eye of Vecna enters, you draw a card and you lose 2 life.",
+    "origin": "Eye of Vecna"
+  },
+  {
+    "id": 107,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersUpkeep",
+          "args": {
+            "_Players": "SinglePlayer",
+            "args": {
+              "_Player": "You"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "MayCost",
+              "args": {
+                "_Cost": "PayMana",
+                "args": [
+                  {
+                    "_ManaSymbol": "ManaCostGeneric",
+                    "args": 2
+                  }
+                ]
+              }
+            },
+            {
+              "_Action": "If",
+              "args": [
+                {
+                  "_Condition": "CostWasPaid"
+                },
+                [
+                  {
+                    "_Action": "DrawACard"
+                  },
+                  {
+                    "_Action": "LoseLife",
+                    "args": {
+                      "_GameNumber": "Integer",
+                      "args": 2
+                    }
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of your upkeep, you may pay {2}. If you do, you draw a card and you lose 2 life.",
+    "origin": "Eye of Vecna"
+  },
+  {
+    "id": 108,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfCombatDuringAPlayersTurn",
+          "args": {
+            "_Players": "SinglePlayer",
+            "args": {
+              "_Player": "You"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "ChooseAPermanent",
+              "args": {
+                "_Permanents": "Or",
+                "args": [
+                  {
+                    "_Permanents": "SinglePermanent",
+                    "args": {
+                      "_Permanent": "HostPermanent"
+                    }
+                  },
+                  {
+                    "_Permanents": "And",
+                    "args": [
+                      {
+                        "_Permanents": "IsCardtype",
+                        "args": "Creature"
+                      },
+                      {
+                        "_Permanents": "ControlledByAPlayer",
+                        "args": {
+                          "_Players": "SinglePlayer",
+                          "args": {
+                            "_Player": "You"
+                          }
+                        }
+                      },
+                      {
+                        "_Permanents": "IsNamed",
+                        "args": {
+                          "_NameFilter": "NamedCard",
+                          "args": "Vecna"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "_Action": "CreatePermanentLayerEffectUntil",
+              "args": [
+                {
+                  "_Permanent": "TheChosenPermanent"
+                },
+                [
+                  {
+                    "_LayerEffect": "AdjustPTX",
+                    "args": [
+                      {
+                        "_ModX": "PlusX"
+                      },
+                      {
+                        "_ModX": "PlusX"
+                      },
+                      {
+                        "_GameNumber": "TheNumberOfCardsInPlayersHand",
+                        "args": {
+                          "_Player": "You"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                {
+                  "_Expiration": "UntilEndOfTurn"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of combat on your turn, equipped creature or a creature you control named Vecna gets +X/+X until end of turn, where X is the number of cards in your hand.",
+    "origin": "Hand of Vecna"
+  },
+  {
+    "id": 109,
+    "rule": {
+      "_Rule": "Equip",
+      "args": [
+        {
+          "_Permanents": "IsCardtype",
+          "args": "Creature"
+        },
+        {
+          "_Cost": "PayLifeForEach",
+          "args": [
+            {
+              "_GameNumber": "Integer",
+              "args": 1
+            },
+            {
+              "_GameNumber": "TheNumberOfCardsInPlayersHand",
+              "args": {
+                "_Player": "You"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Equip\u2014Pay 1 life for each card in your hand.",
+    "origin": "Hand of Vecna"
+  },
+  {
+    "id": 110,
+    "rule": {
+      "_Rule": "Equip",
+      "args": [
+        {
+          "_Permanents": "IsCardtype",
+          "args": "Creature"
+        },
+        {
+          "_Cost": "PayMana",
+          "args": [
+            {
+              "_ManaSymbol": "ManaCostGeneric",
+              "args": 2
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Equip {2}",
+    "origin": "Hand of Vecna"
+  },
+  {
+    "id": 111,
+    "rule": {
+      "_Rule": "Provoke"
+    },
+    "text": "Provoke",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 112,
+    "rule": {
+      "_Rule": "Decayed"
+    },
+    "text": "Decayed",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 113,
+    "rule": {
+      "_Rule": "FromGraveyard",
+      "args": {
+        "_Rule": "ActivatedWithModifiers",
+        "args": [
+          {
+            "_Cost": "And",
+            "args": [
+              {
+                "_Cost": "PayManaX",
+                "args": [
+                  [
+                    {
+                      "_ManaSymbol": "ManaCostX"
+                    },
+                    {
+                      "_ManaSymbol": "ManaCostB"
+                    },
+                    {
+                      "_ManaSymbol": "ManaCostB"
+                    }
+                  ],
+                  {
+                    "_GameNumber": "ValueX"
+                  }
+                ]
+              },
+              {
+                "_Cost": "ExileGraveyardCard",
+                "args": {
+                  "_GraveyardCard": "ThisGraveyardCard"
+                }
+              }
+            ]
+          },
+          {
+            "_Actions": "Targeted",
+            "args": [
+              [
+                {
+                  "_Target": "NumberTargetPermanents",
+                  "args": [
+                    {
+                      "_GameNumber": "ValueX"
+                    },
+                    {
+                      "_Permanents": "IsCardtype",
+                      "args": "Creature"
+                    }
+                  ]
+                }
+              ],
+              {
+                "_Actions": "ActionList",
+                "args": [
+                  {
+                    "_Action": "PutACounterOfTypeOnEachPermanent",
+                    "args": [
+                      {
+                        "_CounterType": "DecayedCounter"
+                      },
+                      {
+                        "_Permanents": "Ref_TargetPermanents"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "_ActivateModifier": "ActivateOnlyAsASorcery"
+          }
+        ]
+      }
+    },
+    "text": "Renew \u2014 {X}{B}{B}, Exile this card from your graveyard: Put a decayed counter on each of X target creatures. Activate only as a sorcery.",
+    "origin": "Rot-Curse Rakshasa"
+  },
+  {
+    "id": 114,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPlayerUnlocksADoor",
+          "args": [
+            {
+              "_Players": "SinglePlayer",
+              "args": {
+                "_Player": "You"
+              }
+            },
+            {
+              "_Permanents": "SinglePermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        },
+        {
+          "_Actions": "Targeted",
+          "args": [
+            [
+              {
+                "_Target": "UptoOneTargetPermanent",
+                "args": {
+                  "_Permanents": "IsCardtype",
+                  "args": "Creature"
+                }
+              }
+            ],
+            {
+              "_Actions": "ActionList",
+              "args": [
+                {
+                  "_Action": "PutPermanentIntoItsOwnersHand",
+                  "args": {
+                    "_Permanent": "Ref_TargetPermanent"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "When you unlock this door, return up to one target creature to its owner's hand.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 115,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAnyNumberOfCreaturesDealCombatDamageToAPlayer",
+          "args": [
+            {
+              "_Permanents": "And",
+              "args": [
+                {
+                  "_Permanents": "IsCardtype",
+                  "args": "Creature"
+                },
+                {
+                  "_Permanents": "ControlledByAPlayer",
+                  "args": {
+                    "_Players": "SinglePlayer",
+                    "args": {
+                      "_Player": "You"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "_Players": "AnyPlayer"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "DrawACard"
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever one or more creatures you control deal combat damage to a player, draw a card.",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 116,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureOrPlaneswalkerDies",
+          "args": {
+            "_Permanents": "And",
+            "args": [
+              {
+                "_Permanents": "IsCardtype",
+                "args": "Creature"
+              },
+              {
+                "_Permanents": "WasDealtDamageByPermanentThisTurn",
+                "args": {
+                  "_Permanent": "ThisPermanent"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "FlipPermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "When a creature dealt damage by this creature this turn dies, flip this creature.",
+    "origin": "Bushi Tenderfoot"
+  },
+  {
+    "id": 117,
+    "rule": {
+      "_Rule": "DoubleStrike"
+    },
+    "text": "Double strike",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 118,
+    "rule": {
+      "_Rule": "Bushido",
+      "args": {
+        "_GameNumber": "Integer",
+        "args": 2
+      }
+    },
+    "text": "Bushido 2",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 119,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "AtTheBeginningOfAPlayersEndStep",
+          "args": {
+            "_Players": "SinglePlayer",
+            "args": {
+              "_Player": "You"
+            }
+          }
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "ChooseACardtype"
+            },
+            {
+              "_Action": "RevealTheTopNumberCardsOfLibrary",
+              "args": [
+                {
+                  "_GameNumber": "Integer",
+                  "args": 2
+                },
+                [
+                  {
+                    "_RevealTheTopNumberCardsOfLibraryAction": "PutEachCardOfTypeIntoHand",
+                    "args": {
+                      "_Cards": "IsCardtypeVariable",
+                      "args": {
+                        "_CardtypeVariable": "TheChosenCardtype"
+                      }
+                    }
+                  },
+                  {
+                    "_RevealTheTopNumberCardsOfLibraryAction": "PutTheRemainingCardsOnTheBottomOfLibraryInAnyOrder"
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "text": "At the beginning of your end step, choose a card type, then reveal the top two cards of your library. Put all cards of the chosen type revealed this way into your hand and the rest on the bottom of your library in any order.",
+    "origin": "Alrund, God of the Cosmos"
+  },
+  {
+    "id": 120,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenACreatureDealsCombatDamageToAPlayer",
+          "args": [
+            {
+              "_Permanents": "SinglePermanent",
+              "args": {
+                "_Permanent": "ThisPermanent"
+              }
+            },
+            {
+              "_Players": "AnyPlayer"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "PutPermanentIntoItsOwnersHand",
+              "args": {
+                "_Permanent": "Trigger_ThatCreature"
+              }
+            },
+            {
+              "_Action": "Scry",
+              "args": {
+                "_GameNumber": "Integer",
+                "args": 2
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "text": "Whenever Hakka deals combat damage to a player, return it to its owner's hand, then scry 2.",
+    "origin": "Hakka, Whispering Raven"
+  },
+  {
+    "id": 121,
+    "rule": {
+      "_Rule": "Infect"
+    },
+    "text": "Infect",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 122,
+    "rule": {
+      "_Rule": "Indestructible"
+    },
+    "text": "Indestructible",
+    "origin": "fixture rule"
+  },
+  {
+    "id": 123,
+    "rule": {
+      "_Rule": "AsPutIntoAGraveyardFromAnywhere",
+      "args": [
+        {
+          "_Card": "ThisCard"
+        },
+        [
+          {
+            "_PutIntoGraveyardAction": "RevealItAndShuffleItIntoLibraryInstead"
+          }
+        ]
+      ]
+    },
+    "text": "If Blightsteel Colossus would be put into a graveyard from anywhere, reveal Blightsteel Colossus and shuffle it into its owner's library instead.",
+    "origin": "Blightsteel Colossus"
+  },
+  {
+    "id": 124,
+    "rule": {
+      "_Rule": "PermanentLayerEffect",
+      "args": [
+        {
+          "_Permanent": "ThisPermanent"
+        },
+        [
+          {
+            "_StaticLayerEffect": "AdjustPTForEach",
+            "args": [
+              1,
+              1,
+              {
+                "_GameNumber": "Plus",
+                "args": [
+                  {
+                    "_GameNumber": "TheNumberOfCardsInPlayersHand",
+                    "args": {
+                      "_Player": "You"
+                    }
+                  },
+                  {
+                    "_GameNumber": "NumCardsInExile",
+                    "args": {
+                      "_CardsInExile": "And",
+                      "args": [
+                        {
+                          "_CardsInExile": "IsForetold"
+                        },
+                        {
+                          "_CardsInExile": "OwnedByAPlayer",
+                          "args": {
+                            "_Players": "SinglePlayer",
+                            "args": {
+                              "_Player": "You"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    "origin": "Alrund, God of the Cosmos",
+    "text": "Alrund gets +1/+1 for each card in your hand and each foretold card you own in exile."
+  },
+  {
+    "id": 125,
+    "rule": null,
+    "origin": "upstream layers.test.ts:4533, undefined rule_lookup entry",
+    "text": "Whenever equipped creature attacks, tap target creature defending player controls.",
+    "adaptation": "Recover missing lookup input from the literal authored test; source only asserts token name, color and types."
+  },
+  {
+    "id": 126,
+    "rule": {
+      "_Rule": "TriggerA",
+      "args": [
+        {
+          "_Trigger": "WhenAPlayerCastsASpell",
+          "args": [
+            {
+              "_Players": "SinglePlayer",
+              "args": {
+                "_Player": "You"
+              }
+            },
+            {
+              "_Spells": "IsNonCardtype",
+              "args": "Creature"
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "PutACounterOfTypeOnPermanent",
+              "args": [
+                {
+                  "_CounterType": "PTCounter",
+                  "args": [
+                    1,
+                    1
+                  ]
+                },
+                {
+                  "_Permanent": "ThisPermanent"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "origin": "Spellgorger Weird",
+    "text": "Whenever you cast a noncreature spell, put a +1/+1 counter on this creature."
+  },
+  {
+    "id": 127,
+    "rule": {
+      "_Rule": "Activated",
+      "args": [
+        {
+          "_Cost": "PayMana",
+          "args": [
+            {
+              "_ManaSymbol": "ManaCostGeneric",
+              "args": 1
+            }
+          ]
+        },
+        {
+          "_Actions": "ActionList",
+          "args": [
+            {
+              "_Action": "CreatePermanentLayerEffectUntil",
+              "args": [
+                {
+                  "_Permanent": "ThisPermanent"
+                },
+                [
+                  {
+                    "_LayerEffect": "SetPT",
+                    "args": {
+                      "_PT": "PT",
+                      "args": [
+                        2,
+                        2
+                      ]
+                    }
+                  },
+                  {
+                    "_LayerEffect": "AddCardtype",
+                    "args": "Creature"
+                  },
+                  {
+                    "_LayerEffect": "HasAllCreatureTypes"
+                  }
+                ],
+                {
+                  "_Expiration": "UntilEndOfTurn"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "origin": "Mutavault",
+    "text": "{1}: This land becomes a 2/2 creature with all creature types until end of turn. It's still a land."
+  }
+]

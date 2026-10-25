@@ -1275,11 +1275,28 @@ impl WasmGame {
                     CustomCardLayoutInput::TransformLike => "double-faced",
                     CustomCardLayoutInput::Split => "split",
                     CustomCardLayoutInput::Prepare => "prepare",
+                    CustomCardLayoutInput::Meld => "meld",
                 },
                 expected_faces
             )));
         }
 
+        let mut names = std::collections::BTreeSet::new();
+        for face in &draft.faces {
+            if draft.layout == CustomCardLayoutInput::Meld
+                && !names.insert(face.name.trim().to_lowercase())
+            {
+                return Err(JsValue::from_str("each card must have a distinct name"));
+            }
+        }
+        if draft.layout == CustomCardLayoutInput::Meld
+            && draft.faces[2]
+                .mana_cost
+                .as_deref()
+                .is_some_and(|cost| !cost.trim().is_empty())
+        {
+            return Err(JsValue::from_str("the meld result cannot have a mana cost"));
+        }
         let mut definitions = Vec::with_capacity(expected_faces);
         for (index, face) in draft.faces.iter().enumerate() {
             let name = face.name.trim();
@@ -1320,6 +1337,17 @@ impl WasmGame {
 
             if draft.layout == CustomCardLayoutInput::Split && draft.has_fuse {
                 definitions[0].has_fuse = true;
+            }
+        }
+
+        if draft.layout == CustomCardLayoutInput::Meld {
+            let result_id = definitions[2].card.id;
+            let result_name = definitions[2].card.name.clone();
+            for index in 0..2 {
+                definitions[index].card.meld_partner_name =
+                    Some(definitions[1 - index].card.name.clone());
+                definitions[index].card.other_face = Some(result_id);
+                definitions[index].card.other_face_name = Some(result_name.clone());
             }
         }
 
@@ -1500,16 +1528,30 @@ impl WasmGame {
 
         let sample_index = loaded_deck_sample_index(eligible.len());
         let definition = eligible[sample_index].clone();
-        let layout = match definition.card.linked_face_layout {
-            ironsmith::card::LinkedFaceLayout::Split => CustomCardLayoutInput::Split,
-            ironsmith::card::LinkedFaceLayout::TransformLike
-            | ironsmith::card::LinkedFaceLayout::Flip => CustomCardLayoutInput::TransformLike,
-            ironsmith::card::LinkedFaceLayout::Prepare => CustomCardLayoutInput::Prepare,
-            ironsmith::card::LinkedFaceLayout::None => CustomCardLayoutInput::Single,
+        let layout = if definition.card.meld_partner_name.is_some() {
+            CustomCardLayoutInput::Meld
+        } else {
+            match definition.card.linked_face_layout {
+                ironsmith::card::LinkedFaceLayout::Split => CustomCardLayoutInput::Split,
+                ironsmith::card::LinkedFaceLayout::TransformLike
+                | ironsmith::card::LinkedFaceLayout::Flip => CustomCardLayoutInput::TransformLike,
+                ironsmith::card::LinkedFaceLayout::Prepare => CustomCardLayoutInput::Prepare,
+                ironsmith::card::LinkedFaceLayout::None => CustomCardLayoutInput::Single,
+            }
         };
 
         let mut faces = vec![Self::definition_to_custom_face_input(&definition)];
-        if layout.face_count() == 2 {
+        if layout == CustomCardLayoutInput::Meld {
+            let partner = self
+                .registry
+                .linked_face_definition_by_name_or_id(
+                    definition.card.meld_partner_name.as_deref(),
+                    None,
+                )
+                .ok_or_else(|| JsValue::from_str("sampled meld card is missing its partner"))?;
+            faces.push(Self::definition_to_custom_face_input(partner));
+        }
+        if layout.face_count() >= 2 {
             let Some(other_face) = self
                 .registry
                 .linked_face_definition_by_name_or_id(

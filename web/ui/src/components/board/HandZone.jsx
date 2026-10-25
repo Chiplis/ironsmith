@@ -1152,6 +1152,17 @@ export default function HandZone({
     handleCardClick(event, card);
   }, [handleCardClick, startDrag, state]);
 
+  const handleCardDoubleClick = (event, card, plays, glowKind) => {
+    if (!plays.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHandOpen(false);
+    window.dispatchEvent(new CustomEvent(HAND_KEYBOARD_CAST_EVENT, {
+      detail: { objectId: card.id, cardName: card.name, card, actions: plays, glowKind,
+        anchorRect: plainRect(event.currentTarget?.getBoundingClientRect?.()) },
+    }));
+  };
+
   const releaseDragScrollLock = useCallback(() => {
     const scrollLock = dragScrollLockRef.current;
     if (!scrollLock) return;
@@ -1768,6 +1779,7 @@ export default function HandZone({
             isHovered={isHovered}
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
+            onDoubleClick={isPlayable ? (event) => handleCardDoubleClick(event, card, plays, glowKind) : undefined}
             onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
             onKeyboardNavigation={handleKeyboardNavigation}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
@@ -1827,6 +1839,7 @@ export default function HandZone({
           isHovered={isHovered}
           isInspected={isInspected}
           onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
+            onDoubleClick={isPlayable ? (event) => handleCardDoubleClick(event, card, plays, glowKind) : undefined}
           onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
           onKeyboardNavigation={handleKeyboardNavigation}
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
@@ -1919,6 +1932,7 @@ export default function HandZone({
               isHovered={isHovered}
               isInspected={isInspected}
               onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
+            onDoubleClick={isPlayable ? (event) => handleCardDoubleClick(event, card, plays, glowKind) : undefined}
               onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
               onKeyboardNavigation={handleKeyboardNavigation}
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
@@ -1994,6 +2008,7 @@ export default function HandZone({
             isHovered={isHovered}
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
+            onDoubleClick={isPlayable ? (event) => handleCardDoubleClick(event, card, plays, glowKind) : undefined}
             onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
             onKeyboardNavigation={handleKeyboardNavigation}
             onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}

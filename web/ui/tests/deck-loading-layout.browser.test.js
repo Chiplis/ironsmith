@@ -47,6 +47,39 @@ async function openWorkspace(server, browser, {locale} = {}) {
   return {page, errors};
 }
 
+test('Vintage white filter includes decks with incomplete card metadata', async () => {
+  const server = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
+  await server.listen();
+  const browser = await chromium.launch();
+  try {
+    const {page, errors} = await openWorkspace(server, browser);
+    const decks = [
+      {...entries[0], id: 'vintage-white', format: 'vintage', name: 'White Vintage', manaProfile: {
+        colors: ['W', 'U'], metadataCoverage: {complete: false, unresolvedCardNames: ['Black Lotus']},
+      }},
+      {...entries[1], id: 'vintage-red', format: 'vintage', name: 'Red Vintage', manaProfile: {
+        colors: ['R'], metadataCoverage: {complete: true},
+      }},
+    ];
+    await page.route('**/catalog/vintage/index.json', route => route.fulfill({json: {...index, format: 'vintage', decks}}));
+    await page.locator('[data-deck-catalog] select').first().selectOption('vintage');
+    const list = page.locator('[data-deck-catalog-list]');
+    await page.waitForFunction(() => document.querySelectorAll('[data-deck-row]').length === 2);
+    const white = page.getByRole('button', {name: 'Filter by W mana', exact: true});
+    await white.click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-deck-row]').length === 1);
+    assert.equal(await white.getAttribute('aria-pressed'), 'true');
+    assert.match(await list.textContent(), /White Vintage/);
+    assert.doesNotMatch(await list.textContent(), /Red Vintage/);
+    await white.click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-deck-row]').length === 2);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test('three suggested decks stay visible and assign to the selected player', async () => {
   const server = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
   await server.listen();

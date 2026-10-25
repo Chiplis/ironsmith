@@ -23,10 +23,15 @@ if (!await exists(path.join(source, '.git'))) {
   run('git', ['fetch', '--depth', '1', 'origin', 'main']);
   run('git', ['checkout', '--detach', 'FETCH_HEAD']);
 }
-const revision = capture('git', ['rev-parse', 'HEAD']);
-const destination = path.join(output, revision);
+const sourceRevision = capture('git', ['rev-parse', 'HEAD']);
 const buildHash = createHash('sha256').update(await readFile(fileURLToPath(import.meta.url)))
-  .update(await readFile(path.join(ui, 'scripts/card-glint/bundle.mjs'))).digest('hex');
+  .update(await readFile(path.join(ui, 'scripts/card-glint/bundle.mjs')))
+  .update(await readFile(path.join(ui, 'scripts/card-glint/material-worker-client.mjs')))
+  .update(await readFile(path.join(ui, 'scripts/card-glint/material-worker.mjs'))).digest('hex');
+// Host patches change browser assets even when upstream's revision is fixed.
+// Keep their URLs distinct so a running/cached app cannot load a mixed build.
+const revision = `${sourceRevision}-${buildHash.slice(0,12)}`;
+const destination = path.join(output, revision);
 const completed = await readFile(path.join(destination, 'complete.json'), 'utf8').then(JSON.parse, () => null);
 if (completed?.buildHash !== buildHash) {
   const lock = await readFile(path.join(source, 'Cargo.lock'), 'utf8');
@@ -58,10 +63,10 @@ if (completed?.buildHash !== buildHash) {
   }
   for (const file of ['LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE.md']) await cp(path.join(source, file), path.join(destination, file));
   await cp(path.join(source, 'games/magic/NOTICE.md'), path.join(destination, 'MAGIC-NOTICE.md'));
-  await writeFile(path.join(destination, 'complete.json'), JSON.stringify({revision,buildHash}));
+  await writeFile(path.join(destination, 'complete.json'), JSON.stringify({revision,sourceRevision,buildHash}));
 }
 for (const entry of await readdir(output)) {
-  if (/^[a-f0-9]{40}$/.test(entry) && entry !== revision) await rm(path.join(output, entry), {recursive:true, force:true});
+  if (/^[a-f0-9]{40}(?:-[a-f0-9]{12})?$/.test(entry) && entry !== revision) await rm(path.join(output, entry), {recursive:true, force:true});
 }
 // Vite embeds this revision in the app, and copies its matching JS/WASM directory.
 await writeFile(path.join(cache, 'current.json'), JSON.stringify({revision}));

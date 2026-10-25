@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Atraxa, Grand Unifier",
+    "slug": "atraxa-grand-unifier",
+    "text": "Mana cost: {3}{G}{W}{U}{B}\nType: Legendary Creature — Phyrexian Angel\nPower/Toughness: 7/7\nFlying, vigilance, deathtouch, lifelink\nWhen Atraxa enters, reveal the top ten cards of your library. For each card type, you may put a card of that type from among the revealed cards into your hand. Put the rest on the bottom of your library in a random order. (Artifact, battle, creature, enchantment, instant, land, planeswalker, and sorcery are card types.)"
+  },
+  {
+    "name": "Badgermole Cub",
+    "slug": "badgermole-cub",
+    "text": "Mana cost: {1}{G}\nType: Creature — Badger Mole\nPower/Toughness: 2/2\nWhen this creature enters, earthbend 1. (Target land you control becomes a 0/0 creature with haste that's still a land. Put a +1/+1 counter on it. When it dies or is exiled, return it to the battlefield tapped.)\nWhenever you tap a creature for mana, add an additional {G}."
+  },
+  {
+    "name": "Blightstep Pathway",
+    "slug": "blightstep-pathway",
+    "text": "Mana cost: \nType: Land\n{T}: Add {B}."
+  },
+  {
+    "name": "Blood Crypt",
+    "slug": "blood-crypt",
+    "text": "Mana cost: \nType: Land — Swamp Mountain\n({T}: Add {B} or {R}.)\nAs this land enters, you may pay 2 life. If you don't, it enters tapped."
+  },
+  {
+    "name": "Boseiju, Who Endures",
+    "slug": "boseiju-who-endures",
+    "text": "Mana cost: \nType: Legendary Land\n{T}: Add {G}.\nChannel — {1}{G}, Discard this card: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That player may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle. This ability costs {1} less to activate for each legendary creature you control."
+  },
+  {
+    "name": "Botanical Sanctum",
+    "slug": "botanical-sanctum",
+    "text": "Mana cost: \nType: Land\nThis land enters tapped unless you control two or fewer other lands.\n{T}: Add {G} or {U}."
+  },
+  {
+    "name": "Nykthos, Shrine to Nyx",
+    "slug": "nykthos-shrine-to-nyx",
+    "text": "Mana cost: \nType: Legendary Land\n{T}: Add {C}.\n{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color. (Your devotion to a color is the number of mana symbols of that color in the mana costs of permanents you control.)"
+  }
+]

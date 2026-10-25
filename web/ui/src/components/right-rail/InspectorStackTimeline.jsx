@@ -111,7 +111,6 @@ export default function InspectorStackTimeline({
     duration: 320,
     bounce: 0.12,
     enterFrom: { opacity: 0, y: 16, scale: 0.97 },
-    leaveTo: { opacity: 0, y: -14, scale: 0.96 },
   });
 
   if (!hasStackEntries && pendingOrderingEntries.length === 0) return null;

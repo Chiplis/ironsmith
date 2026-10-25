@@ -254,6 +254,7 @@ test('colored lands paint their outer stock from the land palette', {timeout:120
         ['Forest','Basic Land — Forest',['G']],
         ['Dual land','Land',['U','G']],
         ['Wastes','Basic Land',[]],
+        ['Forest without identity','Basic Land — Forest',undefined],
       ];
       const results=[];
       for(const [name,type_line,palette] of cards){
@@ -266,14 +267,16 @@ test('colored lands paint their outer stock from the land palette', {timeout:120
       }
       return results;
     });
-    for(const [index,color] of ['G','U','W','B','R','G','Gold','Land'].entries()){
+    for(const [index,color] of ['G','U','W','B','R','G','Gold','Land','G'].entries()){
       assert.deepEqual(results[index].colors,[]);
-      assert.ok(results[index].assets.some(url=>url?.endsWith(`/bg/${color}.webp`)),results[index].name);
+      assert.ok(results[index].assets.some(url=>url?.endsWith(`/bg/${color}.webp`) || (color==='Land' && url?.endsWith('/m15/new/l.png'))),JSON.stringify(results[index]));
     }
     const [r,g,b]=results[0].pixel;
     assert.ok(g>r && g>b,`Yavimaya outer stock is green: ${results[0].pixel}`);
     const [ir,ig,ib]=results[1].pixel;
     assert.ok(ib>ir && ib>ig,`Island outer stock is blue: ${results[1].pixel}`);
+    const [fr,fg,fb]=results[8].pixel;
+    assert.ok(fg>fr && fg>fb,`Forest without identity has green outer stock: ${results[8].pixel}`);
     await page.screenshot({path:'test-results/card-glint-land-stock.png'});
   } finally {await browser.close();await vite.close();}
 });

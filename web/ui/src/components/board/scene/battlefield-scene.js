@@ -25,6 +25,7 @@ export function createBattlefieldScene(root, registry) {
   const objects = new Map();
   const media = matchMedia('(prefers-reduced-motion: reduce)');
   let config, geometry, viewport, growTimer, frame = 0, lastTime = 0, disposed = false;
+  let configurationDirty = false;
   let growCandidate = null, targetScale = null, leftInset = 0, reservedStackWidth = 0, stackResizeFrame = 0;
   const sceneOptions = () => ({ ...config.options, leftInset });
   function sizeRenderer(width, height) {
@@ -124,6 +125,11 @@ export function createBattlefieldScene(root, registry) {
   }
   function tick(now) {
     frame = 0;
+    if (configurationDirty) {
+      configurationDirty = false;
+      if (!resize()) solve();
+    }
+    syncObjects();
     const moving = draw(lastTime ? now - lastTime : 16);
     if (!moving && geometry) {
       sizeRenderer(geometry.width, geometry.height);
@@ -139,6 +145,7 @@ export function createBattlefieldScene(root, registry) {
     const shell = root.closest('[data-my-zone] .my-zone-board-shell');
     const dock = shell?.querySelector(':scope > .my-zone-stack-rail');
     const dockRect = dock?.getBoundingClientRect();
+    const rootLeft = root.getBoundingClientRect().left;
     const pileWidth = Number(dock?.dataset.stackLaneWidth) || 0;
     const stackActive = shell?.classList.contains('my-zone-board-shell--with-stack') || pileWidth > 0;
     // Keep one reservation for the entire nonempty Stack. Ordering swaps the
@@ -154,7 +161,7 @@ export function createBattlefieldScene(root, registry) {
     }
     const laneWidth = reservedStackWidth;
     const inset = laneWidth > 0
-      ? Math.max(0, (dockRect?.left || 0) + laneWidth + 12 - root.getBoundingClientRect().left)
+      ? Math.max(0, (dockRect?.left || 0) + laneWidth + 12 - rootLeft)
       : 0;
     if (viewport?.width === next.width && viewport?.height === next.height && leftInset === inset) return;
     leftInset = inset;
@@ -164,6 +171,7 @@ export function createBattlefieldScene(root, registry) {
     viewport = next;
     // Viewport growth is intentional; hysteresis is for changing card counts.
     solve(true);
+    return true;
   }
   const observer = new ResizeObserver(resize);
   observer.observe(root);
@@ -185,8 +193,10 @@ export function createBattlefieldScene(root, registry) {
   document.addEventListener('visibilitychange', visibility);
   media.addEventListener('change', motion);
   return {
-    configure(next) { config = next; resize(); solve(); },
-    sync() { syncObjects(); draw(0, true); wake(); },
+    // React can commit several priority/hover/card updates together. Measure
+    // once after the commit, rather than flushing layout inside every effect.
+    configure(next) { config = next; configurationDirty = true; root.dataset.sceneMoving = 'true'; wake(); },
+    sync() { wake(); },
     cellAt(x, y, allowOccupied) {
       // An occupied card follows its displayed transform throughout animation.
       for (const entry of objects.values()) {

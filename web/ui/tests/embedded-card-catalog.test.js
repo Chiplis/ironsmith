@@ -6,7 +6,7 @@ import {
   readEmbeddedCardSource,
 } from "../src/lib/embedded-card-catalog.js";
 import { loadLocalCardArt } from "../src/lib/catalog-client.js";
-import { fetchScryfallCardMeta, resolveScryfallImageUrl } from "../src/lib/scryfall.js";
+import { fetchCardBuildDraft, fetchScryfallCardMeta, resolveScryfallImageUrl } from "../src/lib/scryfall.js";
 import { loadRandomGameIndex, collectRandomGameCards } from "../src/lib/random-game-catalog.js";
 import { randomGameDefaults } from "../src/lib/random-game.js";
 
@@ -16,6 +16,26 @@ function deferred() {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+
+test('Build drafts use embedded rules and never fetch missing cards from Scryfall', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async url => { requests.push(url); throw new Error('Unexpected network request'); };
+  const release = installEmbeddedCardCatalog({
+    ready: Promise.resolve(),
+    getIndexJson: () => ({ cards: [] }),
+    getSourceJson: route => route === 'build-fixture' ? {
+      group: {kind: 'single', name: 'Build Fixture', block: 'Mana cost: {R}\nType: Instant\nFirst printed set: Test\nDraw a card.'},
+    } : null,
+  });
+  try {
+    const draft = await fetchCardBuildDraft('Build Fixture');
+    assert.equal(draft.faces[0].oracleText, 'Draw a card.');
+    assert.equal(draft.faces[0].manaCost, '{R}');
+    await assert.rejects(fetchCardBuildDraft('Missing Build Fixture'), /No local card source/);
+    assert.deepEqual(requests, []);
+  } finally { release(); globalThis.fetch = originalFetch; }
+});
 
 test("catalogue reads wait for engine readiness and share its index", async () => {
   const ready = deferred();

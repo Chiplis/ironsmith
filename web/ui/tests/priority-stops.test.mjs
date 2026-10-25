@@ -168,59 +168,92 @@ test('phase countdown survives analysis updates but cannot pass stale priority',
   assert.equal(stops.getSnapshot().window, null);
 });
 
-for (const mode of ['safe', 'all']) {
-  test(`${mode} stack resolution waits for the shared timer and respects Hold`, () => {
+for (const mode of ['off', 'safe']) {
+  test(`${mode} ability countdown respects hover, Hold, and expiration`, () => {
     let clock = 0;
-    const stops = createPriorityStops({ phaseStopsEnabled: true, resolveMode: mode, now: () => clock });
-    const current = onStack();
+    const stops = createPriorityStops({ resolveMode: mode, now: () => clock });
+    const current = state({ stack_size: 1, stack_objects: [{ id: 10, ability_kind: 'triggered' }],
+      decision: { kind: 'priority', player: 0, analysis_complete: false, actions: [{ kind: 'cast_spell' }] } });
     stops.observe(current);
     const id = stops.getSnapshot().window.id;
-    assert.equal(stops.stopReason(current), 'timed stack resolve');
     stops.armWindow(id);
-    clock = 1999;
+    clock = 500;
+    stops.pauseWindow(id);
+    clock = 3000;
     assert.equal(stops.expire(id, current), false);
-    clock = 2000;
+    stops.resumeWindow(id);
+    clock = 4500;
     assert.equal(stops.expire(id, current), true);
-    stops.observe(onStack(11));
-    stops.hold(onStack(11));
-    stops.observe(onStack(11));
+    stops.observe({ ...current, turn_number: 3 });
+    stops.hold({ ...current, turn_number: 3 });
     assert.equal(stops.getSnapshot().window, null);
   });
 }
 
-test('safe resolution waits for analysis, ignores mana and unplayable actions, and holds playable responses', () => {
-  for (const playable of [false, true]) {
+test('off counts down spells for either controller even with playable responses', () => {
+  for (const controller of [0, 1]) {
     let clock = 0;
-    const stops = createPriorityStops({ phaseStopsEnabled: true, resolveMode: 'safe', now: () => clock });
-    const current = { ...onStack(), decision: { kind: 'priority', player: 0, analysis_complete: false, actions: [
-      { kind: 'activate_mana_ability', payment_proven: true },
-      { kind: 'untap_land' },
-      { kind: 'cast_spell', payment_proven: playable },
-      { kind: 'activate_ability', payment_proven: false },
-    ] } };
+    const stops = createPriorityStops({ resolveMode: 'off', now: () => clock });
+    const current = state({ stack_size: 1, stack_objects: [{ id: 10, controller }],
+      decision: { kind: 'priority', player: 0, actions: [{ kind: 'cast_spell' }] } });
     stops.observe(current);
     const id = stops.getSnapshot().window.id;
     stops.armWindow(id);
     clock = 2000;
-    assert.equal(stops.expire(id, current), false);
-    assert.equal(stops.getSnapshot().window.id, id);
-    current.decision.analysis_complete = true;
-    assert.equal(stops.expire(id, current), !playable);
+    assert.equal(stops.expire(id, current), true);
+  }
+});
+
+test('white holds whenever any spell is on the stack, including below abilities', () => {
+  const stops = createPriorityStops({ resolveMode: 'safe' });
+  for (const entries of [[{ id: 1 }], [{ id: 2, ability_kind: 'activated' }, { id: 1 }]]) {
+    stops.observe(state({ stack_size: entries.length, stack_objects: entries }));
     assert.equal(stops.getSnapshot().window, null);
   }
 });
 
-test('all resolution allows playable responses; switching back to regular cancels stack countdown', () => {
-  let clock = 0;
-  const stops = createPriorityStops({ phaseStopsEnabled: true, resolveMode: 'all', now: () => clock });
-  const current = { ...onStack(), decision: { kind: 'priority', player: 0, actions: [{ kind: 'cast_spell' }] } };
-  stops.observe(current);
-  const id = stops.getSnapshot().window.id;
-  stops.armWindow(id);
-  clock = 2000;
-  assert.equal(stops.expire(id, current), true);
-  stops.observe(onStack(12));
-  stops.setResolveMode('regular');
-  stops.observe(onStack(12));
+test('yellow removes every countdown; changing modes applies immediately', () => {
+  const stops = createPriorityStops({ resolveMode: 'off', phaseStopsEnabled: true,
+    initialStops: { 'phase:Upkeep': 'always' } });
+  stops.observe(onStack());
+  assert.ok(stops.getSnapshot().window);
+  stops.setResolveMode('safe');
+  stops.observe(onStack());
   assert.equal(stops.getSnapshot().window, null);
+  stops.setResolveMode('all');
+  for (const current of [onStack(), state(), state({ stack_size: 1,
+    stack_objects: [{ id: 20, ability_kind: 'triggered' }] })]) {
+    stops.observe(current);
+    assert.equal(stops.getSnapshot().window, null);
+  }
+  stops.setResolveMode('off');
+  stops.observe(onStack());
+  assert.ok(stops.getSnapshot().window);
+});
+
+test('seat stops override defaults independently, persist off, and consume once on that seat only', async () => {
+  const { DEFAULT_PRIORITY_STOPS, priorityStopMode, priorityStopsForPlayer, readStoredPriorityStops } = await import('../src/lib/priority-stops.js');
+  let saved;
+  const storage = { getItem: () => saved ?? null, setItem: (_, value) => { saved = value; } };
+  const controller = createPriorityStops({ storage });
+  assert.deepEqual(controller.getSnapshot().stops, DEFAULT_PRIORITY_STOPS);
+  for (const player of [0, 1, 2, 3]) {
+    for (const key of ['phase:Main', 'phase:Main2']) assert.equal(priorityStopMode(controller.getSnapshot().stops, key, player), 'always');
+  }
+  controller.cycleStop('phase:Main', state(), 1);
+  let stops = controller.getSnapshot().stops;
+  assert.equal(priorityStopMode(stops, 'phase:Main', 1), undefined);
+  assert.equal(priorityStopMode(stops, 'phase:Main', 0), 'always');
+  assert.equal(priorityStopMode(readStoredPriorityStops(storage), 'phase:Main', 1), undefined);
+  controller.cycleStop('phase:Main', state(), 1);
+  const main = state({ phase: 'Main', step: null });
+  assert.match(controller.stopReason(main), /Main/);
+  controller.beforeCommand(pass, { ...main, active_player: 0 });
+  assert.equal(priorityStopMode(controller.getSnapshot().stops, 'phase:Main', 1), 'once');
+  controller.beforeCommand(pass, main);
+  stops = controller.getSnapshot().stops;
+  assert.equal(priorityStopMode(stops, 'phase:Main', 1), undefined);
+  assert.equal(priorityStopMode(stops, 'phase:Main', 0), 'always');
+  assert.deepEqual(Object.keys(priorityStopsForPlayer(stops, 1)), ['phase:Main2']);
+  assert.deepEqual(Object.keys(priorityStopsForPlayer(stops, 0)), ['phase:Main', 'phase:Main2']);
 });

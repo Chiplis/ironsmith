@@ -10,7 +10,7 @@ import CustomCardsButton from "./CustomCardsButton";
 import { customCardImageUrl } from "@/lib/custom-card-assets";
 import { saveCustomCard } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
-import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
+import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, Copy, Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
 
 import { useGame } from "@/context/GameContext";
@@ -65,6 +65,7 @@ const LAYOUT_OPTIONS = [
   { value: "single", label: "Single", icon: Sparkles },
   { value: "transform_like", label: "Double-Faced", icon: Layers3 },
   { value: "split", label: "Split", icon: SquareSplitHorizontal },
+  { value: "meld", label: "Meld", icon: Layers3 },
 ];
 
 function blankFace(label = "Custom Card") {
@@ -275,6 +276,7 @@ function normalizeDraftForApi(draft) {
 }
 
 function faceTabLabel(layout, index) {
+  if (layout === "meld") return ["First Card", "Second Card", "Meld Result"][index];
   if (layout === "split") return index === 0 ? "Left Half" : "Right Half";
   if (layout === "transform_like") return index === 0 ? "Front Face" : "Back Face";
   return "Card";
@@ -300,7 +302,7 @@ function toggleChoice(values, item) {
 function LayoutPicker({ value, onChange }) {
   const ui = useUiText();
   return (
-    <div className="grid gap-2 sm:grid-cols-3">
+    <div className="grid gap-2 sm:grid-cols-2">
       {LAYOUT_OPTIONS.map((option) => {
         const Icon = option.icon;
         const active = value === option.value;
@@ -440,6 +442,7 @@ function CompiledAbilitiesPanel({ face, faces, previewError, busy }) {
 }
 
 function layoutLabel(layout) {
+  if (layout === "meld") return "Meld";
   if (layout === "split") return "Split";
   if (layout === "transform_like") return "Double-faced";
   return "Single-face";
@@ -607,6 +610,12 @@ export default function CreateCardForgeSheet({
   // The real card a draft started from, whose printing "Current printing" shows.
   const [printingName, setPrintingName] = useState(null);
   const [currentPrinting, setCurrentPrinting] = useState(null);
+  const selectionRequest = useRef(0);
+
+  const cancelSelection = useCallback(() => {
+    selectionRequest.current++;
+    setSeedLoading(false);
+  }, []);
 
   const activeFaceIndex = Number(activeFace.replace("face-", "")) || 0;
   const previewFace = preview?.faces?.[activeFaceIndex] || null;
@@ -637,6 +646,9 @@ export default function CreateCardForgeSheet({
   // Renaming the card leaves that printing behind.
   const draftPrinting = currentPrinting && currentPrinting.name === draft.faces[0]?.name ? currentPrinting : null;
 
+  // Appearance edits do not change compiler input. Keep the debounce tied to
+  // the rules snapshot so printing controls never queue another WASM compile.
+  const previewInput = JSON.stringify(normalizeDraftForApi(draft));
   useEffect(() => {
     if (!open || !game) return undefined;
 
@@ -644,7 +656,7 @@ export default function CreateCardForgeSheet({
     const timeoutId = window.setTimeout(async () => {
       setPreviewLoading(true);
       try {
-        const nextPreview = await game.previewCustomCard(normalizeDraftForApi(draft));
+        const nextPreview = await game.previewCustomCard(JSON.parse(previewInput));
         if (!active) return;
         setPreview(nextPreview);
         setPreviewError("");
@@ -658,7 +670,7 @@ export default function CreateCardForgeSheet({
     }, 180);
 
     return () => { active = false; window.clearTimeout(timeoutId); };
-  }, [draft, game, open]);
+  }, [previewInput, game, open]);
 
   const loadSeed = useCallback(async ({ reroll = false } = {}) => {
     setSeedLoading(true);
@@ -697,23 +709,26 @@ export default function CreateCardForgeSheet({
   }, [game, seedDraft, setStatus]);
 
   const handleOpenChange = useCallback((nextOpen) => {
+    cancelSelection();
     setOpen(nextOpen);
     if (nextOpen) {
       setSaveMessage("");
 
     }
-  }, []);
+  }, [cancelSelection]);
 
   const updateFace = useCallback((index, patch) => {
+    cancelSelection();
     setDraft((current) => ({
       ...current,
       faces: current.faces.map((face, faceIndex) => (
         faceIndex === index ? { ...face, ...patch } : face
       )),
     }));
-  }, []);
+  }, [cancelSelection]);
 
   const toggleFaceArrayValue = useCallback((index, key, value) => {
+    cancelSelection();
     setDraft((current) => ({
       ...current,
       faces: current.faces.map((face, faceIndex) => (
@@ -722,9 +737,10 @@ export default function CreateCardForgeSheet({
           : face
       )),
     }));
-  }, []);
+  }, [cancelSelection]);
 
   const handleLayoutChange = useCallback((nextLayout) => {
+    cancelSelection();
     setDraft((current) => {
       const nextFaces = [...current.faces];
       if (nextLayout === "single") {
@@ -735,24 +751,26 @@ export default function CreateCardForgeSheet({
           presentation: current.presentation,
         };
       }
-      while (nextFaces.length < 2) {
-        nextFaces.push(blankFace(nextLayout === "split" ? "Right Half" : "Back Face"));
+      const faceCount = nextLayout === "meld" ? 3 : 2;
+      while (nextFaces.length < faceCount) {
+        nextFaces.push(blankFace(faceTabLabel(nextLayout, nextFaces.length)));
       }
       return {
         layout: nextLayout,
         hasFuse: nextLayout === "split" ? current.hasFuse : false,
-        faces: nextFaces.slice(0, 2),
+        faces: nextFaces.slice(0, faceCount),
         presentation: current.presentation,
       };
     });
     setActiveFace("face-0");
-  }, []);
+  }, [cancelSelection]);
 
   const resetToSeed = useCallback(() => {
     if (!seedDraft) return;
+    cancelSelection();
     setDraft(cloneDraft(seedDraft));
     setActiveFace("face-0");
-  }, [seedDraft]);
+  }, [seedDraft, cancelSelection]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -934,6 +952,9 @@ export default function CreateCardForgeSheet({
     <section className="card-forge-layout-controls">
       <div className="card-forge-panel-title">{ui("Card Layout")}</div>
       <LayoutPicker value={draft.layout} onChange={handleLayoutChange} />
+      {draft.layout === "meld" ? (
+        <p className="text-xs text-muted-foreground">{ui("Edit both cards and their meld result. Add a meld ability to a component’s rules text using the exact partner and result names. Adding creates both component cards in the selected zone.")}</p>
+      ) : null}
       {draft.layout === "split" ? (
         <label className="toolbar-checkbox mt-2 flex items-center gap-2 text-[13px] uppercase tracking-wide">
           <Checkbox
@@ -982,7 +1003,7 @@ export default function CreateCardForgeSheet({
                 variant="secondary"
                 size="sm"
                 className="stone-pill"
-                onClick={() => setOpen(false)}
+                onClick={() => handleOpenChange(false)}
               >{ui("Cancel")}</Button>
               <Button type="button" variant="secondary" size="sm" className="stone-pill"
                 disabled={disabled || saving || submitting || seedLoading || !game || draft.faces.some(face => !face.name.trim())}
@@ -1061,11 +1082,13 @@ export default function CreateCardForgeSheet({
                   </Popover>
                 </div>
             </div>}
-            disabled={disabled || seedLoading || submitting} onSelect={async (option) => {
+            disabled={disabled || submitting} onSelect={async (option) => {
+            const request = ++selectionRequest.current;
             setSeedLoading(true);
             setSaveMessage("");
             try {
               const next = cloneDraft(option.card?.draft || await fetchCardBuildDraft(option.name));
+              if (request !== selectionRequest.current) return;
               // Custom cards have no Scryfall printing; paint their bundled art.
               if (option.card) {
                 next.faces = next.faces.map((face) => ({
@@ -1079,8 +1102,11 @@ export default function CreateCardForgeSheet({
               setActiveFace("face-0");
               setPreview(null);
               setPreviewError("");
-            } catch (error) { setSaveMessage(`Could not load card: ${String(error?.message || error)}`); }
-            finally { setSeedLoading(false); }
+            } catch (error) {
+              if (request === selectionRequest.current) setSaveMessage(`Could not load card: ${String(error?.message || error)}`);
+            } finally {
+              if (request === selectionRequest.current) setSeedLoading(false);
+            }
           }} />
           <div className="card-forge-toolbar">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -1093,7 +1119,7 @@ export default function CreateCardForgeSheet({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={seedLoading || submitting} onClick={() => { setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setPrintingName(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
+              <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={submitting} onClick={() => { cancelSelection(); setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setPrintingName(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
               <CustomCardsButton className="stone-pill px-3 py-2" label={ui("Load custom cards")} />
               <Button
                 type="button"

@@ -12,9 +12,11 @@ const FORMAT_CODES = {
   modern: "MO",
   legacy: "LE",
   vintage: "VI",
-  pauper: "PA",
+  pauper: "PAU",
+  pa: "PAU",
   historic: "HI",
-  commander: "EDH",
+  commander: "cEDH",
+  cedh: "cEDH",
   edh: "EDH",
 };
 
@@ -66,7 +68,7 @@ function extractSectionEvents(html, title, { limit = 25 } = {}) {
       format,
       name: decodeHtml(titleMatch?.[1] || ""),
       date: sourceDate(dateMatch?.[1]),
-      url: `https://mtgtop8.com/event?e=${id}&f=${format.toUpperCase()}`,
+      url: `https://mtgtop8.com/event?e=${id}&f=${normalizeFormat(format).code}`,
     });
     if (events.length >= limit) break;
   }
@@ -79,8 +81,9 @@ export function modernFormatUrl({ meta = 54, page = 0 } = {}) {
 
 export function normalizeFormat(value = "modern") {
   const token = text(value).toLocaleLowerCase("en-US");
-  const code = FORMAT_CODES[token] || token.toUpperCase();
-  const slug = Object.entries(FORMAT_CODES).find(([, formatCode]) => formatCode === code)?.[0] || token || "modern";
+  const code = FORMAT_CODES[token] || Object.values(FORMAT_CODES).find((code) => code.toLowerCase() === token) || token.toUpperCase();
+  if (!Object.values(FORMAT_CODES).includes(code)) throw new Error(`Unsupported deck format: ${value}`);
+  const slug = Object.entries(FORMAT_CODES).find(([, formatCode]) => formatCode.toLowerCase() === code.toLowerCase())?.[0] || token || "modern";
   return { slug, code };
 }
 
@@ -89,6 +92,15 @@ export function formatUrl({ format = "modern", meta = 54, page = 0 } = {}) {
   const params = new URLSearchParams({ a: "", f: code, meta: String(meta) });
   if (Number(page) > 0) params.set("cp", String(page));
   return `https://mtgtop8.com/format?${params.toString()}`;
+}
+
+export function allDecksMeta(html) {
+  for (const match of String(html || "").matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    if (!/^All (?:[a-z]+ )?decks$/i.test(decodeHtml(match[2]).trim())) continue;
+    const meta = new URL(match[1].replace(/&amp;/g, "&"), "https://mtgtop8.com/format").searchParams.get("meta");
+    if (meta && /^\d+$/.test(meta)) return Number(meta);
+  }
+  throw new Error("MTGTop8 page has no all-decks filter");
 }
 
 export function extractEventLinks(html, { limit = 25 } = {}) {
@@ -100,7 +112,7 @@ export function extractEventLinks(html, { limit = 25 } = {}) {
     const key = `${format}:${id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    links.push({ id, format, url: `https://mtgtop8.com/event?e=${id}&f=${format.toUpperCase()}` });
+    links.push({ id, format, url: `https://mtgtop8.com/event?e=${id}&f=${normalizeFormat(format).code}` });
     if (links.length >= limit) break;
   }
   return links;
@@ -142,7 +154,7 @@ export function extractDeckLinks(html, { eventId = "", limit = 25 } = {}) {
       eventId: match[1],
       deckId: match[2],
       format: match[3].toLowerCase(),
-      url: `https://mtgtop8.com/event?e=${match[1]}&d=${match[2]}&f=${match[3].toUpperCase()}`,
+      url: `https://mtgtop8.com/event?e=${match[1]}&d=${match[2]}&f=${normalizeFormat(match[3]).code}`,
     });
     if (links.length >= limit) break;
   }
@@ -159,8 +171,10 @@ export function parseDeckPage(html, {
 } = {}) {
   const mainboard = [];
   const sideboard = [];
+  const commander = [];
+  const isCommander = normalizeFormat(format).slug === "commander";
   for (const match of String(html || "").matchAll(CARD_LINE_RE)) {
-    const section = match[1].startsWith("sb") ? sideboard : mainboard;
+    const section = match[1].startsWith("sb") ? (isCommander ? commander : sideboard) : mainboard;
     section.push({ name: decodeHtml(match[3]), count: Number(match[2]) });
   }
 
@@ -190,10 +204,12 @@ export function parseDeckPage(html, {
     collections,
     mainboard: normalizeCardList(mainboard),
     sideboard: normalizeCardList(sideboard),
-    commander: [],
+    commander: normalizeCardList(commander),
     tags: placementMatch && Number(placementMatch[1]) <= 8 ? ["Top 8"] : [],
   };
 }
+
+let previousRequestAt = 0;
 
 export async function fetchText(url, {
   fetchImpl = globalThis.fetch,
@@ -201,12 +217,13 @@ export async function fetchText(url, {
   minDelayMs = 750,
   now = () => Date.now(),
   sleep = (duration) => new Promise((resolve) => setTimeout(resolve, duration)),
-  lastRequestAt = 0,
+  lastRequestAt = previousRequestAt,
 } = {}) {
   if (typeof fetchImpl !== "function") throw new Error("A fetch implementation is required");
   const remaining = Math.max(0, Number(minDelayMs) - (now() - Number(lastRequestAt || 0)));
   if (remaining) await sleep(remaining);
-  const response = await fetchImpl(url, { signal, headers: { "user-agent": "IronSmith deck catalog sync" } });
+  previousRequestAt = now();
+  const response = await fetchImpl(url, { signal: signal || AbortSignal.timeout(60_000), headers: { "user-agent": "IronSmith deck catalog sync" } });
   if (!response?.ok) throw new Error(`MTGTop8 request failed (${response?.status || "unknown"})`);
   return decodeResponseBody(new Uint8Array(await response.arrayBuffer()), response.headers?.get?.("content-type"));
 }

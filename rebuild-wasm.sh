@@ -145,7 +145,10 @@ Notes:
   - Development builds run wasm-opt -O1 on the engine so source compilation fits browser worker stacks.
   - --release optimizes all three modules at IRONSMITH_WASM_OPT_LEVEL.
   - Scryfall Default Cards are downloaded to $DEFAULT_CARDS_FILE when Scryfall publishes a newer bulk-data updated_at.
-  - Registry DB rows are inserted only for cards not already present; existing registry cards are not updated or pruned during this rebuild preflight.
+    Paper cards legal in a supported format are kept, plus unreleased paper cards Scryfall already previews
+    (marked "ironsmith_unreleased"; lobbies can opt into them with "Allow unreleased cards").
+  - The lobby format catalog (web/ui/src/lib/relay/format-catalog.generated.json) is rebuilt when cards.json changed.
+  - Registry DB rows are inserted for new cards and rewritten when a card's compile-relevant text (oracle text, type line, P/T, ...) changed in cards.json; changed cards are recompiled. Rows are never pruned during this rebuild preflight.
   - Cards without compilation status rows are compiled before frontend assets are generated.
   - Canonical card data and per-card semantic scores are loaded from the registry SQLite DB (default: $DEFAULT_DB_PATH).
   - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE and stores only compact threshold stats.
@@ -444,6 +447,35 @@ target.write_text("".join(f"{name}\n" for name in names), encoding="utf-8")
 PY
 }
 
+# The lobby's card-legality catalog (and its unreleased-card flags) is derived
+# from cards.json; rebuild it whenever cards.json changed since the last build.
+refresh_lobby_format_catalog() {
+  local catalog="$ROOT_DIR/web/ui/src/lib/relay/format-catalog.generated.json"
+  if ! command -v node >/dev/null 2>&1; then
+    echo "[WARN] node not found; lobby format catalog not refreshed: $catalog"
+    return 0
+  fi
+  if python3 - "$CARDS_FILE" "$catalog" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+cards, catalog = Path(sys.argv[1]), Path(sys.argv[2])
+try:
+    recorded = json.loads(catalog.read_text(encoding="utf-8")).get("sha256")
+except (OSError, json.JSONDecodeError):
+    sys.exit(1)
+sys.exit(0 if recorded == hashlib.sha256(cards.read_bytes()).hexdigest() else 1)
+PY
+  then
+    echo "[INFO] lobby format catalog already matches $CARDS_FILE"
+    return 0
+  fi
+  echo "[INFO] rebuilding lobby format catalog from $CARDS_FILE..."
+  (cd "$ROOT_DIR/web/ui" && IRONSMITH_CARDS_FILE="$CARDS_FILE" node scripts/build-format-catalog.mjs)
+}
+
 sync_scryfall_cards_for_rebuild() {
   local download_status_file
   local inserted_names_file
@@ -462,12 +494,13 @@ sync_scryfall_cards_for_rebuild() {
 [INFO] no registry DB yet: $DB_PATH
 [INFO] this first run downloads the Scryfall card list, registers every supported
 [INFO] card, and compiles a snapshot for each one. Expect it to take a while; later
-[INFO] runs only pick up cards the registry does not have yet.
+[INFO] runs only pick up new cards and cards whose oracle text changed.
 EOF
   fi
 
   download_status_file="$(mktemp "$ROOT_DIR/target/scryfall-download-status.XXXXXX")"
   inserted_names_file="$(mktemp "$ROOT_DIR/target/scryfall-inserted-card-names.XXXXXX")"
+  changed_names_file="$(mktemp "$ROOT_DIR/target/scryfall-changed-card-names.XXXXXX")"
   missing_status_names_file="$(mktemp "$ROOT_DIR/target/registry-cards-missing-status.XXXXXX")"
 
   echo "[INFO] checking Scryfall Default Cards freshness..."
@@ -492,32 +525,42 @@ EOF
       ;;
   esac
 
-  echo "[INFO] syncing registry DB with cards not already present..."
+  echo "[INFO] syncing registry DB with new cards and oracle text changes from $CARDS_FILE..."
   off_critical_path cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- \
     --cards "$CARDS_FILE" \
     --db-path "$DB_PATH" \
-    --insert-missing-only \
-    --inserted-names-out "$inserted_names_file"
+    --text-changes-only \
+    --inserted-names-out "$inserted_names_file" \
+    --changed-names-out "$changed_names_file"
 
   inserted_count="$(count_lines "$inserted_names_file")"
+  changed_count="$(count_lines "$changed_names_file")"
+  updated_count=$((changed_count - inserted_count))
   if [[ "$inserted_count" -gt 0 ]]; then
     echo "[INFO] registered $inserted_count new card(s) in the DB"
   else
     echo "[INFO] no new registry cards found"
   fi
+  if [[ "$updated_count" -gt 0 ]]; then
+    echo "[INFO] updated oracle text for $updated_count existing card(s) from $CARDS_FILE"
+  fi
 
+  # Cards whose registry text changed keep their old status rows, so they need
+  # recompiling alongside any card that never had a status row.
   write_registry_cards_missing_status_rows "$missing_status_names_file"
+  cat "$changed_names_file" >> "$missing_status_names_file"
+  sort -u -o "$missing_status_names_file" "$missing_status_names_file"
   missing_status_count="$(count_lines "$missing_status_names_file")"
   if [[ "$missing_status_count" -gt 0 ]]; then
-    echo "[INFO] compiling semantic snapshots for $missing_status_count card(s) without status rows..."
+    echo "[INFO] compiling semantic snapshots for $missing_status_count new, changed, or unscored card(s)..."
     cargo run --release -p ironsmith-tools --bin sync_card_status_db -- \
       --db-path "$DB_PATH" \
       --names-file "$missing_status_names_file"
   else
-    echo "[INFO] all registry cards already have compilation status rows"
+    echo "[INFO] all registry cards already have current compilation status rows"
   fi
 
-  rm -f "$download_status_file" "$inserted_names_file" "$missing_status_names_file"
+  rm -f "$download_status_file" "$inserted_names_file" "$changed_names_file" "$missing_status_names_file"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -821,6 +864,7 @@ if [[ "$(recorded_artifact_compiler_fingerprint)" != "$ARTIFACT_COMPILER_FINGERP
   start_artifact_baker_build
 fi
 sync_scryfall_cards_for_rebuild
+refresh_lobby_format_catalog
 if feature_enabled "generated-registry"; then
   report_wasm_build_settings
   start_wasm_cargo_build

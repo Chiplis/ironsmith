@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
-import { animate, cancelMotion, snappySpring } from "@/lib/motion/anime";
+import { cancelMotion, snappySpring } from "@/lib/motion/anime";
+import { animateEffect as animate } from "@/lib/motion/native-effects";
 
 const PARTICLE_COUNT = 14;
 

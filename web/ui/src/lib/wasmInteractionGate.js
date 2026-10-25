@@ -37,9 +37,9 @@ export function createWasmInteractionGate({
     // Continuations are not new clicks. Serialize them without waiting for or
     // extending the user-input cooldown.
     runAutomatic: (task) => run(task, { automatic: true }),
-    async runWhenReady(task, isCurrent = () => true) {
+    async runWhenReady(task, isCurrent = () => true, isReady = () => true) {
       while (isCurrent()) {
-        if (!isBlocked()) return run(task);
+        if (!isBlocked() && isReady()) return run(task);
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       return undefined;

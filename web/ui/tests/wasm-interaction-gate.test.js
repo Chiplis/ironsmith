@@ -2,6 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createWasmInteractionGate } from "../src/lib/wasmInteractionGate.js";
 
+test("queued loop commands wait for rendering and discard obsolete snapshots", async () => {
+  const gate = createWasmInteractionGate({ debounceMs: 0 });
+  let rendered = false;
+  let snapshot = 1;
+  const actions = [];
+  const first = gate.runWhenReady(() => actions.push("replay"), () => snapshot === 1, () => rendered);
+  assert.deepEqual(actions, []);
+  rendered = true;
+  await first;
+  assert.deepEqual(actions, ["replay"]);
+
+  rendered = false;
+  const stale = gate.runWhenReady(() => actions.push("stale replay"), () => snapshot === 1, () => rendered);
+  snapshot = 2; // Another action or loop cancellation replaces the snapshot.
+  rendered = true;
+  await stale;
+  assert.deepEqual(actions, ["replay"]);
+});
+
 test("queued planning and payment survive an in-flight action and its cooldown", async () => {
   let now = 0;
   const gate = createWasmInteractionGate({ now: () => now });

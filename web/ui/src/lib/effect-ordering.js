@@ -12,6 +12,7 @@ import { playerDisplayName } from "./player-display";
 function isReplacementChoice(decision) {
   if (decision?.kind !== "select_options" || (decision.options || []).length <= 1) return false;
   if (Number(decision.min ?? 1) !== 1 || Number(decision.max ?? 1) !== 1) return false;
+  if (decision.choice_kind) return decision.choice_kind === "replacement_effect";
   const reason = String(decision.reason || "").trim().toLowerCase();
   const description = String(decision.description || "").trim().toLowerCase();
   // Older snapshots also label text-change word and mana-color choices as
@@ -40,6 +41,7 @@ export function presentOptionalReplacementDecision(decision) {
   if (!choice) return decision;
   return {
     ...decision,
+    choice_kind: "boolean",
     reason: "May ability",
     description: `You may apply the replacement effect from ${choice.name}.`,
     source_id: choice.apply.object_id ?? decision.source_id,
@@ -62,7 +64,7 @@ export function isEffectOrderingDecision(decision) {
 export function buildEffectOrderingKey(decision) {
   if (!isEffectOrderingDecision(decision)) return "";
   return JSON.stringify([
-    decision.kind, decision.player, decision.reason, decision.description,
+    decision.kind, decision.choice_kind, decision.player, decision.reason, decision.description,
     decision.source_id, decision.context_text,
     (decision.options || []).map((option) => [
       option.index, option.description, option.object_id, option.related_object_ids,

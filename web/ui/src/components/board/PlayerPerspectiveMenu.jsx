@@ -82,7 +82,7 @@ export default function PlayerPerspectiveMenu({ label, players, currentId, onSel
         onClick={() => setOpen((value) => !value)}
       >
         <span className="player-header-perspective-label">{label}</span>
-        <span className={isActivePlayer ? "battlefield-name-text--active" : undefined}>{current?.name}</span>
+        <span className={isActivePlayer ? "battlefield-name-text--active" : undefined} data-name-active={isActivePlayer}>{current?.name}</span>
       </button>
       {open ? (
         <div popover="manual" ref={listRef} id={listId} className="player-header-perspective-menu" role="listbox" aria-label={label}>
