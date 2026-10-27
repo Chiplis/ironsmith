@@ -169,6 +169,8 @@ pub(super) fn custom_face(
     toughness: Option<&str>,
 ) -> CustomCardFaceInput {
     CustomCardFaceInput {
+        custom_keyword_identities: Vec::new(),
+        display_oracle_text: None,
         name: name.to_string(),
         mana_cost: None,
         color_indicator: Vec::new(),

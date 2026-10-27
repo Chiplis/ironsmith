@@ -1,6 +1,22 @@
 // Solid zone glyphs in the spirit of MTG Arena's zone counters: a stacked
 // deck, a headstone and an exile vortex. Each pairs with a count beside it.
 const ZONE_GLYPHS = {
+  battlefield: (
+    <>
+      <path d="M3 21V5h4v4h3V5h4v4h3V5h4v16z" />
+      <path d="M10 21v-5a2 2 0 0 1 4 0v5z" fill="var(--zone-icon-ink, #13110e)" />
+    </>
+  ),
+  hand: (
+    <>
+      <rect x="3" y="5" width="10" height="16" rx="1.5" transform="rotate(-18 8 13)" opacity=".5" />
+      <rect x="8" y="3" width="10" height="17" rx="1.5" opacity=".75" />
+      <rect x="12" y="5" width="9" height="16" rx="1.5" transform="rotate(18 16 13)" />
+    </>
+  ),
+  stack: (<path d="m12 2 10 5-10 5L2 7zm-10 9 10 5 10-5v3l-10 5-10-5zm0 7 10 5 10-5v-3l-10 5-10-5z" />),
+  ante: (<path d="M12 2 22 12 12 22 2 12zm0 5-5 5 5 5 5-5z" fillRule="evenodd" />),
+  sideboard: (<path d="M3 4h12v16H3zm14 4h4v12h-4z" />),
   library: (
     <>
       <rect x="3" y="6.5" width="12" height="15" rx="1.6" opacity="0.45" />

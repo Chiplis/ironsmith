@@ -49,6 +49,7 @@ impl EffectExecutor for ExertCostEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
+            if self.descriptive { return Ok(restriction); }
             crate::effects::composition::complete_keyword_action_with_result(
                 game,
                 ctx,

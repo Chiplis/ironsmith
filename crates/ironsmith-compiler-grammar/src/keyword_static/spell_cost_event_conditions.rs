@@ -45,6 +45,40 @@ fn opponent_effect() -> ironsmith_core::CauseFilter {
 
 pub(super) fn read(tokens: &[OwnedLexToken]) -> Option<ThisSpellCostCondition> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    // A completed cast belongs to its actor, including team membership. The
+    // price reader can reuse this condition for any named or unnamed mechanic.
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.starts_with(&["you", "dealt", "combat", "damage", "to", "a", "player", "this", "turn", "with"]) {
+        if words[10..] == ["a", "source", "that", "shares", "a", "creature", "type", "with", "this", "spell"] {
+            return Some(ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn);
+        }
+        let mut conditions = Vec::new();
+        for part in words[10..].split(|word| *word == "or") {
+            let [subtype] = part.strip_prefix(&["a"]).or_else(|| part.strip_prefix(&["an"])).unwrap_or(part) else { return None; };
+            conditions.push(ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
+                crate::util::parse_subtype_flexible(subtype)?,
+            ));
+        }
+        return match conditions.len() {
+            0 => None,
+            1 => conditions.pop(),
+            _ => Some(ThisSpellCostCondition::Any(conditions)),
+        };
+    }
+    if let Some(cast) = words.iter().position(|word| *word == "cast")
+        && matches!(&words[cast..], ["cast", "another" | "a", "spell", "this", "turn"])
+    {
+        let players: &[PlayerFilter] = match &words[..cast] {
+            ["you", "have"] | ["you"] => &[PlayerFilter::You],
+            ["a", "teammate", "has"] => &[PlayerFilter::Teammate],
+            ["you", "or", "a", "teammate", "has" | "have"] => &[PlayerFilter::You, PlayerFilter::Teammate],
+            _ => return None,
+        };
+        let condition = players.iter().map(|player| Condition::PlayerCastSpellsThisTurnOrMore {
+            player: player.clone(), count: 1,
+        }).reduce(|left, right| Condition::Or(Box::new(left), Box::new(right)))?;
+        return Some(ThisSpellCostCondition::ConditionExpr { condition, display: words.join(" ") });
+    }
     let (value, operator, threshold) = if tokens.len() > 2
         && (words_are(&tokens[tokens.len() - 2..], &["are", "attacking"])
             || words_are(&tokens[tokens.len() - 2..], &["is", "attacking"]))

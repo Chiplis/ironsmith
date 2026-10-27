@@ -275,6 +275,7 @@ fn construct_artifact_scaling_requires_explicit_rules_text() {
         dynamic,
         TokenDefinitionSpec::Construct(ConstructTokenShape {
             power_toughness: (0, 0),
+            snow: false,
             artifact_scaling: None,
         })
     ));
@@ -511,4 +512,41 @@ fn named_keywords_and_quoted_grants_do_not_set_intrinsic_keyword_flags() {
         "a 2/2 blue Human creature token with \"{T}: Target creature gains indestructible and double strike until end of turn.\"").unwrap()
     else { panic!("creature description"); };
     assert!(!shape.rules.indestructible && !shape.rules.double_strike && !shape.rules.first_strike);
+}
+
+#[test]
+fn creature_token_snow_is_owned_by_the_descriptor() {
+    for (description, snow, legendary) in [
+        (
+            "3/3 colorless snow Elephant creature token with trample",
+            true,
+            false,
+        ),
+        (
+            "legendary 3/3 colorless snow Elephant creature token",
+            true,
+            true,
+        ),
+        ("3/3 colorless Elephant creature token", false, false),
+        (
+            "3/3 colorless Elephant creature token with \"Whenever a snow permanent enters, its controller gains 1 life.\"",
+            false,
+            false,
+        ),
+    ] {
+        let TokenDefinitionSpec::Creature(shape) =
+            parse_token_definition_shape_text(description).unwrap()
+        else {
+            panic!("expected a creature token: {description}");
+        };
+        assert_eq!(shape.snow, snow, "{description}");
+        assert_eq!(shape.legendary, legendary, "{description}");
+    }
+    let TokenDefinitionSpec::Construct(shape) =
+        parse_token_definition_shape_text("0/0 colorless snow Construct artifact creature token")
+            .unwrap()
+    else {
+        panic!("expected a Construct token");
+    };
+    assert!(shape.snow);
 }

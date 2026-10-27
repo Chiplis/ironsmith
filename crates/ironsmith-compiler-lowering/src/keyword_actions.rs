@@ -135,11 +135,9 @@ pub fn apply_keyword_action(
             .expect("compiler-owned echo cost must materialize"),
             x_value,
         ),
-        KeywordAction::CumulativeUpkeep { total_cost, .. } => builder.cumulative_upkeep(
-            crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
-                &total_cost,
-            )
-            .expect("compiler-owned cumulative upkeep cost must materialize"),
+        KeywordAction::CumulativeUpkeep { total_cost, .. } => builder.cumulative_upkeep_effects(
+            crate::lowering::cost_materialization::lower_cumulative_upkeep_payment(&total_cost)
+                .expect("compiler-owned cumulative upkeep payment must lower"),
         ),
         KeywordAction::Casualty(amount) => builder.casualty(amount),
         KeywordAction::VariableCasualtyPlaneswalkerCopy => {

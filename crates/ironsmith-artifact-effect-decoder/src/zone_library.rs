@@ -57,7 +57,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "MoveToLibraryTopOrBottomChoiceEffect" => {
             decode_as::<ironsmith_core::MoveToLibraryTopOrBottomChoiceEffect>(payload).map(Some)
         }
-        "MoveToZoneEffect" => decode_as::<ironsmith_core::MoveToZoneEffect>(payload).map(Some),
+        "MoveToZoneEffect" => decode_as::<ironsmith_core::MoveToZoneEffect<wire::WireContinuousModification>>(payload).map(Some),
         "PutOntoBattlefieldEffect" => {
             decode_as::<ironsmith_core::PutOntoBattlefieldEffect>(payload).map(Some)
         }
@@ -242,7 +242,7 @@ pub(super) fn map_card_ids(
         >(payload, context)
         .map(Some),
         "MoveToZoneEffect" => {
-            super::card_graph::map_payload_as::<ironsmith_core::MoveToZoneEffect>(payload, context)
+            super::card_graph::map_payload_as::<ironsmith_core::MoveToZoneEffect<wire::WireContinuousModification>>(payload, context)
                 .map(Some)
         }
         "PutOntoBattlefieldEffect" => super::card_graph::map_payload_as::<

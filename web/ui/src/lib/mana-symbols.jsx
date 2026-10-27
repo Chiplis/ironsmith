@@ -1,11 +1,10 @@
 import { useI18n } from "@/i18n/I18nContext";
-import { localeCatalogs } from "@/i18n/catalog";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
 import { manaSymbolUrl } from './mana-assets.js';
 import { createContext, useContext } from "react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
-import { splitTextWithMtgKeywordRules } from "@/lib/mtg-keywords";
+import { getMtgKeywordHelp, splitTextWithMtgKeywordRules } from "@/lib/mtg-keywords";
 
 // Preserve unsupported symbols and arbitrary generic costs as readable text.
 function fallbackCircle(label, size) {
@@ -169,6 +168,17 @@ export function ManaSymbol({ sym, size = 14 }) {
 
   const source = manaSymbolUrl(key);
   if (source) {
+    if (key === 'T') {
+      const glyph = source.replace('/symbols/T.svg', '/svg/tap.svg');
+      return withTooltip(<span style={{ display: 'inline-block', position: 'relative', width: size, height: size, verticalAlign: '-0.15em' }}>
+        <img src={source} alt="" aria-hidden="true" width={size} height={size} />
+        <span className="ability-tap-symbol" style={{
+          position: 'absolute', inset: '15%', backgroundColor: 'currentColor',
+          mask: `url(${glyph}) center / contain no-repeat`,
+          WebkitMask: `url(${glyph}) center / contain no-repeat`,
+        }} aria-hidden="true" />
+      </span>);
+    }
     return withTooltip(<img src={source} alt="" aria-hidden="true" width={size} height={size}
       style={{ display: "inline-block", verticalAlign: "-0.15em" }} />);
   }
@@ -193,19 +203,24 @@ export function GameSymbolHelper({sym,children}) {
   return description?<ComicTooltip title={ui(description.title)} description={ui(description.description)}>{children}</ComicTooltip>:children;
 }
 
-export function KeywordHelperText({ text, rule, className='', style, children,respectContext=false }) {
+export function KeywordHelperText({ text, rule, className='', style, children,respectContext=false,context='' }) {
   const ui = useUiText();
   const { locale } = useI18n({ optional: true });
   const enabled=useContext(KeywordHelpersEnabledContext);
   if(respectContext&&!enabled)return null;
   if (!rule) return text;
-  const localizedRule = localeCatalogs[locale]?.rules?.[rule.id] || rule;
-  const title = `${localizedRule.title} (${rule.rule})`;
+  const help = getMtgKeywordHelp(text, rule, locale, context);
+  const title = rule.custom ? help.title : `${help.title} (${rule.rule})`;
 
   return (
     <ComicTooltip
       title={ui(title)}
-      description={localizedRule.summary}
+      description={rule.custom ? <SymbolText text={help.description} keywordHelpers={false} /> : help.reminder ? (
+        <span>
+          {help.reminder.ability && <span className="block mb-1"><SymbolText text={help.reminder.ability} keywordHelpers={false} /></span>}
+          <SymbolText className="block" text={help.description} keywordHelpers={false} />
+        </span>
+      ) : help.description}
       sideOffset={7}
       contentClassName="max-w-[300px]"
     >
@@ -214,7 +229,7 @@ export function KeywordHelperText({ text, rule, className='', style, children,re
         style={style}
         role="button"
         tabIndex={0}
-        aria-label={ui("{0} rules helper", { 0: localizedRule.title })}
+        aria-label={ui("{0} rules helper", { 0: help.title })}
         data-keyword-helper={rule.id}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
@@ -229,16 +244,19 @@ export function KeywordHelperText({ text, rule, className='', style, children,re
   );
 }
 
-function keywordTextParts(text, nextKey, keywordHelpersEnabled, locale) {
+function keywordTextParts(text, nextKey, keywordHelpersEnabled, locale, source = text, baseOffset = 0) {
   if (!keywordHelpersEnabled) return [text];
 
+  let offset = baseOffset;
   return splitTextWithMtgKeywordRules(text, locale).map((segment) => {
+    offset += segment.text.length;
     if (segment.type !== "keyword") return segment.text;
     return (
       <KeywordHelperText
         key={nextKey()}
         text={segment.text}
         rule={segment.rule}
+        context={source.slice(offset)}
       />
     );
   });
@@ -274,19 +292,21 @@ export function SymbolText({
   let last = 0;
   let key = 0;
   const nextKey = () => `keyword-${key++}`;
-  const appendText = (value) => {
+  const appendText = (value, offset) => {
     if (!value) return;
-    parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled, locale));
+    parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled, locale, text, offset));
   };
 
+  let sourceOffset = 0;
   const appendSegment = (segment) => {
     last = 0;
     for (const match of segment.matchAll(SYMBOL_RE)) {
-      if (match.index > last) appendText(segment.slice(last, match.index));
+      if (match.index > last) appendText(segment.slice(last, match.index), sourceOffset + last);
       parts.push(<ManaSymbol key={`symbol-${key++}`} sym={match[1]} size={symbolSize} />);
       last = match.index + match[0].length;
     }
-    if (last < segment.length) appendText(segment.slice(last));
+    if (last < segment.length) appendText(segment.slice(last), sourceOffset + last);
+    sourceOffset += segment.length;
   };
   // Reminder text is printed in italics, which also keeps translated reminder
   // paragraphs close to the room the printing gave them.

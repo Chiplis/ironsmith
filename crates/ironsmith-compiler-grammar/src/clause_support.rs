@@ -1187,6 +1187,8 @@ pub fn parse_linked_attack_group_combat_triggered_line_lexed(
 }
 
 pub fn parse_triggered_line_lexed(tokens: &[OwnedLexToken]) -> Result<LineAst, CardTextError> {
+    let tokens = crate::grammar::functional_zones::split_ability_function_exclusion(tokens)
+        .map_or(tokens, |(body, _)| body);
     let (tokens, trailing_cap) =
         crate::grammar::document_shapes::parse_trailing_trigger_cap_suffix_tokens(tokens)
             .map(|shape| {

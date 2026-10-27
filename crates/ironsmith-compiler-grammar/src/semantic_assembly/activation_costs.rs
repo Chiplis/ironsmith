@@ -191,6 +191,7 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
         ActivationCostSegmentCst::RevealChosenSubtype => CompilerCost::RevealChosenSubtype,
         ActivationCostSegmentCst::RevealChosenPlayer => CompilerCost::RevealChosenPlayer,
         ActivationCostSegmentCst::RevealSourceFromHand => CompilerCost::RevealSourceFromHand,
+        ActivationCostSegmentCst::RevealSourceFromHandUntilUpkeepEnds => CompilerCost::RevealSourceFromHandUntilUpkeepEnds,
         ActivationCostSegmentCst::RevealFromHand {
             count,
             color_filter,
@@ -228,8 +229,9 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
         ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard => {
             CompilerCost::MoveOpponentOwnedExiledCardToGraveyard
         }
-        ActivationCostSegmentCst::ExertSelf { display_text } => CompilerCost::ExertSelf {
+        ActivationCostSegmentCst::ExertSelf { display_text, descriptive } => CompilerCost::ExertSelf {
             display: display_text.clone(),
+            descriptive: *descriptive,
         },
         ActivationCostSegmentCst::PutCounters {
             counter_type,
@@ -294,6 +296,18 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             single_object: true,
             remove_all: *remove_all,
         },
+        ActivationCostSegmentCst::ReturnUnblockedAttacker => CompilerCost::ValidatedEffect(Box::new(
+            crate::model::ast::EffectAst::subject_verb(crate::model::ast::SubjectVerbRoleAst::Actor,
+                crate::model::PlayerAst::You, crate::model::ast::SubjectVerbActionAst::KeywordActions(
+                    crate::model::ast::KeywordActionAst::ReturnUnblockedAttackerForCost)))),
+        ActivationCostSegmentCst::ChooseControlledOrReveal { subtype } => CompilerCost::ValidatedEffect(Box::new(
+            crate::model::ast::EffectAst::subject_verb(
+                crate::model::ast::SubjectVerbRoleAst::Actor, crate::PlayerAst::You,
+                crate::model::ast::SubjectVerbActionAst::KeywordActions(crate::model::ast::KeywordActionAst::Behold {
+                    subtype: *subtype, count: 1, descriptive: true,
+                }),
+            ),
+        )),
         ActivationCostSegmentCst::Behold { subtype, count } => CompilerCost::Behold {
             subtype: *subtype,
             count: *count,

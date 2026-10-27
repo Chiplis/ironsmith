@@ -622,6 +622,9 @@ pub fn parse_payment_clause_as_total_cost(
         return Ok(None);
     }
 
+    if let Some(mana) = crate::grammar::activation_costs::parse_artifact_creature_tap_price(&trimmed)? {
+        return Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(mana))));
+    }
     if trimmed.first().is_some_and(|token| token.is_word("waterbend")) {
         let cst = crate::grammar::activation_costs::parse_activation_cost_tokens(&trimmed)?;
         let cost = crate::semantic_assembly::activation_costs::assemble_activation_cost(&cst)?;
@@ -2025,7 +2028,12 @@ mod tests {
 
     #[test]
     fn cumulative_upkeep_action_costs_are_not_mana_payment_or_keyword_markers() {
-        for text in ["Cumulative upkeep—Add {R}.", "Cumulative upkeep—Draw a card."] {
+        for text in [
+            "Cumulative upkeep—Add {R}.",
+            "Cumulative upkeep—Draw a card.",
+            "Cumulative upkeep - Create a 3/3 green snow Elephant creature token with trample",
+            "Cumulative upkeep—Create a 3/3 green snow Elephant creature token with trample.",
+        ] {
             let action = parse_ability_phrase(&lex(text)).expect("complete action cost");
             let KeywordAction::CumulativeUpkeep { total_cost, .. } = action else { panic!("typed upkeep action"); };
             assert!(matches!(total_cost.costs(), [crate::model::CompilerCost::ValidatedEffect(_)]), "action cost stays typed through lowering: {total_cost:?}");

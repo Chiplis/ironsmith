@@ -110,7 +110,7 @@ fn classify_object_filter_grammar_domain(tokens: &[OwnedLexToken]) -> ObjectFilt
                 | "abilities"
                 | "type"
                 | "types"
-                | "kicked"
+                | crate::keyword_forms::KICKED
                 | "freerunning"
                 | "convoke"
                 // A literal name is a reference, not a characteristic: the

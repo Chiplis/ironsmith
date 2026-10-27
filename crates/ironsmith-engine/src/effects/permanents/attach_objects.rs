@@ -1,9 +1,8 @@
 //! Attach arbitrary objects to a target object or player.
 
-use super::{
-    attach_battlefield_object_to_target, attachment_can_attach_to_target,
-    choose_color_as_becomes_attached,
-};
+use super::choose_color_as_becomes_attached;
+#[cfg(test)]
+use super::attach_battlefield_object_to_target;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
@@ -220,8 +219,8 @@ impl EffectExecutor for AttachObjectsEffect {
                         let candidates = candidate_ids
                             .into_iter()
                             .filter(|candidate_id| {
-                                attachment_can_attach_to_target(
-                                    game,
+                                super::attachment_can_attach_during_effect(
+                                    game, ctx,
                                     object_id,
                                     AttachmentTarget::Object(*candidate_id),
                                 )
@@ -258,7 +257,7 @@ impl EffectExecutor for AttachObjectsEffect {
 
             let mut attached_count = 0i32;
             for (object_id, target) in assignments.into_iter().flatten() {
-                if attach_battlefield_object_to_target(game, object_id, target) {
+                if super::attach_battlefield_object_during_effect(game, ctx, object_id, target) {
                     choose_color_as_becomes_attached(game, ctx, object_id, target);
                     attached_count += 1;
                 }
@@ -284,14 +283,14 @@ impl EffectExecutor for AttachObjectsEffect {
         let mut attempted_source = false;
         for object_id in object_ids {
             attempted_source |= object_id == ctx.source;
-            if attach_battlefield_object_to_target(game, object_id, target) {
+            if super::attach_battlefield_object_during_effect(game, ctx, object_id, target) {
                 choose_color_as_becomes_attached(game, ctx, object_id, target);
                 attached_count += 1;
             }
         }
         if attached_count == 0
             && !attempted_source
-            && attach_battlefield_object_to_target(game, ctx.source, target)
+            && super::attach_battlefield_object_during_effect(game, ctx, ctx.source, target)
         {
             choose_color_as_becomes_attached(game, ctx, ctx.source, target);
             attached_count += 1;

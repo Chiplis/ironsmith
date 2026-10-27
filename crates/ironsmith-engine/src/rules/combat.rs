@@ -889,6 +889,11 @@ pub fn must_block_with_game(creature: &Object, game: &crate::game_state::GameSta
 /// Check if a creature has vigilance (doesn't tap to attack).
 pub fn has_vigilance(creature: &Object) -> bool {
     creature.has_static_ability_id(StaticAbilityId::Vigilance)
+        || creature.abilities.iter().any(|ability| {
+            ability.functions_in(&creature.zone)
+                && matches!(&ability.kind, crate::ability::AbilityKind::Static(ability)
+                    if ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::AttackingDoesNotCauseTap))
+        })
 }
 
 /// Check if a creature has vigilance (doesn't tap to attack), with continuous effects applied.
@@ -899,6 +904,9 @@ pub fn has_vigilance_with_game(creature: &Object, game: &crate::game_state::Game
 
 pub(crate) fn has_vigilance_with_view(creature: &Object, view: &DerivedGameView<'_>) -> bool {
     view.object_has_static_ability_id(creature.id, StaticAbilityId::Vigilance)
+        || view.object_has_keyword_marker_mechanic(
+            creature.id, ironsmith_core::KeywordMarkerMechanic::AttackingDoesNotCauseTap,
+        )
 }
 
 /// Check if a creature has first strike.
@@ -913,14 +921,16 @@ pub fn has_double_strike(creature: &Object) -> bool {
 
 /// Check if a creature deals damage in the first strike damage step.
 pub fn deals_first_strike_damage(creature: &Object) -> bool {
-    has_first_strike(creature) || has_double_strike(creature)
+    get_static_abilities(creature).iter().any(|ability| ability.deals_damage_in_first_step())
 }
 
 /// Check if a creature deals damage in the regular combat damage step.
 pub fn deals_regular_combat_damage(creature: &Object) -> bool {
     // Double strike deals in both steps
     // First strike only deals in first strike step
-    !has_first_strike(creature) || has_double_strike(creature)
+    let abilities = get_static_abilities(creature);
+    !abilities.iter().any(|ability| ability.deals_damage_in_first_step())
+        || abilities.iter().any(|ability| ability.deals_damage_in_both_steps())
 }
 
 /// Check if a creature deals first strike damage, considering continuous effects.
@@ -937,7 +947,7 @@ pub fn deals_first_strike_damage_with_game(
 
     abilities
         .iter()
-        .any(|a| a.id() == StaticAbilityId::FirstStrike || a.id() == StaticAbilityId::DoubleStrike)
+        .any(|a| a.deals_damage_in_first_step())
 }
 
 /// Check if a creature deals regular combat damage, considering continuous effects.
@@ -954,14 +964,20 @@ pub fn deals_regular_combat_damage_with_game(
 
     let has_first_strike = abilities
         .iter()
-        .any(|a| a.id() == StaticAbilityId::FirstStrike);
+        .any(|a| a.deals_damage_in_first_step());
     let has_double_strike = abilities
         .iter()
-        .any(|a| a.id() == StaticAbilityId::DoubleStrike);
+        .any(|a| a.deals_damage_in_both_steps());
 
     // Double strike deals in both steps
     // First strike only deals in first strike step
     !has_first_strike || has_double_strike
+}
+
+pub fn deals_both_combat_damage_steps_with_game(creature: &Object, game: &crate::game_state::GameState) -> bool {
+    let abilities = game.calculated_characteristics(creature.id)
+        .map(|c| c.static_abilities).unwrap_or_else(|| get_static_abilities(creature).into());
+    abilities.iter().any(|ability| ability.deals_damage_in_both_steps())
 }
 
 #[cfg(test)]

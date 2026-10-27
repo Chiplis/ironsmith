@@ -115,6 +115,8 @@ pub(crate) fn rewrite_static_model_words(
 ) -> Result<CompiledStaticAbility, Error> {
     let mut rewritten = model.clone();
     match &mut rewritten.payload {
+        // Keyword names are identities, not color/type words in rules text.
+        P::CustomKeywordIdentity { .. } => {},
         P::DevotionIncrease { .. } => {}
         P::CommanderPairing { .. } => {}
         P::DeckConstructionCopyLimit { .. } => {}
@@ -242,7 +244,10 @@ pub(crate) fn rewrite_static_model_words(
             // from strings. Only the newer closed timing enum is complete.
             if kind.timing.is_none() { return Err(hold(model)); }
         }
-        P::ThisSpellXMaximum { maximum, .. } => *maximum = rewrite_value_words(maximum, change)?,
+        P::ThisSpellXMaximum { maximum, definition, .. } => {
+            *maximum = rewrite_value_words(maximum, change)?;
+            if let Some(value) = definition { *value = rewrite_value_words(value, change)?; }
+        },
         P::ThisSpellXMinimum { minimum, .. } => *minimum = rewrite_value_words(minimum, change)?,
         P::DieRollResultAdjustment(spec) => {
             if (spec.reroll && (spec.life_cost != 0 || spec.amount != 0 || spec.mana_cost.is_none()))
@@ -720,7 +725,7 @@ fn spell_cost_condition_words(condition: &mut ThisSpellCostCondition, change: Te
         | C::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(subtype) => {
             change.replace_subtype_word(subtype);
         }
-        C::All(conditions) => {
+        C::All(conditions) | C::Any(conditions) => {
             for condition in conditions {
                 spell_cost_condition_words(condition, change)?;
             }

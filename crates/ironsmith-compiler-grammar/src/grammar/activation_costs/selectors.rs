@@ -25,6 +25,9 @@ pub fn parse_activation_choice_prefix_tokens(
     if let Some((count, rest)) =
         primitives::parse_prefix(tokens, leaf::parse_leaf_choice_count_prefix_lexed)
     {
+        let (count, rest) = if rest.first().is_some_and(|t| t.is_word("or")) && rest.get(1).is_some_and(|t| t.is_word("more")) {
+            (ChoiceCount { max: None, ..count }, &rest[2..])
+        } else { (count, rest) };
         return Some(ActivationChoicePrefix { count, rest });
     }
     Some(ActivationChoicePrefix {

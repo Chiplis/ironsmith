@@ -17,6 +17,7 @@ use crate::triggers::TriggerEvent;
 pub struct VentureIntoDungeonEffect {
     pub player: PlayerFilter,
     pub undercity_if_no_active: bool,
+    pub descriptive: bool,
 }
 
 impl VentureIntoDungeonEffect {
@@ -24,6 +25,7 @@ impl VentureIntoDungeonEffect {
         Self {
             player,
             undercity_if_no_active: false,
+            descriptive: false,
         }
     }
 
@@ -31,6 +33,7 @@ impl VentureIntoDungeonEffect {
         Self {
             player,
             undercity_if_no_active: true,
+            descriptive: false,
         }
     }
 }
@@ -216,11 +219,12 @@ pub(crate) fn advance_player_dungeon(
     ctx: &mut ExecutionContext,
     player_id: PlayerId,
     undercity_if_no_active: bool,
+    descriptive: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
     // "can't venture into the dungeon more than once each turn" (Keen-Eared
     // Sentry): a second venture this turn does nothing, whether instructed
     // directly or through the initiative (CR 701.49).
-    if !game.can_venture_into_dungeon(player_id) {
+    if !descriptive && !game.can_venture_into_dungeon(player_id) {
         return Ok(EffectOutcome::count(0));
     }
     crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
@@ -276,6 +280,14 @@ pub(crate) fn advance_player_dungeon(
             player_id,
             ActiveDungeonProgress::new(dungeon_name.clone(), room_name.clone()),
         );
+        if descriptive {
+            let room_event = TriggerEvent::new(crate::events::other::DungeonRoomEnteredEvent {
+                source: ctx.source, player: player_id, dungeon: dungeon_name.clone(), room: room_name.clone(),
+            }, Default::default());
+            queue_room_ability(game, player_id, &dungeon_name, &room_name, room_event.clone());
+            outcome.events.push(room_event);
+            return Ok(outcome);
+        }
         let completion = crate::effects::composition::complete_keyword_action(
             game,
             ctx,
@@ -316,7 +328,7 @@ impl EffectExecutor for VentureIntoDungeonEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        advance_player_dungeon(game, ctx, player_id, self.undercity_if_no_active)
+        advance_player_dungeon(game, ctx, player_id, self.undercity_if_no_active, self.descriptive)
     }
 }
 

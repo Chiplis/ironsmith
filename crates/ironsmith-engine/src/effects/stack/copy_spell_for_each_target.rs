@@ -82,7 +82,7 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
         // nor for both a target and "another target", so a copy whose targets
         // must all be one object can't exist then.
         if slots.iter().any(|slot| slot.range.len() > 1)
-            || slots.iter().any(|slot| slot.excludes_prior_object_targets)
+            || slots.iter().any(|slot| slot.excludes_prior_same_kind_targets)
         {
             return Ok(EffectOutcome::resolved());
         }

@@ -10538,7 +10538,8 @@ pub(super) fn describe_ninjutsu_activation(
     ability: &Ability,
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<String> {
-    if ability.functional_zones != [Zone::Hand]
+    if activated.keyword != Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu)
+        || ability.functional_zones != [Zone::Hand]
         || !activated.choices.is_empty()
         || !matches!(activated.timing, ActivationTiming::DuringCombat)
         || !activated.additional_restrictions.is_empty()
@@ -12061,6 +12062,9 @@ pub(crate) fn describe_static_ability_with_subject(
         static_ability.compiled_model().map(|model| &model.payload),
         Some(ironsmith_core::StaticAbilityPayload::Companion(_))
     ) {
+        if static_ability.id() != crate::static_abilities::StaticAbilityId::Companion {
+            return static_ability.display();
+        }
         return format!(
             "Companion — {}",
             capitalize_first(static_ability.display().trim())
@@ -12108,7 +12112,7 @@ pub(crate) fn describe_static_ability_with_subject(
             &model.payload
         && grant.condition.is_none()
         && grant.additional_abilities.is_empty()
-        && grant.ability.functional_zones.as_slice() == [Zone::Battlefield]
+        && crate::compiled_text::ast_render::granted_functions_on_battlefield(&grant.ability)
         && let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind
         && granted.id == Some(crate::static_abilities::StaticAbilityId::CanBlockAsThoughUntapped)
     {
@@ -12134,7 +12138,7 @@ pub(crate) fn describe_static_ability_with_subject(
         && grant.condition.is_none()
         && grant.additional_abilities.is_empty()
         && grant.set_quantifier_surface.is_none()
-        && grant.ability.functional_zones.as_slice() == [Zone::Battlefield]
+        && crate::compiled_text::ast_render::granted_functions_on_battlefield(&grant.ability)
         && matches!(
             &grant.ability.kind,
             ironsmith_core::AbilityKind::Triggered(_)
@@ -12173,6 +12177,7 @@ pub(crate) fn describe_static_ability_with_subject(
         if !also_turns_face_up
             && !turns_face_up_only
             && transforms_into.is_none()
+            && matches!(presentation_label, Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Riot)))
             && let Some(riot) = describe_structural_riot_program(program)
         {
             return riot;
@@ -18660,7 +18665,7 @@ pub(super) fn describe_kamiz_relational_attacker_sequence(
     let connive = connived
         .effect
         .downcast_ref::<crate::effects::ConniveEffect>()?;
-    if connive.target != ChooseSpec::Tagged(targeted.tag.clone())
+    if connive.descriptive || connive.target != ChooseSpec::Tagged(targeted.tag.clone())
         || connive.count != crate::effect::Value::Fixed(1)
     {
         return None;
@@ -18748,7 +18753,7 @@ fn describe_named_source_explore_then_exact_power_destruction(
         return None;
     };
     let explore = structural_unwrap_render_wrappers(explore_root)
-        .downcast_ref::<crate::effects::ExploreEffect>()?;
+        .downcast_ref::<crate::effects::ExploreEffect>().filter(|effect| !effect.descriptive)?;
     let surface = explore.target.source_reference_surface()?;
     if !matches!(
         surface,
@@ -18818,7 +18823,7 @@ pub(super) fn describe_triggered_inline_ability(
             triggered.effects.flattened_default_effects(),
             [effect] if effect
                 .downcast_ref::<crate::effects::HauntExileEffect>()
-                .is_some()
+                .is_some_and(|link| !link.descriptive)
         )
     {
         return "Haunt".to_string();

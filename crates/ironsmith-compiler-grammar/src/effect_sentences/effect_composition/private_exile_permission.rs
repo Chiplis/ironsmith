@@ -5,19 +5,45 @@ use super::*;
 pub(super) fn parse_private_exile_inspection_bundle(
     sentences: &[&[OwnedLexToken]],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let [exile, inspection] = sentences else { return Ok(None); };
+    let [exile, inspection, remaining @ ..] = sentences else { return Ok(None); };
     let Some(mut inspection) = crate::permission_helpers::parse_look_tagged_exile_permission(inspection)? else { return Ok(None); };
     let mut effects = effect_sentences::parse_effect_sentence_lexed(exile)?;
-    if !matches!(effects.as_slice(), [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { face_down: true, .. }), ..
-    })]) { return Ok(None); }
     let tag = helper_tag_for_tokens(exile, "exiled");
+    // A preceding draw does not own "that card". Capture only the final
+    // face-down exile instruction's actual arrivals, including in a chain.
+    fn capture_last(effect: &mut EffectAst, tag: &crate::tag::TagRef) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { face_down: true, .. }), ..
+            }) => {
+                *effect = EffectAst::TagAffected {
+                    effect: Box::new(effect.clone()), tag: tag.clone(),
+                };
+                true
+            }
+            EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. }
+            | EffectAst::CommaThen { effects } => {
+                effects.last_mut().is_some_and(|effect| capture_last(effect, tag))
+            }
+            _ => false,
+        }
+    }
+    if !effects.last_mut().is_some_and(|effect| capture_last(effect, &tag)) {
+        return Ok(None);
+    }
     let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::RevealLook(
         RevealLookActionAst::LookAtObjects { filter, .. }), .. }) = &mut inspection else { return Ok(None); };
-    filter.tagged_constraints[0].tag = tag.clone().into();
-    Ok(Some(vec![EffectAst::TagAffected {
-        effect: Box::new(effects.remove(0)), tag: crate::tag::TagRef::of(tag),
-    }, inspection]))
+    filter.tagged_constraints[0].tag = tag.into();
+    effects.push(inspection);
+    if !remaining.is_empty() {
+        let mut continuation = Vec::new();
+        for sentence in remaining {
+            continuation.extend_from_slice(sentence);
+            continuation.push(OwnedLexToken::period(TextSpan::synthetic()));
+        }
+        effects.extend(effect_sentences::parse_effect_sentences_lexed(&continuation)?);
+    }
+    Ok(Some(effects))
 }
 
 /// Keep exact-card readers inside the optional producer's result branch.

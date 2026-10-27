@@ -5181,6 +5181,13 @@ impl CustomCardLayoutInput {
 #[serde(rename_all = "camelCase")]
 struct CustomCardFaceInput {
     name: String,
+    /// Executable custom keyword identities; their rules are compiled from
+    /// oracle_text independently of these names.
+    #[serde(default)]
+    custom_keyword_identities: Vec<String>,
+    /// Authored custom-mechanic surface, separate from its strictly compiled expansion.
+    #[serde(default)]
+    display_oracle_text: Option<String>,
     #[serde(default)]
     mana_cost: Option<String>,
     #[serde(default)]

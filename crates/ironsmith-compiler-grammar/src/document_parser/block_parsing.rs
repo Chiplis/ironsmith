@@ -87,7 +87,7 @@ fn try_parse_tiered_shared_body_block(
     line: &PreprocessedLine,
     normalized_header: &str,
 ) -> Result<Option<(RecognizedLine, usize)>, CardTextError> {
-    if !crate::string_primitives::starts_with(normalized_header, "tiered") {
+    if !crate::string_primitives::starts_with(normalized_header, "tiered") && normalized_header.trim_end_matches('.') != "choose one additional cost" {
         return Ok(None);
     }
     let (Some(PreprocessedItem::Line(body)), Some(PreprocessedItem::Line(first_tier))) =
@@ -287,7 +287,7 @@ pub(super) fn try_parse_modal_bullet_block(
     if let Some(block) = try_parse_tiered_shared_body_block(preprocessed, idx, line, &normalized_header)? {
         return Ok(Some(block));
     }
-    let spree_header = crate::string_primitives::starts_with(&normalized_header, "spree");
+    let spree_header = crate::string_primitives::starts_with(&normalized_header, "spree") || normalized_header.trim_end_matches('.') == "choose one or more additional costs";
     let next_line_is_mode = preprocessed
         .items
         .get(idx + 1)

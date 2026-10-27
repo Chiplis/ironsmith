@@ -44,7 +44,8 @@ impl EffectExecutor for RegisterNextBatchEnterAsCopyEffect {
                 set_base_power_toughness: None,
                 copy_followups: Vec::new(),
             },
-        );
+        )
+        .with_priority_override(crate::events::ReplacementPriority::CopyEffect);
         game.effect_store
             .replacement_effects
             .add_batch_one_shot_effect(replacement);

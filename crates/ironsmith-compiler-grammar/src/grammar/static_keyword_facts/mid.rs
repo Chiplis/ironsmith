@@ -310,11 +310,11 @@ const KNOWN_CONDITION_PHRASES: &[(&[&[&str]], KnownSpellCostConditionFact)] = &[
     ),
     (
         &[
-            &["its", "bargained"],
-            &["it's", "bargained"],
-            &["it", "is", "bargained"],
-            &["this", "spell", "is", "bargained"],
-            &["this", "spell", "was", "bargained"],
+            &["its", crate::keyword_forms::BARGAINED],
+            &["it's", crate::keyword_forms::BARGAINED],
+            &["it", "is", crate::keyword_forms::BARGAINED],
+            &["this", "spell", "is", crate::keyword_forms::BARGAINED],
+            &["this", "spell", "was", crate::keyword_forms::BARGAINED],
         ],
         KnownSpellCostConditionFact::Bargained,
     ),

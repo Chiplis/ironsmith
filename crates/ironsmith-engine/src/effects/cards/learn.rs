@@ -15,10 +15,9 @@ pub type LearnEffect = ironsmith_core::LearnEffect;
 
 const LEARN_LESSON_TAG: &str = "__learn_lesson";
 
-fn learn_body() -> Effect {
+fn learn_body(filter: Option<&ObjectFilter>) -> Effect {
     use crate::effects::composition::{OutcomeBranchProgram, OutcomeBranchTest};
-    let lesson_filter = ObjectFilter::default()
-        .with_subtype(Subtype::Lesson)
+    let lesson_filter = filter.cloned().unwrap_or_else(|| ObjectFilter::default().with_subtype(Subtype::Lesson))
         .owned_by(PlayerFilter::You)
         .in_zone(Zone::OutsideGame);
     let lesson = Effect::new(OutcomeBranchProgram {
@@ -46,7 +45,7 @@ fn learn_body() -> Effect {
 
 impl EffectExecutor for LearnEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
-        visitor(&learn_body());
+        visitor(&learn_body(self.outside_card_filter.as_ref()));
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -67,6 +66,9 @@ impl EffectExecutor for LearnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        if let Some(filter) = &self.outside_card_filter {
+            return learn_body(Some(filter)).0.execute_child_with_outputs(game, ctx);
+        }
         crate::effects::composition::execute_transaction(
             game,
             ctx,
@@ -88,7 +90,7 @@ impl EffectExecutor for LearnEffect {
                     crate::effects::composition::KeywordActionOutput::Body,
                     crate::effects::composition::KeywordActionAmount::Repetitions,
                     |game, ctx, action| {
-                        let outputs = learn_body().0.execute_child_with_outputs(game, ctx)?;
+                        let outputs = learn_body(None).0.execute_child_with_outputs(game, ctx)?;
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                                 EffectOutcome::count(0),

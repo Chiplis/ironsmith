@@ -168,7 +168,7 @@ fn unearth_arrival_program(new_id: crate::ids::ObjectId, controller: crate::ids:
         vec![new_id],
         PlayerFilter::Specific(controller),
     );
-    vec![Effect::new(haste_effect), Effect::new(ApplyReplacementEffect::one_shot(replacement)), Effect::new(schedule)]
+    vec![Effect::new(haste_effect), Effect::new(ApplyReplacementEffect::resolution(replacement)), Effect::new(schedule)]
 }
 
 #[cfg(test)]
@@ -228,14 +228,7 @@ mod tests {
             1,
             "unearthed card should have next end-step exile trigger"
         );
-        assert_eq!(
-            game.effect_store
-                .replacement_effects
-                .one_shot_effects_snapshot()
-                .len(),
-            1,
-            "unearthed card should register one-shot leave-battlefield replacement"
-        );
+        assert!(game.object_has_ability(returned_id, &StaticAbility::haste()));
     }
 
     #[test]
@@ -257,6 +250,8 @@ mod tests {
             .object(returned_id)
             .expect("returned object should exist")
             .stable_id;
+
+        crate::turn::try_execute_cleanup_step(&mut game).expect("cleanup succeeds");
 
         let mut move_ctx = ExecutionContext::new_default(game.new_object_id(), alice);
         let move_to_hand = Effect::new(MoveToZoneEffect::new(

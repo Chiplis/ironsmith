@@ -73,7 +73,7 @@ pub(crate) fn granted_madness_route(
         .iter()
         .enumerate()
         .find_map(|(offset, grant)| {
-            let cost = grant.method.madness_cost()?.clone();
+            let cost = grant.method.discard_exile_cast_cost()?.clone();
             Some((
                 CastingMethod::PlayFrom {
                     source: grant.source_id,
@@ -117,12 +117,8 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
             .alternative_casts
             .iter()
             .enumerate()
-            .find_map(|(index, method)| match method {
-                crate::alternative_cast::AlternativeCastingMethod::Madness { total_cost } => {
-                    Some((CastingMethod::Alternative(index), total_cost.clone()))
-                }
-                _ => None,
-            });
+            .find_map(|(index, method)| method.discard_exile_cast_cost()
+                .map(|cost| (CastingMethod::Alternative(index), cost.clone())));
         // A printed madness ability, else one granted to the card while it
         // is in exile.
         let Some((casting_method, madness_cost)) =

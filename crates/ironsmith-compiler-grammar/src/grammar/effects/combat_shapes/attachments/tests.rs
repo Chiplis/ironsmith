@@ -3,6 +3,16 @@ use crate::lexer::{lex_line, parser_token_word_refs};
 use super::*;
 
 #[test]
+fn attachment_reminder_uses_source_without_changing_target_requirements() {
+    let tokens = lex_line("to target creature you control", 0).unwrap();
+    let CombatAttachClauseShape::ImplicitSource { target_tokens } =
+        parse_combat_attach_clause_shape_lexed(&tokens).unwrap()
+    else { panic!("expected source attachment") };
+    assert_eq!(parser_token_word_refs(target_tokens), ["target", "creature", "you", "control"]);
+    assert!(parse_combat_attach_clause_shape_lexed(&lex_line("to", 0).unwrap()).is_err());
+}
+
+#[test]
 fn parses_attachment_clause_shapes() {
     let tokens = lex_line("that equipment to target creature", 0).unwrap();
     let CombatAttachClauseShape::Standard {

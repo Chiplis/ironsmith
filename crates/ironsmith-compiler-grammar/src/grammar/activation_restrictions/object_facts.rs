@@ -46,7 +46,7 @@ pub enum TargetRestrictionEnvelope {
     },
     /// "spells or abilities your opponents control" (`opponents`) or
     /// "spells or abilities you control".
-    ControlledSpellsOrAbilities { opponents: bool },
+    ControlledSpellsOrAbilities { opponents: bool, descriptors: Option<Range<usize>> },
     SpellsOrAbilities,
     SourceAbility { full_source_tokens: Range<usize> },
     AbilitiesFrom { source_descriptor_tokens: Range<usize> },
@@ -204,17 +204,22 @@ pub fn parse_target_restriction_envelope_tokens(
     {
         return None;
     }
-    if words.get(4..7) == Some(&["spells", "or", "abilities"][..]) {
-        if words.len() == 7 {
+    if let Some(marker) = words.windows(3).position(|w| w == ["spells", "or", "abilities"])
+        && marker >= 4
+    {
+        if words.len() == marker + 3 && marker == 4 {
             return Some(TargetRestrictionEnvelope::SpellsOrAbilities);
         }
-        let opponents = match words.get(7..) {
+        let opponents = match words.get(marker + 3..) {
             Some(["your", "opponents", "control"]) => Some(true),
             Some(["you", "control"]) => Some(false),
             _ => None,
         };
         if let Some(opponents) = opponents {
-            return Some(TargetRestrictionEnvelope::ControlledSpellsOrAbilities { opponents });
+            let descriptors = if marker == 4 { None } else {
+                Some(token_range_for_words(tokens, &view, 4..marker)?)
+            };
+            return Some(TargetRestrictionEnvelope::ControlledSpellsOrAbilities { opponents, descriptors });
         }
     }
 
@@ -306,7 +311,7 @@ pub fn parse_target_restriction_envelope_tokens(
 }
 
 pub fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedObjectTailShape> {
-    if exact(words, &["become", "suspected"]) {
+    if exact(words, &["become", crate::keyword_forms::SUSPECTED]) {
         Some(NegatedObjectTailShape::BecomeSuspected)
     } else if exact(words, &["attack", "you"]) {
         // "can't attack you" leaves the player's planeswalkers attackable —

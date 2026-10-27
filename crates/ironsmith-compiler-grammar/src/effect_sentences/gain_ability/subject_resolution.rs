@@ -42,7 +42,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         // "..."". The goad state cannot itself be a grant subject, so restore
         // the pronoun subject for the grant half.
         if pronoun_state_head
-            && words.iter().any(|word| *word == "goaded")
+            && words.iter().any(|word| *word == crate::keyword_forms::GOADED)
             && let Some(gain_idx) = (2..tokens.len())
                 .find(|&idx| tokens[idx].is_any_word(&["gains", "gain"]))
             && tokens[gain_idx - 1].is_word("game")

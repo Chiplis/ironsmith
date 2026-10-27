@@ -146,7 +146,7 @@ async function planArrival({ entry, state, inspectId, owner, pileNode }) {
   }
   const origin = await castOrigin(entry.name);
   const from = origin?.point || origin?.rect || zoneRect(state, controller, "hand");
-  return { from, style: "star", accentRgb: ZONE_ACCENTS.hand };
+  return { from, style: "star", accentRgb: ZONE_ACCENTS.hand, durationScale: origin?.rect ? 0.5 : 1 };
 }
 
 function nodeCenterRect(node) {
@@ -247,7 +247,7 @@ export function playArrival({ node, entry, state, inspectId, owner, rgb, pileNod
       shockwave({ at: plan.from, rgb, radius: 46, duration: 420 });
       burst({ at: plan.from, rgb, accentRgb: plan.accentRgb, kind: "impact", count: 22 });
     }
-    await launchComet({ from: plan.from, to: nodeCenterRect(node), rgb, accentRgb: plan.accentRgb, style: plan.style });
+    await launchComet({ from: plan.from, to: nodeCenterRect(node), rgb, accentRgb: plan.accentRgb, style: plan.style, durationScale: plan.durationScale });
     if (cancelled) return;
     window.clearTimeout(watchdog);
     onMotion(materialize(node, rgb, { onComplete: finishArrival }));

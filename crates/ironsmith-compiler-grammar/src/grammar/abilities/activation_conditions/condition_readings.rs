@@ -342,6 +342,7 @@ fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
         )),
         PredicateAst::Triggering(_)
         | PredicateAst::ItIsLandCard
+        | PredicateAst::UnpairedCreaturesCanPair
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::TargetMatches(_)

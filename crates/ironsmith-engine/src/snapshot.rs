@@ -364,6 +364,51 @@ impl CopiableValues {
         }
     }
 
+    /// Printed linked characteristics are part of the copy envelope. A frozen
+    /// copy already supplies its own envelope, including the absence of a half.
+    pub(crate) fn from_object_with_linked_face(
+        object: &Object,
+        game: &crate::game_state::GameState,
+    ) -> Self {
+        let mut values = if game.is_room_fully_unlocked(object.id) {
+            object.split_combined.as_ref().and_then(|combined| combined.unfused_half.as_deref())
+                .cloned().unwrap_or_else(|| Self::from_object(object))
+        } else { Self::from_object(object) };
+        if object.copied_face_values.is_some() || object.face_down_cast_state.is_some() {
+            return values;
+        }
+        let Some(other) = game.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(), object.other_face,
+        ) else { return values; };
+        if !matches!(object.linked_face_layout,
+            LinkedFaceLayout::Flip | LinkedFaceLayout::Split
+                | LinkedFaceLayout::Prepare | LinkedFaceLayout::TransformLike)
+            && !other.card.subtypes.contains(&Subtype::Adventure)
+        {
+            return values;
+        }
+        values.copy_face_layout = object.linked_face_layout;
+        let other = Object::from_card_definition(
+            ObjectId::from_raw(0), &other, object.owner, object.zone,
+        );
+        let mut other_values = Self::from_object(&other);
+        // CR 710.1c: flipped characteristics keep the normal cost and color.
+        if object.linked_face_layout == LinkedFaceLayout::Flip {
+            other_values.mana_cost = values.mana_cost.clone();
+            other_values.colors = values.colors;
+        }
+        if let Some(merged) = game.merged_permanent(object.stable_id) {
+            for component in merged.components.iter().skip(1).filter(|component| !component.face_down) {
+                Arc::make_mut(&mut other_values.abilities).extend(component.object.abilities.iter().cloned());
+                other_values.ability_labels.extend(component.object.ability_labels.iter().cloned());
+                other_values.alternative_casts.extend(component.object.alternative_casts.iter().cloned());
+                other_values.optional_costs.extend(component.object.optional_costs.iter().cloned());
+            }
+        }
+        values.other_copy_face = Some(Box::new(other_values));
+        values
+    }
+
     /// Copy a retained spell as it last existed on the stack. Unlike a
     /// permanent-copy capture, Bestow's cast overlay is part of this envelope.
     /// Live spell owners first freeze layer 1; this adapter then preserves
@@ -868,7 +913,7 @@ impl ObjectSnapshot {
             numeric_choice_memory: Some(Arc::new(game.numeric_choice_memory(obj.id))),
             chosen_object: game.chosen_object(obj.id).cloned().map(Box::new),
             secret_chosen_subtype: game.secret_subtype_snapshot(obj.id),
-            copiable_values: CopiableValues::from_object(obj),
+            copiable_values: CopiableValues::from_object_with_linked_face(obj, game),
             revealed_cast_definition: None,
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),

@@ -626,11 +626,15 @@ mod tests {
             assert_eq!(effects.len(), 1);
             let matcher = effects[0].matcher.as_ref().unwrap();
             let ctx = crate::events::EventContext::for_replacement_effect(request.payer, request.source, &game);
-            let mut draw = crate::events::DrawEvent::new(request.payer, 1, true);
-            assert!(matcher.may_match_event_kind(crate::events::EventKind::Draw));
+            // Whole-instruction replacements inspect the actual draw action,
+            // before its per-card DrawEvents (CR 121.2), including count one.
+            let draw = crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::DrawCards, request.payer, request.source, 1,
+            );
+            assert!(matcher.may_match_event_kind(crate::events::EventKind::KeywordAction));
             assert!(matcher.matches_event(&draw, &ctx).unwrap());
-            draw.first_of_instruction = false;
-            assert!(!matcher.matches_event(&draw, &ctx).unwrap());
+            let card = crate::events::DrawEvent::new(request.payer, 1, true);
+            assert!(!matcher.matches_event(&card, &ctx).unwrap());
         }
     }
 
@@ -952,7 +956,7 @@ mod tests {
             assert!(!game.effect_store.delayed_triggers.is_empty());
             game.take_pending_trigger_events();
             game.refresh_continuous_state().unwrap();
-            request.cost = ManaCost::new().add_generic(instructions * (1 + copies));
+            request.cost = ManaCost::new().add_generic(instructions + copies);
             let analysis = ManaSourceAnalysis::new(&game);
             let choices = collect_activation_choices(&game, &request);
             assert_eq!(
@@ -961,11 +965,11 @@ mod tests {
                     .expect("fixed triggered bonus projects")
                     .output
                     .green,
-                instructions * (1 + copies)
+                instructions + copies
             );
             let inventory = mana_payment_activation_inventory(&game, &request);
             assert_eq!(inventory.len(), 1);
-            assert_eq!(inventory[0].expected_mana.green, instructions * (1 + copies));
+            assert_eq!(inventory[0].expected_mana.green, instructions + copies);
             let plan = plan_first_mana_payment(&game, &request).expect("triggered mana pays cost");
             assert_eq!(plan.mana_ability_steps.len(), 1);
             assert_eq!(game.player(request.payer).unwrap().mana_pool.total(), 0);
@@ -977,7 +981,7 @@ mod tests {
             assert!(game.is_tapped(source));
             let mut queue = crate::triggers::TriggerQueue::default();
             crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
-            assert_eq!(queue.take_all().len(), instructions as usize, "one ordinary trigger per production instruction");
+            assert_eq!(queue.take_all().len(), 1, "CR 106.12a: one ordinary tap-for-mana trigger per completed activation");
             crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
             assert!(queue.take_all().is_empty());
         }

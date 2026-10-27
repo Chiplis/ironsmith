@@ -1956,7 +1956,7 @@ impl WasmGame {
         sticker_sheets: Option<Vec<Vec<String>>>,
     ) -> Result<(), String> {
         let pools = sticker_sheets.unwrap_or_default();
-        self.validate_sticker_sheet_pools(&pools, config.player_names.len())?;
+        self.validate_sticker_sheet_pools(&pools, config.player_names.len(), config.format)?;
         self.revealed_sticker_sheets.clear();
         self.pending_sticker_sheet_pools = (!pools.iter().all(Vec::is_empty)).then_some(pools);
         let result = self.apply_match_setup_with_companions_native(config, companions);
@@ -3562,6 +3562,7 @@ impl WasmGame {
         self.validate_sticker_sheet_pools(
             sticker_selections.sticker_sheets.as_deref().unwrap_or(&[]),
             config.player_names.len(),
+            config.format,
         )
         .map_err(|error| JsValue::from_str(&error))?;
         let validation = self.validate_match_setup_input(&config)?;
@@ -4869,7 +4870,7 @@ impl WasmGame {
             &[],
         )
         .map_err(|error| JsValue::from_str(&error))?;
-        self.validate_sticker_sheet_pools(&sticker_sheets, names.len())
+        self.validate_sticker_sheet_pools(&sticker_sheets, names.len(), MatchFormatInput::Normal)
             .map_err(|error| JsValue::from_str(&error))?;
 
         // Loading is a setup transaction: the live match is not replaced until
@@ -5641,7 +5642,7 @@ fn card_definition_may_trigger_when_drawn(definition: &CardDefinition) -> bool {
     definition
         .alternative_casts
         .iter()
-        .any(|method| method.is_miracle())
+        .any(|method| method.uses_first_draw_reveal())
         || definition.abilities.iter().any(|ability| {
             matches!(ability.kind, ironsmith::ability::AbilityKind::Triggered(_))
                 && ability.functional_zones.contains(&Zone::Hand)

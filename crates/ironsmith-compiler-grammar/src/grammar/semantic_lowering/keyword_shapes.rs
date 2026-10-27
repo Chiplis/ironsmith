@@ -200,8 +200,10 @@ pub fn parse_standard_gift_spec_tokens(tokens: &[OwnedLexToken]) -> Option<Stand
         || variant == StandardGiftVariant::Octopus
     {
         GiftTimingAst::PermanentEtb
-    } else {
+    } else if phrase_is_present(&all_words, &["before", "its", "other", "effects"]) {
         GiftTimingAst::SpellResolution
+    } else {
+        GiftTimingAst::SourceCardType
     };
     Some(StandardGiftSpec { variant, timing })
 }

@@ -2366,6 +2366,9 @@ fn run_choose_objects_phase_with_outputs(
                             )));
                         }
                     }
+                    let chosen = if effect.count.is_random() { chosen } else {
+                        game.randomize_uninspected_exile_choices(chooser_id, chosen, &candidates)
+                    };
                     // CR 614.13b: record what this entry replacement chose.
                     // Graveyard/exile choices are the zone-change resources;
                     // a reveal or battlefield choice isn't spent.

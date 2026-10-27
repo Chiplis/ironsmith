@@ -104,6 +104,7 @@ pub(super) fn fixed_standard_gift_creature_definition(
             subtypes: vec![subtype],
             power_toughness,
             legendary: false,
+            snow: false,
             colors,
             use_source_chosen_color: false,
             use_source_chosen_creature_type: false,

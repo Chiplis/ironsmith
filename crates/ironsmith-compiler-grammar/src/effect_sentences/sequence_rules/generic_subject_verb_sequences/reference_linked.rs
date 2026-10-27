@@ -1007,7 +1007,9 @@ pub fn parse_inline_look_at_top_then_counted_partition(
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: tagged_library_candidate_filter(&looked_tag, &[]),
             count: shape.selected_count,
-            player,
+            // The imperative's controller chooses; the viewed library may
+            // belong to an opponent without transferring that choice.
+            player: PlayerAst::You,
             tag: crate::tag::TagRef::of(selected_tag.clone()),
             zone: Zone::Library,
         }),

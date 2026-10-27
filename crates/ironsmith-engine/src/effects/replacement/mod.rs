@@ -44,7 +44,7 @@ pub(crate) use execute_payload::{
 pub(crate) use execute_payload::{
     execute_deferred_replacement_programs,
      execute_replacement_payload,
-    execute_replacement_payload_with_object_tags, execute_replacement_payload_with_snapshot,
+    execute_replacement_payload_with_snapshot,
 };
 
 pub(crate) use execute_payload::{

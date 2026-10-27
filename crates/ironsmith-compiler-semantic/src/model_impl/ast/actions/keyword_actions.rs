@@ -17,10 +17,19 @@ pub enum KeywordActionAst {
         count: Value,
     },
     Incubate {
+        descriptive: bool,
         amount: Value,
         count: Value,
     },
     Learn,
+    /// Copy the source for its controller and a chosen opponent, then retarget each copy.
+    OptionalSourceCopiesForControllerAndOpponent,
+    ReturnUnblockedAttackerForCost,
+    EnterAttackingReturnedDefender,
+    PairUnpairedCreatures,
+    ExileResolvedSpellForCombatCopies,
+    CopiesAssignedToOpponents,
+    SetPermanentDesignation { designation: ironsmith_core::PermanentDesignation },
     EmitKeywordAction {
         action: crate::events::KeywordActionKind,
         amount: u32,
@@ -39,6 +48,7 @@ pub enum KeywordActionAst {
     Amass {
         subtype: Option<Subtype>,
         amount: Value,
+        descriptive: bool,
     },
     Bolster {
         amount: Value,
@@ -71,9 +81,11 @@ pub enum KeywordActionAst {
     },
     Airbend {
         target: TargetAst,
+        descriptive_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
     },
     Explore {
         target: TargetAst,
+        descriptive: bool,
     },
     Endure {
         target: TargetAst,
@@ -83,6 +95,7 @@ pub enum KeywordActionAst {
     Connive {
         target: TargetAst,
         count: Value,
+        descriptive: bool,
     },
     ConniveIterated,
     OpenAttraction {
@@ -96,10 +109,12 @@ pub enum KeywordActionAst {
     ManifestDread,
     Earthbend {
         counters: Value,
+        descriptive: bool,
     },
     Behold {
         subtype: Subtype,
         count: u32,
+        descriptive: bool,
     },
     Fight {
         creature1: TargetAst,
@@ -111,6 +126,7 @@ pub enum KeywordActionAst {
     },
     Clash {
         opponent: ClashOpponentAst,
+        descriptive: bool,
     },
     Meld {
         result_name: String,
@@ -121,6 +137,7 @@ pub enum KeywordActionAst {
     RingTemptsYou,
     VentureIntoDungeon {
         undercity_if_no_active: bool,
+        descriptive: bool,
     },
     TakeInitiative,
     Detain {
@@ -182,6 +199,7 @@ pub enum KeywordActionAst {
         /// damage marked on it instead." (Pyramids): only the damage
         /// removal, which is not regeneration.
         remove_damage_only: bool,
+        ordinary_destruction_replacement: bool,
     },
     RegenerateAll {
         filter: ObjectFilter,

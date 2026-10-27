@@ -74,8 +74,14 @@ function normalizePrintPreference(raw) {
   return collectorNumber ? { setCode, collectorNumber } : { setCode };
 }
 
+// Presentation metadata must remain usable even when browser storage is full
+// or disabled. Keep failed writes for this session without evicting user data.
+const sessionStorageMaps = new Map();
+
 function readJsonStorageMap(storageKey) {
   const localStorage = storage();
+  const pending = sessionStorageMaps.get(storageKey);
+  if (pending && pending.storage === localStorage) return { ...pending.map };
   if (!localStorage) return {};
 
   try {
@@ -90,20 +96,22 @@ function readJsonStorageMap(storageKey) {
 
 function writeJsonStorageMap(storageKey, map) {
   const localStorage = storage();
-  if (!localStorage) return;
-
   const entries = Object.entries(map || {})
     .filter(([, value]) => {
       if (typeof value === "string") return value.trim();
       return value && typeof value === "object" && !Array.isArray(value);
     })
     .sort(([left], [right]) => left.localeCompare(right));
-  if (entries.length === 0) {
-    localStorage.removeItem(storageKey);
-    return;
+  const normalized = Object.fromEntries(entries);
+  sessionStorageMaps.set(storageKey, { storage: localStorage, map: normalized });
+  if (!localStorage) return;
+  try {
+    if (entries.length === 0) localStorage.removeItem(storageKey);
+    else localStorage.setItem(storageKey, JSON.stringify(normalized));
+    sessionStorageMaps.delete(storageKey);
+  } catch {
+    // The engine operation already succeeded; persistence is best effort.
   }
-
-  localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(entries)));
 }
 
 function readCustomCardArtUrlMap() {

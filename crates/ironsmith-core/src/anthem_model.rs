@@ -390,7 +390,10 @@ pub fn supports_scoped_reference_anthem_value(value: &Value) -> bool {
     match value.unhinted() {
         Value::Fixed(_) => true,
         Value::ManaValueOf(spec) => matches!(spec.unhinted(), crate::ChooseSpec::Iterated),
-        Value::CountersOn(spec, None) => matches!(spec.unhinted(), crate::ChooseSpec::Source),
+        Value::CountersOn(spec, _) => matches!(
+            spec.unhinted(),
+            crate::ChooseSpec::Source | crate::ChooseSpec::Iterated
+        ),
         // Die results stored on the source (Centaur of Attention).
         Value::GreatestEqualStoredDieResultsOnSource => true,
         Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
@@ -419,6 +422,10 @@ mod scoped_reference_tests {
             Box::new(crate::ChooseSpec::Source),
             None
         )));
+        assert!(supports_scoped_reference_anthem_value(&Value::CountersOn(
+            Box::new(crate::ChooseSpec::Iterated),
+            None
+        )));
         for value in [
             Value::SourcePower,
             Value::ManaValueOf(Box::new(crate::ChooseSpec::target(
@@ -426,7 +433,6 @@ mod scoped_reference_tests {
             ))),
             Value::ManaValueOf(Box::new(crate::ChooseSpec::Source)),
             Value::ManaValueOf(Box::new(crate::ChooseSpec::Tagged("it".into()))),
-            Value::CountersOn(Box::new(crate::ChooseSpec::Iterated), None),
             Value::EventValue(crate::EventValueSpec::Amount),
         ] {
             assert!(!supports_scoped_reference_anthem_value(&value), "{value:?}");

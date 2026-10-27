@@ -2147,6 +2147,7 @@ fn grouped_battlefield_for_ids(
                 .map(|view| view.colors.clone())
                 .unwrap_or_default();
             PermanentSnapshot {
+                owner: game.object(ObjectId(id)).map(|object| object.owner.0),
                 chosen_values: key.chosen_values.clone(),
                 view_identity: PermanentViewIdentity(members.clone()),
                 id,
@@ -2476,6 +2477,7 @@ fn public_chosen_values(game: &GameState, id: ObjectId) -> Vec<String> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(super) struct PermanentSnapshot {
+    pub(super) owner: Option<u8>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(super) chosen_values: Vec<String>,
     #[serde(skip)]
@@ -3605,6 +3607,7 @@ impl GameSnapshot {
             stack_objects.insert(
                 0,
                 super::StackObjectSnapshot {
+                    owner: Some(obj.owner.0),
                     source_kind: None,
                     id: stack_id.0,
                     inspect_object_id: Some(stack_id.0),

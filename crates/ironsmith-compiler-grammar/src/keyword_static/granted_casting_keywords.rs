@@ -80,6 +80,7 @@ fn granted_casting_method(
     use crate::model::CompilerAlternativeCastingMethod as Method;
     Some(match keyword {
         GrantedCastingKeyword::Warp => Method::Warp {
+            descriptive: false,
             cost: cost?,
             additional_cost: ironsmith_core::TotalCost::free(),
         },

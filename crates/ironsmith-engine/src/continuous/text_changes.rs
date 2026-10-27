@@ -404,7 +404,7 @@ mod tests {
         let (game, id) = body(vec![Ability::static_ability(StaticAbility::protection(ProtectionFrom::Color(ColorSet::RED))),
             Ability::activated(crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords("Human words"))])], vec![Subtype::Human]);
         let object = game.object(id).unwrap();
-        let mut chars = super::super::initial_characteristics(object, game.turn.turn_number);
+        let mut chars = super::super::initial_characteristics(object, game.turn.turn_number, Some(&game));
         apply_text_change(&mut chars, TextChange::creature_type(Subtype::Human, Subtype::Vampire).unwrap(), object);
         assert_eq!(chars.text_change_error, Some(TextChangeDomainError::Effect));
         assert_eq!(chars.subtypes.as_slice(), &[Subtype::Human]);

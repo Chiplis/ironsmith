@@ -224,7 +224,7 @@ impl LibraryMovementContext {
 /// The leaf semantics are shared by compiler and runtime payloads. `None`
 /// delegates to the phase's child visitor; `Some(false)` deliberately stops at
 /// a deferred effect, whose later resolution isn't part of this activation.
-pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement + 'static>(
+pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement + 'static, M: 'static>(
     payload: &dyn Any,
     context: &mut LibraryMovementContext,
 ) -> Option<bool> {
@@ -437,7 +437,7 @@ pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement
     if let Some(e) = payload.downcast_ref::<PutTaggedRemainderOnLibraryBottomEffect>() {
         return Some(!context.tag_library_origin(&e.tag).1);
     }
-    if let Some(e) = payload.downcast_ref::<MoveToZoneEffect>() {
+    if let Some(e) = payload.downcast_ref::<MoveToZoneEffect<M>>() {
         return Some(
             context.moves_selection_to(&e.target, e.zone)
                 || e.tagged_destinations

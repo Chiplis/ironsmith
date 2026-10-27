@@ -1581,7 +1581,7 @@ fn card_exiled_with_it(words: &[&str]) -> Option<PredicateAst> {
 /// "if it was kicked twice" (Archangel of Wrath): the source's kicker was
 /// paid at least twice (CR 702.33c).
 fn source_kicked_twice(words: &[&str]) -> Option<PredicateAst> {
-    let subject = words.strip_suffix(&["was", "kicked", "twice"])?;
+    let subject = words.strip_suffix(&["was", crate::keyword_forms::KICKED, "twice"])?;
     if !is_source_reference(subject) {
         return None;
     }

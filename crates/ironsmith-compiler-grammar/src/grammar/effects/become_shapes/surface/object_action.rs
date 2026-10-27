@@ -438,11 +438,11 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
         Some(BecomeExactKind::CreatureTypeChoice)
     } else if permission_shapes::exact_words(&words, &["colorless"]) {
         Some(BecomeExactKind::Colorless)
-    } else if permission_shapes::exact_words(&words, &["saddled"]) {
+    } else if permission_shapes::exact_words(&words, &[crate::keyword_forms::SADDLED]) {
         Some(BecomeExactKind::Saddled)
-    } else if permission_shapes::exact_words(&words, &["plotted"]) {
+    } else if permission_shapes::exact_words(&words, &[crate::keyword_forms::PLOTTED]) {
         Some(BecomeExactKind::Plotted)
-    } else if permission_shapes::exact_words(&words, &["foretold"]) {
+    } else if permission_shapes::exact_words(&words, &[crate::keyword_forms::FORETOLD]) {
         Some(BecomeExactKind::Foretold)
     } else if permission_shapes::exact_words(&words, &["prepared"]) {
         Some(BecomeExactKind::Prepared)

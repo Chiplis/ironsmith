@@ -647,6 +647,7 @@ fn linked_miracle(entry: &ironsmith::game_state::StackEntry) -> &ironsmith::even
 }
 fn pay_linked_miracle(game: &mut GameState, player: PlayerId, proof: &ironsmith::events::other::RevealedMiracle) -> u32 {
     let generic = match &proof.instance.price {
+        ironsmith::events::other::DrawnMiraclePrice::Descriptive(_) => panic!("native granted Miracle must retain its identity"),
         ironsmith::events::other::DrawnMiraclePrice::Fixed(_) => 0,
         ironsmith::events::other::DrawnMiraclePrice::ReducedManaCost { generic_reduction, .. } => 6_u32.saturating_sub(*generic_reduction),
     };

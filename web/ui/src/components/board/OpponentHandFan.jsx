@@ -5,6 +5,7 @@ import { useHoverActions } from "@/context/HoverContext";
 import { HIDDEN_CARD_BACK_IMAGE_URL } from "@/lib/scryfall";
 import { knownHandCards } from "@/lib/look-pile";
 import { MANABREW_HAND_FAN_PARAMS } from "@/hooks/useManabrewHandScale";
+import useHandBattlefieldClearance from "@/hooks/useHandBattlefieldClearance";
 
 const CARD_W = 40;
 // Neighbours overlap like the local fan; past this the fan packs tighter so
@@ -46,6 +47,7 @@ function FanCard({ card, style }) {
 export default function OpponentHandFan({ player, mirrorHand = false }) {
   const ui = useUiText();
   const ref = useRef(null);
+  useHandBattlefieldClearance(ref, `${player?.id}:${mirrorHand}`, false, "above");
   const [width, setWidth] = useState(0);
   const [mirror, setMirror] = useState(null);
   useLayoutEffect(() => {

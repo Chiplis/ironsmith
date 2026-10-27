@@ -79,6 +79,7 @@ pub fn try_merge_modal_into_remove_mode(
             mode_point_costs: choose_mode.mode_point_costs.clone(),
             spree: choose_mode.spree,
             tiered: choose_mode.tiered,
+            descriptive_mode_costs: choose_mode.descriptive_mode_costs,
             mode_additional_mana_costs: choose_mode.mode_additional_mana_costs.clone(),
             common_suffix_effect_count: choose_mode.common_suffix_effect_count,
             disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
@@ -91,6 +92,7 @@ pub fn try_merge_modal_into_remove_mode(
             cast_chooser: choose_mode.cast_chooser.clone(),
             optional_choice: choose_mode.optional_choice,
             cost_choice_keywords: choose_mode.cost_choice_keywords.clone(),
+            announced_modes: choose_mode.announced_modes.clone(),
         },
     ));
     true
@@ -114,6 +116,7 @@ pub fn lower_parsed_modal(
         max: header_max,
         spree,
         tiered,
+        descriptive_mode_costs,
         weighted_mode_points,
         random: random_mode_choice,
         same_mode_more_than_once,
@@ -336,6 +339,7 @@ pub fn lower_parsed_modal(
         };
         let mut choose_mode = choose_mode.clone();
         choose_mode.faces_dilemma = cost_choice_keywords.is_empty();
+        choose_mode.descriptive_mode_costs = descriptive_mode_costs;
         if same_mode_more_than_once {
             choose_mode = choose_mode.with_repeated_modes();
         }

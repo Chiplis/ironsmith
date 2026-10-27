@@ -296,7 +296,7 @@ fn offering_announces_hybrid_halves_and_uses_phyrexian_color() {
 }
 
 #[test]
-fn delve_resources_expand_the_announced_x_bound() {
+fn announced_x_is_not_bounded_by_mana_or_delve_resources() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
     let card = CardBuilder::new(CardId::new(), "Delve X probe")
@@ -324,9 +324,12 @@ fn delve_resources_expand_the_announced_x_bound() {
     let (needs_x, _, maximum) =
         compute_spell_cast_x_bounds(&game, alice, source, &CastingMethod::Normal, Some(&cost));
     assert!(needs_x);
+    // X is announced before payment: mana and Delve resources don't cap it,
+    // and an unaffordable announcement is cancelled during payment.
     assert_eq!(
-        maximum, 5,
-        "X includes Delve resources beyond the mana pool"
+        maximum,
+        u32::MAX,
+        "X isn't bounded by the mana pool or Delve resources"
     );
 }
 

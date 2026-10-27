@@ -18,11 +18,12 @@ use crate::target::ObjectFilter;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Protection {
     pub from: ProtectionFrom,
+    pub descriptive: Option<String>,
 }
 
 impl Protection {
     pub fn new(from: ProtectionFrom) -> Self {
-        Self { from }
+        Self { from, descriptive: None }
     }
 
     pub fn from_color(color: crate::color::Color) -> Self {
@@ -77,14 +78,16 @@ fn describe_color_set(colors: crate::color::ColorSet) -> String {
 
 impl StaticAbilityKind for Protection {
     fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
-        Some(super::CompiledStaticAbility::protection(self.from.clone()))
+        let mut model = super::CompiledStaticAbility::protection(self.from.clone());
+        if let Some(text) = &self.descriptive { model.id = None; model.label = text.clone(); }
+        Some(model)
     }
 
     fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
         -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
     {
         let from = crate::continuous::text_changes::rewrite_protection_words(&self.from, change)?;
-        Ok((from != self.from).then(|| super::StaticAbility::new(Self { from })))
+        Ok((from != self.from).then(|| super::StaticAbility::new(Self { from, descriptive: self.descriptive.clone() })))
     }
 
     // Protection is queried directly by targeting, blocking, attachment and
@@ -94,10 +97,11 @@ impl StaticAbilityKind for Protection {
     }
 
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::Protection
+        if self.descriptive.is_some() { StaticAbilityId::KeywordMarker } else { StaticAbilityId::Protection }
     }
 
     fn display(&self) -> String {
+        if let Some(text) = &self.descriptive { return text.clone(); }
         match &self.from {
             ProtectionFrom::Color(colors) => {
                 let described = describe_color_set(*colors);
@@ -150,7 +154,7 @@ impl StaticAbilityKind for Protection {
     }
 
     fn is_keyword(&self) -> bool {
-        true
+        self.descriptive.is_none()
     }
 
     fn generate_replacement_effect(
@@ -189,7 +193,7 @@ impl StaticAbilityKind for Protection {
                 filter, game, ctx,
             );
             return Ok((bound != *filter)
-                .then(|| super::StaticAbility::protection(ProtectionFrom::Permanents(bound))));
+                .then(|| super::StaticAbility::new(Self { from: ProtectionFrom::Permanents(bound), descriptive: self.descriptive.clone() })));
         }
         if let ProtectionFrom::ColorsAmongAtResolution(filter) = &self.from {
             let context = ctx.filter_context(game);
@@ -203,7 +207,7 @@ impl StaticAbilityKind for Protection {
                     filter.matches(object, &context, game)
                 }) { colors = colors.union(chars.colors); }
             }
-            return Ok(Some(super::StaticAbility::protection(ProtectionFrom::Color(colors))));
+            return Ok(Some(super::StaticAbility::new(Self { from: ProtectionFrom::Color(colors), descriptive: self.descriptive.clone() })));
         }
         let ProtectionFrom::ColorsOf(spec) = &self.from else {
             return Ok(None);
@@ -229,9 +233,7 @@ impl StaticAbilityKind for Protection {
                 colors = colors.union(object.colors());
             }
         }
-        Ok(Some(super::StaticAbility::protection(ProtectionFrom::Color(
-            colors,
-        ))))
+        Ok(Some(super::StaticAbility::new(Self { from: ProtectionFrom::Color(colors), descriptive: self.descriptive.clone() })))
     }
 }
 
@@ -282,7 +284,7 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
                 ProtectionFrom::Everything => return true,
                 ProtectionFrom::Color(colors) => !colors.is_empty(),
                 ProtectionFrom::ColorsOf(_) | ProtectionFrom::ColorsAmongAtResolution(_) => false,
-                ProtectionFrom::ChosenColor => ctx.game.chosen_color(target).is_some(),
+                ProtectionFrom::ChosenColor => ctx.game.chosen_color_for_ability(target, ctx.ability_origin.as_ref()).is_some(),
                 ProtectionFrom::ChosenPlayer => ctx.game.chosen_player(target).is_some(),
                 ProtectionFrom::Permanents(filter) if filter.mana_value_parity.is_some() => {
                     use crate::filter::ParityRequirementRuntimeExt as _;
@@ -298,8 +300,8 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
             return false;
         };
         let view = crate::derived_view::DerivedGameView::new(ctx.game);
-        crate::targeting::protection_from_subject_with_view(
-            ctx.game, target, subject, &self.0, &view,
+        crate::targeting::protection_from_subject_with_origin(
+            ctx.game, target, subject, &self.0, &view, ctx.ability_origin.as_ref(),
         )
     }
     fn display(&self) -> String {

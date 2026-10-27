@@ -14,8 +14,9 @@ import './card-frame-presentation.css';
 // Shipped stock frames need no renderer; rules-source cards keep their CSS frame.
 export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,details,baked=false}) {
   const ui=useUiText(),rules=useRef(null);
+  const interactive=Boolean(rulesContent);
   const faces=card.card_faces?.length?card.card_faces:[card];
-  const multipart=['split','adventure'].includes(card.layout);
+  const multipart=['split','aftermath','adventure','prepare','room','flip'].includes(card.layout);
   const face=faces[faceIndex]??faces[0];
   const shown=multipart?faces:[face];
   const type=face.type_line_display??face.type_line??card.type_line_display??card.type_line;
@@ -43,6 +44,8 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
       lastWidth=width;lastHeight=height;
       box.style.removeProperty('font-size');
       const preferred=parseFloat(getComputedStyle(box).fontSize);
+      // An interactive rules area scrolls instead of shrinking its controls.
+      if(interactive){box.style.fontSize=`${Math.max(14,preferred)}px`;return;}
       // Most temporary frames already fit (and some have no rules at all).
       // Do not run ten write/layout cycles before replacing them with canvas.
       const fits=()=>box.scrollHeight<=box.clientHeight+1 && box.scrollWidth<=box.clientWidth+1;
@@ -59,10 +62,11 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
     const observer=new ResizeObserver(schedule);observer.observe(box);
     fit();document.fonts.addEventListener('loadingdone',fontsChanged);
     return()=>{observer.disconnect();cancelAnimationFrame(frame);document.fonts.removeEventListener('loadingdone',fontsChanged);};
-  },[textKey]);
+  },[textKey,interactive]);
   const stats=face.power!=null&&face.toughness!=null?`${face.power}/${face.toughness}`
     :face.power_toughness??face.defense??face.loyalty;
   return <article className="simple-card-frame" data-frame-mode={stock?"baked":"simple"} data-card-frame-tone={tone.tone}
+    data-interactive-rules={rulesContent ? "true" : undefined}
     data-rules-source={sourceFrame ? card.source_kind : undefined}
     style={{...tone.style,...(sourceFrame ? {'--rules-source-color':sourceFrame.color} : {})}} aria-label={face.name||card.name||ui('Card details')}>
     {stock&&<img className="simple-card-frame__stock" src={`${import.meta.env.BASE_URL}card-frames/default/${frameKey}.webp`} alt=""/>}

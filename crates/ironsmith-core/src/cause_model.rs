@@ -55,11 +55,12 @@ pub enum CauseAbilityKind {
     ModularTrigger,
     /// Exact keyword of the ability whose activation cost caused this event.
     ActivatedKeywordCost(crate::ActivatedAbilityKeyword),
+    ChampionTrigger,
 }
 
 impl CauseAbilityKind {
     pub fn is_triggered(self) -> bool {
-        matches!(self, Self::Triggered | Self::ModularTrigger)
+        matches!(self, Self::Triggered | Self::ModularTrigger | Self::ChampionTrigger)
     }
 }
 
@@ -73,6 +74,7 @@ pub enum CauseAbilityKindFilter {
     Triggered,
     ModularTrigger,
     ActivatedKeywordCost(crate::ActivatedAbilityKeyword),
+    ChampionTrigger,
 }
 
 impl CauseAbilityKindFilter {
@@ -81,6 +83,7 @@ impl CauseAbilityKindFilter {
             Self::Activated => kind == Some(CauseAbilityKind::Activated),
             Self::Triggered => kind.is_some_and(CauseAbilityKind::is_triggered),
             Self::ModularTrigger => kind == Some(CauseAbilityKind::ModularTrigger),
+            Self::ChampionTrigger => kind == Some(CauseAbilityKind::ChampionTrigger),
             Self::ActivatedKeywordCost(keyword) => kind == Some(CauseAbilityKind::ActivatedKeywordCost(keyword)),
         }
     }

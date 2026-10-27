@@ -426,7 +426,7 @@ function ZoneIconRow({ player, zone, onCardClick, legalTargetObjectIds, onOpenDe
   </div>;
 }
 
-export default function PlayerZonePiles({ player, onCardClick, legalTargetObjectIds, leadingRail = null, onOpenDecklist = null }) {
+export default function PlayerZonePiles({ player, onCardClick, legalTargetObjectIds, leadingRail = null, priorityControls = null, onOpenDecklist = null }) {
   const { state } = useGame();
   const ref = useRef(null);
   useLayoutEffect(() => {
@@ -598,6 +598,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       data-opponent-zone-piles={!isLocal ? "true" : undefined}>
       {/* Spans the piles' own height, so anything here lines up with them. */}
       {leadingRail}
+      {priorityControls}
       {zones.filter((zone) => !(isLocal && zone === "command")).map((zone) => zone === "command"
         ? <ZonePile key={zone} player={player} zone={zone}
           onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />

@@ -927,80 +927,95 @@ impl EvaluationContext<'_, '_> {
                     })
             });
         }
-        if matches!(spec.base(), ChooseSpec::Tagged(tag)
-            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
-            && matches!(
-                property,
-                NumericProperty::Power | NumericProperty::Toughness | NumericProperty::ManaValue
-            )
-            && let Some(ctx) = self.execution()
-        {
-            let missing = |message: &str| {
-                let error = ExecutionError::IncompleteEvidence(message.into());
-                self.game.record_token_resource_failure(&error);
-                error
-            };
-            // CR 607.3: repeated executions of the linked exile ability can
-            // leave several cards; a characteristic question uses their sum.
-            // Read the source incarnation's live link table, never a captured
-            // tag or an unrelated prior effect. An empty link set is known
-            // zero, including after an exiled card leaves before resolution.
-            if self.game.object(ctx.source).is_none()
-                && !ctx
-                    .source_snapshot
-                    .as_ref()
-                    .is_some_and(|snapshot| snapshot.object_id == ctx.source)
-            {
-                return Err(missing(
-                    "linked exile quantity requires the original source identity",
-                ));
-            }
-            let owner = ctx.linked_exile_owner.as_ref().ok_or_else(|| {
-                missing("linked exile quantity requires explicit pair and acquisition metadata")
-            })?;
-            let members = self
-                .game
-                .linked_exile_pair_members(owner)
-                .map_err(|error| {
-                    self.game.record_token_resource_failure(&error);
-                    error
-                })?;
-            return members.iter().try_fold(0i64, |total, id| {
-                let object = self.game.object(*id).ok_or_else(|| {
-                    missing("linked exile quantity has an unavailable linked object")
-                })?;
-                if object.zone != crate::zone::Zone::Exile {
-                    return Ok(total);
-                }
-                let chars = self
-                    .game
-                    .try_current_characteristics(*id)
-                    .map_err(|discovery| {
-                        let error = ExecutionError::ContinuousDiscovery(discovery);
-                        self.game.record_token_resource_failure(&error);
-                        error
-                    })?
-                    .ok_or_else(|| missing("linked exile characteristics are unavailable"))?;
-                // Checked absence is zero (CR 107.2); failed discovery and
-                // range validation never fall back to a printed card value.
-                let number = match property {
+        if matches!(property, NumericProperty::Power | NumericProperty::BasePower
+            | NumericProperty::Toughness | NumericProperty::ManaValue | NumericProperty::ColorCount)
+            && let Some(total) = self.linked_exile_characteristic_sum(spec, |chars| {
+                match property {
                     NumericProperty::Power => i64::from(chars.power.unwrap_or(0)),
+                    NumericProperty::BasePower => i64::from(chars.base_power.unwrap_or(0)),
                     NumericProperty::Toughness => i64::from(chars.toughness.unwrap_or(0)),
-                    NumericProperty::ManaValue => {
-                        i64::from(chars.linked_face_mana_value.unwrap_or_else(|| {
-                            chars.mana_cost.as_ref().map_or(0, |cost| cost.mana_value())
-                        }))
-                    }
+                    NumericProperty::ColorCount => i64::from(chars.colors.count()),
+                    NumericProperty::ManaValue => i64::from(chars.linked_face_mana_value
+                        .unwrap_or_else(|| chars.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()))),
                     _ => unreachable!("linked characteristic guard"),
-                };
-                total.checked_add(number).ok_or_else(|| {
-                    ExecutionError::UnresolvableValue(
-                        "linked exile characteristic sum exceeds the scalar range".into(),
-                    )
-                })
-            });
+                }
+            })?
+        {
+            return Ok(total);
         }
         self.object_number(spec, property).map(i64::from)
+    }
+
+    /// A numeric answer about "the exiled card" sums the current answers for
+    /// every live member of this exact linked ability pair (CR 607.3).
+    pub(super) fn linked_exile_characteristic_sum(
+        &self,
+        spec: &ChooseSpec,
+        read: impl Fn(&crate::continuous::CalculatedCharacteristics) -> i64,
+    ) -> Result<Option<i64>, ExecutionError> {
+        if !matches!(spec.base(), ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+        {
+            return Ok(None);
+        }
+        let Some(ctx) = self.execution() else {
+            return Ok(None);
+        };
+        let missing = |message: &str| {
+            let error = ExecutionError::IncompleteEvidence(message.into());
+            self.game.record_token_resource_failure(&error);
+            error
+        };
+        // CR 607.3: repeated executions of the linked exile ability can
+        // leave several cards; a characteristic question uses their sum.
+        // Read the source incarnation's live link table, never a captured
+        // tag or an unrelated prior effect. An empty link set is known
+        // zero, including after an exiled card leaves before resolution.
+        if self.game.object(ctx.source).is_none()
+            && !ctx
+                .source_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.object_id == ctx.source)
+        {
+            return Err(missing(
+                "linked exile quantity requires the original source identity",
+            ));
+        }
+        let owner = ctx.linked_exile_owner.as_ref().ok_or_else(|| {
+            missing("linked exile quantity requires explicit pair and acquisition metadata")
+        })?;
+        let members = self
+            .game
+            .linked_exile_pair_members(owner)
+            .map_err(|error| {
+                self.game.record_token_resource_failure(&error);
+                error
+            })?;
+        members.iter().try_fold(0i64, |total, id| {
+            let object = self.game.object(*id).ok_or_else(|| {
+                missing("linked exile quantity has an unavailable linked object")
+            })?;
+            if object.zone != crate::zone::Zone::Exile {
+                return Ok(total);
+            }
+            let chars = self
+                .game
+                .try_current_characteristics(*id)
+                .map_err(|discovery| {
+                    let error = ExecutionError::ContinuousDiscovery(discovery);
+                    self.game.record_token_resource_failure(&error);
+                    error
+                })?
+                .ok_or_else(|| missing("linked exile characteristics are unavailable"))?;
+            // Checked absence is zero (CR 107.2); failed discovery and
+            // range validation never fall back to a printed card value.
+            let number = read(&chars);
+            total.checked_add(number).ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "linked exile characteristic sum exceeds the scalar range".into(),
+                )
+            })
+        }).map(Some)
     }
 
     pub(super) fn object_number(

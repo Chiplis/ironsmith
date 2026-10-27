@@ -231,9 +231,7 @@ fn parse_shuffled_pile_entry_tail(input: &mut LexStream<'_>) -> WResult<bool> {
     Ok(manifest)
 }
 
-fn parse_object_pile_exile<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<(&'a [OwnedLexToken], bool)> {
+fn parse_object_pile_exile<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool)> {
     primitives::kw("exile").parse_next(input)?;
     let target_tokens = repeat_till(1.., any.void(), peek(pile_intro))
         .map(|((), _)| ())
@@ -270,6 +268,7 @@ pub fn parse_object_face_down_pile_sentence_shape(
 /// What happens to the looked-at cards a face-down selection leaves behind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LookedFaceDownRemainder {
+    Graveyard,
     /// "then put the other on the top or bottom of your library"
     TopOrBottom,
     /// "and put the rest on the bottom of your library in <order>"
@@ -290,6 +289,12 @@ pub struct LookedFaceDownSelectionShape {
 
 fn looked_face_down_remainder(input: &mut LexStream<'_>) -> WResult<LookedFaceDownRemainder> {
     use crate::cards::builders::LibraryBottomOrderAst;
+    if opt(primitives::phrase(&["into", "your", "graveyard"]))
+        .parse_next(input)?
+        .is_some()
+    {
+        return Ok(LookedFaceDownRemainder::Graveyard);
+    }
     primitives::kw("on").parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
     alt((

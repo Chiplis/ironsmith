@@ -762,7 +762,7 @@ fn object_has_ability_marker_in_view(
         && object.alternative_casts.iter().any(|method| {
             matches!(
                 method,
-                crate::alternative_cast::AlternativeCastingMethod::Awaken { .. }
+                crate::alternative_cast::AlternativeCastingMethod::Awaken { descriptive: false, .. }
             )
         })
     {
@@ -899,7 +899,7 @@ pub(crate) fn abilities_have_marker(abilities: &[crate::ability::Ability], marke
         && abilities.iter().any(|ability| {
             matches!(&ability.kind, AbilityKind::Triggered(triggered)
             if triggered.effects.all_effects().into_iter().any(|effect|
-                effect.downcast_ref::<crate::effects::SoulbondPairEffect>().is_some()))
+                effect.downcast_ref::<crate::effects::SoulbondPairEffect>().is_some_and(|pair| !pair.descriptive)))
         })
     {
         return true;
@@ -1075,7 +1075,7 @@ fn ability_is_structural_unearth(ability: &crate::ability::Ability) -> bool {
     };
     segment.self_replacements.is_empty()
         && matches!(segment.default_effects.as_slice(), [effect]
-            if effect.downcast_ref::<crate::effects::UnearthEffect>().is_some())
+            if effect.downcast_ref::<crate::effects::UnearthEffect>().is_some_and(|effect| !effect.descriptive))
 }
 
 pub(super) fn ability_is_structural_cycling(ability: &crate::ability::Ability) -> bool {

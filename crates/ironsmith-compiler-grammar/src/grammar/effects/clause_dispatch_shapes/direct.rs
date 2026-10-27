@@ -101,12 +101,12 @@ fn exact_shape(tokens: &[OwnedLexToken]) -> Option<DirectClauseShape> {
                 .value(DirectClauseShape::ChooseLeftOrRight),
             primitives::phrase(&[
                 "all",
-                "suspected",
+                crate::keyword_forms::SUSPECTED,
                 "creatures",
                 "are",
                 "no",
                 "longer",
-                "suspected",
+                crate::keyword_forms::SUSPECTED,
             ])
             .value(DirectClauseShape::ClearSuspected),
         )),

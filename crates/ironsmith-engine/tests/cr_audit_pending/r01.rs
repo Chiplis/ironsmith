@@ -86,6 +86,31 @@ fn cr_113_6c_ability_stating_excluded_zones_functions_everywhere_else() {
         "CR 113.6c: the upkeep ability functions in every zone except the battlefield, even outside the game; compiled={:?} zones={zones:?}",
         compiled.as_ref().map(|definition| definition.card.name.clone())
     );
+    let definition = compiled.unwrap();
+    for actor in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+        for zone in everywhere_but_battlefield.into_iter().chain([Zone::Ante, Zone::Battlefield]) {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            game.turn.active_player = actor;
+            let source = game.create_object_from_definition(&definition, actor, zone);
+            if zone == Zone::Stack { game.stack.push(StackEntry::new(source, actor)); }
+            let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
+                ironsmith::events::BeginningOfUpkeepEvent::new(actor),
+                ironsmith::ProvNodeId::default(),
+            );
+            let entries = ironsmith::triggers::check_triggers(&game, &event);
+            assert_eq!(entries.len(), usize::from(zone != Zone::Battlefield),
+                "the exclusion must govern actual triggers in {zone:?} for {actor:?}");
+            let mut queue = TriggerQueue::new();
+            for entry in entries { queue.add(entry); }
+            ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+            if zone != Zone::Battlefield {
+                ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+            }
+            assert_eq!(game.player(actor).unwrap().life, 20 + i32::from(zone != Zone::Battlefield));
+            assert!(game.object(source).is_some(), "the ability does not move its source");
+        }
+    }
+
 }
 
 /// CR 603.1b: an instruction asking whether "all" trigger conditions happened

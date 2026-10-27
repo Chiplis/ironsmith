@@ -150,7 +150,7 @@ impl ironsmith_core::CostComponent for CompilerCost {
             Self::MoveOpponentOwnedExiledCardToGraveyard => {
                 "put an opponent-owned exiled card into its owner's graveyard".to_string()
             }
-            Self::ExertSelf { display } => display.clone(),
+            Self::ExertSelf { display, .. } => display.clone(),
             Self::EmitKeywordAction { kind, amount } => {
                 format!("emit {kind:?} keyword action ({amount})")
             }
@@ -379,6 +379,7 @@ pub enum CompilerCost {
     MoveOpponentOwnedExiledCardToGraveyard,
     ExertSelf {
         display: String,
+        descriptive: bool,
     },
     EmitKeywordAction {
         kind: crate::events::KeywordActionKind,
@@ -484,6 +485,10 @@ impl CompilerOptionalCost {
         let mut cost = Self::typed(crate::cost::OptionalCostKind::Buyback, "Buyback", cost);
         cost.returns_to_hand = true;
         cost
+    }
+
+    pub fn choose_all_modes(cost: ironsmith_core::TotalCost<CompilerCost>) -> Self {
+        Self::typed(crate::cost::OptionalCostKind::ChooseAllModes, "Choose all modes", cost)
     }
 
     pub fn entwine(cost: ironsmith_core::TotalCost<CompilerCost>) -> Self {

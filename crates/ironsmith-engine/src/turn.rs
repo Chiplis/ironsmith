@@ -712,7 +712,9 @@ fn execute_untap_step_inner(
             game.current_controller(*id)
                 .is_some_and(|controller| active_players.contains(&controller))
         })
-        .filter(|id| game.current_has_static_ability_id(*id, StaticAbilityId::Phasing))
+        .filter(|id| game.current_has_static_ability_id(*id, StaticAbilityId::Phasing)
+            || crate::derived_view::DerivedGameView::new(game).object_has_keyword_marker_mechanic(
+                *id, ironsmith_core::KeywordMarkerMechanic::PhaseDuringUntap))
         .filter(|id| game.can_phase_out(*id))
         .collect::<Vec<_>>();
     let mut phase_in = active_players

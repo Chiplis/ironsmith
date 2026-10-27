@@ -18,6 +18,8 @@ use crate::zone::Zone;
 mod binary_program;
 #[path = "divvy/pile_programs.rs"]
 mod pile_programs;
+#[path = "divvy/fixed_binary_piles.rs"]
+mod fixed_binary_piles;
 
 fn membership_predicate_for_iterated_object(tag: crate::tag::CompilerReferenceTag) -> PredicateAst {
     PredicateAst::TaggedMatches(
@@ -536,19 +538,7 @@ fn try_parse_divvy_sentence_sequence_program(
     }
 
     if shape == DivvySequenceShape::DestroyChosenCreaturePile {
-        return Ok(Some(vec![
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
-                count: ChoiceCount::any_number(),
-                count_value: None,
-                player: PlayerAst::Target,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            }),
-            EffectAst::subject_verb_destroy_no_regeneration(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                None,
-            )),
-        ]));
+        return Ok(Some(fixed_binary_piles::destroy_creature_pile()));
     }
 
     if shape == DivvySequenceShape::GraveyardCreaturePiles {
@@ -974,48 +964,7 @@ fn try_parse_divvy_sentence_sequence_program(
             .next()
             .unwrap_or_else(|| sentences[0].lowered());
         let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
-        effects.extend(vec![
-            EffectAst::subject_verb_tag_matching_objects(
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                vec![Zone::Exile],
-                crate::tag::CompilerReferenceTag::DivvySource.bind(),
-            ),
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-                optional_search_zones: false,
-                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
-                count: ChoiceCount::any_number(),
-                count_value: None,
-                player: PlayerAst::Opponent,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                zones: vec![Zone::Exile],
-                search_mode: None,
-            }),
-            EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
-                Zone::Battlefield,
-                false,
-                ReturnControllerAst::You,
-                false,
-                None,
-            ),
-            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                    predicate: membership_predicate_for_iterated_object(
-                        crate::tag::CompilerReferenceTag::DivvyChosen,
-                    ),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-                        Zone::Graveyard,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    )],
-                })],
-            }),
-        ]);
+        effects.extend(fixed_binary_piles::return_exiled_creature_pile());
         return Ok(Some(effects));
     }
 

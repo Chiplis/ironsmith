@@ -47,8 +47,14 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
-        let mut symbols = game
-            .chosen_color(source)
+        let chosen = game.current_characteristics(source).and_then(|chars| {
+            chars.abilities.iter().enumerate().find_map(|(slot, ability)| {
+                let crate::ability::AbilityKind::Activated(ability) = &ability.kind else { return None; };
+                ability.effects.all_effects().into_iter().any(|effect| effect.downcast_ref::<AddManaOfChosenColorEffect>() == Some(self))
+                    .then(|| game.chosen_color_for_ability(source, chars.abilities.origin(slot))).flatten()
+            })
+        });
+        let mut symbols = chosen
             .map(ManaSymbol::from_color)
             .into_iter()
             .collect::<Vec<_>>();

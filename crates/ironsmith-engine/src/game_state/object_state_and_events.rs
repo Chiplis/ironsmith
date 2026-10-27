@@ -631,27 +631,41 @@ impl GameState {
     /// A permanent cannot become prepared twice: the second attempt is a no-op
     /// rather than a second prepare spell copy.
     pub fn set_prepared(&mut self, id: ObjectId) -> bool {
-        if !self.battlefield_flags_mut().prepared.insert(id) {
+        if !self.object(id).is_some_and(|object| object.zone == Zone::Battlefield)
+            || self.is_phased_out(id) || !self.has_prepare_spell(id)
+            || !self.battlefield_flags_mut().prepared.insert(id)
+        {
             return false;
+        }
+        self.refresh_prepared_spell_copy(id);
+        self.mark_object_changed_and_continuous_state_dirty(id);
+        true
+    }
+
+    /// CR 722.3c / 702.26: the designation survives phasing, the waiting
+    /// copy does not. Phasing in prepared creates a fresh waiting copy.
+    pub(crate) fn refresh_prepared_spell_copy(&mut self, id: ObjectId) {
+        if !self.is_prepared(id) {
+            return;
+        }
+        if let Some(copy) = self.unlink_prepared_spell_copy(id)
+            && self.object(copy).is_some_and(|object| object.zone == Zone::Exile)
+        {
+            self.remove_object(copy);
+        }
+        if self.is_phased_out(id) {
+            return;
         }
         if let Some(definition) = self.prepare_spell_definition(id)
             && let Some(controller) = self.object(id).map(|object| self.controller_of(object))
         {
             let copy_id = self.create_object_from_definition(&definition, controller, Zone::Exile);
             if let Some(stable) = self.object(copy_id).map(|object| object.stable_id) {
-                self.cast_permission_flags_mut()
-                    .prepare_spell_copy_stables
-                    .insert(stable);
+                self.cast_permission_flags_mut().prepare_spell_copy_stables.insert(stable);
             }
-            self.cast_permission_flags_mut()
-                .prepared_spell_copies
-                .insert(id, copy_id);
-            self.cast_permission_flags_mut()
-                .prepared_spell_sources
-                .insert(copy_id, id);
+            self.cast_permission_flags_mut().prepared_spell_copies.insert(id, copy_id);
+            self.cast_permission_flags_mut().prepared_spell_sources.insert(copy_id, id);
         }
-        self.mark_object_changed_and_continuous_state_dirty(id);
-        true
     }
 
     /// Clear the prepared designation from a permanent, and with it the prepare
@@ -811,6 +825,29 @@ impl GameState {
             return false;
         }
 
+        // Flipped status and the face-down overlay are independent (710.2).
+        // Change the underlying face, then reinstate the same public overlay;
+        // otherwise turning face up would restore the pre-flip characteristics.
+        let overlay = self.object(id).and_then(|object| {
+            object.face_down_cast_state.as_ref().map(|state| {
+                (state.disguise_ward, state.custom_copiable_values.clone())
+            })
+        });
+        if let Some((disguise_ward, custom)) = overlay {
+            self.object_mut(id).unwrap().end_face_down_cast_overlay();
+            let was_face_down = self.battlefield_flags_mut().face_down.remove(&id);
+            let changed = self.flip_permanent(id);
+            let object = self.object_mut(id).unwrap();
+            object.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
+            if let Some(custom) = custom {
+                object.apply_custom_face_down_overlay(*custom);
+            }
+            if was_face_down {
+                self.battlefield_flags_mut().face_down.insert(id);
+            }
+            return changed;
+        }
+
         if let Some(values) = self.object(id).and_then(|object| object.copied_face_values.clone()) {
             if values.copy_face_layout == crate::card::LinkedFaceLayout::Flip {
                 if let Some(other) = &values.other_copy_face {
@@ -892,7 +929,7 @@ impl GameState {
 
     /// Check if a permanent is face-down.
     pub fn is_face_down(&self, id: ObjectId) -> bool {
-        self.battlefield_flags.face_down.contains(&id)
+        self.battlefield_flags.face_down.contains(&id) || self.drawn_card_waits_for_announcement(id)
     }
 
     /// Eligibility for turning an existing permanent face down (CR 712.11).
@@ -1017,6 +1054,17 @@ impl GameState {
             self.mark_face_down_state_changed(id);
         }
         face_status_changed || overlay_changed
+    }
+
+    pub fn set_described_face_down(&mut self, id: ObjectId) {
+        if self.battlefield_flags_mut().described_face_down.insert(id) {
+            self.mark_object_changed_and_continuous_state_dirty(id);
+        }
+    }
+
+    pub fn has_printed_cost_turn_face_up_permission(&self, id: ObjectId) -> bool {
+        self.is_manifested(id) || self.is_cloaked(id)
+            || self.battlefield_flags.described_face_down.contains(&id)
     }
 
     /// Mark a face-down permanent as manifested.
@@ -1319,7 +1367,7 @@ impl GameState {
             let flags = self.battlefield_flags_mut();
             (
                 flags.face_down.remove(&id),
-                flags.manifested.remove(&id) | flags.cloaked.remove(&id),
+                flags.manifested.remove(&id) | flags.cloaked.remove(&id) | flags.described_face_down.remove(&id),
             )
         };
         if face_down_changed {
@@ -1438,7 +1486,7 @@ impl GameState {
                 {
                     continue;
                 }
-                component.object.apply_definition_face(&other_definition);
+                component.object.apply_transforming_face(&other_definition);
                 transformed = true;
             }
             if !transformed {
@@ -1472,10 +1520,18 @@ impl GameState {
         }
         let handles = self.object_store.shared_handles_for_definition(&other_def);
         if let Some(obj) = self.object_mut(id) {
-            obj.apply_definition_face_with_shared(&other_def, &handles);
+            obj.apply_transforming_face_with_shared(&other_def, &handles);
         }
         self.mark_transformed(id);
         true
+    }
+
+    pub(crate) fn has_day_night_transform_behavior(&self, id: ObjectId, ability_id: crate::static_abilities::StaticAbilityId) -> bool {
+        if self.current_has_static_ability_id(id, ability_id) { return true; }
+        let day_face = ability_id == crate::static_abilities::StaticAbilityId::Daybound;
+        self.current_characteristics(id).is_some_and(|current| current.static_abilities.iter().any(|ability|
+            ability.is_active(self, id) && ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::DayNightTransformDefinition { day_face })
+        ))
     }
 
     fn permanent_has_day_night_keyword(
@@ -1488,7 +1544,7 @@ impl GameState {
             && self
                 .object(id)
                 .is_some_and(|object| object.zone == Zone::Battlefield)
-            && self.current_has_static_ability_id(id, ability_id)
+            && self.has_day_night_transform_behavior(id, ability_id)
     }
 
     /// CR 702.145d/g: any permanent with daybound or nightbound, including a
@@ -1502,7 +1558,7 @@ impl GameState {
             && self
                 .object(id)
                 .is_some_and(|object| object.zone == Zone::Battlefield)
-            && self.current_has_static_ability_id(id, ability_id)
+            && self.has_day_night_transform_behavior(id, ability_id)
     }
 
     /// Whether a permanent currently has daybound or nightbound, which carry
@@ -1775,7 +1831,7 @@ impl GameState {
         }
         let handles = self.object_store.shared_handles_for_definition(&other_def);
         if let Some(obj) = self.object_mut(id) {
-            obj.apply_definition_face_with_shared(&other_def, &handles);
+            obj.apply_transforming_face_with_shared(&other_def, &handles);
         }
         self.mark_continuous_state_dirty();
         // It is a transformed permanent (back face up), so the face parity
@@ -2001,24 +2057,44 @@ impl GameState {
 
     /// Release every permanent held phased out by a source that is leaving.
     pub(crate) fn release_phase_out_holds_for_source(&mut self, source: ObjectId) {
-        let held = self
-            .battlefield_flags_mut()
-            .phase_out_holds_by_source
-            .remove(&source)
-            .unwrap_or_default();
-        self.battlefield_flags_mut()
-            .phase_out_holds_release_on_untap
-            .remove(&source);
-        let mut held = held.into_iter().collect::<Vec<_>>();
-        held.sort();
-        // CR 702.26: "tapped as it phases in" — it is already tapped when it
-        // phases in, not tapped afterward.
-        for permanent in &held {
-            if self.battlefield_flags_mut().tap_on_held_phase_in.remove(permanent) {
-                self.tap(*permanent);
-            }
+        let returns = self.take_phase_out_holds_for_source(source);
+        self.complete_source_phase_duration_returns(returns);
+    }
+
+    pub(super) fn take_phase_out_holds_for_source(&mut self, source: ObjectId) -> std::collections::BTreeMap<ObjectId, bool> {
+        let held = self.battlefield_flags_mut().phase_out_holds_by_source.remove(&source).unwrap_or_default();
+        self.battlefield_flags_mut().phase_out_holds_release_on_untap.remove(&source);
+        held.into_iter().map(|object| {
+            let tapped = self.battlefield_flags_mut().tap_on_held_phase_in.remove(&object);
+            (object, tapped)
+        }).collect()
+    }
+
+    pub(super) fn complete_source_phase_duration_returns(&mut self, returns: std::collections::BTreeMap<ObjectId, bool>) {
+        if returns.is_empty() { return; }
+        if let Some(batch) = self.simultaneous_action_batch() {
+            let pending = self.auxiliary_tracking_mut().pending_phase_duration_returns.entry(batch).or_default();
+            for (object, tapped) in returns { *pending.entry(object).or_default() |= tapped; }
+        } else {
+            self.commit_phase_duration_returns(returns);
         }
-        self.phase_in_simultaneously(&held);
+    }
+
+    pub(super) fn finish_phase_duration_returns(&mut self, batch: crate::provenance::ProvNodeId) {
+        let returns = self.auxiliary_tracking_mut().pending_phase_duration_returns.remove(&batch).unwrap_or_default();
+        self.commit_phase_duration_returns(returns);
+    }
+
+    fn commit_phase_duration_returns(&mut self, returns: std::collections::BTreeMap<ObjectId, bool>) {
+        let mut incoming = Vec::new();
+        for (object, tapped) in returns {
+            if !self.is_phased_out(object) || !self.object(object).is_some_and(|object| object.zone == Zone::Battlefield) { continue; }
+            if tapped { self.tap(object); }
+            incoming.push(object);
+        }
+        // Every duration ended by one simultaneous event returns its objects
+        // in one independent phasing instruction (CR 610.4d).
+        self.phase_in_simultaneously(&incoming);
     }
 
     /// Commit an already-chosen "enters attacking" role. The caller owns
@@ -2200,7 +2276,15 @@ impl GameState {
 
     /// Check if a card is exiled via foretell.
     pub fn is_foretold(&self, id: ObjectId) -> bool {
+        self.is_prepared_face_down(id) && !self.cast_permission_flags.descriptive_exile_preparations.contains(&id)
+    }
+
+    pub fn is_prepared_face_down(&self, id: ObjectId) -> bool {
         self.cast_permission_flags.foretold_cards.contains_key(&id)
+    }
+
+    pub(crate) fn mark_descriptive_exile_preparation(&mut self, id: ObjectId) {
+        self.cast_permission_flags_mut().descriptive_exile_preparations.insert(id);
     }
 
     /// The turn on which a card became foretold.
@@ -2289,6 +2373,10 @@ impl GameState {
 
     /// Check if a card is exiled via plot by the given player.
     pub fn is_plotted_by(&self, id: ObjectId, player: PlayerId) -> bool {
+        !self.cast_permission_flags.descriptive_exile_preparations.contains(&id) && self.is_prepared_face_up_by(id, player)
+    }
+
+    pub(crate) fn is_prepared_face_up_by(&self, id: ObjectId, player: PlayerId) -> bool {
         self.exile_tracking
             .plotted_cards
             .get(&id)
@@ -2296,6 +2384,7 @@ impl GameState {
     }
 
     pub fn plotted_by(&self, id: ObjectId) -> Option<PlayerId> {
+        if self.cast_permission_flags.descriptive_exile_preparations.contains(&id) { return None; }
         self.exile_tracking
             .plotted_cards
             .get(&id)
@@ -2338,7 +2427,7 @@ impl GameState {
             || card
                 .alternative_casts
                 .iter()
-                .any(|method| matches!(method, AlternativeCastingMethod::Plot { .. }))
+                .any(|method| method.prepares_face_up_sorcery())
         {
             return None;
         }
@@ -2432,6 +2521,7 @@ impl GameState {
             flags.face_down.remove(&id);
             flags.manifested.remove(&id);
             flags.cloaked.remove(&id);
+            flags.described_face_down.remove(&id);
             flags.fully_unlocked_rooms.remove(&id);
             flags.rooms_with_no_unlocked_door.remove(&id);
             flags.transform_count.remove(&id);
@@ -2673,6 +2763,33 @@ impl GameState {
         if let Some(partner_id) = partner {
             transients.soulbond_pairs.remove(&partner_id);
         }
+        self.mark_object_changed_and_continuous_state_dirty(object_id);
+        if let Some(partner_id) = partner {
+            self.mark_object_changed_and_continuous_state_dirty(partner_id);
+        }
+    }
+
+    /// Pairing ends immediately when its requirements stop holding, including
+    /// between instructions of one resolution (CR 702.95e), before any SBA.
+    pub(crate) fn reconcile_soulbond_pairs(&mut self) -> bool {
+        let invalid: Vec<_> = self.combat_transients.soulbond_pairs.iter()
+            .filter_map(|(&left, &right)| {
+                if left > right { return None; }
+                let remains = match (self.object(left), self.object(right)) {
+                    (Some(left_object), Some(right_object)) => {
+                        left_object.zone == Zone::Battlefield && right_object.zone == Zone::Battlefield
+                            && self.controller_of(left_object) == self.controller_of(right_object)
+                            // Phasing preserves the paired status. An absent
+                            // permanent does not undergo type changes.
+                            && (self.is_phased_out(left) || self.current_is_creature(left))
+                            && (self.is_phased_out(right) || self.current_is_creature(right))
+                    }
+                    _ => false,
+                };
+                (!remains).then_some(left)
+            }).collect();
+        for id in &invalid { self.clear_soulbond_pair(*id); }
+        !invalid.is_empty()
     }
 
     pub fn set_soulbond_pair(&mut self, left: ObjectId, right: ObjectId) {
@@ -2689,6 +2806,8 @@ impl GameState {
         let transients = self.combat_transients_mut();
         transients.soulbond_pairs.insert(left, right);
         transients.soulbond_pairs.insert(right, left);
+        self.mark_object_changed_and_continuous_state_dirty(left);
+        self.mark_object_changed_and_continuous_state_dirty(right);
     }
 
     pub(crate) fn soulbond_pairs(&self) -> &HashMap<ObjectId, ObjectId> {
@@ -2755,6 +2874,7 @@ impl GameState {
             let flags = self.cast_permission_flags_mut();
             flags.madness_exiled.remove(&id);
             flags.foretold_cards.remove(&id);
+            flags.descriptive_exile_preparations.remove(&id);
             flags.adventure_exiled.remove(&id);
         }
         // A prepare spell copy only leaves exile by being cast (or ceasing to
@@ -2900,6 +3020,18 @@ impl GameState {
 
     /// Record a chosen color for a permanent.
     pub fn set_chosen_color(&mut self, permanent_id: ObjectId, color: crate::color::Color) {
+        let mut origins = self.current_characteristics(permanent_id).map(|chars| {
+            chars.abilities.iter().enumerate().filter_map(|(slot, ability)| {
+                let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return None; };
+                ability.color_choice_as_enters().and_then(|_| chars.abilities.origin(slot)).map(|origin| origin.acquisition_origin())
+            }).collect::<Vec<_>>()
+        }).unwrap_or_default();
+        if origins.is_empty() { origins.push(crate::continuous::AbilityOrigin::Printed(0)); }
+        for origin in origins {
+            let memory = self.choice_store_mut().chosen_color_acquisitions.entry(permanent_id).or_default();
+            let group = memory.get(&origin).map(|record| record.1).unwrap_or(memory.len() as u64);
+            memory.insert(origin, (color, group));
+        }
         self.mark_continuous_state_dirty();
         self.choice_store_mut()
             .chosen_colors
@@ -2909,6 +3041,27 @@ impl GameState {
     /// Get a chosen color for a permanent, if any.
     pub fn chosen_color(&self, permanent_id: ObjectId) -> Option<crate::color::Color> {
         self.choice_store.chosen_colors.get(&permanent_id).copied()
+    }
+
+    /// An acquired reader cannot reuse a choice made by a different text box.
+    /// Retain old acquisitions so ending a copy effect restores its own choice.
+    pub(crate) fn chosen_color_for_ability(&self, source: ObjectId, origin: Option<&crate::continuous::AbilityOrigin>) -> Option<crate::color::Color> {
+        let origin = origin.cloned().unwrap_or(crate::continuous::AbilityOrigin::Printed(0)).acquisition_origin();
+        self.choice_store.chosen_color_acquisitions.get(&source)?.get(&origin).map(|record| record.0)
+    }
+
+    /// Public proof uses choice-order ordinals rather than local effect IDs.
+    pub fn chosen_color_acquisition_proof(&self, source: ObjectId, public: bool) -> Result<(Vec<(u64, crate::color::Color)>, Vec<(usize, Option<u64>)>), crate::effects::ExecutionError> {
+        if !public { return Ok((Vec::new(), Vec::new())); }
+        let memory = self.choice_store.chosen_color_acquisitions.get(&source);
+        if memory.is_none() { return Ok((Vec::new(), Vec::new())); }
+        let mut records = memory.into_iter().flat_map(|memory| memory.values().map(|(color, group)| (*group, *color))).collect::<Vec<_>>();
+        records.sort_by_key(|record| record.0);
+        let chars = self.try_current_characteristics(source).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        let bindings = chars.map(|chars| (0..chars.abilities.len()).map(|slot| {
+            (slot, chars.abilities.origin(slot).and_then(|origin| memory.and_then(|memory| memory.get(&origin.acquisition_origin())).map(|record| record.1)))
+        }).collect()).unwrap_or_default();
+        Ok((records, bindings))
     }
 
     /// Record several chosen colors for a permanent ("choose two colors").
@@ -3499,10 +3652,23 @@ impl GameState {
     /// return is queued for a caller with a player decision channel (see
     /// `process_pending_duration_end_returns`).
     pub fn return_exiled_for_source_leave(&mut self, source_id: ObjectId) {
+        self.return_exiled_for_sources_leave(&[source_id]);
+    }
+
+    pub(crate) fn return_exiled_for_sources_leave(&mut self, sources: &[ObjectId]) {
+        let mut batch = Vec::new();
+        for &source in sources {
+            let returns = self.take_source_leave_returns(source);
+            if !returns.is_empty() { batch.push((source, returns)); }
+        }
+        if !batch.is_empty() { self.auxiliary_tracking_mut().pending_duration_end_returns.push(batch); }
+    }
+
+    fn take_source_leave_returns(&mut self, source_id: ObjectId) -> Vec<(ObjectId, Zone)> {
         let (linked, return_zones) = {
             let tracking = self.exile_tracking_mut();
             if !tracking.return_exiled_when_source_leaves.remove(&source_id) {
-                return;
+                return Vec::new();
             }
             let linked = tracking
                 .exiled_with_source
@@ -3527,7 +3693,7 @@ impl GameState {
                     .then_some((object_id, return_zone))
             })
             .collect::<Vec<_>>();
-        self.return_exiled_cards_at_duration_end(source_id, returns);
+        returns
     }
 
     /// CR 610.3 / 610.3c: when an "exile ... until" duration ends, the cards
@@ -3543,61 +3709,32 @@ impl GameState {
     /// channel queues the return instead; the next trigger drain that has one
     /// (and at the latest the priority advance) performs it, before any
     /// player receives priority.
-    fn return_exiled_cards_at_duration_end(
-        &mut self,
-        source_id: ObjectId,
-        returns: Vec<(ObjectId, Zone)>,
-    ) {
-        if !returns.is_empty() {
-            self.auxiliary_tracking_mut()
-                .pending_duration_end_returns
-                .push((source_id, returns));
-        }
-    }
-
     fn execute_duration_end_returns(
         &mut self,
-        source_id: ObjectId,
-        returns: Vec<(ObjectId, Zone)>,
+        groups: Vec<(ObjectId, Vec<(ObjectId, Zone)>)>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<(), crate::effects::ExecutionError> {
-        if returns.is_empty() {
-            return Ok(());
-        }
-        let Some(controller) = returns
-            .iter()
-            .find_map(|(object_id, _)| self.object(*object_id).map(|object| object.owner))
-        else {
-            return Ok(());
-        };
-        let mut ctx = crate::effects::ExecutionContext::new(source_id, controller, decision_maker);
-        // Preserve the exact duration that returned these cards through both
-        // battlefield entry and nonbattlefield zone-change event paths.
-        ctx.cause.duration_return_source = Some(source_id);
-        let mut battlefield_requests = Vec::new();
-        for (object_id, return_zone) in returns {
-            if return_zone == Zone::Battlefield {
-                battlefield_requests.push((
-                    object_id,
-                    crate::effects::zones::BattlefieldEntryOptions::owner(false),
-                ));
-            } else {
-                let _ = crate::effects::zones::apply_zone_change(
-                    self,
-                    object_id,
-                    Zone::Exile,
-                    return_zone,
-                    ctx.cause.clone(),
-                    &mut *ctx.decision_maker,
-                )?;
+        let mut requests = Vec::new();
+        for (source, returns) in groups {
+            for (object, zone) in returns {
+                if self.object(object).is_some_and(|o| o.zone == Zone::Exile) {
+                    let mut cause = crate::events::cause::EventCause::from_effect(source, self.object(object).unwrap().owner);
+                    cause.duration_return_source = Some(source);
+                    requests.push((object, zone, cause));
+                }
             }
         }
-        let _ = crate::effects::zones::move_to_battlefield_batch_with_options(
-            self,
-            &mut ctx,
-            battlefield_requests,
-        )?;
+        let Some((first, _, cause)) = requests.first() else { return Ok(()); };
+        let controller = self.object(*first).unwrap().owner;
+        let mut ctx = crate::effects::ExecutionContext::new(cause.source.unwrap_or(*first), controller, decision_maker).with_cause(cause.clone());
+        let _ = crate::effects::zones::execute_duration_returns(self, &mut ctx, requests)?;
         Ok(())
+    }
+
+    pub(crate) fn has_duration_end_work(&self) -> bool {
+        !self.exile_tracking.return_exiled_when_source_leaves.is_empty()
+            || !self.exile_tracking.return_exiled_when_opponent_becomes_monarch.is_empty()
+            || self.has_pending_duration_end_returns()
     }
 
     pub(crate) fn has_pending_duration_end_returns(&self) -> bool {
@@ -3617,7 +3754,7 @@ impl GameState {
         let checkpoint = self.clone();
         let result = self.process_pending_duration_end_returns_inner(decision_maker);
         if result.is_err() || decision_maker.awaiting_choice() {
-            *self = checkpoint;
+            self.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice());
         }
         result
     }
@@ -3628,19 +3765,9 @@ impl GameState {
     ) -> Result<(), crate::effects::ExecutionError> {
         let pending =
             std::mem::take(&mut self.auxiliary_tracking_mut().pending_duration_end_returns);
-        let mut pending = pending.into_iter();
-        while let Some((source_id, returns)) = pending.next() {
-            let returns = returns
-                .into_iter()
-                .filter(|(object_id, _)| {
-                    self.object(*object_id)
-                        .is_some_and(|object| object.zone == Zone::Exile)
-                })
-                .collect::<Vec<_>>();
-            self.execute_duration_end_returns(source_id, returns, &mut *decision_maker)?;
-            if decision_maker.awaiting_choice() {
-                return Ok(());
-            }
+        for groups in pending {
+            self.execute_duration_end_returns(groups, &mut *decision_maker)?;
+            if decision_maker.awaiting_choice() { return Ok(()); }
         }
         Ok(())
     }
@@ -3702,6 +3829,7 @@ impl GameState {
         let mut qualifying_groups = qualifying_groups;
         qualifying_groups.sort_unstable();
 
+        let mut batch = Vec::new();
         for group_id in qualifying_groups {
             self.exile_tracking_mut()
                 .return_exiled_when_opponent_becomes_monarch
@@ -3730,8 +3858,9 @@ impl GameState {
             let Some(source_id) = returns.first().map(|(object_id, _)| *object_id) else {
                 continue;
             };
-            self.return_exiled_cards_at_duration_end(source_id, returns);
+            batch.push((source_id, returns));
         }
+        if !batch.is_empty() { self.auxiliary_tracking_mut().pending_duration_end_returns.push(batch); }
     }
 
     /// Get cards exiled by a specific source object ID.
@@ -3741,6 +3870,8 @@ impl GameState {
         owner: crate::linked_exile::LinkedExileOwner,
         member: ObjectId,
     ) {
+        let owner = self.exile_tracking.linked_exile_pair_aliases.get(&owner)
+            .cloned().unwrap_or(owner);
         let members = self
             .exile_tracking_mut()
             .linked_exile_pairs
@@ -3760,12 +3891,60 @@ impl GameState {
             return Err(crate::effects::ExecutionError::IncompleteEvidence(
                 "linked exile ownership was omitted by a source-only state import; full replay required".into()));
         }
+        let owner = self.exile_tracking.linked_exile_pair_aliases.get(owner).unwrap_or(owner);
         Ok(self
             .exile_tracking
             .linked_exile_pairs
             .get(owner)
             .map(Vec::as_slice)
             .unwrap_or(&[]))
+    }
+
+    /// The as-enters program ran on the prospective incarnation. Its exact
+    /// paired collection belongs to the resulting entrant (CR 607.2b).
+    pub(crate) fn transfer_entry_linked_exile_pairs(
+        &mut self,
+        transfers: &[super::zones_and_characteristics::EntryLinkedExileTransfer],
+        new: ObjectId,
+    ) {
+        let tracking = self.exile_tracking_mut();
+        for transfer in transfers {
+            let mut entrant = transfer.owner.clone();
+            entrant.host = new;
+            if let Some(previous) = tracking.linked_exile_pairs.get_mut(&transfer.owner) {
+                previous.retain(|member| !transfer.members.contains(member));
+            }
+            let retained = tracking.linked_exile_pairs.entry(entrant.clone()).or_default();
+            for &member in &transfer.members {
+                if !retained.contains(&member) { retained.push(member); }
+            }
+            for reader in &transfer.aliases {
+                if let Some(creator) = tracking.linked_exile_pair_aliases.get_mut(reader)
+                    && *creator == transfer.owner
+                {
+                    *creator = entrant.clone();
+                }
+            }
+        }
+    }
+
+    pub(crate) fn bind_created_emblem_linked_pair(
+        &mut self,
+        emblem: ObjectId,
+        creator: crate::linked_exile::LinkedExileOwner,
+    ) {
+        let reader = crate::linked_exile::LinkedExileOwner {
+            host: emblem,
+            pair: creator.pair,
+            acquisition: crate::linked_exile::LinkedExileAcquisition::Printed,
+        };
+        // Flatten at creation, never follow a physical card into a new zone
+        // incarnation or rebind an existing emblem after its creator returns.
+        let creator = self.exile_tracking.linked_exile_pair_aliases.get(&creator)
+            .cloned().unwrap_or(creator);
+        self.exile_tracking_mut().linked_exile_pair_aliases.insert(reader, creator);
+        self.bump_mutation_revision();
+        self.remember_linked_exile_inspection_entitlements();
     }
 
     pub fn get_exiled_with_source_links(&self, source_id: ObjectId) -> &[ObjectId] {
@@ -3954,6 +4133,7 @@ impl GameState {
         let tracking = self.exile_tracking_mut();
         tracking.exiled_with_source = links;
         tracking.linked_exile_pairs.clear();
+        tracking.linked_exile_pair_aliases.clear();
         tracking.linked_exile_pairs_incomplete = true;
     }
 
@@ -4362,11 +4542,38 @@ impl GameState {
             state.components.push(spell_component);
         }
 
+        // The existing permanent's flipped status applies to incoming flip
+        // components too, regardless of which component is placed on top.
+        if target_flipped {
+            for component in &mut state.components {
+                if component.flipped || !is_flip_card_layout(component.object.linked_face_layout) {
+                    continue;
+                }
+                if let Some(definition) = self.linked_face_definition_by_name_or_id(
+                    component.object.other_face_name.as_deref(),
+                    component.object.other_face,
+                ) {
+                    component.object.apply_flipped_face(&definition);
+                    component.flipped = true;
+                }
+            }
+        }
+
         let top_face_down = state.components.first()?.face_down;
         self.commander_tracking_mut()
             .merged_permanents
             .insert(target_stable_id, state);
         self.refresh_merged_permanent_characteristics(target_id);
+        self.effect_store.continuous_effects.add_effect(
+            crate::continuous::ContinuousEffect::new(
+                target_id, target.initial_controller,
+                crate::continuous::EffectTarget::Specific(target_id),
+                crate::continuous::Modification::MergeComponent {
+                    component: spell.stable_id, on_top: spell_on_top,
+                },
+            ).with_source_type(crate::continuous::EffectSourceType::Copy),
+        );
+
 
         // Merging adopts the top component's status without turning the
         // permanent face up or down (CR 730.2e), so no face-change event is
@@ -4379,6 +4586,7 @@ impl GameState {
                 let changed = flags.face_down.remove(&target_id);
                 flags.manifested.remove(&target_id);
                 flags.cloaked.remove(&target_id);
+            flags.described_face_down.remove(&target_id);
                 changed
             }
         };
@@ -4923,6 +5131,41 @@ impl GameState {
             .projected_records()
             .chain(self.turn_store.action_history.iter())
             .map(|record| &record.event)
+    }
+
+    /// CR 406.4: an uninspected card ID identifies its exile pile, not a
+    /// selectable physical member. Exact arrival receipts keep successive
+    /// exiles by the same source separate, including across turn boundaries.
+    pub(crate) fn randomize_uninspected_exile_choices(
+        &self, chooser: PlayerId, selected: Vec<ObjectId>, eligible: &[ObjectId],
+    ) -> Vec<ObjectId> {
+        let pile = |id| {
+            self.retained_action_observations()
+                .chain(self.effect_store.pending_trigger_events.iter())
+                .find_map(|event| {
+                    let movement = event.downcast::<crate::events::zones::ZoneChangeEvent>()?;
+                    (movement.to == Zone::Exile && movement.result_objects.contains(&id))
+                        .then(|| (event.simultaneous_batch().unwrap_or(event.provenance()), movement.cause.clone()))
+                })
+        };
+        let mut result = Vec::with_capacity(selected.len());
+        for id in selected {
+            if !self.object(id).is_some_and(|object| object.zone == Zone::Exile)
+                || !self.is_face_down(id) || self.can_player_look_at_face_down_exiled_card(id, chooser)
+            {
+                if !result.contains(&id) { result.push(id); }
+                continue;
+            }
+            let occurrence = pile(id);
+            let mut members: Vec<_> = eligible.iter().copied().filter(|candidate|
+                !result.contains(candidate) && self.is_face_down(*candidate)
+                && self.object(*candidate).is_some_and(|object| object.zone == Zone::Exile)
+                && (if occurrence.is_some() { pile(*candidate) == occurrence } else { *candidate == id })
+            ).collect();
+            if members.len() > 1 { self.shuffle_slice(&mut members); }
+            if let Some(member) = members.first() { result.push(*member); }
+        }
+        result
     }
 
     /// Freeze public milling characteristics at the outer instruction boundary,

@@ -48,6 +48,11 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     // words are read, so name words never become subtypes or colors.
     let (name_words, kept_words) = split_copy_name_exception(raw_modifier_words);
     spec.name_words = name_words;
+    let mut kept_words = kept_words;
+    if let Some(index) = kept_words.windows(5).position(|words| matches!(words, ["it" | "they", "has" | "have", "no", "mana", "cost"])) {
+        spec.without_mana_cost = true;
+        kept_words.drain(index..index + 5);
+    }
     let modifier_words: &[&str] = &kept_words;
     let surface = CreationWords::new(modifier_words);
     if modifier_words.iter().any(|word| *word == "legendary")

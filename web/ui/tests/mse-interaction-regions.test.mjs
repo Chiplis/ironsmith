@@ -40,3 +40,13 @@ test('rules helpers resolve exact substrings without matching card names',()=>{
   const regions=mseInteractionRegions(fixture,{lines:['Flying'],actions:new Map(),ranges:new Map([[0,[{start:0,end:6,helper}]]])});
   assert.equal(regions.length,1);assert.equal(regions[0].width,30);assert.equal(regions[0].helper,helper);
 });
+
+
+test('Equip activation owns its keyword and cost hit area; inactive keywords keep help', async()=>{
+  const {mseRulesHelperView}=await import('../src/lib/mse/rules-helper-ranges.mjs');
+  const view={lines:['Flash','Equip {3}{W}'],actions:new Map([[1,[{kind:'activate_ability'}]]])};
+  const helpers=mseRulesHelperView(view);
+  assert.ok(helpers.ranges.get(0).some(range=>range.helper.type==='keyword'));
+  assert.deepEqual(helpers.ranges.get(1),[]);
+  assert.ok(mseRulesHelperView({...view,actions:new Map()}).ranges.get(1).length);
+});

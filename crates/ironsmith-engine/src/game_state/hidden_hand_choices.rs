@@ -172,6 +172,7 @@ pub enum FaceDownCastKind {
     Morph,
     Megamorph,
     Disguise,
+    Defined { ward: bool },
     /// Cast face down through an effect's permission ("you may cast that
     /// card face down as a 2/2 creature spell", see
     /// [`FaceDownCastPermission`]) rather than a printed keyword. `source` is
@@ -186,11 +187,15 @@ pub enum FaceDownCastKind {
 pub const FACE_DOWN_CAST_PERMISSION_KIND: &str = "permission";
 
 impl FaceDownCastKind {
+    pub fn grants_ward(self) -> bool { matches!(self, Self::Disguise | Self::Defined { ward: true }) }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Morph => "morph",
             Self::Megamorph => "megamorph",
             Self::Disguise => "disguise",
+            Self::Defined { ward: false } => "defined-face-down",
+            Self::Defined { ward: true } => "defined-face-down-ward",
             Self::Permission { .. } => FACE_DOWN_CAST_PERMISSION_KIND,
         }
     }
@@ -202,6 +207,8 @@ impl FaceDownCastKind {
             "morph" => Some(Self::Morph),
             "megamorph" => Some(Self::Megamorph),
             "disguise" => Some(Self::Disguise),
+            "defined-face-down" => Some(Self::Defined { ward: false }),
+            "defined-face-down-ward" => Some(Self::Defined { ward: true }),
             _ => None,
         }
     }
@@ -227,7 +234,9 @@ impl FaceDownCastKind {
 
     fn of_static_ability(ability: &crate::static_abilities::StaticAbility) -> Option<Self> {
         ability.turn_face_up_cost()?;
-        Some(if ability.is_disguise() {
+        Some(if let Some(ward) = ability.defined_face_down_ward() {
+            Self::Defined { ward }
+        } else if ability.is_disguise() {
             Self::Disguise
         } else if ability.is_megamorph() {
             Self::Megamorph
@@ -329,6 +338,7 @@ pub struct PendingAutomaticDrawReveal {
 /// manufacturing another action with a new occurrence and lost draw context.
 #[derive(Debug, Clone)]
 pub(crate) struct PendingDrawReveal {
+    pub announcement_deferred: bool,
     pub player: PlayerId,
     pub card: ObjectId,
     pub event: crate::triggers::TriggerEvent,
@@ -621,7 +631,7 @@ impl GameState {
         self.hidden_card_info(id).is_some()
             && !self.is_publicly_revealed_hidden_card(id)
             && self.object(id).is_some_and(|object| {
-                object.zone.is_hidden() || self.is_face_down(id) || self.is_foretold(id)
+                object.zone.is_hidden() || self.is_face_down(id) || self.is_prepared_face_down(id)
             })
     }
 
@@ -1093,6 +1103,7 @@ impl GameState {
                 if !kinds.contains(&kind) { kinds.push(kind); }
             }
         }
+        kinds.extend([FaceDownCastKind::Defined { ward: false }, FaceDownCastKind::Defined { ward: true }]);
         kinds
     }
 
@@ -1159,7 +1170,7 @@ impl GameState {
                 .is_some_and(|id| {
                     self.object(id).is_some_and(|object| object.zone.is_public())
                         && !self.is_face_down(id)
-                        && !self.is_foretold(id)
+                        && !self.is_prepared_face_down(id)
                 })
     }
 
@@ -1413,10 +1424,7 @@ impl GameState {
                         kind.is_allowed_by(&candidate.abilities)
                     }
                     HiddenIdentityCheck::Foretell => candidate.alternative_casts.iter().any(|method| {
-                        matches!(
-                            method,
-                            crate::alternative_cast::AlternativeCastingMethod::Foretell { .. }
-                        )
+                        method.prepares_face_down()
                     }),
                 };
                 (!satisfied).then(|| {
@@ -1495,7 +1503,7 @@ impl GameState {
         object.zone == Zone::Hand
             || (face_down
                 && (matches!(object.zone, Zone::Battlefield | Zone::Stack)
-                    || (object.zone == Zone::Exile && self.is_foretold(object.id))))
+                    || (object.zone == Zone::Exile && self.is_prepared_face_down(object.id))))
     }
 
     /// Snapshot the cards `player` must disclose at the end of the match
@@ -1857,22 +1865,18 @@ impl GameState {
         };
         // The native draw owner already answered this exact reveal window.
         // Do not expose the card again or infer a different Miracle instance.
-        if drawn.miracle.is_some() { return; }
-        if !drawn.is_first_this_turn
-            || !self
-                .auxiliary_tracking
-                .hidden_draw_reveal_players
-                .contains(&drawn.player)
-        {
+        if drawn.miracle.as_ref().is_some_and(|decision|
+            !matches!(decision, crate::events::other::MiracleDrawDecision::Deferred(_))) { return; }
+        if !drawn.is_first_this_turn { return; }
+        let Some(card) = drawn.first_card() else { return; };
+        let announcement_deferred = self.drawn_card_waits_for_announcement(card);
+        if !announcement_deferred && !self.auxiliary_tracking.hidden_draw_reveal_players.contains(&drawn.player) {
             return;
         }
-        let Some(card) = drawn.first_card() else {
-            return;
-        };
         let owned_hand_card = self
             .object(card)
             .is_some_and(|object| object.zone == Zone::Hand && object.owner == drawn.player);
-        if !owned_hand_card || !self.hidden_identity_is_private(card) {
+        if !owned_hand_card || (!announcement_deferred && !self.hidden_identity_is_private(card)) {
             return;
         }
         if self
@@ -1886,6 +1890,7 @@ impl GameState {
         self.auxiliary_tracking_mut()
             .pending_hidden_draw_reveals
             .push(PendingDrawReveal {
+                announcement_deferred,
                 player: drawn.player,
                 card,
                 event: event.clone(),
@@ -1903,13 +1908,14 @@ impl GameState {
                 .first()
                 .cloned()?;
             let (player, card) = (next.player, next.card);
+            if self.drawn_card_waits_for_announcement(card) { return None; }
             // A card another owner-answered reveal already opened publicly
             // (e.g. "reveal the first card you draw each turn") stays in the
             // window: its draw is re-checked without asking again.
             let still_in_hand = self
                 .object(card)
                 .is_some_and(|object| object.zone == Zone::Hand && object.owner == player)
-                && self.hidden_card_info(card).is_some();
+                && (next.announcement_deferred || self.hidden_card_info(card).is_some());
             if still_in_hand {
                 return Some(next);
             }
@@ -1957,6 +1963,7 @@ impl GameState {
                 .pending_hidden_automatic_draw_reveals
                 .first()
                 .cloned()?;
+            if self.drawn_card_waits_for_announcement(next.reveal.card) { return None; }
             let in_hand = self
                 .object(next.reveal.card)
                 .is_some_and(|object| {

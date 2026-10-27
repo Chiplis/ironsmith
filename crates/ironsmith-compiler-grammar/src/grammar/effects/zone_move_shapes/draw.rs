@@ -445,7 +445,7 @@ fn is_kick_count(tokens: &[OwnedLexToken]) -> bool {
     };
     let Some((source, ())) = primitives::split_lexed_once_before_suffix(after_time, 0, || {
         (
-            semantic_phrase(&["was", "kicked"]),
+            semantic_phrase(&["was", crate::keyword_forms::KICKED]),
             repeat::<_, _, (), _, _>(0.., punctuation),
             eof,
         )

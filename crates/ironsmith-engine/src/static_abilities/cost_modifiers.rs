@@ -2042,6 +2042,7 @@ impl StaticAbilityKind for CostReduction {
 /// "Activated abilities of <objects> cost {N} less to activate."
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActivatedAbilityCostReduction {
+    pub optional: bool,
     pub filter: ObjectFilter,
     pub reduction: u32,
     pub replacement_mana_cost: Option<crate::mana::ManaCost>,
@@ -2057,6 +2058,7 @@ pub struct ActivatedAbilityCostReduction {
 impl ActivatedAbilityCostReduction {
     pub fn new(filter: ObjectFilter, reduction: u32) -> Self {
         Self {
+            optional: false,
             filter,
             reduction,
             replacement_mana_cost: None,
@@ -2076,6 +2078,7 @@ impl ActivatedAbilityCostReduction {
         display: impl Into<String>,
     ) -> Self {
         Self {
+            optional: false,
             filter,
             reduction: 0,
             replacement_mana_cost: Some(replacement_mana_cost),
@@ -2250,6 +2253,8 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
                 ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
                 ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
                 ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
+                ironsmith_core::ActivatedAbilityKeyword::Encore => "encore",
+                ironsmith_core::ActivatedAbilityKeyword::Fortify => "fortify",
             };
             format!("if it's a {keyword} ability")
         }
@@ -2282,6 +2287,8 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
                 ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
                 ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
                 ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
+                ironsmith_core::ActivatedAbilityKeyword::Encore => "encore",
+                ironsmith_core::ActivatedAbilityKeyword::Fortify => "fortify",
             };
             format!("if it's the first {keyword} ability activated {turn}")
         }
@@ -2543,11 +2550,12 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
                 )
             }
         } else if self.filter == ObjectFilter::source() {
-            format!("This ability costs {{{}}} less to activate", self.reduction)
+            format!("This ability costs {}{{{}}} less to activate", if self.optional { "up to " } else { "" }, self.reduction)
         } else {
             format!(
-                "Activated abilities of {} cost {{{}}} less to activate",
+                "Activated abilities of {} cost {}{{{}}} less to activate",
                 self.filter.description(),
+                if self.optional { "up to " } else { "" },
                 self.reduction
             )
         };
@@ -2894,6 +2902,10 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::CreatureIsAttackingYou => {
             Some("a creature is attacking you".to_string())
         }
+        ThisSpellCostCondition::Any(conditions) => {
+            let parts = conditions.iter().map(describe_this_spell_cost_condition).collect::<Option<Vec<_>>>()?;
+            (!parts.is_empty()).then(|| parts.join(" or "))
+        }
         ThisSpellCostCondition::All(conditions) => {
             let parts = conditions
                 .iter()
@@ -3075,6 +3087,11 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
     };
 
     match condition {
+        ThisSpellCostCondition::Any(conditions) => conditions.iter().any(|condition| {
+            this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+                game, source, controller, condition, chosen_targets, optional_costs_paid,
+            )
+        }),
         ThisSpellCostCondition::All(conditions) => conditions.iter().all(|condition| {
             this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                 game,

@@ -30,7 +30,7 @@ import {
 } from "@/lib/hand-cast-keyboard";
 
 import { reconcilePseudoHand } from "@/lib/pseudo-hand";
-import { handKeyboardEntryCard, onHandOpenChange, setHandOpen, useHandOpen } from "@/lib/hand-open";
+import { handKeyboardEntryCard, installHandNumberShortcut, onHandOpenChange, setHandOpen, useHandOpen, useHandNumbersVisible } from "@/lib/hand-open";
 
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
@@ -1352,6 +1352,21 @@ export default function HandZone({
   // no card has focus yet: Right starts at the first card, Left at the last.
   // Once a card has focus, GameCard's own arrow handling takes over.
   const handOpen = useHandOpen();
+  const showHandNumbers = useHandNumbersVisible() && isMe;
+  const numberedHandIds = JSON.stringify(handCards.map(card => String(card.id)));
+  useEffect(() => {
+    if (!isMe) return undefined;
+    const ids = JSON.parse(numberedHandIds);
+    return installHandNumberShortcut(document, () => {
+      const list = centerCycleRef.current || handListRef.current;
+      const cards = [...(list?.querySelectorAll('.game-card.hand-card[role="button"]') || [])];
+      return ids.map(id => cards.find(card => card.getAttribute("data-object-id") === id));
+    }, card => {
+      handleKeyboardNavigation();
+      setHandOpen(true);
+      card.focus({ preventScroll: true });
+    });
+  }, [isMe, numberedHandIds, handleKeyboardNavigation]);
   useHandBattlefieldClearance(handListRef, `${layout}:${Boolean(player)}`, handOpen || activeFanIndex != null);
   useEffect(() => {
     if (!handOpen) return undefined;
@@ -1768,6 +1783,7 @@ export default function HandZone({
             key={entry.key}
             card={card}
             variant="hand"
+            handNumber={showHandNumbers ? visualIndex + 1 : null}
             isPlayable={isPlayable}
             paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}
@@ -1923,6 +1939,7 @@ export default function HandZone({
             <GameCard
               card={card}
               variant="hand"
+              handNumber={showHandNumbers ? visualIndex + 1 : null}
               isPlayable={isPlayable}
               paymentProven={plays.some(action => action.payment_proven !== false)}
               glowKind={glowKind}

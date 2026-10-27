@@ -375,7 +375,7 @@
         && let Some(create) =
             unwrap_tag_wrappers(create_effect).downcast_ref::<crate::effects::CreateTokenEffect>()
         && let Some(manifest) = unwrap_tag_wrappers(manifest_effect)
-            .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+            .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>().filter(|effect| !effect.descriptive)
         && let Some(compact) = describe_create_token_and_manifest_top_card(create, manifest)
     {
         return compact;

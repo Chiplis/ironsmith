@@ -1224,9 +1224,9 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     if surface::exact_any(
         clause,
         &[
-            &["this", "creature", "wasnt", "kicked"],
-            &["this", "creature", "wasn't", "kicked"],
-            &["this", "creature", "was", "not", "kicked"],
+            &["this", "creature", "wasnt", crate::keyword_forms::KICKED],
+            &["this", "creature", "wasn't", crate::keyword_forms::KICKED],
+            &["this", "creature", "was", "not", crate::keyword_forms::KICKED],
         ],
     ) {
         return Some(PredicateAst::Not(Box::new(
@@ -1236,7 +1236,7 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     if surface::exact_any(
         clause,
         &[
-            &["this", "card", "is", "suspended"],
+            &["this", "card", "is", crate::keyword_forms::SUSPENDED],
             &[
                 "this", "card", "is", "in", "exile", "with", "a", "time", "counter", "on", "it",
             ],

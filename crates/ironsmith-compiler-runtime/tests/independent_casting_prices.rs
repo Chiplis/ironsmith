@@ -1319,3 +1319,93 @@ fn beam_me_up_whole_card_bodies_compile_and_round_trip() {
         }
     }
 }
+
+#[test]
+fn sandbox_free_cast_permissions_preserve_costs() {
+    for (label, text, zones) in [
+        ("global", "You may cast spells without paying their mana costs.", vec![Zone::Hand]),
+        ("graveyard", "You may cast a spell from your graveyard without paying its mana cost.", vec![Zone::Graveyard]),
+        ("exile", "You may cast a spell from exile without paying its mana cost.", vec![Zone::Exile]),
+        ("combined", "{0}: Choose a player, then choose a number. That player's life total becomes the chosen number.\nYou may cast spells without paying their mana costs.\nYou may play any number of lands on each of your turns.\nYou may cast a spell from exile without paying its mana cost.\nYou may cast a spell from your graveyard without paying its mana cost.", vec![Zone::Hand, Zone::Graveyard, Zone::Exile]),
+    ] {
+        for def in pair(&format!("Sandbox {label} provider"), &format!("Mana cost: {{0}}\nType: Creature\nPower/Toughness: 2/2\n{text}")) {
+            for zone in &zones {
+                let mut g = game();
+                g.create_object_from_definition(&def, A, Zone::Battlefield);
+                let card = spell(&mut g, A, *zone, "{7}{U}");
+                let actions = casts(&g, A, card);
+                assert!(!actions.is_empty(), "{label} from {zone:?}: no free cast; abilities: {:?}", def.abilities);
+                announce(&mut g, actions[0].clone(), &mut SelectFirstDecisionMaker);
+                assert_eq!(g.player(A).unwrap().mana_pool.total(), 0);
+                resolve_stack_entry(&mut g).unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn sandbox_unrestricted_free_price_uses_independent_origins() {
+    for def in pair("Unrestricted free casting", "Type: Enchantment\nYou may cast spells without paying their mana costs.") {
+        for zone in [Zone::Graveyard, Zone::Exile] {
+            let mut g = game();
+            g.create_object_from_definition(&def, A, Zone::Battlefield);
+            let card = spell(&mut g, A, zone, "{7}{U}");
+            assert!(casts(&g, A, card).is_empty(), "a price must not grant an origin");
+            permit(&mut g, zone, false, false);
+            let actions = casts(&g, A, card);
+            assert!(!actions.is_empty(), "unrestricted free price missing from {zone:?}");
+            announce(&mut g, actions[0].clone(), &mut SelectFirstDecisionMaker);
+            assert_eq!(g.player(A).unwrap().mana_pool.total(), 0);
+        }
+    }
+}
+
+#[test]
+fn sandbox_free_cast_spell_statements_remain_one_shot() {
+    for zone in ["your graveyard", "exile"] {
+        for def in pair("One shot permission", &format!("Type: Sorcery\nYou may cast a spell from {zone} without paying its mana cost.")) {
+            assert!(def.abilities.is_empty(), "spell must not gain a battlefield permission");
+            assert!(def.spell_effect.is_some());
+        }
+    }
+}
+
+#[test]
+fn sandbox_free_permissions_keep_taxes_and_zone_boundaries() {
+    for (origin, zone) in [("your graveyard", Zone::Graveyard), ("exile", Zone::Exile)] {
+        for def in pair("Zone free permission", &format!("Type: Enchantment\nYou may cast a spell from {origin} without paying its mana cost.")) {
+            let mut g = game();
+            g.create_object_from_definition(&def, A, Zone::Battlefield);
+            let card = spell(&mut g, A, zone, "{7}{U}");
+            let hand = spell(&mut g, A, Zone::Hand, "{7}{U}");
+            assert!(casts(&g, A, hand).is_empty());
+            if zone == Zone::Graveyard {
+                let foreign = spell(&mut g, B, zone, "{7}{U}");
+                assert!(casts(&g, A, foreign).is_empty());
+            }
+            printed(&mut g, B, Zone::Battlefield, "Tax", "Type: Enchantment\nSpells cost {1} more to cast.");
+            assert!(casts(&g, A, card).is_empty(), "free casting must still pay taxes");
+            g.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless, 1);
+            let actions = casts(&g, A, card);
+            assert!(!actions.is_empty());
+            announce(&mut g, actions[0].clone(), &mut SelectFirstDecisionMaker);
+            assert_eq!(g.player(A).unwrap().mana_pool.total(), 0);
+        }
+    }
+}
+
+#[test]
+fn sandbox_free_zone_permissions_fix_printed_x_to_zero() {
+    for (origin, zone) in [("your graveyard", Zone::Graveyard), ("exile", Zone::Exile)] {
+        for def in pair("Free variable spell provider", &format!("Type: Enchantment\nYou may cast a spell from {origin} without paying its mana cost.")) {
+            let mut g = game();
+            g.create_object_from_definition(&def, A, Zone::Battlefield);
+            let card = spell(&mut g, A, zone, "{X}{U}");
+            let actions = casts(&g, A, card);
+            assert!(!actions.is_empty());
+            let stack = announce(&mut g, actions[0].clone(), &mut SelectFirstDecisionMaker);
+            assert_eq!(g.object(stack).unwrap().x_value, Some(0));
+            assert_eq!(g.player(A).unwrap().mana_pool.total(), 0);
+        }
+    }
+}

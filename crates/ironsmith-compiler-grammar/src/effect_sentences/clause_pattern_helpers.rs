@@ -468,6 +468,10 @@ pub fn parse_copy_spell_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     fn parse_copy_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
+        if matches!(crate::lexer::parser_token_word_refs(tokens).as_slice(),
+            ["time", "this", "spell's" | "spells", "additional", "cost", "was", "paid"]) {
+            return Ok(Value::TimesPaidLabel(ironsmith_core::OptionalCostRef::from("Additional")));
+        }
         let words = crate::lexer::token_word_refs(tokens);
         let among = crate::slice_primitives::select_position(&words, |word| *word == "among");
         if let Some(among) = among

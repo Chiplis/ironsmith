@@ -7,7 +7,7 @@ pub fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadS
     let no_longer = primitives::probe_all(
         trim_lexed_commas(tail_tokens),
         (
-            primitives::phrase(&["no", "longer", "goaded"]),
+            primitives::phrase(&["no", "longer", crate::keyword_forms::GOADED]),
             primitives::sentence_end(),
         )
             .void(),
@@ -20,7 +20,7 @@ pub fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadS
         crate::grammar::primitives::probe_all(
             trim_lexed_commas(tail_tokens),
             (
-                alt((primitives::kw("goaded"), primitives::kw("goad"))),
+                alt((primitives::kw(crate::keyword_forms::GOADED), primitives::kw("goad"))),
                 opt(primitives::any_phrase(&[
                     &["for", "the", "rest", "of", "the", "game"],
                     &["for", "the", "rest", "of", "this", "game"],

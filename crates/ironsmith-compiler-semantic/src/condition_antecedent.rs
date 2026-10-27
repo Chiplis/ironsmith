@@ -317,6 +317,7 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
             SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { .. })

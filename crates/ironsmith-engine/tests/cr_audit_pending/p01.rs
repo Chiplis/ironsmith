@@ -218,6 +218,30 @@ fn cr_103_1c_power_play_makes_its_controller_the_starting_player() {
         wrong.is_empty(),
         "CR 103.1c: Power Play supersedes the random starting-player determination; got {wrong:?}"
     );
+    let charlie = PlayerId::from_index(2);
+    let mut observed = std::collections::HashSet::new();
+    for seed in 1..=32 {
+        let choose = || {
+            let mut game = named_game(4);
+            game.enable_conspiracy(vec![
+                (bob, vec![
+                    ironsmith::game_state::ConspiracySetupCard { definition: definition.clone(), agenda_names: vec![] },
+                    ironsmith::game_state::ConspiracySetupCard { definition: definition.clone(), agenda_names: vec![] },
+                ]),
+                (charlie, vec![ironsmith::game_state::ConspiracySetupCard {
+                    definition: definition.clone(), agenda_names: vec![],
+                }]),
+            ]).unwrap();
+            game.set_random_seed(seed);
+            game.randomize_starting_player().unwrap()
+        };
+        let chosen = choose();
+        assert!([bob, charlie].contains(&chosen), "only eligible players may start");
+        assert_eq!(chosen, choose(), "the match seed reproduces the selection");
+        observed.insert(chosen);
+    }
+    assert_eq!(observed.len(), 2, "random selection reaches both eligible players");
+
 }
 
 // ---------------------------------------------------------------- 104.1 / 104.2b / 104.3e / 104.4c

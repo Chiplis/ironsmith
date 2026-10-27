@@ -1064,10 +1064,15 @@ if filter.zone == Some(Zone::Hand)
             "{effect_text}. {duration}, you don't lose this mana as steps and phases end"
         ));
     }
-    if effect
-        .downcast_ref::<crate::effects::LearnEffect>()
-        .is_some()
-    {
+    if let Some(effect) = effect.downcast_ref::<crate::effects::CumulativeUpkeepEffect>()
+        && let ironsmith_core::effect::UpkeepPaymentKind::PerSourceCounter(counter) = effect.kind {
+        let payment = compile_effect_list(&effect.payment);
+        return format!("Sacrifice this permanent unless you {} for each {} counter on it", lowercase_first(payment.trim_end_matches('.')), counter.description());
+    }
+    if let Some(effect) = effect.downcast_ref::<crate::effects::LearnEffect>() {
+        if let Some(filter) = &effect.outside_card_filter {
+            return format!("You may reveal {} you own from outside the game and put it into your hand, or discard a card to draw a card", describe_choose_spec(&ChooseSpec::Object(filter.clone())));
+        }
         return "Learn".to_string();
     }
     if let Some(double_counters) = effect.downcast_ref::<crate::effects::DoubleCountersEffect>() {
@@ -2043,11 +2048,9 @@ if filter.zone == Some(Zone::Hand)
             lowercase_first(&describe_effect_list(&for_each_tagged.effects))
         );
     }
-    if effect
-        .downcast_ref::<crate::effects::AscendEffect>()
-        .is_some()
-    {
-        return "Ascend".to_string();
+    if let Some(designation) = effect.downcast_ref::<crate::effects::AscendEffect>() {
+        if !designation.descriptive { return "Ascend".to_string(); }
+        return format!("If you control {} or more {}, you {} for the rest of the game", designation.minimum, if designation.historic_only { "artifacts, legendaries, and/or Sagas" } else { "permanents" }, if designation.enduring_story { "have an enduring story" } else { "get the city's blessing" });
     }
     if effect.downcast_ref::<crate::effects::ForPlayersEffect>().is_some()
         && let Some(text) = super::effect_lists::describe_each_player_blights(
@@ -3947,10 +3950,23 @@ if filter.zone == Some(Zone::Hand)
                 None => format!("{rendered} with the noted number and kind of counters on it"),
             };
         }
+        if !move_to_zone.entry_modifications.is_empty() {
+            let mut plain = move_to_zone.clone();
+            plain.entry_modifications.clear();
+            let movement = describe_effect(&Effect::new(plain));
+            let grants = move_to_zone.entry_modifications.iter().map(|modification| {
+                describe_effect(&Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                    ChooseSpec::Tagged(crate::tag::TagKey::from("__it__")),
+                    modification.clone(), crate::Until::Forever,
+                )))
+            }).collect::<Vec<_>>();
+            return format!("{}. As it enters, {}", movement.trim_end_matches('.'), grants.join(". "));
+        }
         if let Some(changes) = &move_to_zone.entry_type_changes {
             // Recognize the keyword from its complete entry operations. Any
             // extra move rider remains in the expanded rendering below.
-            if changes.added_card_types == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
+            if changes.color_changes.is_empty()
+                && changes.added_card_types == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
                 && changes.removed_subtype_families == [crate::types::SubtypeFamily::Creature]
                 && changes.added_subtypes == [crate::types::Subtype::Borg]
                 && let [counter] = move_to_zone.enters_with_counters.as_slice()
@@ -3979,6 +3995,16 @@ if filter.zone == Some(Zone::Hand)
             let rendered = describe_effect(&Effect::new(plain_move));
             let mut clauses = changes.removed_subtype_families.iter()
                 .map(|family| format!("it loses all {}s", family.type_phrase())).collect::<Vec<_>>();
+            for change in &changes.color_changes {
+                let (colors, additive) = match change {
+                    ironsmith_core::effect::BattlefieldEntryColorChange::Add(colors) => (*colors, true),
+                    ironsmith_core::effect::BattlefieldEntryColorChange::Set(colors) => (*colors, false),
+                };
+                let names = crate::color::Color::ALL.into_iter().filter(|color| colors.contains(*color))
+                    .map(|color| color.name()).collect::<Vec<_>>();
+                let color = if names.is_empty() { "colorless".into() } else { names.join(" and ") };
+                clauses.push(format!("it is {color}{}", if additive { " in addition to its other colors" } else { "" }));
+            }
             if !changes.added_card_types.is_empty() {
                 clauses.push(format!("it is {} in addition to its other types",
                     changes.added_card_types.iter().map(|kind| kind.name()).collect::<Vec<_>>().join(" and ")));
@@ -7085,6 +7111,10 @@ if filter.zone == Some(Zone::Hand)
         );
     }
     if let Some(proliferate) = effect.downcast_ref::<crate::effects::ProliferateEffect>() {
+        if proliferate.ordinary_counter_placement {
+            return "Choose any number of permanents and/or players, then give each another counter of each kind already there".into();
+        }
+
         if let Some(where_x) = describe_where_x_basis(&proliferate.count) {
             return format!("Proliferate X times, where X is {where_x}");
         }
@@ -7104,11 +7134,10 @@ if filter.zone == Some(Zone::Hand)
     if let Some(reveal_from_hand) = effect.downcast_ref::<crate::effects::RevealFromHandEffect>() {
         return reveal_from_hand.cost_display();
     }
-    if effect
-        .downcast_ref::<crate::effects::RevealSourceFromHandEffect>()
-        .is_some()
-    {
-        return "Reveal this card from your hand".to_string();
+    if let Some(reveal) = effect.downcast_ref::<crate::effects::RevealSourceFromHandEffect>() {
+        return if reveal.duration == ironsmith_core::RevealSourceFromHandDuration::UntilUpkeepEndsOrLeavesHand {
+            "Reveal this card from your hand until upkeep ends".to_string()
+        } else { "Reveal this card from your hand".to_string() };
     }
     if let Some(return_to_battlefield) =
         effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
@@ -12170,7 +12199,7 @@ if filter.zone == Some(Zone::Hand)
         if matches!(may.decider, None | Some(PlayerFilter::You))
             && let [manifest] = may.effects.as_slice()
             && manifest
-                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>().filter(|effect| !effect.descriptive)
                 .is_some()
         {
             return format!("You may {}", lowercase_first(&describe_effect(manifest)));
@@ -12180,6 +12209,7 @@ if filter.zone == Some(Zone::Hand)
         if matches!(may.decider, None | Some(PlayerFilter::You))
             && let [connive] = may.effects.as_slice()
             && let Some(connive) = connive.downcast_ref::<crate::effects::ConniveEffect>()
+            && !connive.descriptive
             && connive.target.count().is_single()
             && matches!(connive.count, Value::Fixed(1))
         {

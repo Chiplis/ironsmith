@@ -18,8 +18,9 @@ export function loadCardGlint() {
 }
 
 let images;
-const queue = new CardGlintRenderQueue(async face => {
+const queue = new CardGlintRenderQueue(async (face,{throwIfObsolete}) => {
   const api = await loadCardGlint();
+  throwIfObsolete();
   images ??= new CardGlintImageCache(api.loadCanvasImages);
   // Interactions are measured on the face that was actually painted.
   const presented = presentCardGlintFace(api, face);

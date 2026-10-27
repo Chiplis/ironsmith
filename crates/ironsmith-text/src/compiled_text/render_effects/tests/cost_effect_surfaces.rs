@@ -708,7 +708,7 @@ fn graveyard_permission_survives_sacrificing_its_provider_during_payment() {
             ])),
             condition: None,
             exiles_after_resolution: false,
-            entry_counters: Vec::new(),
+            entry_counters: Vec::new(), instructions: Default::default(),
         };
         game.object_mut(other).unwrap().abilities_mut().push(
             crate::ability::Ability::static_ability(

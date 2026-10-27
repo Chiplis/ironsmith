@@ -87,6 +87,7 @@ pub(crate) fn prepare_manifest_entry(
     card_id: ObjectId,
     controller: PlayerId,
     cloak: bool,
+    descriptive: bool,
 ) -> Result<
     (
         EffectOutcome,
@@ -111,7 +112,9 @@ pub(crate) fn prepare_manifest_entry(
     })?;
     let original = match &receipt.outcome {
         BattlefieldEntryOutcome::Moved(id) => {
-            if cloak {
+            if descriptive {
+                game.set_described_face_down(*id);
+            } else if cloak {
                 game.set_cloaked(*id);
             } else {
                 game.set_manifested(*id);
@@ -135,7 +138,7 @@ pub(crate) fn manifest_card_with_outputs(
     card_id: ObjectId,
     controller: PlayerId,
     cloak: bool,
-    action: KeywordActionKind,
+    action: Option<KeywordActionKind>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     crate::effects::composition::execute_transaction(
         game,
@@ -143,14 +146,15 @@ pub(crate) fn manifest_card_with_outputs(
         || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| {
             let (mut original, receipt) =
-                prepare_manifest_entry(game, ctx, card_id, controller, cloak)?;
+                prepare_manifest_entry(game, ctx, card_id, controller, cloak, action.is_none())?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                     EffectOutcome::count(0),
                 ));
             }
             let mut keyword_outputs = None;
-            if receipt
+            if let Some(action) = action
+                && receipt
                 .as_ref()
                 .is_some_and(|receipt| matches!(receipt.outcome, BattlefieldEntryOutcome::Moved(_)))
             {

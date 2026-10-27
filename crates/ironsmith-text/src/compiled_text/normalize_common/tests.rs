@@ -4916,3 +4916,78 @@ fn subtype_family_removal_renders_every_family() {
         assert!(text.contains("until end of turn"), "{text}");
     }
 }
+
+#[test]
+fn repeated_keywords_preserve_multiplicity_in_all_keyword_list_styles() {
+    for keyword in ["cascade", "exalted", "prowess", "rampage 2"] {
+        for count in [2, 3] {
+            let parts = vec![keyword.to_string(); count];
+            let list = parts.join(", ");
+            assert_eq!(
+                render_repeated_keyword_list(&parts),
+                Some(capitalize_first(&list))
+            );
+            assert_eq!(
+                join_granted_ability_list(&parts),
+                format!("\"{}.\"", capitalize_first(&list))
+            );
+            assert_eq!(
+                super::super::merge_passes::normalize_keyword_list_phrase(&list),
+                Some(list.clone())
+            );
+            assert_eq!(
+                super::super::merge_passes::normalize_keyword_and_phrase(&parts.join(" and ")),
+                Some(list)
+            );
+        }
+    }
+    assert_eq!(
+        join_granted_ability_list(&["flying".into(), "haste".into()]),
+        "flying and haste"
+    );
+    assert_eq!(
+        join_granted_ability_list(&["Draw a card".into(), "Draw a card".into()]),
+        "Draw a card and Draw a card"
+    );
+}
+
+#[test]
+fn equipment_token_creation_places_equip_before_quoted_rules() {
+    for rule in ["Equipped creature gets +1/+0", "Equipped creature has flying"] {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Smith")
+            .card_types(vec![CardType::Creature])
+            .parse_text(format!(
+                "When this creature enters, create an Equipment artifact token named Sword with \"{rule}\" and equip {{2}}."
+            ))
+            .expect("equipment token should compile");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+            format!("When this creature enters, create an Equipment artifact token named Sword with equip {{2}} and \"{rule}.\"")
+        );
+    }
+}
+
+#[test]
+fn equipment_token_runtime_fallback_prints_equip_and_complete_static_rule() {
+    for cost in ["{0}", "{2}", "{1}{R}"] {
+        let mut token = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Sword")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .parse_text(format!("Equip {cost}\nEquipped creature gets +1/+0."))
+            .expect("equipment should compile");
+        // Generated tokens have executable abilities but no standalone printed text.
+        token.canonical_text.clear();
+        token.ability_labels.clear();
+        assert_eq!(
+            engine::runtime_display::compiled_text_lines(&token),
+            vec![format!("Equip {cost}"), "Equipped creature gets +1/+0.".to_string()]
+        );
+        let object = engine::object::Object::from_card_definition(
+            crate::ids::ObjectId::from_raw(1),
+            &token,
+            crate::ids::PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+        assert_eq!(object.compiled_card_text.to_string(), format!("Equip {cost}\nEquipped creature gets +1/+0."));
+    }
+}

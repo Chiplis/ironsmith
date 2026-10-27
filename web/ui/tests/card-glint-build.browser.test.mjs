@@ -114,3 +114,29 @@ test('Build previews finish, print effects and printing styles with card-glint',
     assert.ok(opaque>.8,'static fallback paints the frame');
   } finally {await browser.close();await vite.close();}
 });
+
+test('Build prints shuffled mana and type definitions identically', {timeout:180000}, async () => {
+  const vite=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},logLevel:'error'});
+  await vite.listen();
+  const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage({viewport:{width:500,height:1100}}), errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint-build.html`,{waitUntil:'domcontentloaded'});
+    await page.waitForFunction(()=>Boolean(window.setBuildFace));
+    const setFace=async patch=>{
+      await page.evaluate(value=>window.setBuildFace(value),patch);
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      await settled(page);
+      await page.getByRole('img',{name:/Ordering Sentinel: Legendary Artifact Creature — Golem/}).first().waitFor();
+    };
+    await setFace({name:'Ordering Sentinel',manaCost:'{2}{G}{G}{W}',supertypes:['Legendary'],
+      cardTypes:['Artifact','Creature'],subtypes:['Golem']});
+    const card=page.locator('.card-glint-live__tilt');
+    const canonical=await card.screenshot();
+    await setFace({manaCost:'{W}{G}{2}{G}',cardTypes:['Creature','Artifact']});
+    assert.deepEqual(await card.screenshot(),canonical,'shuffled input paints the same type line and mana symbols');
+    await page.screenshot({path:'test-results/card-print-order.png'});
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();await vite.close();}
+});

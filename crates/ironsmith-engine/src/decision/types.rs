@@ -158,6 +158,11 @@ pub struct BlockerDeclaration {
 pub struct TargetRequirement {
     /// The target specification.
     pub spec: ChooseSpec,
+    /// This target is the source's attachment host. Aura enchant instances
+    /// must still intersect when a chooser's candidates are recomputed.
+    pub source_attachment: bool,
+    /// Object references established by an explicit target declaration.
+    pub announcement_tags: Vec<crate::tag::TagKey>,
     /// Player assigned to make this target choice. `None` uses the spell or
     /// ability controller.
     pub chooser: Option<crate::target::PlayerFilter>,
@@ -190,6 +195,8 @@ impl TargetRequirement {
     pub fn single(spec: ChooseSpec, legal_targets: Vec<Target>, description: String) -> Self {
         Self {
             spec,
+            source_attachment: false,
+            announcement_tags: Vec::new(),
             chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
@@ -208,6 +215,8 @@ impl TargetRequirement {
     pub fn any_number(spec: ChooseSpec, legal_targets: Vec<Target>, description: String) -> Self {
         Self {
             spec,
+            source_attachment: false,
+            announcement_tags: Vec::new(),
             chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
@@ -232,6 +241,8 @@ impl TargetRequirement {
     ) -> Self {
         Self {
             spec,
+            source_attachment: false,
+            announcement_tags: Vec::new(),
             chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
@@ -365,10 +376,7 @@ pub(crate) fn spell_has_intrinsic_cost_adjustments(spell: &crate::object::Object
                 .map(|method| method.as_ref()),
         )
         .any(|method| {
-            matches!(
-                method,
-                crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
-            ) || method.name().eq_ignore_ascii_case("Emerge")
+            method.can_tap_creature_for_power_reduction() || method.sacrifice_reduces_generic_by_mana_value()
         })
     {
         return true;

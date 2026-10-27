@@ -82,6 +82,14 @@ fn moved_or_cast_origin_trigger_split_index(
 pub(super) fn recognize_triggered_line(
     line: &PreprocessedLine,
 ) -> Result<RecognizedTriggeredLine, CardTextError> {
+    if let Some(tokens) = crate::grammar::ability_stack_rules::remove_cant_be_countered_instruction(&line.tokens) {
+        let mut body = line.clone();
+        body.tokens = tokens;
+        if let Some(source) = crate::grammar::ability_stack_rules::remove_cant_be_countered_instruction(&line.info.source_tokens) {
+            body.info.source_tokens = source;
+        }
+        return recognize_triggered_line(&body);
+    }
     // These complete multi-sentence programs establish a delegated target
     // choice before the optional reward. Generic effect probing must not
     // reinterpret that declaration as an anthem subject.
@@ -112,6 +120,8 @@ pub(super) fn recognize_triggered_line(
 
 fn recognize_correlated_triggered_line(line: &PreprocessedLine) -> Option<RecognizedTriggeredLine> {
     let (tokens_without_cap, trailing_cap) = strip_trailing_trigger_cap_suffix_tokens(&line.tokens);
+    let tokens_without_cap = crate::grammar::functional_zones::split_ability_function_exclusion(tokens_without_cap)
+        .map_or(tokens_without_cap, |(body, _)| body);
     let (source_tokens_without_cap, _) =
         strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
     let correlated_tail = |effect_tokens: &[OwnedLexToken]| {
@@ -613,6 +623,12 @@ pub(super) fn recognize_static_line(
 ) -> Result<Option<RecognizedStaticLine>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let parse_tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
+    if let Some(abilities) = crate::keyword_static::parse_descriptive_reminder_line(&parse_tokens) {
+        return Ok(Some(RecognizedStaticLine {
+            info: line.info.clone(), parse_tokens, chosen_option: None,
+            parsed: Some(Box::new(crate::cards::builders::LineAst::StaticAbilities(abilities))),
+        }));
+    }
     // These complete static programs carry multiple independent components.
     // Older leaf recognizers can read only a flash or cost-condition suffix;
     // retain the typed whole-line reading at the document boundary.

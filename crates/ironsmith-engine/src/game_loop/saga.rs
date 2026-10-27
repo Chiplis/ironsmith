@@ -53,7 +53,9 @@ fn saga_profile_and_chapters_with_view(
     let has_read_ahead = view.object_has_static_ability_id(
         object_id,
         crate::static_abilities::StaticAbilityId::ReadAhead,
-    );
+    ) || view.calculated_characteristics(object_id).is_some_and(|current| current.static_abilities.iter().any(|ability|
+        ability.is_active(game, object_id) && ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::ChooseSagaEntryChapter)
+    ));
     Some((
         SagaProfile {
             controller,
@@ -88,7 +90,9 @@ pub(crate) fn source_has_read_ahead(game: &GameState, source_id: ObjectId) -> bo
     game.current_has_static_ability_id(
         source_id,
         crate::static_abilities::StaticAbilityId::ReadAhead,
-    )
+    ) || game.current_characteristics(source_id).is_some_and(|current| current.static_abilities.iter().any(|ability|
+        ability.is_active(game, source_id) && ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::ChooseSagaEntryChapter)
+    ))
 }
 
 pub(crate) fn source_entered_battlefield_this_turn(game: &GameState, source_id: ObjectId) -> bool {

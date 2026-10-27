@@ -241,7 +241,7 @@ fn parse_add_x_of_one_mana_symbol_choice(
         symbols.push(*symbol);
         index += 2;
     }
-    if !has_or || symbols.len() < 2 {
+    if symbols.is_empty() || (has_or && symbols.len() < 2) {
         return Ok(None);
     }
     let amount = if where_idx == tokens.len() {
@@ -252,6 +252,9 @@ fn parse_add_x_of_one_mana_symbol_choice(
         };
         amount
     };
+    if symbols.len() == 1 {
+        return Ok(Some(EffectAst::subject_verb_add_mana_scaled(player, symbols, amount)));
+    }
     Ok(Some(EffectAst::ObjectChoices(
         crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
             chooser: crate::target::PlayerFilter::You,
@@ -789,14 +792,15 @@ pub fn parse_add_mana(
                 clause_words.join(" ")
             )));
         }
-        if mana.len() == 1
-            && let Some(Value::Fixed(amount)) = parse_add_mana_amount(tokens)
-            && amount > 1
-        {
-            return Ok(EffectAst::subject_verb_add_mana(
-                player,
-                std::iter::repeat_n(mana[0], amount as usize).collect(),
-            ));
+        if mana.len() == 1 && let Some(amount) = parse_add_mana_amount(tokens) {
+            // A printed count is that many fixed symbols; only a variable
+            // amount ("X {R}") scales the symbol.
+            return Ok(match amount {
+                Value::Fixed(amount) if amount > 1 => EffectAst::subject_verb_add_mana(
+                    player, std::iter::repeat_n(mana[0], amount as usize).collect()),
+                Value::Fixed(_) => EffectAst::subject_verb_add_mana(player, mana),
+                amount => EffectAst::subject_verb_add_mana_scaled(player, mana, amount),
+            });
         }
         return Ok(EffectAst::subject_verb_add_mana(player, mana));
     }

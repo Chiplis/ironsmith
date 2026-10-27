@@ -197,11 +197,10 @@ impl ReplacementMatcher for AttachedPermanentWouldBeDestroyedMatcher {
             return false;
         };
 
-        let Some(aura) = ctx.game.object(self.aura) else {
-            return false;
-        };
-
-        aura.attached_to == Some(crate::object::AttachmentTarget::Object(destroy.permanent))
+        let attached_to = ctx.game.effect_store.replacement_effects
+            .simultaneous_source_attachment(self.aura)
+            .unwrap_or_else(|| ctx.game.object(self.aura).and_then(|aura| aura.attached_to));
+        attached_to == Some(crate::object::AttachmentTarget::Object(destroy.permanent))
     }
 
     fn display(&self) -> String {

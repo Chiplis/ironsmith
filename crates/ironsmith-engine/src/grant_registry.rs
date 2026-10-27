@@ -791,7 +791,18 @@ pub(crate) fn proposed_card_face_query(
     game: &crate::GameState,
     card: &crate::object::Object,
 ) -> Result<crate::GameState, crate::effects::ExecutionError> {
-    let mut query = game.clone();
+    // The public status of the origin remains untouched. This query describes
+    // the selected face-up spell, even when its physical card is still hidden
+    // in exile (CR 406.3b). Admission separately checks inspection/opening.
+    let mut query = if card.zone == Zone::Exile && game.is_face_down(card.id)
+        && card.face_down_cast_state.is_none()
+    {
+        game.hypothetical_face_up(card.id)
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+            .unwrap_or_else(|| game.clone())
+    } else {
+        game.clone()
+    };
     *query
         .object_mut(card.id)
         .ok_or(crate::effects::ExecutionError::ObjectNotFound(card.id))? = card.clone();

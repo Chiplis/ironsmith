@@ -22,6 +22,8 @@ pub enum MetadataLine {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LineSemanticFacts {
+    /// A complete instruction about this ability on the stack (CR 603.1a).
+    pub ability_cant_be_countered: bool,
     /// Exact standalone parenthesized CR 305.6 reminder, recognized from the
     /// authored token stream. Its types must agree with the card metadata.
     /// This supplies no printed ability; current types own intrinsic mana.
@@ -132,6 +134,7 @@ pub struct ThisSpellCostFacts {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TriggeredLineSemanticFacts {
+    pub champion: Option<ironsmith_core::resolution_model::ChampionRole>,
     pub compiler_ability: Option<Box<super::CompilerTriggeredAbilityAst>>,
     pub intro_surface: Option<super::ast::TriggerIntroSurfaceAst>,
     pub presentation_label: Option<crate::ability::PresentationLabel>,
@@ -146,6 +149,7 @@ pub struct TriggeredLineSemanticFacts {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TriggerFunctionalZoneFacts {
+    pub excluded_zones: Vec<Zone>,
     pub explicit_zone: Option<Zone>,
     /// CR 113.6b: "if this is in the command zone or on the battlefield"
     /// (eminence) makes the ability function in both zones.

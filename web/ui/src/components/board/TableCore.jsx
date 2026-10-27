@@ -32,7 +32,7 @@ import { ZONE_PILES_MOVED_EVENT } from "./PlayerZonePiles";
 import { canShowPhasePass } from "@/lib/opening-hand-actions";
 
 // Reserve the entire local zone column, including its visible labels.
-const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > :is(.zone-icon-row, .zone-pile-slot)';
+const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > :is(.zone-icon-row, .zone-pile-slot, .zone-priority-controls)';
 
 function visibleRect(element) {
   if (!element || !element.isConnected) return null;
@@ -443,8 +443,6 @@ export default function TableCore({
         disabled={Boolean(state?.game_over)}
         onClick={togglePhasePassing}
       >{ui("End turn")}</button>}
-      <PriorityHoldControl battlefield />
-      <LoopShortcutButton />
     </div>
   ) : null;
   const middleTopbarElement = focusedHudDesktop && middleTopbar
@@ -762,6 +760,12 @@ export default function TableCore({
         legalTargetObjectIds={legalTargetObjectIds}
         headerControls={myZoneHeaderControls}
         stackAdjacentControls={null}
+        zonePriorityControls={focusedHudDesktop ? (
+          <div className="zone-priority-controls decision-quick-controls" role="group" aria-label={ui("Priority controls")}>
+            <PriorityHoldControl battlefield />
+            <LoopShortcutButton />
+          </div>
+        ) : null}
         hidePriorityHold={focusedHudDesktop}
         headerInspectorDock={!mergeActionBarIntoMyZone && !sharedMiddleElement ? middleInspectorDock : null}
         headerActionBar={!mergeActionBarIntoMyZone && !sharedMiddleElement ? actionBarElement : null}

@@ -56,7 +56,9 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
     }
     matches!(
         lower.as_str(),
-        "flying"
+        "cascade"
+            | "exalted"
+            | "flying"
             | "first strike"
             | "double strike"
             | "deathtouch"
@@ -1346,6 +1348,10 @@ pub(super) fn normalize_keyword_list_phrase(text: &str) -> Option<String> {
     if !parts.iter().all(|part| is_keyword_phrase(part)) {
         return None;
     }
+    let repeated = parts.iter().map(|part| part.to_string()).collect::<Vec<_>>();
+    if let Some(list) = render_repeated_keyword_list(&repeated) {
+        return Some(lowercase_first(&list));
+    }
     Some(
         parts
             .iter()
@@ -1366,6 +1372,10 @@ pub(super) fn normalize_keyword_and_phrase(text: &str) -> Option<String> {
     }
     if !parts.iter().all(|part| is_keyword_phrase(part)) {
         return None;
+    }
+    let repeated = parts.iter().map(|part| part.to_string()).collect::<Vec<_>>();
+    if let Some(list) = render_repeated_keyword_list(&repeated) {
+        return Some(lowercase_first(&list));
     }
     Some(
         parts
@@ -3900,15 +3910,12 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
     if matches!(lower.as_str(), "cipher" | "haunt" | "spree" | "tiered") {
         return true;
     }
-    let repeated_cascade = {
+    let grouped_cost_keywords = {
         let parts = lower.split(',').map(str::trim).collect::<Vec<_>>();
         parts.len() >= 2
-            && (parts.iter().all(|part| *part == "cascade")
-                || parts
-                    .iter()
-                    .all(|part| matches!(*part, "convoke" | "delve" | "improvise")))
+            && parts.iter().all(|part| matches!(*part, "convoke" | "delve" | "improvise"))
     };
-    if repeated_cascade {
+    if grouped_cost_keywords {
         return true;
     }
     if is_keyword_phrase(&lower) || normalize_keyword_list_phrase(&lower).is_some() {
@@ -3972,8 +3979,11 @@ mod tests {
     }
 
     #[test]
-    fn repeated_cascade_uses_keyword_line_punctuation() {
+    fn repeated_keywords_use_keyword_line_punctuation() {
         assert!(is_keyword_style_line("Cascade, cascade"));
+        assert!(is_keyword_style_line("Exalted, exalted"));
+        assert!(is_keyword_style_line("Prowess, prowess, prowess"));
+        assert!(is_keyword_style_line("Rampage 2, rampage 2"));
         assert!(!is_keyword_style_line("Cascade, draw a card"));
     }
 

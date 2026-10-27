@@ -3152,7 +3152,7 @@ fn parse_predicate_targets_only_source_uses_capture_parser() -> Result<(), CardT
         };
         assert_eq!(filter.zone, Some(Zone::Stack), "{text}");
         assert_eq!(filter.stack_kind, Some(StackObjectKind::Spell), "{text}");
-        assert_eq!(filter.target_count, Some(ChoiceCount::exactly(1)), "{text}");
+        assert_eq!(filter.target_count, None, "{text}");
         let Some(target_filter) = filter.targets_only_object.as_deref() else {
             panic!("expected targets-only object filter for {text}");
         };

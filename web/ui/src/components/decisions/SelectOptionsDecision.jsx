@@ -1,3 +1,4 @@
+import DecisionObjectLabel from "./DecisionObjectLabel";
 import { isOrderingDecision, isDistributionDecision, isCounterOptionsDecision, isPaymentDecision, isSpellCastFlowDecision } from "@/lib/decision-semantics";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
@@ -404,7 +405,9 @@ function OptionButton({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {content || <SymbolText text={normalizeDecisionText(opt.description)} />}
+      <DecisionObjectLabel objectId={opt.object_id} object={opt}>
+        {content || <SymbolText text={normalizeDecisionText(opt.description)} />}
+      </DecisionObjectLabel>
     </Button>
   );
 }
@@ -759,7 +762,8 @@ function SingleSelectDecision({
     () => buildObjectFamilyIds(state?.players, selectedObjectId),
     [selectedObjectId, state?.players]
   );
-  const activeObjectId = hoveredObjectId ?? null;
+  const [menuHovered, setMenuHovered] = useState(false);
+  const activeObjectId = menuHovered ? null : hoveredObjectId ?? null;
   const legalDisplayOptions = useMemo(
     () => displayOptions.filter((opt) => opt.legal !== false),
     [displayOptions],
@@ -785,10 +789,11 @@ function SingleSelectDecision({
   }, [singleLegalOption, castFlowDecision, t]);
   const contextual = useMemo(
     () => {
+      // Keep menu rows stable while the pointer inspects their cards.
       // A mana-ability window is a single global payment step. Its sources
       // must not be narrowed to the permanent that started the activation or
       // to the card currently under the pointer.
-      if (manaAbilityWindowDecision) {
+      if (manaAbilityWindowDecision || menuHovered) {
         return {
           options: displayOptions,
           waitingForHover: false,
@@ -804,6 +809,7 @@ function SingleSelectDecision({
       displayOptions,
       hoveredObjectId,
       manaAbilityWindowDecision,
+      menuHovered,
       selectedObjectFamilyIds,
       stripLayout,
     ],
@@ -864,7 +870,7 @@ function SingleSelectDecision({
   useExternalSubmitAction(onSubmitActionChange, submitAction);
 
   return (
-    <div className={cn("flex w-full min-w-0 flex-col gap-1", mobileOverlayLayout && "min-h-0 flex-1 gap-2")}>
+    <div data-decision-menu onMouseEnter={() => setMenuHovered(true)} onMouseLeave={() => setMenuHovered(false)} className={cn("flex w-full min-w-0 flex-col gap-1", mobileOverlayLayout && "min-h-0 flex-1 gap-2")}>
       <div className={cn("min-w-0 transition-all duration-200", mobileOverlayLayout && "flex min-h-0 flex-1 flex-col")}>
         {showHeader && (
           <div
@@ -1047,7 +1053,8 @@ function MultiSelectDecision({
     () => buildObjectFamilyIds(state?.players, selectedObjectId),
     [selectedObjectId, state?.players]
   );
-  const activeObjectId = hoveredObjectId ?? null;
+  const [menuHovered, setMenuHovered] = useState(false);
+  const activeObjectId = menuHovered ? null : hoveredObjectId ?? null;
   const min = decision.min ?? 0;
   const max = decision.max ?? options.length;
   const optionsMaxHeight = useMemo(() => {
@@ -1058,11 +1065,11 @@ function MultiSelectDecision({
   }, [inspectorOracleTextHeight]);
   const contextual = useMemo(
     () =>
-      buildContextualOptions(options, activeObjectId, {
+      menuHovered ? { options, waitingForHover: false } : buildContextualOptions(options, activeObjectId, {
         fallbackToAll: stripLayout,
         includedObjectIds: stripLayout && hoveredObjectId == null ? selectedObjectFamilyIds : null,
       }),
-    [activeObjectId, hoveredObjectId, options, selectedObjectFamilyIds, stripLayout],
+    [activeObjectId, hoveredObjectId, menuHovered, options, selectedObjectFamilyIds, stripLayout],
   );
   const visibleOptions = useAnimatedRows(
     contextual.options,
@@ -1121,7 +1128,7 @@ function MultiSelectDecision({
   useExternalSubmitAction(onSubmitActionChange, submitAction);
 
   return (
-    <div className={cn("flex w-full min-w-0 flex-col gap-1.5", mobileOverlayLayout && "min-h-0 flex-1 gap-2")}>
+    <div data-decision-menu onMouseEnter={() => setMenuHovered(true)} onMouseLeave={() => setMenuHovered(false)} className={cn("flex w-full min-w-0 flex-col gap-1.5", mobileOverlayLayout && "min-h-0 flex-1 gap-2")}>
       <div
         className={cn(
           stripLayout

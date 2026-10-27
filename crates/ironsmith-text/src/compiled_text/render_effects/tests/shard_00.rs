@@ -4341,19 +4341,23 @@ pub(super) fn riot_structural_keyword_accepts_permanent_haste_choice() {
         describe_structural_riot_program(&triggered.effects),
         Some("Riot".to_string())
     );
-    let replacement = Ability::static_ability(crate::static_abilities::StaticAbility::from_model(
+    let replacement = |label| Ability::static_ability(crate::static_abilities::StaticAbility::from_model(
         crate::static_abilities::CompiledStaticAbility::as_enters_effect_program(
             triggered.effects.clone(),
             "this creature",
             false,
             false,
-            None,
+            label,
         ),
     ));
     assert_eq!(
-        describe_keyword_ability(&replacement),
+        describe_keyword_ability(&replacement(Some(crate::ability::PresentationLabel::Keyword(
+            crate::ability::PresentationKeyword::Riot,
+        )))),
         Some("Riot".to_string())
     );
+    // The same program without Riot identity (a custom definition) is not named Riot.
+    assert_eq!(describe_keyword_ability(&replacement(None)), None);
     let after_entry = Ability {
         kind: AbilityKind::Triggered(triggered),
         functional_zones: vec![Zone::Battlefield],

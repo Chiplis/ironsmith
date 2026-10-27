@@ -98,7 +98,7 @@ impl EffectExecutor for RegenerateEffect {
                 continue;
             }
             let controller = ctx.controller;
-            if self.remove_damage_only {
+            if self.remove_damage_only || self.ordinary_destruction_replacement {
                 // Not regeneration (CR 701.19): the next destruction this turn
                 // is replaced by removing the damage marked on the permanent.
                 let replacement_effect = ReplacementEffect::with_matcher(
@@ -107,9 +107,9 @@ impl EffectExecutor for RegenerateEffect {
                     crate::events::permanents::matchers::WouldBeDestroyedMatcher::new(
                         crate::target::ObjectFilter::specific(target_id),
                     ),
-                    ReplacementAction::Instead(vec![Effect::clear_damage(
-                        ChooseSpec::SpecificObject(target_id),
-                    )]),
+                    ReplacementAction::Instead(if self.remove_damage_only {
+                        vec![Effect::clear_damage(ChooseSpec::SpecificObject(target_id))]
+                    } else { regeneration_body(ChooseSpec::SpecificObject(target_id), &[], false) }),
                 );
                 let apply = ApplyReplacementEffect::one_shot(replacement_effect);
                 outcomes.push(execute_effect(game, &Effect::new(apply), ctx)?);

@@ -458,3 +458,30 @@ pub(super) fn bind_class_linked_exile(definition: &mut CardDefinition) {
     if let AbilityKind::Static(reader) = &mut definition.abilities[4].kind
         && let StaticAbilityPayload::Grants(spec) = &mut reader.payload { spec.linked_exile_pair = Some(pair); }
 }
+
+/// Champion's two abilities share an explicit grammar-owned occurrence even
+/// when other exile abilities occur in the same definition.
+pub(super) fn bind_champion_pairs(definition: &mut CardDefinition) {
+    use ironsmith_core::resolution_model::ChampionRole;
+    let Ok(bytes) = serde_json::to_vec(&definition.abilities) else { return; };
+    let mut digest = Sha256::new(); digest.update(b"champion-pairs"); digest.update(bytes);
+    let definition_id = ironsmith_core::LinkedExileDefinition(digest.finalize().into());
+    let mut groups = std::collections::BTreeMap::<u32, (usize, usize)>::new();
+    for ability in &definition.abilities {
+        match program(ability).and_then(|program| program.champion) {
+            Some(ChampionRole::Exile(group)) => groups.entry(group).or_default().0 += 1,
+            Some(ChampionRole::Return(group)) => groups.entry(group).or_default().1 += 1,
+            None => {},
+        }
+    }
+    for ability in &mut definition.abilities {
+        let AbilityKind::Triggered(ability) = &mut ability.kind else { continue; };
+        let group = match ability.effects.champion {
+            Some(ChampionRole::Exile(group) | ChampionRole::Return(group)) => group,
+            None => continue,
+        };
+        if groups.get(&group) == Some(&(1, 1)) {
+            ability.effects.linked_exile_pair = Some(ironsmith_core::LinkedExilePair { definition: definition_id, pair: group });
+        }
+    }
+}

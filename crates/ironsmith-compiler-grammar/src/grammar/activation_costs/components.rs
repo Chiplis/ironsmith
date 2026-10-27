@@ -125,10 +125,46 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
     }
 }
 
+pub(crate) fn parse_artifact_creature_tap_price(tokens: &[OwnedLexToken]) -> Result<Option<crate::mana::ManaCost>, CardTextError> {
+    let rendered = render_token_slice(tokens).to_ascii_lowercase();
+    let Some(price) = rendered.strip_prefix("pay ").or_else(|| rendered.strip_prefix("pays ")).or_else(|| rendered.starts_with('{').then_some(rendered.as_str())).and_then(|rest| rest.trim_end_matches('.').strip_suffix(
+        " using any combination of mana and tapping untapped artifacts and creatures you control for {1} each")) else { return Ok(None); };
+    let mana = crate::grammar::values::parse_mana_cost_tokens(&crate::lexer::lex_line(price, 0)?)?;
+    if mana.pips().iter().any(|pip| !matches!(pip.as_slice(), [ManaSymbol::Generic(_) | ManaSymbol::X])) {
+        return Err(CardTextError::ParseError("tap-assisted payment defines only generic or X mana".into()));
+    }
+    Ok(Some(mana.with_artifact_creature_tap_payment()))
+}
+
+fn parse_controlled_or_revealed_payment(tokens: &[OwnedLexToken]) -> Option<ActivationCostSegmentCst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let (controlled, revealed) = match words.as_slice() {
+        ["choose", "a" | "an", controlled, "you", "control", "or", "reveal", "a" | "an", revealed, "card", "from", "your", "hand"] |
+        ["reveal", "a" | "an", revealed, "card", "from", "your", "hand", "or", "choose", "a" | "an", controlled, "you", "control"] => (*controlled, *revealed),
+        _ => return None,
+    };
+    let subtype = crate::util::parse_subtype_word(controlled)?;
+    (crate::util::parse_subtype_word(revealed) == Some(subtype))
+        .then_some(ActivationCostSegmentCst::ChooseControlledOrReveal { subtype })
+}
+
 fn parse_activation_cost_segment_tokens(
     tokens: &[OwnedLexToken],
     named_source: &impl Fn(&[&str]) -> Option<crate::target::SourceReferenceSurface>,
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
+    if matches!(render_token_slice(tokens).trim().to_ascii_lowercase().as_str(),
+        "return an unblocked attacker you control to hand" | "return an unblocked attacker you control to its owner's hand") {
+        return Some(Ok(ActivationCostSegmentCst::ReturnUnblockedAttacker));
+    }
+    match parse_artifact_creature_tap_price(tokens) {
+        Ok(Some(mana)) => return Some(Ok(ActivationCostSegmentCst::Mana(mana))),
+        Err(error) => return Some(Err(error)),
+        Ok(None) => {},
+    }
+    if render_token_slice(tokens).trim().eq_ignore_ascii_case("Choose to have this creature not untap during your next untap step") {
+        return Some(Ok(ActivationCostSegmentCst::ExertSelf { display_text: render_token_slice(tokens).trim().to_owned(), descriptive: true }));
+    }
+    if let Some(payment) = parse_controlled_or_revealed_payment(tokens) { return Some(Ok(payment)); }
     match parse_activation_cost_segment_kind_tokens(tokens) {
         ActivationCostSegmentKind::Pay => Some(parse_pay_segment_tokens(tokens)),
         ActivationCostSegmentKind::Discard => Some(parse_discard_segment_tokens(tokens)),
@@ -343,6 +379,7 @@ fn parse_activation_cost_segment_head_lexed<'a>(input: &mut LexStream<'a>) -> WR
                 .void(),
                 alt((
                     primitives::kw("exert"),
+                    primitives::kw("choose"),
                     primitives::kw("reveal"),
                     primitives::kw("waterbend"),
                     primitives::kw("e"),
@@ -460,6 +497,10 @@ fn parse_activation_cost_cst_tokens(
     named_source: &impl Fn(&[&str]) -> Option<crate::target::SourceReferenceSurface>,
 ) -> Result<ActivationCostCst, CardTextError> {
     let trimmed_raw = raw.trim();
+    if let Some(mana) = parse_artifact_creature_tap_price(tokens)? {
+        return Ok(ActivationCostCst { raw: trimmed_raw.to_owned(), segments: vec![ActivationCostSegmentCst::Mana(mana)],
+            alternative_branches: Vec::new(), is_loyalty_shorthand: false, waterbend_cost: None });
+    }
     if let Some(segments) = parse_loyalty_shorthand_activation_cost_tokens(tokens) {
         return Ok(ActivationCostCst {
             raw: trimmed_raw.to_string(),
@@ -470,6 +511,12 @@ fn parse_activation_cost_cst_tokens(
         });
     }
 
+    // The "or" in this instruction selects an object/visibility route; it is
+    // one payment with one captured result, not two independently paid costs.
+    if let Some(payment) = parse_controlled_or_revealed_payment(tokens) {
+        return Ok(ActivationCostCst { raw: trimmed_raw.to_owned(), segments: vec![payment],
+            alternative_branches: Vec::new(), is_loyalty_shorthand: false, waterbend_cost: None });
+    }
     if let Some(split) = parse_payment_alternative_split_tokens(tokens) {
         let (left_owned, right_owned) = distribute_activation_cost_alternative(
             trim_activation_cost_segment_tokens(&tokens[..split.delimiter]),

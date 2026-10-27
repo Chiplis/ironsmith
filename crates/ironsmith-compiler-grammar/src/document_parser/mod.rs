@@ -673,8 +673,14 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
             .position(|token| token.is_comma())
             .and_then(|comma| tokens.get(comma + 1))
             .is_some_and(|token| token.is_word("create"));
+    let zone_free_cast_statement = crate::grammar::primitives::parse_prefix(
+        tokens, crate::grammar::primitives::phrase(&["you", "may", "cast"]),
+    ).is_some_and(|(_, rest)| {
+        crate::grammar::permission_facts::zone_free_cast::parse_free_cast_from_zone_tokens(rest).is_some()
+    });
     is_nonpermanent_spell
-        && (document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
+        && (zone_free_cast_statement
+            || document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
             || is_effect_redirect
             || has_statement_family
             || starts_with_clash_action
@@ -804,7 +810,9 @@ fn parse_labeled_conditional_replacement_sentence_split(
     } else {
         return Ok(None);
     };
-    for (sentence_idx, sentence_tokens) in sentences.iter().enumerate().skip(1) {
+    let mut sentence_idx = 1;
+    while sentence_idx < sentences.len() {
+        let sentence_tokens = sentences[sentence_idx];
         let sentence_line = rewrite_line_tokens(line, sentence_tokens);
         let is_typed_prevention_trigger = prevention_then_trigger.is_some() && sentence_idx == 1;
         let is_delayed_schedule =
@@ -816,8 +824,19 @@ fn parse_labeled_conditional_replacement_sentence_split(
             || (line_starts_with_trigger_intro_tokens(&sentence_line.tokens)
                 && !is_delayed_schedule)
         {
-            let triggered = recognize_triggered_line(&sentence_line)?;
+            // Result-dependent sentences belong to this trigger's effect
+            // program, not a separate spell instruction after the static.
+            let mut end = sentence_idx + 1;
+            while end < sentences.len() {
+                let words = crate::lexer::token_word_refs(sentences[end]);
+                if !matches!(words.first(), Some(&"if" | &"then" | &"otherwise")) { break; }
+                end += 1;
+            }
+            let grouped = clone_sentence_chunk_tokens(&line.tokens, &sentences[sentence_idx..end])
+                .unwrap_or_else(|| sentence_tokens.to_vec());
+            let triggered = recognize_triggered_line(&rewrite_line_tokens(line, &grouped))?;
             lines.push(RecognizedLine::Triggered(triggered));
+            sentence_idx = end - 1;
         } else if let Some(statement_line) = recognize_statement_line(&sentence_line)? {
             lines.push(RecognizedLine::Statement(statement_line));
         } else if let Some(static_line) = recognize_static_line(&sentence_line)? {
@@ -828,6 +847,7 @@ fn parse_labeled_conditional_replacement_sentence_split(
                 render_token_slice(&sentence_line.tokens)
             )));
         }
+        sentence_idx += 1;
     }
 
     Ok(Some(LineDispatchResult {
@@ -1425,8 +1445,18 @@ fn replace_named_source_alias_tokens(
             word_idx += 1;
             continue;
         }
-        // A keyword's component is rules vocabulary even when it also
+        // A keyword's participle is rules vocabulary even when it also
         // matches the source's short-name alias.
+        if alias_words.len() == 1
+            && (crate::keyword_forms::is_participle(&alias_words[0]) || alias_words[0] == "cast")
+            && word_idx.checked_sub(1).is_some_and(|previous| {
+                matches!(pieces[previous].text,
+                    "was" | "were" | "wasnt" | "wasn't" | "werent" | "weren't" | "not")
+            })
+        {
+            word_idx += 1;
+            continue;
+        }
         if alias_words.len() == 1
             && alias_words[0] == "upkeep"
             && word_idx.checked_sub(1).is_some_and(|previous| pieces[previous].text == "cumulative")
@@ -2631,6 +2661,8 @@ fn normalize_activation_effect_tokens_for_builder(
     card: &crate::card::CardBuilder,
     effect_tokens: &[OwnedLexToken],
 ) -> Result<Vec<OwnedLexToken>, CardTextError> {
+    let stripped = crate::grammar::ability_stack_rules::remove_cant_be_countered_instruction(effect_tokens);
+    let effect_tokens = stripped.as_deref().unwrap_or(effect_tokens);
     Ok(
         normalize_named_source_tokens_for_builder(card, effect_tokens)
             .unwrap_or_else(|| effect_tokens.to_vec()),
@@ -3684,6 +3716,17 @@ fn try_parse_triggered_line_dispatch(
         )));
     }
 
+    // This is an instruction of the whole ability, not another trigger
+    // sentence. Recognize the body while retaining its original line facts.
+    if let Some(tokens) = super::grammar::ability_stack_rules::remove_cant_be_countered_instruction(&line.tokens) {
+        let mut body = line.clone();
+        body.tokens = tokens;
+        if let Some(source) = super::grammar::ability_stack_rules::remove_cant_be_countered_instruction(&line.info.source_tokens) {
+            body.info.source_tokens = source;
+        }
+        return try_parse_unsplit_triggered_line_dispatch(preprocessed, idx, &body, allow_unsupported, false);
+    }
+
     // Keep a token created by the first instruction correlated with the
     // delayed sacrifice in the second sentence. The generic trigger-sentence
     // splitter otherwise separates them before the semantic linked-token rule
@@ -4342,6 +4385,23 @@ pub fn recognize_document_with_context(
                         parse_tokens: line.tokens.clone(),
                         chosen_option: None,
                         parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
+                    }));
+                    idx += 1;
+                    continue;
+                }
+                if crate::lexer::parser_token_word_refs(&line.tokens).ends_with(&["for", "each", "mode", "chosen", "beyond", "the", "first"])
+                    && let Some(crate::recognized_document::KeywordLinePayload::Ast(parsed)) = crate::keyword_payloads::parse_alternative_cast(line, &line.tokens, &line.info.source_tokens)? {
+                    lines.push(RecognizedLine::Static(RecognizedStaticLine {
+                        info: line.info.clone(), parse_tokens: line.tokens.clone(), chosen_option: None, parsed: Some(parsed),
+                    }));
+                    idx += 1;
+                    continue;
+                }
+                if let Some(effects) = crate::effect_sentences::parse_described_effect_bundle(&line.info.source_tokens)? {
+                    lines.push(RecognizedLine::Statement(RecognizedStatementLine {
+                        info: line.info.clone(), text: line.info.raw_line.clone(),
+                        parse_tokens: line.tokens.clone(), parse_groups: vec![line.tokens.clone()],
+                        parsed_effects: Some(effects),
                     }));
                     idx += 1;
                     continue;
@@ -5293,6 +5353,12 @@ fn try_push_complete_typed_statement(
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
+    // Cumulative upkeep owns the entire payment instruction. Token/effect
+    // leaves can recognize its body, but must not turn the keyword into a
+    // standalone spell effect before keyword-line dispatch runs.
+    if document_grammar::parse_cumulative_upkeep_surface(&line.tokens).is_some() {
+        return Ok(false);
+    }
     // A token replacement contains a create instruction, but the complete
     // line belongs to the static replacement reader.
     if crate::grammar::keyword_static_lines::parse_token_template_replacement(&line.tokens)

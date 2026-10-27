@@ -1351,7 +1351,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
 ) {
     let modification = &effect.modification;
     match modification {
-        Modification::CopyOf { .. } => {}
+        Modification::CopyOf { .. } | Modification::MergeComponent { .. } => {}
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
         }
@@ -2632,7 +2632,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
 fn modification_can_change_static_ability_presence(modification: &Modification) -> bool {
     matches!(
         modification,
-        Modification::CopyOf { .. }
+        Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::SetTextBox(_)
             | Modification::SetSubtypes(_)
             | Modification::SetAbilities(_)
@@ -2704,7 +2704,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
 ) -> bool {
     matches!(
         modification,
-        Modification::CopyOf { .. }
+        Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
@@ -2774,7 +2774,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             .as_deref()
             .is_some_and(|inner| modification_can_affect_filter(modification, inner))
         || match modification {
-            Modification::CopyOf { .. } => filter.uses_non_pt_battlefield_characteristics(),
+            Modification::CopyOf { .. } | Modification::MergeComponent { .. } => filter.uses_non_pt_battlefield_characteristics(),
             Modification::ChangeController(_) | Modification::ChangeControllerToEffectController => filter.controller.is_some(),
             Modification::RewriteText(change) => {
                 filter_uses_ability_characteristics(filter)
@@ -2943,7 +2943,7 @@ fn modification_can_change_type_characteristics(modification: &Modification) -> 
     if let Modification::RewriteText(change) = modification { return change.changes_type_words(); }
     matches!(
         modification,
-        Modification::CopyOf { .. }
+        Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
@@ -3461,6 +3461,7 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
             registration_id: None,
         }
     }
@@ -3569,6 +3570,7 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
             registration_id: None,
         };
 
@@ -3586,6 +3588,7 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
             registration_id: None,
         };
 
@@ -3726,6 +3729,7 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
             registration_id: None,
         };
 
@@ -3749,6 +3753,7 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
             registration_id: None,
         };
 
@@ -3860,6 +3865,7 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
             registration_id: None,
         };
 
@@ -3877,6 +3883,7 @@ mod tests {
             source_type: EffectSourceType::StaticAbility,
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
             registration_id: None,
         };
 

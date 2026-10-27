@@ -415,8 +415,8 @@ fn parse_fixed_group_one(input: &mut LexStream<'_>) -> WResult<FixedStaticCondit
         ])
         .value(FixedStaticConditionKind::SourceEquipmentAttachedToCreature),
         primitives::any_phrase(&[
-            &["this", "spell", "was", "kicked"],
-            &["it", "was", "kicked"],
+            &["this", "spell", "was", crate::keyword_forms::KICKED],
+            &["it", "was", crate::keyword_forms::KICKED],
         ])
         .value(FixedStaticConditionKind::SourceSpellWasKicked),
         primitives::any_phrase(&[

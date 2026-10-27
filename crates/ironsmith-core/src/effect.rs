@@ -706,6 +706,9 @@ pub enum RetargetMode {
     /// target instance that can legally become the fixed object changes to
     /// it. Appended to preserve serialized ordinals.
     AllToFixed(crate::target_model::ChooseSpec),
+    /// Change exactly one target occurrence to a newly chosen legal target.
+    /// Appended to preserve existing serialized ordinals.
+    One,
 }
 
 impl RetargetMode {
@@ -713,7 +716,7 @@ impl RetargetMode {
     pub fn fixed_target(&self) -> Option<&crate::target_model::ChooseSpec> {
         match self {
             Self::OneToFixed(spec) | Self::AllToFixed(spec) => Some(spec),
-            Self::All => None,
+            Self::All | Self::One => None,
         }
     }
 }
@@ -2339,6 +2342,9 @@ pub struct ChooseModeEffect<E> {
     pub spree: bool,
     /// Whether this costed modal uses the Tiered “choose exactly one” surface.
     pub tiered: bool,
+    /// Costed mode choice defined by prose, without Spree or Tiered identity.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive_mode_costs: bool,
     /// Additional mana cost associated with each mode. Ordinary modal effects
     /// leave this empty.
     pub mode_additional_mana_costs: Vec<ManaCost>,
@@ -2380,6 +2386,9 @@ pub struct ChooseModeEffect<E> {
     /// are the authored keywords, in mode order. Presentation only.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub cost_choice_keywords: Vec<String>,
+    /// Casting choices owned by this modal instruction, including spliced text.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub announced_modes: Option<Vec<usize>>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -2403,6 +2412,7 @@ impl<E> ChooseModeEffect<E> {
             mode_point_costs,
             spree: false,
             tiered: false,
+            descriptive_mode_costs: false,
             mode_additional_mana_costs: Vec::new(),
             common_suffix_effect_count: 0,
             disallow_previously_chosen_modes: false,
@@ -2414,6 +2424,7 @@ impl<E> ChooseModeEffect<E> {
             cast_chooser: None,
             optional_choice: false,
             cost_choice_keywords: Vec::new(),
+            announced_modes: None,
         }
     }
 
@@ -2574,12 +2585,15 @@ impl<E> VillainousChoiceEffect<E> {
 pub struct HauntExileEffect<E> {
     pub haunt_effects: Vec<E>,
     pub haunt_choices: Vec<ChooseSpec>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl<E> HauntExileEffect<E> {
     pub fn new(haunt_effects: Vec<E>, haunt_choices: Vec<ChooseSpec>) -> Self {
         Self {
             haunt_effects,
+            descriptive: false,
             haunt_choices,
         }
     }
@@ -3589,11 +3603,21 @@ pub enum LibraryPlacementOrder {
     Owners,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, TagKeyWalk)]
+pub enum BattlefieldEntryColorChange {
+    Add(crate::color::ColorSet),
+    Set(crate::color::ColorSet),
+}
+
 /// Type changes that apply while a permanent enters, before other entry
 /// replacements inspect its characteristics. They persist for that incarnation.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default, PartialEq, TagKeyWalk)]
 pub struct BattlefieldEntryTypeChanges {
+    /// Color clauses from the same descriptive entry instruction, in order.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub color_changes: Vec<BattlefieldEntryColorChange>,
     pub added_card_types: Vec<crate::types::CardType>,
     pub removed_subtype_families: Vec<crate::types::SubtypeFamily>,
     pub added_subtypes: Vec<crate::types::Subtype>,
@@ -3601,7 +3625,11 @@ pub struct BattlefieldEntryTypeChanges {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct MoveToZoneEffect {
+#[cfg_attr(feature = "serde", serde(bound(serialize = "M: serde::Serialize", deserialize = "M: serde::Deserialize<'de>")))]
+pub struct MoveToZoneEffect<M = ()> {
+    /// Continuous modifications owned by this battlefield arrival (CR 611.2e).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub entry_modifications: Vec<M>,
     /// Resolution references retained by the actual arriving permanent for
     /// its granted abilities. References are not inherited on later blinks.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
@@ -3694,9 +3722,43 @@ pub enum MoveToZoneAttackTargetMode {
     Player(PlayerFilter),
 }
 
-impl MoveToZoneEffect {
+impl<M> MoveToZoneEffect<M> {
+    pub fn try_map_entry_modifications<N, E>(self, mut map: impl FnMut(M) -> Result<N, E>) -> Result<MoveToZoneEffect<N>, E> {
+        Ok(MoveToZoneEffect {
+            entry_modifications: self.entry_modifications.into_iter().map(&mut map).collect::<Result<Vec<_>, _>>()?,
+            retained_reference_tags: self.retained_reference_tags,
+            target: self.target,
+            zone: self.zone,
+            to_top: self.to_top,
+            library_order: self.library_order,
+            verb_surface: self.verb_surface,
+            target_plural_surface: self.target_plural_surface,
+            target_reference_surface: self.target_reference_surface,
+            remainder_surface: self.remainder_surface,
+            actor_surface: self.actor_surface,
+            destination_player_surface: self.destination_player_surface,
+            destination_player_reference_surface: self.destination_player_reference_surface,
+            exiled_with_source_surface: self.exiled_with_source_surface,
+            battlefield_controller: self.battlefield_controller,
+            controller_surface_explicit: self.controller_surface_explicit,
+            enters_with_counters: self.enters_with_counters,
+            enters_tapped: self.enters_tapped,
+            enters_attacking: self.enters_attacking,
+            attack_target_mode: self.attack_target_mode,
+            enters_face_down: self.enters_face_down,
+            enters_transformed: self.enters_transformed,
+            transfer_exiled_with_source_links: self.transfer_exiled_with_source_links,
+            tagged_destinations: self.tagged_destinations,
+            enters_blocking: self.enters_blocking,
+            enters_as_non_aura: self.enters_as_non_aura,
+            enters_tapped_if: self.enters_tapped_if,
+            enters_with_noted_counters: self.enters_with_noted_counters,
+            entry_type_changes: self.entry_type_changes,
+        })
+    }
     pub fn new(target: ChooseSpec, zone: crate::zone::Zone, to_top: bool) -> Self {
         Self {
+            entry_modifications: Vec::new(),
             entry_type_changes: None,
             retained_reference_tags: Vec::new(),
             target,
@@ -4093,12 +4155,15 @@ impl ReorderLibraryTopEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ExertCostEffect {
     pub display_text: String,
+    #[serde(default)]
+    pub descriptive: bool,
 }
 
 impl ExertCostEffect {
     pub fn new(display_text: impl Into<String>) -> Self {
         Self {
             display_text: display_text.into(),
+            descriptive: false,
         }
     }
 }
@@ -4671,11 +4736,17 @@ impl EmpowerJaceEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CollectEvidenceEffect {
     pub amount: Value,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub ordinary_exile: bool,
 }
 impl CollectEvidenceEffect {
+    pub fn exile_graveyard_cards_with_total_mana_value(amount: impl Into<Value>) -> Self {
+        Self { amount: amount.into(), ordinary_exile: true }
+    }
     pub fn new(amount: impl Into<Value>) -> Self {
         Self {
             amount: amount.into(),
+            ordinary_exile: false,
         }
     }
 }
@@ -4685,6 +4756,8 @@ impl CollectEvidenceEffect {
 pub struct AmassEffect {
     pub subtype: Option<crate::types::Subtype>,
     pub amount: Value,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
     /// The player who amasses ("Its controller amasses Goblins X", Azog,
     /// Moria's Ruin). None is the effect's controller. Appended.
     #[cfg_attr(
@@ -4699,6 +4772,7 @@ impl AmassEffect {
         Self {
             subtype,
             amount: amount.into(),
+            descriptive: false,
             player: None,
         }
     }
@@ -4940,11 +5014,13 @@ impl FightEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ExploreEffect {
     pub target: ChooseSpec,
+    #[serde(default)]
+    pub descriptive: bool,
 }
 
 impl ExploreEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, descriptive: false }
     }
 }
 
@@ -4990,6 +5066,8 @@ pub struct ManifestTopCardOfLibraryEffect {
     /// Cloak uses the same face-down/top-card operation as manifest, but the
     /// resulting 2/2 creature also has ward {2}.
     pub cloak: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 /// Put an arbitrary collection of cards onto the battlefield face down as
@@ -5002,11 +5080,14 @@ pub struct ManifestObjectsEffect {
     pub cloak: bool,
     pub tapped: bool,
     pub shuffle: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl ManifestObjectsEffect {
     pub fn new(target: ChooseSpec, controller: PlayerFilter) -> Self {
         Self {
+            descriptive: false,
             target,
             controller,
             cloak: false,
@@ -5034,6 +5115,7 @@ impl ManifestObjectsEffect {
 impl ManifestTopCardOfLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
+            descriptive: false,
             player,
             cloak: false,
         }
@@ -5041,6 +5123,7 @@ impl ManifestTopCardOfLibraryEffect {
 
     pub fn cloak(player: PlayerFilter) -> Self {
         Self {
+            descriptive: false,
             player,
             cloak: true,
         }
@@ -5086,11 +5169,13 @@ impl SupportEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AmplifyEffect {
     pub amount: u32,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl AmplifyEffect {
     pub fn new(amount: u32) -> Self {
-        Self { amount }
+        Self { amount, descriptive: false }
     }
 }
 
@@ -5199,6 +5284,8 @@ impl MayCastForMiracleCostEffect {
 pub struct ConniveEffect {
     pub target: ChooseSpec,
     pub count: Value,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl ConniveEffect {
@@ -5210,6 +5297,7 @@ impl ConniveEffect {
         Self {
             target,
             count: count.into(),
+            descriptive: false,
         }
     }
 }
@@ -5612,12 +5700,15 @@ impl AdaptEffect {
 pub struct BackupEffect<A> {
     pub amount: u32,
     pub granted_abilities: Vec<A>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl<A> BackupEffect<A> {
     pub fn new(amount: u32, granted_abilities: Vec<A>) -> Self {
         Self {
             amount,
+            descriptive: false,
             granted_abilities,
         }
     }
@@ -5629,6 +5720,8 @@ pub struct BeholdEffect {
     pub subtype: Subtype,
     pub count: u32,
     pub chooser: PlayerFilter,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl BeholdEffect {
@@ -5637,6 +5730,7 @@ impl BeholdEffect {
             subtype,
             count,
             chooser,
+            descriptive: false,
         }
     }
 
@@ -5657,11 +5751,13 @@ pub enum ClashOpponentMode {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ClashEffect {
     pub opponent_mode: ClashOpponentMode,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl ClashEffect {
     pub fn new(opponent_mode: ClashOpponentMode) -> Self {
-        Self { opponent_mode }
+        Self { opponent_mode, descriptive: false }
     }
 
     pub fn against_any_opponent() -> Self {
@@ -5689,6 +5785,8 @@ pub struct EarthbendEffect {
     /// action applies.
     #[cfg_attr(feature = "serde", serde(default))]
     pub awaken: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl EarthbendEffect {
@@ -5697,6 +5795,7 @@ impl EarthbendEffect {
             target,
             counters: counters.into(),
             awaken: false,
+            descriptive: false,
         }
     }
 
@@ -5707,6 +5806,7 @@ impl EarthbendEffect {
             target,
             counters: counters.into(),
             awaken: true,
+            descriptive: false,
         }
     }
 }
@@ -6145,6 +6245,8 @@ pub struct IncubateEffect {
     pub amount: Value,
     pub count: Value,
     pub controller: PlayerFilter,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
     pub controller_target: Option<ChooseSpec>,
 }
 
@@ -6161,11 +6263,17 @@ impl IncubateEffect {
             _ => None,
         };
         Self {
+            descriptive: false,
             amount: amount.into(),
             count: count.into(),
             controller,
             controller_target,
         }
+    }
+
+    pub fn as_described(mut self, descriptive: bool) -> Self {
+        self.descriptive = descriptive;
+        self
     }
 
     pub fn you(amount: impl Into<Value>, count: impl Into<Value>) -> Self {
@@ -7758,4 +7866,16 @@ mod choose_number_draw_count_serde_tests {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RippleEffect {
     pub amount: u32,
+}
+
+/// A noncopiable permanent designation, independent of a keyword action.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum PermanentDesignation { Harnessed }
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct SetPermanentDesignationEffect {
+    pub target: ChooseSpec,
+    pub designation: PermanentDesignation,
 }

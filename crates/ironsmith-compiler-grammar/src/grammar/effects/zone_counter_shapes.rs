@@ -491,6 +491,10 @@ fn possessive_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 }
 
 pub fn is_named_source_power_shape(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(trim_shape_edges(tokens));
+    if matches!(words.as_slice(), ["this", "cards" | "card's" | "creatures" | "creature's" | "permanents" | "permanent's", "power"]) {
+        return true;
+    }
     primitives::parse_all(
         trim_shape_edges(tokens),
         (

@@ -401,7 +401,7 @@ fn cr_603_1a_trigger_instruction_that_ability_cant_be_countered_is_supported() {
     );
     let def = result.unwrap();
     let stifle = compile(
-        "Ability counter",
+        "Stifling Response",
         "Mana cost: {0}\nType: Instant\nCounter target activated or triggered ability.",
     );
     let mut game = two_player_main(alice());
@@ -427,6 +427,63 @@ fn cr_603_1a_trigger_instruction_that_ability_cant_be_countered_is_supported() {
         23,
         "CR 603.1a: the uncounterable trigger still resolves"
     );
+}
+
+#[test]
+fn ability_counter_instruction_survives_copy_and_source_departure_without_protecting_siblings() {
+    let counter_def = compile("Stifling Response", "Mana cost: {0}\nType: Instant\nCounter target activated or triggered ability.");
+    for activated in [false, true] {
+        for protected in [false, true] {
+            for departed in [false, true] {
+                for copied in [false, true] {
+                    let body = if activated { "{0}: You gain 3 life." } else { "Whenever this artifact becomes tapped, you gain 3 life." };
+                    let footer = if protected { " This ability can't be countered." } else { "" };
+                    let definition = compile("Resilient Relic", &format!("Mana cost: {{0}}\nType: Artifact\n{body}{footer}"));
+                    let mut game = two_player_main(alice());
+                    let source = game.create_object_from_definition(&definition, alice(), Zone::Battlefield);
+                    let counter = game.create_object_from_definition(&counter_def, alice(), Zone::Hand);
+                    let mut queue = TriggerQueue::new();
+                    let mut dm = Dm::default();
+                    if activated {
+                        activate_first(&mut game, alice(), source, &mut dm, &mut queue);
+                    } else {
+                        resolve_effects(&mut game, source, alice(), vec![ironsmith::Effect::new(TapEffect::with_spec(ChooseSpec::SpecificObject(source)))]);
+                        ironsmith::game_loop::try_drain_pending_trigger_events(&mut game, &mut queue).unwrap();
+                        ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+                    }
+                    assert_eq!(game.stack.len(), 1);
+                    assert_eq!(game.stack[0].ability_effects.as_ref().unwrap().ability_cant_be_countered, protected, "compiled ability instruction: activated={activated}");
+                    let original = game.stack[0].target_id();
+                    if copied {
+                        resolve_effects(&mut game, source, alice(), vec![ironsmith::Effect::new(ironsmith::effects::CopySpellEffect::single(ChooseSpec::SpecificObject(original)))]);
+                        assert_eq!(game.stack.len(), 2);
+                    }
+                    let target = game.stack.last().unwrap().target_id();
+                    if departed {
+                        game.move_object_by_game_rule(source, Zone::Graveyard).unwrap();
+                    }
+                    dm.target_pref = vec![Target::Object(target)];
+                    cast_with(&mut game, alice(), counter, &mut dm, &mut queue);
+                    settle(&mut game, &mut dm, &mut queue);
+                    assert_eq!(life(&game, alice()), 20 + if protected { if copied { 6 } else { 3 } } else { if copied { 3 } else { 0 } }, "activated={activated}, protected={protected}, departed={departed}, copied={copied}");
+                }
+            }
+        }
+    }
+    // Two abilities of one source have independent protection.
+    let mut game = two_player_main(alice());
+    let def = compile("Resilient Relic", "Mana cost: {0}\nType: Artifact\n{0}: You gain 3 life. This ability can't be countered.\n{0}: You gain 1 life.");
+    let source = game.create_object_from_definition(&def, alice(), Zone::Battlefield);
+    let counter = game.create_object_from_definition(&counter_def, alice(), Zone::Hand);
+    let mut dm = Dm::default();
+    let mut queue = TriggerQueue::new();
+    for ability_index in [0, 1] {
+        act_with(&mut game, alice(), LegalAction::ActivateAbility { source, ability_index }, &mut dm, &mut queue).unwrap();
+    }
+    dm.target_pref = vec![Target::Object(game.stack.last().unwrap().target_id())];
+    cast_with(&mut game, alice(), counter, &mut dm, &mut queue);
+    settle(&mut game, &mut dm, &mut queue);
+    assert_eq!(life(&game, alice()), 23, "an ordinary sibling remains counterable");
 }
 
 // ---------------------------------------------------------------- 603.2c / 603.2d / 603.2g / 603.2h

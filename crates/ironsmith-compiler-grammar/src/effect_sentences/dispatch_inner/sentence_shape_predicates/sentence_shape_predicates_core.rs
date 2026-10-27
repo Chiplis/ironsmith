@@ -985,8 +985,8 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
             return;
         };
         match action {
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {

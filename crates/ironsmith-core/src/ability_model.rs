@@ -470,6 +470,10 @@ pub enum PresentationKeyword {
     Soulshift(String),
     Melee,
     Provoke,
+    Storm,
+    Riot,
+    Increment,
+    Demonstrate,
 }
 
 impl PresentationKeyword {
@@ -485,6 +489,10 @@ impl PresentationKeyword {
         if lower == "melee" {
             return Some(Self::Melee);
         }
+        if lower == "storm" { return Some(Self::Storm); }
+        if lower == "riot" { return Some(Self::Riot); }
+        if lower == "demonstrate" { return Some(Self::Demonstrate); }
+        if lower == "increment" { return Some(Self::Increment); }
         if lower == "provoke" {
             return Some(Self::Provoke);
         }
@@ -539,6 +547,10 @@ impl PresentationKeyword {
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
             Self::Melee => "Melee".to_string(),
             Self::Provoke => "Provoke".to_string(),
+            Self::Storm => "Storm".to_string(),
+            Self::Riot => "Riot".to_string(),
+            Self::Demonstrate => "Demonstrate".to_string(),
+            Self::Increment => "Increment".to_string(),
         }
     }
 
@@ -559,6 +571,10 @@ impl PresentationKeyword {
                 | (Self::Soulshift(_), "soulshift")
                 | (Self::Melee, "melee")
                 | (Self::Provoke, "provoke")
+                | (Self::Storm, "storm")
+                | (Self::Riot, "riot")
+                | (Self::Increment, "increment")
+                | (Self::Demonstrate, "demonstrate")
         )
     }
 }
@@ -710,6 +726,8 @@ pub enum ActivatedAbilityKeyword {
     Boast,
     Exhaust,
     Craft,
+    Encore,
+    Fortify,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

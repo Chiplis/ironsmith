@@ -26,7 +26,8 @@ if (translated) {
   card.compiled_text = ["Pay 1 life: Draw a card.", "{T}: Add {G}."];
 }
 if (dualLand) {
-  card.type_line = "Land — Forest Island";
+  // Explicit mana abilities: basic land types use the renderer's intrinsic-mana treatment.
+  card.type_line = "Land";
   // Reverse the lines so an ordinal fallback cannot hide an incorrect match.
   card.oracle_text = "{T}: Add {U}.\n{T}: Add {G}.";
 }

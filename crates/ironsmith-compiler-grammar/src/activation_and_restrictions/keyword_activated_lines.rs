@@ -564,7 +564,7 @@ pub fn parse_fortify_line_lexed(
     let total_cost = parse_compiler_activation_cost(cost_tokens)?;
     let mut parsed = build_equip_ability(total_cost, ObjectFilter::land().you_control());
     if let AbilityKind::Activated(activated) = &mut parsed.ability.kind {
-        activated.keyword = None;
+        activated.keyword = Some(ironsmith_core::ActivatedAbilityKeyword::Fortify);
     }
     Ok(Some(parsed))
 }

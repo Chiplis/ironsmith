@@ -138,13 +138,37 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
 }
 
 fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {
-    activated_line_grammar::parse_inline_activated_sentence_kind_tokens(tokens).is_some()
+    crate::lexer::parser_token_word_refs(tokens) == ["activate", "this", "ability", "only", "once"]
+        || activated_line_grammar::parse_inline_activated_sentence_kind_tokens(tokens).is_some()
 }
 
 fn parse_activated_sentence_modifier_lexed(
     tokens: &[OwnedLexToken],
     current_timing: &ActivationTiming,
 ) -> Option<ActivatedSentenceModifier> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.len() >= 5 && words.len() <= 7 && words.ends_with(&["only", "as", "a", "sorcery"])
+        && tokens.iter().all(|token| matches!(token.kind, crate::lexer::TokenKind::Word | crate::lexer::TokenKind::Period)) {
+        return Some(ActivatedSentenceModifier::ActivateOnly(ActivateOnlySentenceDetails {
+            timing: ActivationTiming::SorcerySpeed, condition: None,
+            normalized_restriction: None, once_per_turn_after_other_restrictions: false,
+        }));
+    }
+    if matches!(words.as_slice(), ["activate", "only", "if", "this", "equipment" | "permanent", "is", "attached", "to", "a", "creature"]
+        | ["activate", "only", "if", "this", "is", "attached", "to", "a", "creature"]) {
+        return Some(ActivatedSentenceModifier::ActivateOnly(ActivateOnlySentenceDetails {
+            timing: *current_timing,
+            condition: Some(PredicateAst::AttachedToSourceMatches(crate::target::ObjectFilter::creature())),
+            normalized_restriction: None, once_per_turn_after_other_restrictions: false,
+        }));
+    }
+    if crate::lexer::parser_token_word_refs(tokens) == ["activate", "this", "ability", "only", "once"] {
+        return Some(ActivatedSentenceModifier::ActivateOnly(ActivateOnlySentenceDetails {
+            timing: *current_timing,
+            condition: Some(PredicateAst::MaxActivationsPerObject(1)),
+            normalized_restriction: None, once_per_turn_after_other_restrictions: false,
+        }));
+    }
     if let Some(parsed) = parse_activate_only_sentence_details_lexed(tokens, current_timing) {
         return Some(ActivatedSentenceModifier::ActivateOnly(parsed));
     }
@@ -216,7 +240,25 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
     let mut inline_effects_ast = Vec::new();
     let mut kept_sentences = Vec::new();
 
+    // Equipment/Fortification reminder prose restates ordinary attachment
+    // rules after the actual activated effect. Consume only that exact
+    // explanation, and only when the matching attach instruction is present.
+    let attachment_kind = sentences.first().and_then(|first| {
+        let words = crate::lexer::parser_token_word_refs(first);
+        match words.as_slice() {
+            ["attach", "to", "target", kind @ ("creature" | "land"), "you", "control"]
+            | ["attach", "this", "to", "target", kind @ ("creature" | "land"), "you", "control"]
+            | ["attach", "this", "permanent", "to", "target", kind @ ("creature" | "land"), "you", "control"] => Some(*kind),
+            _ => None,
+        }
+    });
     for sentence in sentences {
+        if let Some(kind) = attachment_kind {
+            let words = crate::lexer::parser_token_word_refs(sentence);
+            if words == ["this", "card", "enters", "unattached", "and", "stays", "on", "the", "battlefield", "if", "the", kind, "leaves"] {
+                continue;
+            }
+        }
         has_exhaust_once_restriction |= tokens_are_exhaust_once_restriction(sentence);
         let Some(parsed) = parse_activated_sentence_modifier_lexed(sentence, &timing) else {
             kept_sentences.push(*sentence);

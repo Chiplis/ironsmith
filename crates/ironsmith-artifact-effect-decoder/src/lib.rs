@@ -217,6 +217,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "MillEffect" => Some(EffectFamily::ZoneLibrary),
         "ModifyPowerToughnessEffect" => Some(EffectFamily::Combat),
         "ModifyPowerToughnessForEachEffect" => Some(EffectFamily::Combat),
+        "SetPermanentDesignationEffect" => Some(EffectFamily::Permanent),
         "MonstrosityEffect" => Some(EffectFamily::Permanent),
         "MoveAllCountersEffect" => Some(EffectFamily::Resources),
         "MoveCountersEffect" => Some(EffectFamily::Resources),

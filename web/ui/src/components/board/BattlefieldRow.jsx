@@ -2,7 +2,7 @@ import { allocateBattlefieldScene } from '@/lib/battlefield-scene-layout';
 import useBattlefieldScene from '@/hooks/useBattlefieldScene';
 import BattlefieldSceneCard from './scene/BattlefieldSceneCard';
 import { arenaPermanentKind } from '@/lib/mobile-arena';
-import { cardIntrinsicManaColors, landManaChoices } from "@/lib/land-mana-choices";
+import { isSimpleTapManaAction, landManaChoices } from "@/lib/land-mana-choices";
 import { compactLandOffsets } from '@/lib/compact-land-layout';
 import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
@@ -979,10 +979,6 @@ export default function BattlefieldRow({
     keepManaPopover();
     clearHover();
     clearAnchoredCardPreview();
-    if (actions.length === 1) {
-      setManaPopover(null);
-      return true;
-    }
     setManaPopover({ card, anchor: event.currentTarget, paymentKey: state.mana_payment.request_hash,
       keyboard: event.type === "keydown" || (event.type === "click" && event.detail === 0) });
     return true;
@@ -2394,11 +2390,10 @@ export default function BattlefieldRow({
     }
   }, [loading, closeManaPopover, clearHover, clearAnchoredCardPreview, dispatch, paymentEditor]);
 
-  // A land with intrinsic mana opens its mana strip on click; each color
-  // section taps it for that mana (CR 305.6 abilities have no text line).
+  // Simple tap-for-mana abilities on any permanent share the mana strip.
   const [openManaLandId, setOpenManaLandId] = useState(null);
   const landManaChoicesFor = useCallback((card) => {
-    if (!card || !cardIntrinsicManaColors(card).length) return [];
+    if (!card) return [];
     const actions = state?.decision?.kind === "mana_payment"
       ? (paymentActionMap.get(Number(card.id)) || [])
       : state?.decision?.kind === "priority" ? collectActivatableActionsForCard(card, activatableMap) : [];
@@ -2442,8 +2437,8 @@ export default function BattlefieldRow({
     if (manaActions.length) {
       event.preventDefault();
       event.stopPropagation();
-      const landChoices = manaActions.length > 1 ? landManaChoicesFor(card) : [];
-      if (manaActions.length === 1) void activatePaymentMana(manaActions[0]);
+      const landChoices = manaActions.length > 1 && manaActions.every(isSimpleTapManaAction) ? landManaChoicesFor(card) : [];
+      if (manaActions.length === 1 && isSimpleTapManaAction(manaActions[0])) void activatePaymentMana(manaActions[0]);
       else if (landChoices.length) setOpenManaLandId((open) => (open === String(card.id) ? null : String(card.id)));
       else showManaPopover(event, card);
       return;
@@ -2503,7 +2498,7 @@ export default function BattlefieldRow({
       return;
     }
 
-    // Lands with intrinsic mana toggle their mana strip. Targeting keeps the
+    // Simple mana sources toggle their mana strip. Targeting keeps the
     // click as a target choice; the card is still inspected as before.
     if (!isLegalTargetCard && landManaChoicesFor(card).length) {
       setOpenManaLandId((open) => (open === String(card.id) ? null : String(card.id)));

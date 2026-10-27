@@ -4,6 +4,8 @@ use ironsmith_compiled_artifact::{
 };
 use ironsmith_compiler as compiler;
 #[cfg(test)]
+mod reminder_identity_tests;
+#[cfg(test)]
 mod remove_any_source_counter_payload_tests;
 #[cfg(test)]
 use ironsmith_runtime_catalog::CardRegistryArtifactExt as _;
@@ -1459,7 +1461,8 @@ mod tests {
             (
                 "Cumulative Choice Fixture",
                 "Mana cost: {G}{W}\nType: Enchantment\nCumulative upkeep {G} or {W}",
-                "UnlessActionEffect",
+                // Each payment chooses one of the alternatives.
+                "ChooseModeEffect",
             ),
             (
                 "Jötun Grunt",
@@ -2726,6 +2729,7 @@ mod retained_casting_payload_codec_tests {
     fn retained_casting_payload_codec_preserves_alternative_effect_program_without_normalizing() {
         let (definition, _, effect) = fixture();
         let method = ironsmith::alternative_cast::AlternativeCastingMethod::Overload {
+            descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
             cost: ironsmith::mana::ManaCost::from_pips(vec![vec![
                 ironsmith::mana::ManaSymbol::Blue,
             ]]),
@@ -2784,6 +2788,7 @@ mod retained_casting_payload_codec_tests {
             .clone();
         let expected = effect.0.get_target_spec().unwrap().clone();
         let method = ironsmith::alternative_cast::AlternativeCastingMethod::Overload {
+            descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
             cost: ironsmith::mana::ManaCost::from_pips(vec![vec![
                 ironsmith::mana::ManaSymbol::Blue,
             ]]),

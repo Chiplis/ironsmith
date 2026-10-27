@@ -1064,9 +1064,20 @@ pub enum OptionalCostKind {
     /// The choice to pay a spell's dash alternative cost (CR 702.109).
     /// Appended to preserve the indices of existing serialized variants.
     Dash,
+    /// An optional payment chooses every mode without granting Entwine identity.
+    ChooseAllModes,
+    SacrificeManaCostReduction,
 }
 
 impl OptionalCostKind {
+    pub fn sacrifice_reduces_mana_cost_and_grants_timing(&self) -> bool {
+        matches!(self, Self::Offering | Self::SacrificeManaCostReduction)
+    }
+
+    pub fn chooses_all_modes(&self) -> bool {
+        matches!(self, Self::Entwine | Self::ChooseAllModes)
+    }
+
     pub fn from_label(label: &str) -> Self {
         let trimmed = label.trim();
         let lower = trimmed.to_ascii_lowercase();
@@ -1076,6 +1087,7 @@ impl OptionalCostKind {
             "replicate" => Self::Replicate,
             "buyback" => Self::Buyback,
             "entwine" => Self::Entwine,
+            "choose all modes" => Self::ChooseAllModes,
             "squad" => Self::Squad,
             "teamwork" => Self::Teamwork,
             "offspring" => Self::Offspring,
@@ -1125,6 +1137,8 @@ impl OptionalCostKind {
             Self::Replicate => "Replicate",
             Self::Buyback => "Buyback",
             Self::Entwine => "Entwine",
+            Self::ChooseAllModes => "Choose all modes",
+            Self::SacrificeManaCostReduction => "Sacrifice for reduced cost and instant timing",
             Self::Squad => "Squad",
             Self::Teamwork => "Teamwork",
             Self::Offspring => "Offspring",
@@ -1661,6 +1675,10 @@ impl OptionalCostsPaid {
 
     pub fn was_bought_back(&self) -> bool {
         self.was_paid_label("Buyback")
+    }
+
+    pub fn paid_to_choose_all_modes(&self) -> bool {
+        self.costs.iter().any(|(reference, count)| *count > 0 && reference.kind.chooses_all_modes())
     }
 
     pub fn was_entwined(&self) -> bool {

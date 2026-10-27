@@ -93,6 +93,18 @@ pub(super) fn triggers_are_independent(game: &GameState, view: &DerivedGameView<
     })
 }
 
+/// Project the native CR 106.12a activation boundary after replacement has
+/// determined whether each production actually produced mana. Multiple credit
+/// instructions keep their receipts, but only one is a tap-for-mana occurrence.
+fn retain_tap_occurrence(mana: &mut ManaAddedEvent, source: ObjectId, seen: &mut bool) {
+    if mana.source == source && !mana.mana.is_empty()
+        && mana.provenance == crate::events::mana::ManaProductionProvenance::TappedSourceForMana
+    {
+        mana.tap_occurrence_continuation |= *seen;
+        *seen = true;
+    }
+}
+
 pub(super) fn evaluate_with_context(
     game: &GameState,
     view: &DerivedGameView<'_>,
@@ -107,6 +119,7 @@ pub(super) fn evaluate_with_context(
         ordinary_triggers: Vec::new(),
     };
     let mut events = initial;
+    let mut tap_occurrence_seen = false;
     let mut evaluated = 0usize;
     let mut replacement_resources = super::replacement_program::ReplacementResources::default();
     while !events.is_empty() {
@@ -117,7 +130,7 @@ pub(super) fn evaluate_with_context(
                 return None;
             }
             let event = if let Some(mana) = event.downcast::<ManaAddedEvent>() {
-                let mana = replacements.deterministic_event(
+                let mut mana = replacements.deterministic_event(
                     game,
                     mana.clone(),
                     &mut replacement_resources,
@@ -125,6 +138,7 @@ pub(super) fn evaluate_with_context(
                 if mana.mana.is_empty() {
                     continue;
                 }
+                retain_tap_occurrence(&mut mana, tapped_source, &mut tap_occurrence_seen);
                 result.credits.push(ManaCredit { event: mana.clone(), context: credit_context.clone() });
                 mana.into_trigger_event()
             } else {
@@ -230,6 +244,7 @@ pub(super) fn evaluate_branches_with_context(
     struct Work {
         events: std::collections::VecDeque<TriggerEvent>,
         pending: Vec<TriggeredAbilityEntry>,
+        tap_occurrence_seen: bool,
         credit_context: ManaCreditContext,
         branch: BranchedManaEvents,
     }
@@ -237,6 +252,7 @@ pub(super) fn evaluate_branches_with_context(
         events: initial.into(),
         credit_context,
         pending: vec![],
+        tap_occurrence_seen: false,
         branch: BranchedManaEvents {
             result: EvaluatedManaEvents {
                 credits: vec![],
@@ -278,7 +294,7 @@ pub(super) fn evaluate_branches_with_context(
                 &state.branch.resources,
                 budget - visited,
             )?;
-            for replacement in branches.into_iter().rev() {
+            for mut replacement in branches.into_iter().rev() {
                 let mut next = state.clone();
                 next.branch.resources = replacement.resources;
                 next.branch.witnesses.push(ManaEventWitness {
@@ -286,6 +302,7 @@ pub(super) fn evaluate_branches_with_context(
                     decisions: replacement.decisions,
                 });
                 if !replacement.event.mana.is_empty() {
+                    retain_tap_occurrence(&mut replacement.event, tapped_source, &mut next.tap_occurrence_seen);
                     next.branch.result.credits.push(ManaCredit { event: replacement.event.clone(), context: next.credit_context.clone() });
                     next.pending
                         .extend(crate::triggers::check::check_triggers_with_view(

@@ -1474,6 +1474,7 @@ dependencies = [
  "im",
  "ironsmith-compiler-runtime",
  "ironsmith-core",
+ "ironsmith-runtime-catalog",
  "ironsmith-semantic-compare",
  "rand 0.10.1",
  "rand_chacha 0.10.0",

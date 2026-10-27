@@ -399,6 +399,7 @@ impl WasmGame {
         self.manabrew_next_prompt_id = 1;
         self.manabrew_open_prompt = None;
         self.match_format = MatchFormatInput::Normal;
+        self.revealed_sticker_sheets.clear();
         self.pregame = None;
         self.suspended_subgame_hosts.clear();
         self.grand_melee_host_lanes.clear();
@@ -2449,6 +2450,12 @@ impl WasmGame {
 
             match &pregame.stage {
                 PregameStage::StickerSheets { queue } if queue.is_empty() => {
+                    // Limited sheet choices are made before anyone can see an
+                    // opening hand (CR 103.2d precedes 103.5).
+                    let draws = pregame.player_order.iter().map(|player|
+                        (*player, pregame.opening_hand_sizes.get(player).copied()
+                            .unwrap_or(pregame.opening_hand_size))).collect::<Vec<_>>();
+                    for (player, count) in draws { let _ = self.game.draw_cards(player, count); }
                     if let Some(pregame) = self.pregame.as_mut() {
                         pregame.stage = PregameStage::MulliganDecision {
                             undecided_players: pregame.player_order.clone(),
@@ -3137,6 +3144,10 @@ impl WasmGame {
 
     fn finish_match_setup(&mut self, opening_hand_size: usize) -> Result<(), String> {
         self.reset_runtime_state();
+        // Sticker selection precedes drawing or exposing opening hands and
+        // creates no player choice in constructed play (CR 103.2d).
+        let pregame_order = self.game.team_apnap_player_order();
+        let sticker_sheet_choices = self.take_sticker_sheet_choices(&pregame_order);
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         let opening_hand_sizes = player_ids
             .iter()
@@ -3150,21 +3161,19 @@ impl WasmGame {
                 (player, size)
             })
             .collect::<HashMap<_, _>>();
-        for player_id in &player_ids {
+        for player_id in player_ids.iter().filter(|_| sticker_sheet_choices.is_empty()) {
             let size = opening_hand_sizes
                 .get(player_id)
                 .copied()
                 .unwrap_or(opening_hand_size);
             let _ = self.game.draw_cards(*player_id, size);
         }
-        let pregame_order = self.game.team_apnap_player_order();
         let mut pregame = PregameState::new_with_hand_sizes(
             &pregame_order,
             opening_hand_size,
             opening_hand_sizes,
             self.match_format,
         );
-        let sticker_sheet_choices = self.take_sticker_sheet_choices(&pregame_order);
         if !sticker_sheet_choices.is_empty() {
             pregame.stage = PregameStage::StickerSheets {
                 queue: sticker_sheet_choices,

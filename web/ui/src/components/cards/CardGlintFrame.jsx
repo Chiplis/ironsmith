@@ -3,7 +3,7 @@ import {cardGlintFace} from '@/lib/card-glint/card.mjs';
 import {renderCardGlint,peekCardGlintFrame} from '@/lib/card-glint/session.mjs';
 import {peekScryfallPrintingMetadata,resolveScryfallPrintingMetadata} from '@/lib/scryfall';
 import CardGlintInteractions from './CardGlintInteractions';
-import {cardGlintRegions,cardGlintActionsCovered} from '@/lib/card-glint/interactions.mjs';
+import {cardGlintRegions,cardGlintActionsCovered,cardGlintRulesFontSize} from '@/lib/card-glint/interactions.mjs';
 import {cardPresentation} from '@/lib/card-glint/printing-choices.mjs';
 import useCardGlintLive from './useCardGlintLive';
 
@@ -11,6 +11,16 @@ import useCardGlintLive from './useCardGlintLive';
 // over its static face, which still provides the interaction regions.
 export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,rulesView,onActivate,highlighted,details,inspector=false}) {
   const canvas = useRef(null), [finished,setFinished] = useState(null), [metadata,setMetadata] = useState(null);
+  const interactive=Boolean(rulesView);
+  const [displayWidth,setDisplayWidth] = useState(null);
+  useLayoutEffect(() => {
+    if (!interactive) return;
+    const host=canvas.current?.parentElement?.parentElement;
+    if (!host) return;
+    const measure=()=>setDisplayWidth(host.getBoundingClientRect().width);
+    const observer=new ResizeObserver(measure);observer.observe(host);measure();
+    return ()=>observer.disconnect();
+  }, [interactive]);
   const card = useMemo(() => JSON.parse(snapshot), [snapshot]);
   const printing = metadata && metadata.imageUrl === imageUrl ? metadata.printing : peekScryfallPrintingMetadata(imageUrl);
   useEffect(() => {
@@ -50,7 +60,9 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     live.pointer({x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height});
   };
   const regions = useMemo(() => cardGlintRegions(result,rulesView), [result,rulesView]);
-  const ready = Boolean(result && cardGlintActionsCovered(regions,rulesView));
+  const paintedFontSize=useMemo(()=>rulesView?cardGlintRulesFontSize(result):null,[result,rulesView]);
+  const readable=!rulesView || paintedFontSize==null || displayWidth==null || paintedFontSize*displayWidth/488>=14;
+  const ready = Boolean(result && readable && cardGlintActionsCovered(regions,rulesView));
   return <>
     {!ready && fallback}
     <div className="card-glint-surface" style={{display:ready?'block':'none'}}

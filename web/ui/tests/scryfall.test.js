@@ -8,6 +8,9 @@ import {
   resolveScryfallFlavorText,
   scryfallImageUrl,
   setCustomCardArtUrls,
+  setCompiledCardNames,
+  isCompiledCardName,
+  preferredCardPrint,
   setPreferredCardPrints,
   fetchScryfallCardMeta,
   resolveScryfallLocalizedImageUrl,
@@ -503,4 +506,54 @@ test("a suffixed double-faced token uses the matching face rather than the first
     assert.equal(await resolveScryfallImageUrl('Phyrexian Token','art_crop'), 'phyrexian-art');
     assert.equal(await resolveScryfallImageUrl('Phyrexian Token'), 'phyrexian-scan');
   } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test("full storage retains compiled names, art and print preferences for the session", () => {
+  const previous = globalThis.localStorage;
+  const persisted = new Map([["ironsmith-compiled-card-names", JSON.stringify({ "previous custom card": "compiled" })]]);
+  let writable = false;
+  globalThis.localStorage = {
+    getItem: key => persisted.get(key) ?? null,
+    setItem(key, value) {
+      if (!writable) throw new DOMException("Storage full", "QuotaExceededError");
+      persisted.set(key, value);
+    },
+    removeItem(key) {
+      if (!writable) throw new DOMException("Storage blocked", "SecurityError");
+      persisted.delete(key);
+    },
+  };
+  try {
+    assert.doesNotThrow(() => setCompiledCardNames(["IronSmith Sandboxer"]));
+    assert.equal(isCompiledCardName("IronSmith Sandboxer"), true);
+    setCompiledCardNames(["Another sandbox card"]);
+    assert.equal(isCompiledCardName("IronSmith Sandboxer"), true);
+    assert.equal(isCompiledCardName("Previous Custom Card"), true);
+    assert.equal(isCompiledCardName("Another sandbox card"), true);
+    setCustomCardArtUrls([{ name: "Quota art", artUrl: "https://example.test/quota.jpg" }]);
+    assert.equal(customCardArtUrl("Quota art"), "https://example.test/quota.jpg");
+    setCustomCardArtUrls([{ name: "Quota art", artUrl: "" }]);
+    assert.equal(customCardArtUrl("Quota art"), "");
+    setPreferredCardPrints([{ name: "Quota print", setCode: "fdn" }]);
+    assert.deepEqual(preferredCardPrint("Quota print"), { setCode: "fdn" });
+    writable = true;
+    setCompiledCardNames(["Persisted after recovery"]);
+    const names = JSON.parse(persisted.get("ironsmith-compiled-card-names"));
+    assert.ok(names["ironsmith sandboxer"] && names["another sandbox card"] && names["persisted after recovery"]);
+  } finally { globalThis.localStorage = previous; }
+});
+
+test("compiled names and custom art work with storage unavailable", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new DOMException("Disabled", "SecurityError"); } });
+  try {
+    setCompiledCardNames(["Private sandbox card"]);
+    assert.equal(isCompiledCardName("Private sandbox card"), true);
+    setCustomCardArtUrls([{ name: "Private sandbox card", artUrl: "https://example.test/private.jpg" }]);
+    assert.equal(customCardArtUrl("Private sandbox card"), "https://example.test/private.jpg");
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
+    else delete globalThis.localStorage;
+  }
 });

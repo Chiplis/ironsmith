@@ -62,6 +62,30 @@ pub(crate) struct SourceDamageKeywords {
     pub has_lifelink: bool,
 }
 
+fn has_damage_marker(abilities: &[crate::ability::Ability], mechanic: ironsmith_core::KeywordMarkerMechanic) -> bool {
+    abilities.iter().any(|ability| matches!(&ability.kind,
+        crate::ability::AbilityKind::Static(ability) if ability.keyword_marker_mechanic() == Some(mechanic)))
+}
+
+pub(crate) fn source_damage_is_lethal(game: &GameState, source: ObjectId) -> bool {
+    game.object_has_static_ability_id(source, StaticAbilityId::Deathtouch)
+        || crate::derived_view::DerivedGameView::new(game).object_has_keyword_marker_mechanic(
+            source, ironsmith_core::KeywordMarkerMechanic::DamageIsLethalToCreatures)
+}
+
+pub(crate) fn source_damage_gains_life(game: &GameState, source: ObjectId) -> bool {
+    game.object_has_static_ability_id(source, StaticAbilityId::Lifelink)
+        || crate::derived_view::DerivedGameView::new(game).object_has_keyword_marker_mechanic(
+            source, ironsmith_core::KeywordMarkerMechanic::DamageGrantsControllerLife)
+}
+
+pub(crate) fn source_damage_as_counters(game: &GameState, source: ObjectId, poison_players: bool) -> bool {
+    let native = if poison_players { StaticAbilityId::Infect } else { StaticAbilityId::Wither };
+    game.object_has_static_ability_id(source, native)
+        || crate::derived_view::DerivedGameView::new(game).object_has_keyword_marker_mechanic(
+            source, ironsmith_core::KeywordMarkerMechanic::DamageAsCounters { poison_players })
+}
+
 pub(crate) fn source_damage_keywords(
     game: &GameState,
     source: ObjectId,
@@ -71,19 +95,19 @@ pub(crate) fn source_damage_keywords(
     // (CR 608.2h), even when its ability was put on the stack earlier.
     if game.object(source).is_some() && !game.is_phased_out(source) {
         return SourceDamageKeywords {
-            has_deathtouch: game.object_has_static_ability_id(source, StaticAbilityId::Deathtouch),
-            has_infect: game.object_has_static_ability_id(source, StaticAbilityId::Infect),
-            has_wither: game.object_has_static_ability_id(source, StaticAbilityId::Wither),
-            has_lifelink: game.object_has_static_ability_id(source, StaticAbilityId::Lifelink),
+            has_deathtouch: source_damage_is_lethal(game, source),
+            has_infect: source_damage_as_counters(game, source, true),
+            has_wither: source_damage_as_counters(game, source, false),
+            has_lifelink: source_damage_gains_life(game, source),
         };
     }
 
     if let Some(snapshot) = source_snapshot {
         return SourceDamageKeywords {
-            has_deathtouch: snapshot.has_static_ability_id(StaticAbilityId::Deathtouch),
-            has_infect: snapshot.has_static_ability_id(StaticAbilityId::Infect),
-            has_wither: snapshot.has_static_ability_id(StaticAbilityId::Wither),
-            has_lifelink: snapshot.has_static_ability_id(StaticAbilityId::Lifelink),
+            has_deathtouch: snapshot.has_static_ability_id(StaticAbilityId::Deathtouch) || has_damage_marker(&snapshot.abilities, ironsmith_core::KeywordMarkerMechanic::DamageIsLethalToCreatures),
+            has_infect: snapshot.has_static_ability_id(StaticAbilityId::Infect) || has_damage_marker(&snapshot.abilities, ironsmith_core::KeywordMarkerMechanic::DamageAsCounters { poison_players: true }),
+            has_wither: snapshot.has_static_ability_id(StaticAbilityId::Wither) || has_damage_marker(&snapshot.abilities, ironsmith_core::KeywordMarkerMechanic::DamageAsCounters { poison_players: false }),
+            has_lifelink: snapshot.has_static_ability_id(StaticAbilityId::Lifelink) || has_damage_marker(&snapshot.abilities, ironsmith_core::KeywordMarkerMechanic::DamageGrantsControllerLife),
         };
     }
 
@@ -259,10 +283,10 @@ pub fn calculate_damage(
         return DamageResult::default();
     }
 
-    let has_deathtouch = source.has_static_ability_id(StaticAbilityId::Deathtouch);
-    let has_infect = source.has_static_ability_id(StaticAbilityId::Infect);
-    let has_wither = source.has_static_ability_id(StaticAbilityId::Wither);
-    let has_lifelink = source.has_static_ability_id(StaticAbilityId::Lifelink);
+    let has_deathtouch = source.has_static_ability_id(StaticAbilityId::Deathtouch) || has_damage_marker(&source.abilities, ironsmith_core::KeywordMarkerMechanic::DamageIsLethalToCreatures);
+    let has_infect = source.has_static_ability_id(StaticAbilityId::Infect) || has_damage_marker(&source.abilities, ironsmith_core::KeywordMarkerMechanic::DamageAsCounters { poison_players: true });
+    let has_wither = source.has_static_ability_id(StaticAbilityId::Wither) || has_damage_marker(&source.abilities, ironsmith_core::KeywordMarkerMechanic::DamageAsCounters { poison_players: false });
+    let has_lifelink = source.has_static_ability_id(StaticAbilityId::Lifelink) || has_damage_marker(&source.abilities, ironsmith_core::KeywordMarkerMechanic::DamageGrantsControllerLife);
 
     build_damage_result(
         target,
@@ -286,10 +310,10 @@ pub fn calculate_damage_with_game(
         return DamageResult::default();
     }
 
-    let has_deathtouch = game.object_has_static_ability_id(source.id, StaticAbilityId::Deathtouch);
-    let has_infect = game.object_has_static_ability_id(source.id, StaticAbilityId::Infect);
-    let has_wither = game.object_has_static_ability_id(source.id, StaticAbilityId::Wither);
-    let has_lifelink = game.object_has_static_ability_id(source.id, StaticAbilityId::Lifelink);
+    let has_deathtouch = source_damage_is_lethal(game, source.id);
+    let has_infect = source_damage_as_counters(game, source.id, true);
+    let has_wither = source_damage_as_counters(game, source.id, false);
+    let has_lifelink = source_damage_gains_life(game, source.id);
 
     build_damage_result(
         target,
@@ -326,7 +350,7 @@ pub fn is_lethal(
     }
 
     // Deathtouch: any damage is lethal
-    if game.object_has_static_ability_id(source.id, StaticAbilityId::Deathtouch) {
+    if source_damage_is_lethal(game, source.id) {
         return true;
     }
 
@@ -369,7 +393,7 @@ pub fn calculate_trample_excess(
     }
 
     let has_deathtouch =
-        game.object_has_static_ability_id(attacker.id, StaticAbilityId::Deathtouch);
+        source_damage_is_lethal(game, attacker.id);
 
     // Calculate minimum damage needed to kill each blocker
     let mut damage_needed: u32 = 0;
@@ -411,7 +435,7 @@ pub fn distribute_trample_damage(
     }
 
     let has_deathtouch =
-        game.object_has_static_ability_id(attacker.id, StaticAbilityId::Deathtouch);
+        source_damage_is_lethal(game, attacker.id);
     let has_trample = game.object_has_static_ability_id(attacker.id, StaticAbilityId::Trample);
 
     let mut distribution = Vec::with_capacity(blockers.len());

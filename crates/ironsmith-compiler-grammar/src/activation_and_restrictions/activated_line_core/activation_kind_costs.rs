@@ -205,6 +205,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         for gate in gates { ability = ability.with_activated_ability_cost_condition(gate); }
         return Ok(Some(ability));
     }
+    let optional = words(amount_tokens).starts_with(&["up", "to"]);
+    let amount_tokens = if optional { &amount_tokens[2..] } else { amount_tokens };
     let Some((amount, used)) = parse_cost_modifier_amount(amount_tokens) else {
         return Err(error(tokens, "generic amount"));
     };
@@ -237,6 +239,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         ) => Some(1),
         _ => return Err(error(tokens, "trailing sentence")),
     };
+    if optional && (direction != "less" || per_objects.is_some() || minimum.is_some()
+        || !gates.iter().any(|gate| matches!(gate, Gate::Keyword(Keyword::Cycling)))) {
+        return Err(error(tokens, "optional reduction scope"));
+    }
     // Runtime rendering owns the typed count filter (including text changes).
     // Keep only the cost head in its presentation to avoid printing it twice.
     let display_tokens = if per_objects.is_some() {
@@ -247,8 +253,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     let display = render_token_slice(display_tokens).trim().trim_end_matches('.').to_string();
     let mut ability = if direction == "less" {
         let mut ability = StaticAbility::reduce_activated_ability_costs_with_display(filter, amount, minimum, display);
-        if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { per_matching_objects, .. } = &mut ability.payload {
+        if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { per_matching_objects, optional: optional_slot, .. } = &mut ability.payload {
             *per_matching_objects = per_objects;
+            *optional_slot = optional;
         }
         ability
     } else {

@@ -73,7 +73,7 @@ pub use ability_model::{
     RestrictedManaUnit, TriggeredAbility,
 };
 pub use alternative_cast_model::{
-    AlternativeCastRequirements, AlternativeCastingMethod, FREE_CAST_AS_THOUGH_FLASH_METHOD,
+    AlternativeCastRequirements, AlternativeCastingMethod, ZoneCastInstructions, FREE_CAST_AS_THOUGH_FLASH_METHOD,
     TrapCondition,
 };
 pub use anthem_model::{AnthemCountExpression, AnthemValue, SourceCounterPronounSurface};
@@ -157,7 +157,7 @@ pub use effect::{
     ManifestCardFromHandEffect, ManifestDreadEffect, ManifestObjectsEffect,
     ManifestTopCardOfLibraryEffect, MayCastForMiracleCostEffect, MayCastMatchingSpellPayment,
     MayCastMatchingSpellWithoutPayingManaCostEffect, MayEffect, MayMoveToZoneEffect, MeldEffect,
-    MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
+    SetPermanentDesignationEffect, PermanentDesignation, MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     MoveToZoneVerbSurface, NewTargetRestriction, NextAdaptIgnoresCountersEffect,

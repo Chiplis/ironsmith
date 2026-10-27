@@ -14,12 +14,20 @@ use crate::effects::tokens::resources::checked_token_count;
 /// Stable keys within one immutable token-creation proposal. Definitions are
 /// first-class groups, not a finite list of card-specific token kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenGroupKey { Original, Named(usize), Template(usize) }
+pub enum TokenGroupKey { Original, Named(usize), Template(usize), Copy(usize) }
 
 #[derive(Debug, Clone)]
 pub struct TemplateTokenGroup {
     pub definition: crate::cards::CardDefinition,
     pub count: u32,
+}
+
+/// A distinct copiable object in the same token-creation instruction.
+#[derive(Debug, Clone)]
+pub struct CopyTokenGroup {
+    pub token: Object,
+    pub count: u32,
+    pub initial_counters: Vec<(crate::object::CounterType, u32)>,
 }
 
 /// An event representing one effect creating one or more tokens for a player.
@@ -37,6 +45,7 @@ pub struct CreateTokensEvent {
     pub additional_tokens: Vec<(AdditionalTokenKind, u32)>,
     /// Arbitrary templates appended or substituted by creation replacements.
     pub additional_templates: Vec<TemplateTokenGroup>,
+    pub additional_copies: Vec<CopyTokenGroup>,
 }
 
 impl CreateTokensEvent {
@@ -48,6 +57,7 @@ impl CreateTokensEvent {
             token: None,
             additional_tokens: Vec::new(),
             additional_templates: Vec::new(),
+            additional_copies: Vec::new(),
         }
     }
 
@@ -64,6 +74,7 @@ impl CreateTokensEvent {
             token: Some(token),
             additional_tokens: Vec::new(),
             additional_templates: Vec::new(),
+            additional_copies: Vec::new(),
         }
     }
 
@@ -81,12 +92,14 @@ impl CreateTokensEvent {
         u128::from(self.count)
             + self.additional_tokens.iter().map(|(_, count)| u128::from(*count)).sum::<u128>()
             + self.additional_templates.iter().map(|group| u128::from(group.count)).sum::<u128>()
+            + self.additional_copies.iter().map(|group| u128::from(group.count)).sum::<u128>()
     }
 
     pub fn group_keys(&self) -> Vec<TokenGroupKey> {
         std::iter::once(TokenGroupKey::Original)
             .chain((0..self.additional_tokens.len()).map(TokenGroupKey::Named))
             .chain((0..self.additional_templates.len()).map(TokenGroupKey::Template))
+            .chain((0..self.additional_copies.len()).map(TokenGroupKey::Copy))
             .collect()
     }
     pub fn group_count(&self, key: TokenGroupKey) -> u32 {
@@ -94,6 +107,7 @@ impl CreateTokensEvent {
             TokenGroupKey::Original => self.count,
             TokenGroupKey::Named(index) => self.additional_tokens[index].1,
             TokenGroupKey::Template(index) => self.additional_templates[index].count,
+            TokenGroupKey::Copy(index) => self.additional_copies[index].count,
         }
     }
     pub(crate) fn group_count_mut(&mut self, key: TokenGroupKey) -> &mut u32 {
@@ -101,11 +115,13 @@ impl CreateTokensEvent {
             TokenGroupKey::Original => &mut self.count,
             TokenGroupKey::Named(index) => &mut self.additional_tokens[index].1,
             TokenGroupKey::Template(index) => &mut self.additional_templates[index].count,
+            TokenGroupKey::Copy(index) => &mut self.additional_copies[index].count,
         }
     }
     pub fn group_object(&self, key: TokenGroupKey) -> Option<Object> {
         match key {
             TokenGroupKey::Original => self.token.clone(),
+            TokenGroupKey::Copy(index) => Some(self.additional_copies[index].token.clone()),
             TokenGroupKey::Named(index) => Some(additional_token_object(self.additional_tokens[index].0, self.controller)),
             TokenGroupKey::Template(index) => Some(Object::from_token_definition(
                 crate::ids::ObjectId::from_raw(0), &self.additional_templates[index].definition, self.controller,
@@ -123,6 +139,7 @@ impl CreateTokensEvent {
         }
         next.additional_tokens.retain(|(_, count)| *count > 0);
         next.additional_templates.retain(|group| group.count > 0);
+        next.additional_copies.retain(|group| group.count > 0);
         checked_token_count(next.total_count())?;
         Ok(next)
     }
@@ -146,6 +163,7 @@ impl CreateTokensEvent {
         }
         next.additional_tokens.retain(|(_, count)| *count > 0);
         next.additional_templates.retain(|group| group.count > 0);
+        next.additional_copies.retain(|group| group.count > 0);
         checked_token_count(next.total_count())?;
         Ok(next)
     }

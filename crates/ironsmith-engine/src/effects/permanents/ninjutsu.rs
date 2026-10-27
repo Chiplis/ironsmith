@@ -279,7 +279,7 @@ impl EffectExecutor for SneakCostEffect {
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                if !in_sneak_window(game) {
+                if !in_sneak_window(game) || !game.active_players().contains(&ctx.controller) {
                     return Err(ExecutionError::Impossible(
                         "Sneak can only be paid during the declare blockers step".to_string(),
                     ));
@@ -327,7 +327,7 @@ impl CostExecutableEffect for SneakCostEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if !in_sneak_window(game) {
+        if !in_sneak_window(game) || !game.active_players().contains(&controller) {
             return Err(CostValidationError::Other(
                 "Sneak can only be paid during the declare blockers step".to_string(),
             ));

@@ -30,7 +30,7 @@ fn parse_bargained_return_replacement(
     repeat_till::<_, _, (), _, _, _, _>(
         0..,
         any.void(),
-        primitives::phrase(&["if", "this", "spell", "was", "bargained"]),
+        primitives::phrase(&["if", "this", "spell", "was", crate::keyword_forms::BARGAINED]),
     )
     .parse_next(input)?;
     repeat_till::<_, _, (), _, _, _, _>(
@@ -89,7 +89,7 @@ fn parse_kicked_multi_zone_to_battlefield(
     repeat_till::<_, _, (), _, _, _, _>(
         0..,
         any.void(),
-        primitives::phrase(&["if", "this", "spell", "was", "kicked"]),
+        primitives::phrase(&["if", "this", "spell", "was", crate::keyword_forms::KICKED]),
     )
     .parse_next(input)?;
     repeat_till::<_, _, (), _, _, _, _>(

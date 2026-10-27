@@ -135,7 +135,7 @@ fn ability_is_soulbond_pairing(ability: &Ability) -> bool {
     triggered.effects.all_effects().into_iter().any(|effect| {
         effect
             .downcast_ref::<crate::effects::SoulbondPairEffect>()
-            .is_some()
+            .is_some_and(|pair| !pair.descriptive)
     })
 }
 
@@ -294,6 +294,7 @@ fn grants_end_step_sacrifice_ability(effect: &CreateTokenCopyEffect) -> bool {
 struct TokenCopyProposal {
     effect: CreateTokenCopyEffect,
     token_preview: Option<Object>,
+    additional_copies: Vec<crate::events::tokens::CopyTokenGroup>,
     controller: PlayerId,
     count: u32,
     configured_attack_player: Option<PlayerId>,
@@ -319,6 +320,45 @@ fn prepare_token_copy_proposal(
     game: &GameState,
     ctx: &ExecutionContext,
 ) -> Result<TokenCopyProposal, ExecutionError> {
+    let resolved = crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx);
+    let Ok(ids) = resolved else { return prepare_single_token_copy_proposal(effect, game, ctx); };
+    if ids.len() <= 1 { return prepare_single_token_copy_proposal(effect, game, ctx); }
+    // Every member uses the same pre-creation world, but all members form one
+    // creation instruction. Replacement multipliers and "plus one" see the
+    // complete group instead of being applied once per linked card (607.3).
+    let mut proposals = Vec::with_capacity(ids.len());
+    for id in ids {
+        let mut selected = effect.clone();
+        selected.target = ChooseSpec::SpecificObject(id);
+        proposals.push(prepare_single_token_copy_proposal(&selected, game, ctx)?);
+    }
+    let mut proposal = proposals.remove(0);
+    proposal.effect = effect.clone();
+    let mut counters = Vec::new();
+    for counter in &effect.entry_counters {
+        if counter.condition.is_some() || counter.object_filter.is_some() {
+            return Err(ExecutionError::InternalError("conditional token entry counters are not a token-creation instruction".into()));
+        }
+        let count = resolve_value(game, &counter.amount, ctx)?.max(0) as u32;
+        if count > 0 { counters.push((counter.counter_type, count)); }
+    }
+    for member in proposals {
+        if member.count == 0 { continue; }
+        if let Some(mut token) = member.token_preview {
+            token.token_creation_method = effect.creation_method;
+            proposal.additional_copies.push(crate::events::tokens::CopyTokenGroup {
+                token, count: member.count, initial_counters: counters.clone(),
+            });
+        }
+    }
+    Ok(proposal)
+}
+
+fn prepare_single_token_copy_proposal(
+    effect: &CreateTokenCopyEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<TokenCopyProposal, ExecutionError> {
     let controller_id = resolve_player_filter(game, &effect.controller, ctx)?;
     if !game
         .player(controller_id)
@@ -327,6 +367,7 @@ fn prepare_token_copy_proposal(
         return Ok(TokenCopyProposal {
             effect: effect.clone(),
             token_preview: None,
+            additional_copies: Vec::new(),
             controller: controller_id,
             count: 0,
             configured_attack_player: None,
@@ -514,6 +555,7 @@ fn prepare_token_copy_proposal(
     Ok(TokenCopyProposal {
         effect: effect.clone(),
         token_preview: Some(token_preview),
+        additional_copies: Vec::new(),
         controller: controller_id,
         count: base_count,
         configured_attack_player,
@@ -601,14 +643,10 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
             .map(|permit| permit.enter_phase())
             .transpose()?;
         game.clear_pending_decision_controllers();
-        let prepared = crate::events::processing::prepare_token_creation_deferred(
-            game,
-            self.controller,
-            self.count,
-            self.token_preview.clone(),
-            ctx.cause.clone(),
-            ctx,
-        )?;
+        let mut event = crate::events::CreateTokensEvent::with_cause(self.controller, self.count, ctx.cause.clone());
+        event.token = self.token_preview.clone();
+        event.additional_copies = self.additional_copies.clone();
+        let prepared = crate::events::processing::prepare_token_creation_event_deferred(game, event, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(());
         }
@@ -1134,6 +1172,50 @@ mod tests {
                 ),
             ))
             .build()
+    }
+
+    #[test]
+    fn multiple_copy_sources_share_replacements_and_one_instruction_budget() {
+        for mode in 0..3 {
+            let mut game = setup_game();
+            let player = PlayerId::from_index(0);
+            let first = game.create_object_from_definition(&fancy_treasure_token_definition(), player, Zone::Battlefield);
+            let second = game.create_object_from_definition(&treasure_token_definition(), player, Zone::Battlefield);
+            if mode == 1 {
+                let doubler = CardDefinitionBuilder::new(CardId::new(), "Group doubler")
+                    .card_types(vec![CardType::Enchantment])
+                    .with_ability(Ability::static_ability(StaticAbility::double_token_creation_replacement(
+                        PlayerFilter::You, "Double tokens".into(),
+                    ))).build();
+                game.create_object_from_definition(&doubler, player, Zone::Battlefield);
+            } else if mode == 2 {
+                game.create_object_from_definition(&xorn_definition(), player, Zone::Battlefield);
+            }
+            game.refresh_continuous_state().unwrap();
+            game.set_token_creation_limits(super::super::resources::TokenCreationLimits {
+                max_instructions: 1, max_nesting: 1, ..Default::default()
+            });
+            let mut ctx = ExecutionContext::new_default(first, player);
+            ctx.set_tagged_objects("copy_members", [first, second].iter()
+                .map(|id| ObjectSnapshot::from_object(game.object(*id).unwrap(), &game)).collect());
+            let mut effect = CreateTokenCopyEffect::one(ChooseSpec::tagged("copy_members"));
+            effect.entry_counters.push(ironsmith_core::BattlefieldEntryCounterSpec::new(
+                CounterType::Charge, 2, ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+            ));
+            let result = effect.execute(&mut game, &mut ctx).unwrap();
+            let crate::effect::OutcomeValue::Objects(ids) = result.value else { panic!("missing created objects") };
+            assert_eq!(ids.len(), [2, 4, 3][mode]);
+            let mut names = ids.iter().map(|id| game.object(*id).unwrap().name.to_string()).collect::<Vec<_>>();
+            names.sort();
+            let expected = match mode {
+                0 => vec!["Fancy Treasure", "Treasure"],
+                1 => vec!["Fancy Treasure", "Fancy Treasure", "Treasure", "Treasure"],
+                _ => vec!["Fancy Treasure", "Treasure", "Treasure Token"],
+            };
+            assert_eq!(names, expected);
+            assert_eq!(ids.iter().filter(|id| game.counter_count(**id, CounterType::Charge) == 2).count(), if mode == 1 { 4 } else { 2 });
+            assert!(ids.iter().all(|id| game.current_controller(*id) == Some(player)));
+        }
     }
 
     #[test]

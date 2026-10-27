@@ -131,6 +131,7 @@ impl EffectExecutor for AmassEffect {
                 let mut outcomes = children.iter().map(|child| child.outcome.clone()).collect::<Vec<_>>();
                 let mut outputs = crate::effects::composition::aggregate_children(children);
                 let Some(chosen_army) = chosen else {
+                    if self.descriptive { return Ok(outputs); }
                     return crate::effects::composition::complete_keyword_action_with_outputs(
                         game, ctx, outputs,
                         KeywordActionEvent::new(KeywordActionKind::Amass, ctx.controller, ctx.source, amount));
@@ -169,13 +170,13 @@ impl EffectExecutor for AmassEffect {
                     outputs.retain_owned_child(child);
                 }
 
+                let outputs = outputs.project_aggregate(EffectOutcome::aggregate(outcomes)
+                    .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen_army])));
+                if self.descriptive { return Ok(outputs); }
                 crate::effects::composition::complete_keyword_action_with_outputs(
                     game,
                     ctx,
-                    outputs.project_aggregate(
-                        EffectOutcome::aggregate(outcomes)
-                            .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen_army])),
-                    ),
+                    outputs,
                     KeywordActionEvent::new(
                         KeywordActionKind::Amass,
                         ctx.controller,

@@ -22,7 +22,7 @@ fn source_leave_returns_only_cards_with_an_actual_duration_receipt() {
 
     game.return_exiled_for_source_leave(source);
     assert_eq!(game.auxiliary_tracking.pending_duration_end_returns,
-        vec![(source, vec![(battlefield_return, Zone::Battlefield), (hand_return, Zone::Hand)])]);
+        vec![vec![(source, vec![(battlefield_return, Zone::Battlefield), (hand_return, Zone::Hand)])]]);
     // The pending original moves still own their exile membership. Calling
     // the duration owner again cannot duplicate the scheduled returns.
     game.return_exiled_for_source_leave(source);

@@ -9,7 +9,7 @@ import {rulesSourceCard,rulesSourceFrame} from '@/lib/rules-source-frame';
 // The inspector's rules are interactive within either rendered card surface.
 // `inspector` marks the single inspected card, which may use the WebGL renderer.
 export default function CardFramePresentation({card,imageUrl,faceIndex=0,rulesView,onActivate,highlighted,
-  counters,badges,onReadyChange,inspector=false}) {
+  counters,badges,onReadyChange,inspector=false,deferUpgrade=false}) {
   const snapshot=cardFrameSnapshot(card);
   const printable=useMemo(()=>JSON.parse(snapshot),[snapshot]);
   const source=rulesView ? cardFlavorSource(printable.card_faces?.[faceIndex]?.flavor_text ?? printable.flavor_text) : null;
@@ -20,7 +20,7 @@ export default function CardFramePresentation({card,imageUrl,faceIndex=0,rulesVi
     <div className="card-frame-presentation__visual">
     {rulesSourceFrame(printable) ? <SimpleCardFrame card={rulesSourceCard(printable)}
       rulesContent={rulesView&&<CardFrameRules name={card.name} rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}/>}/>
-    : <CardGlintFrame snapshot={snapshot} imageUrl={imageUrl} faceIndex={faceIndex} inspector={inspector}
+    : <CardGlintFrame snapshot={snapshot} imageUrl={imageUrl} faceIndex={faceIndex} inspector={inspector} deferUpgrade={deferUpgrade}
       rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}
       details={[counters,...(badges||[])].filter(Boolean).join(' · ')}
       fallback={<SimpleCardFrame baked card={fallbackCard} imageUrl={imageUrl} faceIndex={faceIndex}

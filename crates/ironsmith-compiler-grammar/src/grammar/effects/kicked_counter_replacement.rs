@@ -58,7 +58,7 @@ fn parse_base_gate_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterSpellM
 }
 
 fn parse_kicked_gate_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterSpellManaValueGate> {
-    primitives::phrase(&["if", "this", "spell", "was", "kicked"]).parse_next(input)?;
+    primitives::phrase(&["if", "this", "spell", "was", crate::keyword_forms::KICKED]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::kw("counter").parse_next(input)?;
     let reference_tokens = (primitives::kw("that"), primitives::kw("spell"))

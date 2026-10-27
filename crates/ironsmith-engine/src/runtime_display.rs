@@ -277,7 +277,16 @@ pub fn ability_surface_text(ability: &Ability) -> String {
         return text;
     }
     let (text, generic) = match &ability.kind {
-        AbilityKind::Static(static_ability) => (static_ability.display(), "Static ability"),
+        AbilityKind::Static(static_ability) => {
+            let mut text = static_ability.display();
+            if text.to_ascii_lowercase().starts_with("equipped creature ") {
+                text = capitalize_first(&text);
+                if !text.ends_with(['.', '!', '?', ')']) {
+                    text.push('.');
+                }
+            }
+            (text, "Static ability")
+        }
         AbilityKind::Triggered(triggered) => {
             if let Some(PresentationLabel::Keyword(keyword)) = &triggered.presentation_label {
                 return keyword.display();
@@ -292,6 +301,21 @@ pub fn ability_surface_text(ability: &Ability) -> String {
             )
         }
         AbilityKind::Activated(activated) => {
+            if activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Equip)
+                && !activated.mana_cost.has_non_mana_costs()
+                && (activated.mana_cost.is_free() || activated.mana_cost.mana_cost().is_some())
+                && activated.activation_condition.is_none()
+                && activated.activation_restrictions.is_empty()
+                && activated.additional_restrictions.is_empty()
+                && activated.choices == vec![crate::target::ChooseSpec::target(
+                    crate::target::ChooseSpec::Object(ObjectFilter::creature().you_control()),
+                )]
+            {
+                let cost = activated.mana_cost.mana_cost()
+                    .map(ManaCost::to_oracle)
+                    .unwrap_or_else(|| "{0}".to_string());
+                return format!("Equip {cost}");
+            }
             let cost = activated.mana_cost.display();
             let resolution = match activated
                 .mana_output

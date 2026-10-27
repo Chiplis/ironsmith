@@ -199,12 +199,15 @@ fn cast_goblin(game: &mut GameState, seat: PlayerId) -> (u32, Option<String>) {
 }
 
 // ---------------------------------------------------------------------------
-// 103.2d / 123.2a / 123.2c: a constructed player playing sticker cards has the
-// stickers of three randomly chosen sheets available during the game.
+// 103.2d / 123.2a / 123.2c: playing sticker cards does not supply sticker
+// sheets. The player must declare at least ten unique sheets before pregame
+// selects three; only those sheets provide stickers. These engine fixtures
+// deliberately omit that setup. Positive random-selection coverage lives in
+// wasm_game_impl::sticker_sheet_tests, which exercises the actual setup API.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn cr_103_2d_123_2a_constructed_sticker_card_finds_sheet_stickers_without_manual_registration() {
+fn cr_103_2d_123_2a_sticker_card_does_not_create_sheets_without_pregame_selection() {
     for seat in [A, B] {
         // Fixture control: once a name sticker is accessible, the same real
         // card and the same decision flow place it. This proves the wiring;
@@ -215,22 +218,20 @@ fn cr_103_2d_123_2a_constructed_sticker_card_finds_sheet_stickers_without_manual
         assert_eq!(count, 1, "fixture: registered name sticker is placed by the real card");
         assert_ne!(name.as_deref(), Some("_____ Goblin"), "fixture: name changed");
 
-        // Ordinary constructed game: the player's deck contains Unfinity
-        // sticker cards, i.e. they play with stickers.
+        // No sticker-sheet pool was declared or selected. A sticker card in
+        // the library cannot manufacture that missing pregame input.
         let mut game = new_game(seat);
         for _ in 0..3 {
             game.create_object_from_definition(&goblin(), seat, Zone::Library);
         }
         let (count, name) = cast_goblin(&mut game, seat);
-        assert_eq!(
-            count, 1,
-            "CR 103.2d/123.2a/123.2c: seat {seat:?} playing sticker cards in a constructed game has the stickers of three randomly chosen sticker sheets available, so accepting \"put a name sticker on it\" places one (name now {name:?})"
-        );
+        assert_eq!(count, 0, "CR 123.2c: without selected sheets there is no name sticker to place");
+        assert_eq!(name.as_deref(), Some("_____ Goblin"));
     }
 }
 
 #[test]
-fn cr_103_2d_123_2a_ticket_sticker_card_places_a_sheet_sticker_in_ordinary_game() {
+fn cr_103_2d_123_2a_tickets_do_not_supply_stickers_without_selected_sheets() {
     // Fixture control: with one accessible art sticker the real card places it.
     let mut control = new_game(A);
     control.add_accessible_art_sticker(A);
@@ -263,10 +264,8 @@ fn cr_103_2d_123_2a_ticket_sticker_card_places_a_sheet_sticker_in_ordinary_game(
         tickets <= 1,
         "fixture: the {{TK}} gain resolved at most once (tickets={tickets})"
     );
-    assert_eq!(
-        stickers, 1,
-        "CR 103.2d/123.2a: with three sticker sheets available (each has stickers that need no tickets), \"you may put a sticker on a nonland permanent you own\" places one; tickets={tickets}"
-    );
+    assert_eq!(stickers, 0,
+        "CR 123.2c/123.3c: tickets pay for an accessible sticker; they do not create a sticker-sheet pool");
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +274,7 @@ fn cr_103_2d_123_2a_ticket_sticker_card_places_a_sheet_sticker_in_ordinary_game(
 // ---------------------------------------------------------------------------
 
 #[test]
-fn cr_123_2_constructed_sticker_players_have_real_sheet_combinations_available() {
+fn cr_123_2_sticker_cards_do_not_fabricate_any_sheet_combination() {
     let mut game = new_game(A);
     for seat in [A, B] {
         for _ in 0..3 {
@@ -290,10 +289,8 @@ fn cr_123_2_constructed_sticker_players_have_real_sheet_combinations_available()
             game.available_pt_stickers(seat).len(),
             game.available_art_stickers(seat).len(),
         );
-        assert!(
-            kinds.0 > 0 && kinds.1 > 0 && kinds.2 > 0 && kinds.3 > 0,
-            "CR 123.2/123.2a/123.2c: seat {seat:?} plays with stickers, so it has the predetermined stickers of its chosen Unfinity sheets (name, ability, P/T and art stickers); available (name, ability, pt, art) = {kinds:?}"
-        );
+        assert_eq!(kinds, (0, 0, 0, 0),
+            "CR 123.2/123.2a/123.2c: seat {seat:?} declared no sheets; sticker cards cannot invent name/ability/PT/art stickers");
     }
 }
 

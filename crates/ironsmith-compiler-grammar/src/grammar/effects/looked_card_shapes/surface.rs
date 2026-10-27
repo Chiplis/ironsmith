@@ -140,7 +140,7 @@ pub fn parse_kicked_counted_looked_cards_into_hand_shape(
 ) -> Option<CountedLookedCardsIntoHandShape> {
     let (_, tail) = primitives::parse_prefix(
         trim_lexed_commas(tokens),
-        primitives::phrase(&["if", "this", "spell", "was", "kicked"]).void(),
+        primitives::phrase(&["if", "this", "spell", "was", crate::keyword_forms::KICKED]).void(),
     )?;
     parse_counted_looked_cards_into_hand_shape(trim_lexed_commas(tail))
 }

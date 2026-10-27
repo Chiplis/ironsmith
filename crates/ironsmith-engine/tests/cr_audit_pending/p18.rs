@@ -127,6 +127,8 @@ struct Recorder {
     log: Vec<(String, PlayerId, String, Vec<String>)>,
     boolean: bool,
     prefer_objects: Vec<String>,
+    later_prefer_objects: Vec<String>,
+    object_choices: usize,
     prefer_targets: Vec<Target>,
     distribute_each: u32,
     prefer_option: Option<String>,
@@ -144,7 +146,13 @@ impl DecisionMaker for Recorder {
             c.description.clone(),
             c.candidates.iter().map(|x| format!("{}{}", x.name, if x.legal { "" } else { "(illegal)" })).collect(),
         ));
-        for name in &self.prefer_objects {
+        let preferences = if self.object_choices > 0 && !self.later_prefer_objects.is_empty() {
+            &self.later_prefer_objects
+        } else {
+            &self.prefer_objects
+        };
+        self.object_choices += 1;
+        for name in preferences {
             let picks: Vec<_> = c
                 .candidates
                 .iter()
@@ -288,6 +296,8 @@ fn cr_601_5_division_may_consider_the_creature_sacrificed_later_as_a_cost() {
     let mut g = main_game();
     let mut q = TriggerQueue::new();
     let big = g.create_object_from_definition(&creature("Big Fodder", 3, 3), alice(), Zone::Battlefield);
+    let big_stable = g.object(big).unwrap().stable_id;
+    let small = g.create_object_from_definition(&creature("Small Fodder", 1, 1), alice(), Zone::Battlefield);
     let foes: Vec<ObjectId> = (0..3)
         .map(|i| g.create_object_from_definition(&creature(&format!("Foe {i}"), 1, 1), bob(), Zone::Battlefield))
         .collect();
@@ -295,6 +305,7 @@ fn cr_601_5_division_may_consider_the_creature_sacrificed_later_as_a_cost() {
     let spell = g.create_object_from_definition(&spell_def, alice(), Zone::Hand);
     let mut dm = Recorder {
         prefer_objects: vec!["Big Fodder".into()],
+        later_prefer_objects: vec!["Small Fodder".into()],
         prefer_targets: foes.iter().map(|id| Target::Object(*id)).collect(),
         distribute_each: 1,
         ..Default::default()
@@ -339,7 +350,10 @@ fn cr_601_5_division_may_consider_the_creature_sacrificed_later_as_a_cost() {
         "CR 601.5: each of the three targets is dealt 1 of the 3 divided damage; log {:#?}",
         dm.log
     );
-    let _ = big;
+    assert!(find_stable(&g, &g.player(alice()).unwrap().graveyard, big_stable).is_some(),
+        "the creature used to announce the division must actually pay the sacrifice cost");
+    assert_eq!(g.object(small).unwrap().zone, Zone::Battlefield,
+        "a later cost prompt cannot switch payment to the smaller creature");
 }
 
 // ---------------------------------------------------------------------------

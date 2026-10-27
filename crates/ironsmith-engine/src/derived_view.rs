@@ -902,6 +902,24 @@ impl<'a> DerivedGameView<'a> {
         ) || self.game.activates_abilities_as_though_haste(object_id)
     }
 
+    pub(crate) fn object_resists_destruction(&self, object: ObjectId) -> bool {
+        self.object_has_static_ability_id(object, crate::static_abilities::StaticAbilityId::Indestructible)
+            || self.object_has_keyword_marker_mechanic(object, ironsmith_core::KeywordMarkerMechanic::DestructionImmune)
+    }
+
+    pub(crate) fn object_has_keyword_marker_mechanic(
+        &self,
+        object_id: ObjectId,
+        mechanic: ironsmith_core::KeywordMarkerMechanic,
+    ) -> bool {
+        self.static_abilities_rc(object_id).is_some_and(|abilities| {
+            abilities.iter().any(|ability| {
+                ability.keyword_marker_mechanic() == Some(mechanic)
+                    && ability.is_active(self.game, object_id)
+            })
+        })
+    }
+
     pub(crate) fn object_has_static_ability_id(
         &self,
         object_id: ObjectId,

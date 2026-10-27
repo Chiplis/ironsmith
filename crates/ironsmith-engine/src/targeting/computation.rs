@@ -860,9 +860,10 @@ fn has_protection_from_subject_with_view(
         .as_deref()
         .map(Vec::as_slice)
         .unwrap_or(&target.abilities);
-    for ability in target_abilities
-        .iter()
-        .filter(|ability| ability.functions_in(&target.zone))
+    let characteristics = protection_current_characteristics(game, target_id, view);
+    for (slot, ability) in target_abilities
+        .iter().enumerate()
+        .filter(|(_, ability)| ability.functions_in(&target.zone))
     {
         let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
             continue;
@@ -871,7 +872,7 @@ fn has_protection_from_subject_with_view(
             && let Some(protection_from) = ability.protection_from()
         {
             let matches =
-                protection_from_subject_with_view(game, target_id, source, protection_from, view);
+                protection_from_subject_with_origin(game, target_id, source, protection_from, view, characteristics.as_ref().and_then(|chars| chars.abilities.origin(slot)));
             if matches {
                 return true;
             }
@@ -946,6 +947,24 @@ pub(crate) fn protection_from_subject_with_view(
     protection_from: &crate::ability::ProtectionFrom,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
+    if matches!(protection_from, crate::ability::ProtectionFrom::ChosenColor) {
+        return protection_current_characteristics(game, target_id, view).is_some_and(|chars| {
+            chars.abilities.iter().enumerate().any(|(slot, ability)| {
+                let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return false; };
+                ability.protection_from() == Some(protection_from)
+                    && protection_from_subject_with_origin(game, target_id, source, protection_from, view, chars.abilities.origin(slot))
+            })
+        });
+    }
+    protection_from_subject_with_origin(game, target_id, source, protection_from, view, None)
+}
+
+pub(crate) fn protection_from_subject_with_origin(
+    game: &GameState, target_id: ObjectId, source: ObjectSubject<'_>,
+    protection_from: &crate::ability::ProtectionFrom,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    origin: Option<&crate::continuous::AbilityOrigin>,
+) -> bool {
     let Some(target) = game.object(target_id) else {
         return false;
     };
@@ -973,7 +992,7 @@ pub(crate) fn protection_from_subject_with_view(
             .chosen_player(target_id)
             .is_some_and(|chosen| source.is_from_player(game, chosen)),
         crate::ability::ProtectionFrom::ChosenColor => {
-            game.chosen_color(target_id)
+            game.chosen_color_for_ability(target_id, origin)
                 .is_some_and(|chosen| source.protection_colors(game, view).contains(chosen))
                 || attached_grant_protects_from_chosen_color(
                     game,

@@ -146,19 +146,20 @@ export function launchComet({
   accentRgb = null,
   style = "star",
   duration = null,
+  durationScale = 1,
   size = 1,
 } = {}) {
   const origin = center(from);
   const end0 = center(to);
   if (!origin || !end0 || prefersReducedMotion() || !ensureCanvas()) return Promise.resolve();
   const distance = Math.hypot(end0.x - origin.x, end0.y - origin.y);
-  const total = duration ?? {
+  const total = (duration ?? {
     star: 420 + distance * 0.42,
     bolt: 230 + distance * 0.16,
     wisp: 620 + distance * 0.55,
     spiral: 760 + distance * 0.4,
     spark: 240,
-  }[style] ?? 600;
+  }[style] ?? 600) * durationScale;
   const bow = { star: 0.22, bolt: 0.04, wisp: 0.3, spiral: 0.18, spark: 0.28 }[style] ?? 0.2;
   const sparkle = accentRgb || rgb;
   // The trail is sampled along the flight path at fixed steps of progress,

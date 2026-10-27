@@ -161,7 +161,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             min: model.min.clone(), max: model.max.clone(), allow_repeat: model.allow_repeat, random: model.random,
             choose_count: model.choose_count.clone(), min_choose_count: model.min_choose_count.clone(),
             allow_repeated_modes: model.allow_repeated_modes, mode_point_costs: model.mode_point_costs.clone(),
-            spree: model.spree, tiered: model.tiered, mode_additional_mana_costs: model.mode_additional_mana_costs.clone(),
+            spree: model.spree, tiered: model.tiered, descriptive_mode_costs: model.descriptive_mode_costs, mode_additional_mana_costs: model.mode_additional_mana_costs.clone(),
             common_suffix_effect_count: model.common_suffix_effect_count,
             disallow_previously_chosen_modes: model.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: model.disallow_previously_chosen_modes_this_turn,
@@ -170,6 +170,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             endure: model.endure, cast_chooser: model.cast_chooser.clone(),
             optional_choice: model.optional_choice,
             cost_choice_keywords: model.cost_choice_keywords.clone(),
+            announced_modes: model.announced_modes.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<ForEachObject>() {

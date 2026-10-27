@@ -169,7 +169,7 @@ pub(super) fn is_reserved_short_alias(alias: &str, alias_tokens: &[OwnedLexToken
             | "pay"
             | "paid"
             | "goad"
-            | "goaded"
+            | crate::keyword_forms::GOADED
             | "exiled"
             | "blocked"
             | "blocking"

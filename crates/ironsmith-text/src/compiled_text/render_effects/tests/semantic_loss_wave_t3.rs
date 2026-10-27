@@ -132,6 +132,77 @@ fn snow_artifact_token_enters_with_the_snow_supertype() {
     assert!(game.current_colors(created[0]).unwrap().is_empty());
 }
 
+#[test]
+fn snow_creature_tokens_retain_snow_and_embedded_abilities() {
+    for legendary in [false, true] {
+        let descriptor = if legendary { "legendary 3/3" } else { "3/3" };
+        let text = format!(
+            "When this creature enters, create a {descriptor} colorless snow Elephant creature token with trample and \"Whenever an Elephant enters, its controller gains 1 life.\""
+        );
+        let definition = parse("Snow Token Maker", vec![CardType::Creature], &text);
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert!(
+            rendered.contains(&format!(
+                "{descriptor} colorless snow Elephant creature token"
+            )),
+            "{rendered}"
+        );
+        let create = find_in_program::<crate::effects::CreateTokenEffect>(
+            &first_trigger(&definition).effects,
+        )
+        .expect("create-token effect");
+        assert!(
+            create
+                .token
+                .card
+                .supertypes
+                .contains(&crate::types::Supertype::Snow)
+        );
+        assert_eq!(
+            create
+                .token
+                .card
+                .supertypes
+                .contains(&crate::types::Supertype::Legendary),
+            legendary
+        );
+        let token_trigger = first_trigger(&create.token);
+        let life = find_in_program::<crate::effects::GainLifeEffect>(&token_trigger.effects)
+            .expect("embedded life-gain trigger");
+        assert_eq!(life.amount, crate::effect::Value::Fixed(1));
+        assert!(matches!(
+            &life.player,
+            crate::target::ChooseSpec::Player(crate::target::PlayerFilter::ControllerOf(
+                crate::target::ObjectRef::Tagged(tag)
+            )) if tag.as_str() == "triggering"
+        ));
+        let (mut game, alice, _) = new_game();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let created = run_program(
+            &mut game,
+            &first_trigger(&definition).effects,
+            source,
+            alice,
+            vec![],
+        );
+        assert_eq!(created.len(), 1);
+        let token = created[0];
+        assert!(game.current_has_supertype(token, crate::types::Supertype::Snow));
+        assert_eq!(
+            game.current_has_supertype(token, crate::types::Supertype::Legendary),
+            legendary
+        );
+        assert!(game.current_has_subtype(token, crate::types::Subtype::Elephant));
+        assert!(game.current_colors(token).unwrap().is_empty());
+        assert_eq!(game.current_power(token), Some(3));
+        assert_eq!(game.current_toughness(token), Some(3));
+        assert!(game.current_has_static_ability_id(
+            token,
+            crate::static_abilities::StaticAbilityId::Trample
+        ));
+    }
+}
+
 // --- Finding: "that's all colors" after a comma keyword list (Mechtitan Core).
 
 #[test]

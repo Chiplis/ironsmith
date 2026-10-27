@@ -6,8 +6,8 @@ export function mseRulesHelperView(rulesView,locale='en',keywordHelpers=true) {
   const ranges=new Map();
   rulesView.lines.forEach((line,index)=>{
     const found=[];let offset=0;
-    if(keywordHelpers)for(const segment of splitTextWithMtgKeywordRules(line,locale)){
-      if(segment.type==='keyword')found.push({start:offset,end:offset+segment.text.length,helper:{type:'keyword',text:segment.text,rule:segment.rule}});
+    if(keywordHelpers && !(rulesView.actions.get(index)||[]).length)for(const segment of splitTextWithMtgKeywordRules(line,locale)){
+      if(segment.type==='keyword')found.push({start:offset,end:offset+segment.text.length,helper:{type:'keyword',text:segment.text,context:segment.context,rule:segment.rule}});
       offset+=segment.text.length;
     }
     if(!(rulesView.actions.get(index)||[]).length){

@@ -49,6 +49,26 @@ pub fn parse_exile_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl Fn(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    if tokens.first().is_some_and(|t| t.is_word("exile"))
+        && let Some(from) = tokens.iter().position(|t| t.is_word("from")) {
+        let tail: String = render_token_slice(&tokens[from..]).to_ascii_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
+        if tail == "fromamongotherpermanentsyoucontroland/orcardsinyourgraveyard" {
+            let subject = &tokens[1..from];
+            let subject = if subject.first().is_some_and(|t| t.is_word("the")) { &subject[1..] } else { subject };
+            let choice = parse_activation_choice_prefix_tokens(subject)
+                .ok_or_else(|| unsupported(subject, "mixed-zone-exile-selector"))?;
+            let mut material = crate::object_filters::parse_object_filter_lexed(choice.rest, false)?;
+            material.zone = None; material.controller = None; material.owner = None;
+            let mut filter = crate::target::ObjectFilter::default();
+            filter.any_of = vec![
+                material.clone().in_zone(Zone::Battlefield).controlled_by(PlayerFilter::You).other(),
+                material.in_zone(Zone::Graveyard).owned_by(PlayerFilter::You).other(),
+            ];
+            return Ok(ActivationCostSegmentCst::ExileChosen {
+                count_value: None, choice_count: choice.count, filter, top_only: false, turn_face_up: false,
+            });
+        }
+    }
     // A cardinality suffix qualifies the chosen set, not its object filter.
     if let Some(equal) = tokens.iter().position(|token| token.is_word("equal")) {
         let words = primitives::TokenWordView::new(&tokens[equal..]).word_refs();

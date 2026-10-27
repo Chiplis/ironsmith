@@ -240,6 +240,30 @@ mod tests {
         assert_eq!(resolve(&game, player, &face, Zone::Exile, &relocated).unwrap().play_from_constraints.cast_mana_spend_mode, ManaSpendMode::Normal);
     }
     #[test]
+    fn inspected_exile_uses_selected_face_without_opening_the_original() {
+        let (mut game, source, card, first, _) = fixture();
+        let player = PlayerId::from_index(0);
+        game.object_mut(card).unwrap().card_types = vec![crate::types::CardType::Creature].into();
+        for grant in &mut game.effect_store.grant_registry.grants {
+            grant.filter = Some(crate::target::ObjectFilter::creature().in_zone(Zone::Exile));
+        }
+        game.set_face_down(card);
+        let method = super::super::CastingMethod::ExactPermission {
+            origin: Box::new(super::super::CastingMethod::PlayFrom {
+                source, zone: Zone::Exile, use_alternative: None,
+            }),
+            permission: first,
+        };
+        assert!(resolve_method(&game, player, game.object(card).unwrap(), &method).is_err(),
+            "a quality-restricted permission cannot inspect an unseen card");
+        game.grant_face_down_exile_view(card, player);
+        assert!(resolve_method(&game, player, game.object(card).unwrap(), &method).unwrap().is_some());
+        assert!(game.is_face_down(card), "a permission query never publicly opens the card");
+        assert!(game.current_characteristics(card).unwrap().card_types.is_empty());
+        assert!(resolve_method(&game, PlayerId::from_index(1), game.object(card).unwrap(), &method).is_err());
+    }
+
+    #[test]
     fn receipt_freezes_player_origin_and_rules_before_provider_or_registry_changes() {
         let (mut game, source, card, first, _) = fixture(); let player = PlayerId::from_index(0);
         let receipt = PlayPermissionReceipt::capture(&game, player, game.object(card).unwrap(), Zone::Exile, &first).unwrap();

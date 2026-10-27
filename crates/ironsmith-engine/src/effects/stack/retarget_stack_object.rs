@@ -63,20 +63,20 @@ pub(super) struct RetargetSlot {
     pub(super) range: Range<usize>,
     pub(super) requirement: TargetRequirementContext,
     /// "Another target ...": this slot's new targets can't repeat the new
-    /// targets of the earlier object slots (CR 115.7, 601.2c). The slots are
+    /// targets of earlier slots of the same kind (CR 115.7, 601.2c). The slots are
     /// chosen together, so this is checked on the combined proposal
     /// ([`retarget_proposal_respects_other_targets`]).
-    pub(super) excludes_prior_object_targets: bool,
+    pub(super) excludes_prior_same_kind_targets: bool,
 }
 
 /// Whether a combined new-target proposal keeps every "another target" slot
-/// distinct from the earlier object slots' new targets.
+/// distinct from earlier slots of the same kind.
 pub(super) fn retarget_proposal_respects_other_targets(
     slots: &[RetargetSlot],
     targets: &[Target],
 ) -> bool {
     slots.iter().enumerate().all(|(index, slot)| {
-        if !slot.excludes_prior_object_targets {
+        if !slot.excludes_prior_same_kind_targets {
             return true;
         }
         let Some(own) = targets.get(slot.range.clone()) else {
@@ -84,10 +84,20 @@ pub(super) fn retarget_proposal_respects_other_targets(
         };
         slots[..index]
             .iter()
-            .filter(|prior| matches!(prior.spec.base(), ChooseSpec::Object(_)))
+            .filter(|prior| matches!((slot.spec.base(), prior.spec.base()),
+                (ChooseSpec::Object(_), ChooseSpec::Object(_)) |
+                (ChooseSpec::Player(_), ChooseSpec::Player(_))))
             .filter_map(|prior| targets.get(prior.range.clone()))
             .all(|prior_targets| !own.iter().any(|target| prior_targets.contains(target)))
     })
+}
+
+fn is_relative_player_target(filter: &crate::target::PlayerFilter) -> bool {
+    use crate::target::PlayerFilter;
+    match filter {
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => is_relative_player_target(inner),
+        _ => filter.relative_target_exclusion_base().is_some(),
+    }
 }
 
 pub(super) fn stack_entry_retarget_requirements(
@@ -135,7 +145,7 @@ pub(super) fn stack_entry_retarget_requirements(
                     distinct_player_group: None,
                     shared_player_group: None,
                 },
-                excludes_prior_object_targets: relative,
+                excludes_prior_same_kind_targets: relative,
             }
         };
 
@@ -184,7 +194,8 @@ pub(super) fn stack_entry_retarget_requirements(
                 &current_assignments[index].spec,
                 &assignment.range,
                 legal_targets,
-                relative_object_target,
+                relative_object_target || matches!(current_assignments[index].spec.base(),
+                    ChooseSpec::Player(filter) if is_relative_player_target(filter)),
             ));
         }
         return Ok(Some(slots));
@@ -493,7 +504,8 @@ impl EffectExecutor for RetargetStackObjectEffect {
             // "change the target" must pick a new legal one if it can
             // (CR 115.7a).
             let keep_unchanged =
-                matches!(self.mode, RetargetMode::All) && !self.require_change;
+                (matches!(self.mode, RetargetMode::All) && !self.require_change)
+                    || matches!(self.mode, RetargetMode::One);
             let Some(slots) = stack_entry_retarget_requirements(game, &entry, keep_unchanged)?
             else {
                 continue;
@@ -506,6 +518,64 @@ impl EffectExecutor for RetargetStackObjectEffect {
                 slots.iter().map(|slot| slot.requirement.clone()).collect();
 
             match &self.mode {
+                RetargetMode::One => {
+                    // CR 115.7b: choose an occurrence first, including an
+                    // occurrence within a multiple-target requirement. Keep
+                    // every other occurrence (and its assigned share) intact.
+                    let mut eligible = Vec::new();
+                    for (slot_index, slot) in slots.iter().enumerate() {
+                        let candidates = filter_targets_with_restriction(
+                            slot.requirement.legal_targets.clone(),
+                            self.new_target_restriction.as_ref(), game, ctx);
+                        for index in slot.range.clone() {
+                            let legal: Vec<Target> = candidates.iter().copied().filter(|candidate| {
+                                if entry.targets[index] == *candidate { return false; }
+                                let mut proposal = entry.targets.clone();
+                                proposal[index] = *candidate;
+                                normalize_targets_for_requirements(&requirements, proposal.clone()).is_some()
+                                    && retarget_proposal_respects_other_targets(&slots, &proposal)
+                            }).collect();
+                            if !legal.is_empty() { eligible.push((index, slot_index, legal)); }
+                        }
+                    }
+                    if eligible.is_empty() { continue; }
+                    let chosen = if eligible.len() == 1 { 0 } else {
+                        let options = eligible.iter().enumerate().map(|(option, (index, _, _))|
+                            SelectableOption::new(option, format!("Change target {}", index + 1))).collect();
+                        let context = SelectOptionsContext::new(chooser_id, Some(ctx.source),
+                            "Choose target to change", options, 1, 1);
+                        let answer = ctx.decision_maker.decide_options(game, &context);
+                        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                        let Some(chosen) = answer.first().copied().filter(|index| *index < eligible.len())
+                            else { continue; };
+                        chosen
+                    };
+                    let (index, slot_index, legal) = &eligible[chosen];
+                    let mut requirement = requirements[*slot_index].clone();
+                    requirement.min_targets = 1;
+                    requirement.max_targets = Some(1);
+                    requirement.legal_targets = legal.clone();
+                    // The complete original slot was validated above. Its
+                    // count/set constraints do not apply to this single pick.
+                    requirement.legal_target_sets.clear();
+                    requirement.aggregate_constraint = None;
+                    let source_name = game.object(object_id).map(|object| object.name.to_string())
+                        .unwrap_or_else(|| "spell or ability".to_string());
+                    let context = TargetsContext::new(chooser_id, object_id, source_name,
+                        vec![requirement]);
+                    let answer = ctx.decision_maker.decide_targets(game, &context);
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    let [target] = answer.as_slice() else { continue; };
+                    if !legal.contains(target) { continue; }
+                    let mut proposal = entry.targets.clone();
+                    proposal[*index] = *target;
+                    if let Some((did_change, completion)) = commit_copy_retarget(
+                        game, &entry, proposal, ctx.provenance, !self.target.is_target())
+                    {
+                        changed += i32::from(did_change);
+                        events.extend(completion);
+                    }
+                }
                 RetargetMode::All => {
                     let mut adjusted = requirements.clone();
                     let mut any_choice = false;
@@ -587,6 +657,14 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     else {
                         continue;
                     };
+                    // CR 115.7a: never commit a partial change-all proposal.
+                    // A fixed slot may be shown unchanged in the decision,
+                    // but then the entire original target set is retained.
+                    if self.require_change && slots.iter().any(|slot| {
+                        let old = entry.targets.get(slot.range.clone()).unwrap_or(&[]);
+                        new_targets.get(slot.range.clone()).unwrap_or(&[]).iter()
+                            .any(|target| old.contains(target))
+                    }) { continue; }
                     if !retarget_proposal_respects_other_targets(&slots, &new_targets) {
                         continue;
                     }

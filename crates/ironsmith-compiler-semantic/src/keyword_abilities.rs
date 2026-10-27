@@ -157,6 +157,7 @@ pub fn attack_keyword_granted_ability(action: &crate::cards::builders::KeywordAc
         crate::cards::builders::KeywordAction::Myriad => {
             let create = EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+            without_mana_cost: false,
                     source: TargetAst::Source(None), count: Value::Fixed(1), player: PlayerAst::You,
                     enters_tapped: true, enters_attacking: true, entry_tapped_attacking_followup: false,
                     attack_target_player_or_planeswalker_controlled_by: Some(PlayerAst::That),

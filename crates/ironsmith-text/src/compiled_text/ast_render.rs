@@ -2395,24 +2395,31 @@ pub(super) fn source_line_keyword_group_count(ability: &Ability) -> Option<usize
     Some(*keyword_count)
 }
 
-fn source_line_repeated_cascade_group_consumed(abilities: &[Ability]) -> Option<usize> {
-    let [marker, first, second, ..] = abilities else {
-        return None;
-    };
-    if source_line_keyword_group_count(marker) != Some(2) {
+fn source_line_repeated_stack_keyword_group_consumed(abilities: &[Ability]) -> Option<usize> {
+    let marker = abilities.first()?;
+    let count = source_line_keyword_group_count(marker)?;
+    if count < 2 {
         return None;
     }
-    for ability in [first, second] {
-        let AbilityKind::Static(static_ability) = &ability.kind else {
+    let members = abilities.get(1..=count)?;
+    let AbilityKind::Static(first) = &members.first()?.kind else {
+        return None;
+    };
+    if !first.is_keyword() {
+        return None;
+    }
+    for ability in members {
+        let AbilityKind::Static(keyword) = &ability.kind else {
             return None;
         };
         if ability.functional_zones.as_slice() != [Zone::Stack]
-            || static_ability.id() != crate::static_abilities::StaticAbilityId::Cascade
+            || keyword != first
+            || keyword.display() != first.display()
         {
             return None;
         }
     }
-    Some(3)
+    Some(count + 1)
 }
 
 fn source_line_static_group_count(ability: &Ability) -> Option<usize> {
@@ -2924,6 +2931,9 @@ fn is_mergeable_keyword_surface(keyword: &str) -> bool {
 }
 
 fn render_keyword_list(keywords: &[String], capitalize: bool) -> String {
+    if let Some(list) = render_repeated_keyword_list(keywords) {
+        return format!("\"{list}.\"");
+    }
     render_keyword_list_with_separator(keywords, capitalize, KeywordListSeparator::EnglishAnd)
 }
 
@@ -3051,7 +3061,7 @@ fn modeled_source_keyword_grant(
     if grant.filter != ObjectFilter::source()
         || !grant.additional_abilities.is_empty()
         || grant.set_quantifier_surface.is_some()
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !granted_functions_on_battlefield(&grant.ability)
     {
         return None;
     }
@@ -3071,6 +3081,21 @@ fn modeled_source_keyword_grant(
         return None;
     }
     Some((keyword.id(), keyword_text, grant.condition.as_ref()?))
+}
+
+/// A granted ability functions on its recipient: the battlefield, or the
+/// ability's own default zones (damage keywords such as lifelink function in
+/// every zone, CR 702.15b), which include the battlefield.
+pub(super) fn granted_functions_on_battlefield<SA, T, E, C, Cond>(
+    ability: &ironsmith_core::Ability<SA, T, E, C, Cond>,
+) -> bool
+where
+    SA: ironsmith_core::functional_zones::StaticAbilityFunctionalZones,
+{
+    ability.functional_zones.as_slice() == [Zone::Battlefield]
+        || matches!(&ability.kind, ironsmith_core::AbilityKind::Static(rule)
+            if ability.functional_zones
+                == ironsmith_core::functional_zones::StaticAbilityFunctionalZones::default_functional_zones(rule))
 }
 
 fn modeled_object_static_grant(
@@ -3099,9 +3124,7 @@ fn modeled_quantified_object_static_grant(
     else {
         return None;
     };
-    if !grant.additional_abilities.is_empty()
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
-    {
+    if !grant.additional_abilities.is_empty() || !granted_functions_on_battlefield(&grant.ability) {
         return None;
     }
     let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
@@ -3177,7 +3200,7 @@ fn modeled_filter_static_grant(
     if !grant.derived_ability_display {
         return None;
     }
-    if grant.ability.functional_zones.as_slice() != [Zone::Battlefield] {
+    if !granted_functions_on_battlefield(&grant.ability) {
         return None;
     }
     let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
@@ -3206,21 +3229,11 @@ fn is_can_block_additional_each_combat_rule(
     })
 }
 
-/// Rejoin the two independently executable Cascade grants produced by an
-/// authored `"Cascade, cascade."` clause.  The two abilities remain separate
-/// in the model so the spell cascades twice; matching the complete affected
-/// spell filter keeps cast-origin and mana-value restrictions correlated.
-fn describe_structural_repeated_cascade_grant_pair(
-    abilities: &[Ability],
-) -> Option<(String, usize)> {
-    let [first, second, ..] = abilities else {
-        return None;
-    };
-    // Cascade functions on the stack. Other object-grant matchers require
-    // battlefield abilities, so inspect these stack grants directly.
-    fn stack_grant(
-        ability: &Ability,
-    ) -> Option<(&ObjectFilter, crate::static_abilities::StaticAbility)> {
+/// Rejoin repeated keyword grants without removing any executable instance.
+/// Match complete recipient filters and granted zones; the keyword surface is
+/// derived from each granted ability, including triggered keywords like exalted.
+fn describe_structural_repeated_keyword_grants(abilities: &[Ability]) -> Option<(String, usize)> {
+    fn grant(ability: &Ability) -> Option<(&ObjectFilter, &[Zone], String)> {
         if ability.functional_zones.as_slice() != [Zone::Battlefield] {
             return None;
         }
@@ -3235,56 +3248,63 @@ fn describe_structural_repeated_cascade_grant_pair(
         if grant.condition.is_some()
             || grant.set_quantifier_surface.is_some()
             || !grant.additional_abilities.is_empty()
-            || grant.ability.functional_zones.as_slice() != [Zone::Stack]
         {
             return None;
         }
-        let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
-            return None;
+        let granted = crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
+            &grant.ability,
+        );
+        let keyword = super::render_effects::describe_keyword_ability(&granted)
+            .or_else(|| match &granted.kind {
+                AbilityKind::Static(keyword)
+                    if keyword.is_keyword()
+                        && !matches!(
+                            keyword.id(),
+                            crate::static_abilities::StaticAbilityId::KeywordMarker
+                                | crate::static_abilities::StaticAbilityId::KeywordText
+                                | crate::static_abilities::StaticAbilityId::KeywordFallbackText
+                        ) =>
+                {
+                    Some(keyword.display())
+                }
+                _ => None,
+            })?
+            .split(" (")
+            .next()?
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        Some((&grant.filter, &grant.ability.functional_zones, keyword))
+    }
+    let first = abilities.first()?;
+    let (first_filter, first_zones, keyword) = grant(first)?;
+    let mut keywords = vec![keyword.clone()];
+    for ability in &abilities[1..] {
+        let Some((next_filter, next_zones, next_keyword)) = grant(ability) else {
+            break;
         };
-        Some((
-            &grant.filter,
-            crate::static_abilities::StaticAbility::from_model(granted.clone()),
-        ))
+        if next_filter != first_filter
+            || next_zones != first_zones
+            || !next_keyword.eq_ignore_ascii_case(&keyword)
+        {
+            break;
+        }
+        keywords.push(next_keyword);
     }
-    let (first_filter, first_granted) = stack_grant(first)?;
-    let (second_filter, second_granted) = stack_grant(second)?;
-    if first_filter != second_filter
-        || first_filter.stack_kind != Some(crate::filter::StackObjectKind::Spell)
-        || first_granted.id() != crate::static_abilities::StaticAbilityId::Cascade
-        || second_granted.id() != crate::static_abilities::StaticAbilityId::Cascade
-    {
-        return None;
-    }
-
+    let list = render_repeated_keyword_list(&keywords)?;
     let AbilityKind::Static(first_static) = &first.kind else {
         return None;
     };
-    let AbilityKind::Static(second_static) = &second.kind else {
-        return None;
-    };
-    let first_display = first_static.display();
-    let second_display = second_static.display();
-    let (subject, first_tail, verb) =
-        split_static_predicate_with_verb(&first_display, &[" has ", " have "])?;
-    let (second_subject, second_tail, second_verb) =
-        split_static_predicate_with_verb(&second_display, &[" has ", " have "])?;
-    if subject != second_subject
-        || verb != second_verb
-        || !first_tail.trim().eq_ignore_ascii_case("cascade")
-        || !second_tail.trim().eq_ignore_ascii_case("cascade")
-    {
-        return None;
-    }
-
+    let display = first_static.display();
+    let (subject, _, verb) = split_static_predicate_with_verb(&display, &[" has ", " have "])?;
     Some((
-        capitalize_first(&format!("{subject} {verb} \"Cascade, cascade.\"")),
-        2,
+        capitalize_first(&format!("{subject} {verb} \"{list}.\"")),
+        keywords.len(),
     ))
 }
 
 #[cfg(test)]
-mod repeated_cascade_grant_tests {
+mod repeated_keyword_grant_tests {
     use super::*;
 
     fn cascade_grant(filter: ObjectFilter) -> Ability {
@@ -3318,6 +3338,61 @@ mod repeated_cascade_grant_tests {
     }
 
     #[test]
+    fn repeated_triggered_and_numbered_keywords_keep_all_instances() {
+        for keyword in ["exalted", "prowess", "rampage 2", "annihilator 2"] {
+            for count in [2, 3] {
+                let list = std::iter::repeat_n(keyword, count)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let oracle = format!(
+                    "Creatures you control have \"{}.\"",
+                    capitalize_first(&list)
+                );
+                let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                    crate::ids::CardId::new(),
+                    "Repeated Keyword Probe",
+                )
+                .card_types(vec![CardType::Enchantment])
+                .parse_text(&oracle)
+                .unwrap();
+                assert_eq!(
+                    crate::compiled_text::compiled_text_lines(&definition),
+                    [oracle]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_keywords_keep_their_standalone_line_and_all_instances() {
+        for keyword in ["Exalted", "Prowess"] {
+            let oracle = format!("{keyword}, {}", lowercase_first(keyword));
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                "Repeated Intrinsic Probe",
+            )
+            .card_types(vec![CardType::Creature])
+            .parse_text(&oracle)
+            .unwrap();
+            assert_eq!(
+                crate::compiled_text::compiled_text_lines(&definition),
+                [oracle]
+            );
+        }
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Repeated Stack Keyword Probe",
+        )
+        .card_types(vec![CardType::Instant])
+        .parse_text("Cascade, cascade, cascade\nDraw a card.")
+        .unwrap();
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            ["Cascade, cascade, cascade", "Draw a card."]
+        );
+    }
+
+    #[test]
     fn compacts_only_equal_spell_filters_with_two_cascade_grants() {
         let mut from_hand = ObjectFilter::spell()
             .cast_by(PlayerFilter::You)
@@ -3331,7 +3406,7 @@ mod repeated_cascade_grant_tests {
             cascade_grant(from_hand.clone()),
         ];
         assert_eq!(
-            describe_structural_repeated_cascade_grant_pair(&equal),
+            describe_structural_repeated_keyword_grants(&equal),
             Some((
                 "Colorless spells you cast from your hand with mana value 7 or greater have \"Cascade, cascade.\""
                     .to_string(),
@@ -3342,13 +3417,11 @@ mod repeated_cascade_grant_tests {
         let mut from_exile = from_hand.clone();
         from_exile.zone = Some(Zone::Exile);
         let changed_origin = [cascade_grant(from_hand), cascade_grant(from_exile)];
-        assert!(describe_structural_repeated_cascade_grant_pair(&changed_origin).is_none());
+        assert!(describe_structural_repeated_keyword_grants(&changed_origin).is_none());
 
-        let permanents = [
-            cascade_grant(ObjectFilter::creature()),
-            cascade_grant(ObjectFilter::creature()),
-        ];
-        assert!(describe_structural_repeated_cascade_grant_pair(&permanents).is_none());
+        let mut different_zones = equal.clone();
+        different_zones[1].functional_zones = vec![Zone::Graveyard];
+        assert!(describe_structural_repeated_keyword_grants(&different_zones).is_none());
     }
 }
 
@@ -6143,7 +6216,7 @@ fn describe_structural_threshold_color_grant_bundle(
         || grant.condition.as_ref() != Some(condition)
         || !grant.additional_abilities.is_empty()
         || grant.set_quantifier_surface.is_some()
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !granted_functions_on_battlefield(&grant.ability)
         || !matches!(
             &grant.ability.kind,
             ironsmith_core::AbilityKind::Activated(_)
@@ -6384,7 +6457,7 @@ fn describe_structural_threshold_source_modifier_bundle(
         || grant.condition.as_ref() != Some(condition)
         || !grant.additional_abilities.is_empty()
         || grant.set_quantifier_surface.is_some()
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !granted_functions_on_battlefield(&grant.ability)
         || !matches!(
             &grant.ability.kind,
             ironsmith_core::AbilityKind::Activated(_)
@@ -24647,7 +24720,7 @@ fn describe_manifest_then_draw_per_manifested_program(
             return for_players.effects.iter().any(manifests);
         }
         effect
-            .downcast_ref::<crate::effects::ManifestObjectsEffect>()
+            .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)
             .is_some()
     }
     let [first, second] = program.segments.as_slice() else {
@@ -26735,7 +26808,7 @@ fn describe_resolution_program_inner(
                 && let Some(create) =
                     create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()
                 && let Some(manifest) =
-                    manifest_effect.downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+                    manifest_effect.downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>().filter(|effect| !effect.descriptive)
                 && let Some(rendered) =
                     describe_create_token_and_manifest_top_card(create, manifest)
             {
@@ -36526,6 +36599,7 @@ fn describe_structural_increment_keyword(ability: &Ability) -> Option<String> {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return None;
     };
+    if triggered.presentation_label != Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Increment)) { return None; }
     if ability.functional_zones.as_slice() != [Zone::Battlefield]
         || !triggered.choices.is_empty()
         || triggered.intervening_if.as_ref() != Some(&crate::ConditionExpr::increment())
@@ -37338,6 +37412,8 @@ fn is_modular_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
 }
 
 fn is_ravenous_draw_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
+    // Authored definitions keep their own name; only the native bundle prints Ravenous.
+    if triggered.trigger.intro_surface().is_some() { return false; }
     if !matches!(triggered.intervening_if, Some(Condition::XValueAtLeast(5)))
         || !triggered.choices.is_empty()
         || !trigger_is_this_enters_battlefield(&triggered.trigger)
@@ -37477,6 +37553,96 @@ fn is_repeatable_sacrifice_copy_helper(def: &CardDefinition, ability: &Ability) 
     def.optional_costs
         .iter()
         .any(|cost| describe_repeatable_sacrifice_copy_followup(cost, ability).is_some())
+}
+
+// Offspring's copy trigger is implied by the printed optional-cost keyword.
+// Match the complete helper and its payment reference so authored triggers
+// and modified copy effects remain visible.
+fn is_offspring_helper_ability(def: &CardDefinition, ability: &Ability) -> bool {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    let Some(Condition::ThisSpellPaidLabel(reference)) = &triggered.intervening_if else {
+        return false;
+    };
+    if !triggered.choices.is_empty()
+        || triggered.effects.ability_cant_be_countered
+        || !trigger_is_this_enters_battlefield(&triggered.trigger)
+        || !def.optional_costs.iter().any(|cost| {
+            cost.kind == crate::cost::OptionalCostKind::Offspring && cost.cost_ref() == *reference
+        })
+    {
+        return false;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return false;
+    };
+    if !segment.self_replacements.is_empty() {
+        return false;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return false;
+    };
+    effect
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+        .is_some_and(|copy| {
+            *copy
+                == crate::effects::CreateTokenCopyEffect::new(
+                    ChooseSpec::Source,
+                    Value::WasPaidLabel(reference.clone()),
+                    PlayerFilter::You,
+                )
+                .set_base_power_toughness(1, 1)
+        })
+}
+
+#[cfg(test)]
+mod offspring_surface_tests {
+    use super::*;
+
+    #[test]
+    fn thundertrap_trainer_keeps_its_authored_enter_trigger() {
+        let enter = "When this creature enters, look at the top four cards of your library. You may reveal a noncreature, nonland card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.";
+        let def = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Thundertrap Trainer")
+            .card_types(vec![CardType::Creature])
+            .parse_text(&format!("Offspring {{4}}\n{enter}"))
+            .expect("Thundertrap Trainer compiles");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&def),
+            vec!["Offspring {4}.".to_string(), enter.to_string()]
+        );
+        assert_eq!(def.abilities.len(), 2);
+    }
+
+    #[test]
+    fn offspring_hides_only_its_keyword_helper() {
+        let mut def = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Offspring probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text("Offspring {4}\nWhen this creature enters, draw a card.")
+            .expect("offspring compiles");
+        assert_eq!(def.abilities.len(), 2, "runtime keeps both triggers");
+        let lines = crate::compiled_text::compiled_text_lines(&def);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].starts_with("Offspring {4}"), "{lines:?}");
+        assert!(lines[1].contains("draw a card"), "{lines:?}");
+        assert!(is_offspring_helper_ability(&def, &def.abilities[0]));
+        assert!(!is_offspring_helper_ability(&def, &def.abilities[1]));
+
+        let mut modified = def.abilities[0].clone();
+        if let AbilityKind::Triggered(triggered) = &mut modified.kind {
+            triggered.effects.ability_cant_be_countered = true;
+        }
+        assert!(!is_offspring_helper_ability(&def, &modified));
+
+        // Without the matching keyword payment the trigger must be visible.
+        def.optional_costs.clear();
+        assert!(!is_offspring_helper_ability(&def, &def.abilities[0]));
+        assert!(
+            crate::compiled_text::compiled_text_lines(&def)
+                .iter()
+                .any(|line| line.contains("copies") || line.contains("copy"))
+        );
+    }
 }
 
 fn is_squad_helper_ability(ability: &Ability) -> bool {
@@ -37897,8 +38063,55 @@ pub(super) fn describe_alternative_cast_line(
     idx: usize,
 ) -> String {
     match method {
-        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution, entry_counters }
-            if name.as_ref() == "Parsed graveyard alternative cost" =>
+        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.sacrifice_reduces_generic_by_mana_value => {
+            format!("You may cast this spell from your hand by paying {} rather than its mana cost. Reduce the generic mana in that price by the sacrificed permanent's mana value", describe_total_cost(total_cost))
+        }
+        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.returns_attacker_enters_attacking => {
+            let costs = total_cost.costs().iter().filter(|cost| cost.effect_ref().is_none_or(|effect|
+                effect.downcast_ref::<crate::effects::SneakCostEffect>().is_none())).cloned().collect();
+            let price = describe_total_cost(&crate::cost::TotalCost::from_costs(costs));
+            format!("During your declare blockers step, any time you could cast an instant, you may cast this spell from your hand for {price} and return an unblocked attacker you control to its owner's hand rather than pay this spell's mana cost. It enters tapped and attacking the same player, planeswalker, or battle as the returned creature")
+        }
+        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.tap_creature_reduces_generic => {
+            format!("You may cast this card from your graveyard for {}. You may tap a creature you control to reduce that cost by an amount of generic mana equal to its power. Then exile this spell", describe_total_cost(total_cost))
+        }
+        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.aura_cast_with_unattached_fallback => {
+            format!("You may cast this spell for {} rather than pay its mana cost as an Aura enchantment spell with enchant creature. If its target is illegal as it begins resolving, it instead resolves using its normal types. If the resulting Aura becomes unattached or phases in unattached, it returns to its normal types.", total_cost.display())
+        }
+        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.merge_with_same_owner_nonhuman => {
+            format!("You may cast this spell for {} rather than pay its mana cost targeting a non-Human creature with the same owner as this spell. As it resolves, if that target is legal, merge this spell above or below that creature without entering the battlefield. The resulting permanent has the top object's characteristics and all abilities of the merged objects. Otherwise, this spell resolves normally as a creature.", total_cost.display())
+        }
+        AlternativeCastingMethod::FromZone { instructions, .. } if instructions.timed_exile.is_some() => {
+            let (time, price) = instructions.timed_exile.as_ref().unwrap();
+            format!("If you could begin to cast this card from your hand, you may pay {} and exile it with {time} time counters on it. This action doesn't use the stack. At the beginning of your upkeep, if this card is exiled with a time counter on it, remove a time counter from it. When the last time counter is removed from this card, if it's exiled, you may play it without paying its mana cost. If you cast a creature spell this way, it gains haste until you lose control of the spell or the permanent it becomes.", price.to_oracle())
+        }
+        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.exile_preparation.is_some() => {
+            match instructions.exile_preparation.as_ref().unwrap() {
+                ironsmith_core::alternative_cast_model::ExilePreparation::FaceDown { price } => format!("During your turn, you may pay {} and exile this card from your hand face down. Cast it on a later turn for {}.", price.to_oracle(), total_cost.display()),
+                ironsmith_core::alternative_cast_model::ExilePreparation::FaceUpSorcery { price } => format!("You may pay {} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Activate only as a sorcery.", price.to_oracle()),
+            }
+        }
+        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.cast_when_discarded_into_exile => {
+            let mut parts = Vec::new();
+            if let Some(mana) = total_cost.mana_cost() { parts.push(mana.to_oracle()); }
+            let extra = describe_alternative_costs(&method.non_mana_costs());
+            if !extra.is_empty() { parts.push(extra); }
+            format!("If you discard this card, discard it into exile. When you do, cast it for {} or put it into your graveyard", parts.join(", "))
+        }
+        AlternativeCastingMethod::FromZone { name, total_cost, instructions, .. } if name.as_ref() == "Parsed conditional battlefield price" => {
+            let mut line = format!("You may cast this spell for {}", describe_total_cost(total_cost));
+            if instructions.sacrifice_on_entry { line.push_str(". If you do, when this permanent enters, sacrifice it"); }
+            if instructions.haste_on_battlefield { line.push_str(". If you do, it gains haste"); }
+            if instructions.draw_on_death { line.push_str(" and \"When this creature dies, draw a card.\""); }
+            if instructions.return_at_next_end_step { line.push_str(". Return it to its owner's hand at the beginning of the next end step"); }
+            if instructions.sacrifice_at_next_end_step { line.push_str(". Sacrifice it at the beginning of the next end step"); }
+            line
+        }
+        AlternativeCastingMethod::Composed { name, total_cost, .. } if name.as_ref() == "Parsed entry countdown price" => format!("You may cast this spell for {}", describe_total_cost(total_cost)),
+        AlternativeCastingMethod::FromZone { name, .. } if name.as_ref() == "Aftermath" => "Aftermath".into(),
+        AlternativeCastingMethod::FromZone { name, .. } if name.as_ref() == "Parsed exclusive graveyard permission" => "You may cast this card from your graveyard".into(),
+        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution, entry_counters, instructions }
+            if matches!(name.as_ref(), "Parsed graveyard alternative cost" | "Parsed zone alternative cost" | "Parsed conditional graveyard price") =>
         {
             fn payment(cost: &crate::cost::TotalCost) -> String {
                 match cost.kind() {
@@ -37921,14 +38134,16 @@ pub(super) fn describe_alternative_cast_line(
                     }
                 }
             }
-            let mut line = format!("You may cast this card from your {} by {} rather than paying its mana cost",
-                zone.name(), payment(total_cost));
+            let mut line = format!("You may cast this card from your {}{} by {} rather than paying its mana cost",
+                zone.name(), if instructions.transformed { " transformed" } else { "" }, payment(total_cost));
             if let Some(condition) = condition
                 && let Some(text) = crate::static_abilities::describe_this_spell_cost_condition(condition)
             {
                 line = format!("As long as {text}, {}", lowercase_first(&line));
             }
-            if *exiles_after_resolution {
+            if instructions.exile_on_stack_exit {
+                line.push_str(". If you cast this card this way, exile it instead of putting it anywhere else any time it would leave the stack");
+            } else if *exiles_after_resolution {
                 line.push_str(". If you cast this card this way and it would be put into your graveyard, exile it instead");
             }
             if !entry_counters.is_empty() {
@@ -38061,6 +38276,10 @@ pub(super) fn describe_alternative_cast_line(
             let mana_cost = method.mana_cost();
             let costs = method.non_mana_costs();
             let cast_condition = method.cast_condition();
+            if name == "Parsed casting characteristics"
+                && let (Some(cost), Some(pt)) = (mana_cost, method.prototype_power_toughness()) {
+                return format!("You may cast this spell with mana cost {}, color determined by that mana cost, and base power and toughness {}/{}. It keeps its abilities and types.", cost.to_oracle(), pt.power, pt.toughness);
+            }
             if name.eq_ignore_ascii_case("Prototype")
                 && let (Some(cost), Some(power_toughness)) =
                     (mana_cost, method.prototype_power_toughness())
@@ -38162,8 +38381,12 @@ pub(super) fn describe_alternative_cast_line(
             additional_cost.to_oracle()
         ),
         AlternativeCastingMethod::Plot { cost } => format!("Plot {}", cost.to_oracle()),
-        AlternativeCastingMethod::Warp { cost, additional_cost } => {
+        AlternativeCastingMethod::Warp { cost, additional_cost, descriptive } => {
             let costs = additional_cost.costs();
+            if *descriptive {
+                let price = if costs.is_empty() { cost.to_oracle() } else { format!("{}, {}", cost.to_oracle(), describe_alternative_costs(costs)) };
+                return format!("You may cast this card from your hand for {price} rather than its mana cost. If you do, exile the permanent this spell becomes at the beginning of the next end step. Its owner may cast that card after this turn ends for as long as it remains exiled.");
+            }
             if costs.is_empty() { format!("Warp {}", cost.to_oracle()) }
             else { format!("Warp—{}, {}", cost.to_oracle(), capitalize_first(&describe_alternative_costs(costs))) }
         },
@@ -38171,11 +38394,24 @@ pub(super) fn describe_alternative_cast_line(
             time.display_keyword(cost)
         }
         AlternativeCastingMethod::Disturb { cost } => format!("Disturb {}", cost.to_oracle()),
-        AlternativeCastingMethod::Overload { cost, .. } => {
-            format!("Overload {}", cost.to_oracle())
+        AlternativeCastingMethod::Overload { cost, additional_cost, descriptive, .. } => {
+            if *descriptive {
+                let extras = additional_cost.costs();
+                let price = if extras.is_empty() { cost.to_oracle() } else { format!("{}, {}", cost.to_oracle(), describe_alternative_costs(extras)) };
+                format!("You may cast this spell for {price}. If you do, change its text by replacing all instances of \"target\" with \"each.\".")
+            } else { format!("Overload {}", cost.to_oracle()) }
         }
-        AlternativeCastingMethod::Cleave { cost, .. } => {
-            format!("Cleave {}", cost.to_oracle())
+        AlternativeCastingMethod::Cleave { cost, additional_cost, descriptive, .. } => {
+            if *descriptive {
+                let extras = additional_cost.costs();
+                let price = if extras.is_empty() { cost.to_oracle() } else { format!("{}, {}", cost.to_oracle(), describe_alternative_costs(extras)) };
+                format!("You may cast this spell for {price}. If you do, remove the words in square brackets.")
+            } else { format!("Cleave {}", cost.to_oracle()) }
+        }
+        AlternativeCastingMethod::Awaken { amount, cost, additional_cost, descriptive: true, .. } => {
+            let mut parts = vec![cost.to_oracle()];
+            if !additional_cost.costs().is_empty() { parts.push(describe_alternative_costs(additional_cost.costs())); }
+            format!("You may cast this spell for {} rather than pay its mana cost. If you do, put {amount} +1/+1 counters on target land you control. That land becomes a 0/0 Elemental creature with haste. It's still a land.", parts.join(", "))
         }
         AlternativeCastingMethod::Awaken { amount, cost, .. } => {
             format!("Awaken {amount}—{}", cost.to_oracle())
@@ -40073,7 +40309,7 @@ fn describe_structural_attached_combat_partner_keyword(ability: &Ability) -> Opt
             return None;
         };
         if !grant.additional_abilities.is_empty()
-            || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+            || !granted_functions_on_battlefield(&grant.ability)
             || grant.protection_does_not_remove_controlled_attachments
         {
             return None;
@@ -41110,7 +41346,12 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             out.push(format!(
                 "This Equipment can be attached only to {attachment_target}"
             ));
-        } else {
+        } else if !def.abilities.iter().any(|ability| matches!(&ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::Enchant))
+        {
+            // Each printed enchant keyword is its own ability and renders
+            // itself; this synthetic line covers only filter-only definitions.
             out.push(format!("Enchant {attachment_target}"));
         }
     }
@@ -41142,7 +41383,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         .any(ability_has_begin_on_battlefield_pregame);
     let render_leading_spell_abilities = spell_like_card
         && def.abilities.iter().enumerate().any(|(idx, ability)| {
-            source_line_repeated_cascade_group_consumed(&def.abilities[idx..]).is_some()
+            source_line_repeated_stack_keyword_group_consumed(&def.abilities[idx..]).is_some()
                 || (ability_precedes_spell_resolution(ability)
                     && !ability_is_rendered_with_alternative_cast(def, ability))
         });
@@ -41226,7 +41467,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             }
             if render_leading_spell_abilities
                 && let Some(consumed) =
-                    source_line_repeated_cascade_group_consumed(&def.abilities[ability_idx..])
+                    source_line_repeated_stack_keyword_group_consumed(&def.abilities[ability_idx..])
             {
                 ability_idx += consumed;
                 continue;
@@ -41318,6 +41559,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 .as_ref()
                 .is_some_and(|(_, helpers)| helpers.contains(&ability_idx))
             {
+                ability_idx += 1;
+                continue;
+            }
+            if is_offspring_helper_ability(def, ability) {
                 ability_idx += 1;
                 continue;
             }
@@ -41583,7 +41828,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some((text, consumed)) =
-                describe_structural_repeated_cascade_grant_pair(&def.abilities[ability_idx..])
+                describe_structural_repeated_keyword_grants(&def.abilities[ability_idx..])
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
@@ -42129,8 +42374,8 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     }
     if render_leading_spell_abilities {
         for (idx, ability) in def.abilities.iter().enumerate() {
-            if source_line_repeated_cascade_group_consumed(&def.abilities[idx..]).is_some() {
-                out.push(source_line_keyword_group_sentinel(2));
+            if let Some(consumed) = source_line_repeated_stack_keyword_group_consumed(&def.abilities[idx..]) {
+                out.push(source_line_keyword_group_sentinel(consumed - 1));
                 continue;
             }
             let belongs_to_renderable_static_group =
@@ -43174,8 +43419,9 @@ mod source_line_grant_keyword_loss_tests {
                 !matches!(
                     &ability.kind,
                     AbilityKind::Static(static_ability)
-                        if static_ability.id()
-                            == crate::static_abilities::StaticAbilityId::SourceLineStaticGroup
+                        if matches!(static_ability.id(),
+                            crate::static_abilities::StaticAbilityId::SourceLineStaticGroup
+                                | crate::static_abilities::StaticAbilityId::Enchant)
                 )
             })
             .collect()
@@ -43542,7 +43788,7 @@ fn describe_source_line_type_addition_grant_group(abilities: &[Ability]) -> Opti
                     && &grant.filter == affected_filter
                     && grant.condition.is_none()
                     && grant.set_quantifier_surface.is_none()
-                    && grant.ability.functional_zones.as_slice() == [Zone::Battlefield] =>
+                    && granted_functions_on_battlefield(&grant.ability) =>
             {
                 let ironsmith_core::AbilityKind::Static(granted_model) = &grant.ability.kind else {
                     return None;
@@ -44082,7 +44328,7 @@ fn conditional_chosen_option_object_grant(
     if grant.condition.is_some()
         || grant.set_quantifier_surface.is_some()
         || !grant.additional_abilities.is_empty()
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !granted_functions_on_battlefield(&grant.ability)
     {
         return None;
     }
@@ -44428,6 +44674,12 @@ fn describe_source_line_static_group(
         return None;
     }
     let members = abilities.get(..member_count)?;
+    if let Some((text, consumed)) = describe_structural_repeated_keyword_grants(members)
+        && consumed == member_count
+    {
+        return Some(text);
+    }
+
     // Solved is the printed surface of the executable Case designation, not
     // an extra authored "as long as" predicate. Keep it outside the entire
     // source-line bundle while rendering any inner predicates normally.
@@ -45950,7 +46202,7 @@ fn describe_source_line_conditioned_source_mixed_grants_group(
         if grant.filter != ObjectFilter::source()
             || !grant.additional_abilities.is_empty()
             || grant.set_quantifier_surface.is_some()
-            || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+            || !granted_functions_on_battlefield(&grant.ability)
         {
             return None;
         }
@@ -47174,7 +47426,7 @@ fn describe_source_line_attached_land_reset_group(abilities: &[Ability]) -> Opti
         };
         if grant.condition.is_some()
             || !grant.additional_abilities.is_empty()
-            || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+            || !granted_functions_on_battlefield(&grant.ability)
         {
             return None;
         }
@@ -48400,7 +48652,7 @@ fn describe_structural_attached_subtype_base_pt_keyword_loss_bundle(
         || grant.condition.is_some()
         || !grant.additional_abilities.is_empty()
         || grant.protection_does_not_remove_controlled_attachments
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !granted_functions_on_battlefield(&grant.ability)
     {
         return None;
     }
@@ -48478,8 +48730,9 @@ mod attached_subtype_base_pt_keyword_loss_bundle_tests {
                 !matches!(
                     &ability.kind,
                     AbilityKind::Static(static_ability)
-                        if static_ability.id()
-                            == crate::static_abilities::StaticAbilityId::SourceLineStaticGroup
+                        if matches!(static_ability.id(),
+                            crate::static_abilities::StaticAbilityId::SourceLineStaticGroup
+                                | crate::static_abilities::StaticAbilityId::Enchant)
                 )
             })
             .collect()
@@ -48595,7 +48848,7 @@ fn describe_structural_attached_turtle_transform_bundle(
         || subtypes.as_slice() != [crate::types::Subtype::Turtle]
         || grant.condition.is_some()
         || !grant.additional_abilities.is_empty()
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !granted_functions_on_battlefield(&grant.ability)
     {
         return None;
     }
@@ -49261,7 +49514,7 @@ fn describe_structural_attached_anthem_condition_chain_bundle(
     };
     if !grant.additional_abilities.is_empty()
         || grant.protection_does_not_remove_controlled_attachments
-        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !granted_functions_on_battlefield(&grant.ability)
     {
         return None;
     }
@@ -49709,6 +49962,8 @@ fn describe_structural_attached_anthem_otherwise_base_block_bundle(
 mod attached_anthem_otherwise_base_block_tests {
     use super::*;
 
+    // abilities[0] is Enchant creature and [1] the source-line group marker.
+
     const LINE: &str = "Enchanted creature gets +2/+2 as long as it's a Detective you control. Otherwise, it has base power and toughness 1/1 and can't block Detectives.";
 
     fn definition() -> crate::CardDefinition {
@@ -49727,7 +49982,7 @@ mod attached_anthem_otherwise_base_block_tests {
         let definition = definition();
         assert_eq!(
             describe_structural_attached_anthem_otherwise_base_block_bundle(
-                &definition.abilities[1..]
+                &definition.abilities[2..]
             ),
             Some((LINE.trim_end_matches('.').to_string(), 3))
         );
@@ -49736,7 +49991,7 @@ mod attached_anthem_otherwise_base_block_tests {
     #[test]
     fn noninverse_block_condition_is_not_rejoined() {
         let definition = definition();
-        let mut members = definition.abilities[1..].to_vec();
+        let mut members = definition.abilities[2..].to_vec();
         let AbilityKind::Static(anthem_static) = &members[0].kind else {
             panic!("expected anthem");
         };
@@ -49941,7 +50196,7 @@ fn describe_source_line_attached_keyword_otherwise_prevention_group(
         };
         if !grant.additional_abilities.is_empty()
             || grant.protection_does_not_remove_controlled_attachments
-            || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+            || !granted_functions_on_battlefield(&grant.ability)
         {
             return None;
         }
@@ -50015,6 +50270,8 @@ fn describe_source_line_attached_keyword_otherwise_prevention_group(
 mod attached_keyword_otherwise_prevention_tests {
     use super::*;
 
+    // abilities[0] is Enchant creature and [1] the source-line group marker.
+
     const LINE: &str = "Enchanted creature has double strike as long as it's an enchantment. Otherwise, prevent all damage that would be dealt by enchanted creature.";
 
     fn definition() -> crate::CardDefinition {
@@ -50034,7 +50291,9 @@ mod attached_keyword_otherwise_prevention_tests {
         let members = definition
             .abilities
             .iter()
-            .filter(|ability| source_line_static_group_count(ability).is_none())
+            .filter(|ability| source_line_static_group_count(ability).is_none()
+                && !matches!(&ability.kind, AbilityKind::Static(static_ability)
+                    if static_ability.id() == crate::static_abilities::StaticAbilityId::Enchant))
             .take(2)
             .cloned()
             .collect::<Vec<_>>();
@@ -50049,7 +50308,7 @@ mod attached_keyword_otherwise_prevention_tests {
         );
         assert_eq!(
             describe_source_line_attached_keyword_otherwise_prevention_group(
-                &definition.abilities[1..3]
+                &definition.abilities[2..4]
             )
             .as_deref(),
             Some(LINE.trim_end_matches('.'))
@@ -50059,7 +50318,7 @@ mod attached_keyword_otherwise_prevention_tests {
     #[test]
     fn noninverse_prevention_condition_is_not_rejoined() {
         let definition = definition();
-        let mut members = definition.abilities[1..3].to_vec();
+        let mut members = definition.abilities[2..4].to_vec();
         let AbilityKind::Static(keyword_static) = &members[0].kind else {
             panic!("expected keyword static grant");
         };
@@ -52724,17 +52983,24 @@ mod keyword_surface_merge_tests {
                 .in_zones(vec![Zone::Stack])
         };
         let exact = [marker.clone(), cascade(), cascade()];
-        assert_eq!(source_line_repeated_cascade_group_consumed(&exact), Some(3));
+        assert_eq!(source_line_repeated_stack_keyword_group_consumed(&exact), Some(3));
+        let triple_marker = Ability::static_ability(crate::static_abilities::StaticAbility::from_model(
+            ironsmith_core::StaticAbility::source_line_keyword_group(3),
+        )).in_zones(Vec::new());
+        assert_eq!(source_line_repeated_stack_keyword_group_consumed(&[
+            triple_marker, cascade(), cascade(), cascade(),
+        ]), Some(4));
+
 
         let mut changed_zone = exact.clone();
         changed_zone[2].functional_zones = vec![Zone::Battlefield];
         assert_eq!(
-            source_line_repeated_cascade_group_consumed(&changed_zone),
+            source_line_repeated_stack_keyword_group_consumed(&changed_zone),
             None,
             "the leading spell-line compactor must require two intrinsic stack abilities",
         );
         assert_eq!(
-            source_line_repeated_cascade_group_consumed(&exact[1..]),
+            source_line_repeated_stack_keyword_group_consumed(&exact[1..]),
             None,
             "adjacent Cascade abilities without the authored line marker stay independent",
         );

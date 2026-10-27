@@ -1456,7 +1456,7 @@ pub fn parse_attached_has_keywords_and_is_goaded_line(
                 && has
                     .ability_tokens
                     .get(index + 2)
-                    .is_some_and(|next| next.is_word("goaded")))
+                    .is_some_and(|next| next.is_word(crate::keyword_forms::GOADED)))
             .then_some(index)
         })
     else {

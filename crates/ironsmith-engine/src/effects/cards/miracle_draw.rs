@@ -43,10 +43,10 @@ fn capture_opportunity(
         .iter()
         .enumerate()
         .filter_map(|(alternative_index, method)| {
-            method.miracle_cost().map(|cost| DrawnMiracleInstance {
+            method.first_draw_total_cost().map(|total| DrawnMiracleInstance {
                 identity: MiracleInstanceIdentity::Intrinsic { alternative_index },
                 granting_source: card,
-                price: DrawnMiraclePrice::Fixed(cost.clone()),
+                price: if method.is_miracle() { DrawnMiraclePrice::Fixed(method.mana_cost().cloned().unwrap_or_default()) } else { DrawnMiraclePrice::Descriptive(total) },
             })
         })
         .collect::<Vec<_>>();
@@ -100,10 +100,20 @@ fn capture_opportunity(
     })
 }
 
-fn choose_miracle_as_drawn(
+pub(crate) fn choose_miracle_as_drawn(
     game: &mut GameState,
     card: ObjectId,
     player: PlayerId,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Option<MiracleDrawDecision>, ExecutionError> {
+    choose_deferred_miracle_as_drawn(game, card, player, None, decision_maker)
+}
+
+pub(crate) fn choose_deferred_miracle_as_drawn(
+    game: &mut GameState,
+    card: ObjectId,
+    player: PlayerId,
+    captured: Option<&MiracleDrawOpportunity>,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Option<MiracleDrawDecision>, ExecutionError> {
     game.refresh_continuous_state()
@@ -145,7 +155,17 @@ fn choose_miracle_as_drawn(
             "the drawn Miracle identity was not opened on this peer".into(),
         ));
     }
-    let opportunity = capture_opportunity(game, card, player)?;
+    let opportunity = match captured {
+        Some(opportunity) => {
+            if opportunity.card != card || opportunity.player != player
+                || game.object(card).is_none_or(|object| object.stable_id != opportunity.stable_id || object.zone != Zone::Hand || object.owner != player)
+            {
+                return Err(ExecutionError::IncompleteEvidence("deferred Miracle opportunity lost its exact drawn incarnation".into()));
+            }
+            opportunity.clone()
+        }
+        None => capture_opportunity(game, card, player)?,
+    };
     if opportunity.instances.is_empty() {
         return Ok(Some(MiracleDrawDecision::Declined));
     }
@@ -158,11 +178,13 @@ fn choose_miracle_as_drawn(
             .map(|(index, instance)| {
                 let price = match &instance.price {
                     DrawnMiraclePrice::Fixed(cost) => cost.to_oracle(),
+                    DrawnMiraclePrice::Descriptive(cost) => cost.display(),
                     DrawnMiraclePrice::ReducedManaCost {
                         generic_reduction, ..
                     } => format!("mana cost reduced by {{{generic_reduction}}}"),
                 };
-                SelectableOption::new(index + 1, format!("Reveal using Miracle ({price})"))
+                let label = if matches!(instance.price, DrawnMiraclePrice::Descriptive(_)) { "first-draw ability" } else { "Miracle" };
+                SelectableOption::new(index + 1, format!("Reveal using {label} ({price})"))
             }),
     );
     // A different ability may already have opened the card. That public
@@ -257,11 +279,21 @@ pub(crate) fn draw_cards_with_miracle_window(
             && first_this_turn
             && completed.cards.is_empty()
         {
-            let Some(decision) = choose_miracle_as_drawn(game, card, player, decision_maker)?
-            else {
-                return Ok(completed);
-            };
-            completed.miracle = Some(decision);
+            if !game.drawn_card_waits_for_announcement(card) {
+                let Some(decision) = choose_miracle_as_drawn(game, card, player, decision_maker)?
+                else {
+                    return Ok(completed);
+                };
+                completed.miracle = Some(decision);
+            } else {
+                let captured = if game.hidden_identity_is_private(card) {
+                    None
+                } else {
+                    let view = game.draw_reveal_characteristics_view(card);
+                    Some(Box::new(capture_opportunity(&view, card, player)?))
+                };
+                completed.miracle = Some(MiracleDrawDecision::Deferred(captured));
+            }
             // A replacement may append another instruction or multiply this
             // draw. The first card's distinct reveal choices finish before
             // either can see or change the next card or the reveal source.

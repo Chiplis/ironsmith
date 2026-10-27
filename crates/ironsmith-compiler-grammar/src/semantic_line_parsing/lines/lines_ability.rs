@@ -79,10 +79,43 @@ use crate::recognition::ParseOutcome;
 #[path = "lines_ability/static_line_readings.rs"]
 mod static_line_readings;
 
+pub(crate) fn parse_descriptive_static_program(parse_tokens: &[OwnedLexToken]) -> Result<Option<LineAst>, CardTextError> {
+    let prose = render_token_slice(parse_tokens).to_ascii_lowercase();
+    if matches!(prose.trim_end_matches('.').trim(), "you may pair this creature with another unpaired creature when either enters. they remain paired for as long as you control both of them" | "you may pair creatures using this ability. whenever this creature or another creature enters under your control, if this creature and an eligible other creature are both unpaired creatures you control, you may pair them. if this creature entered, choose another unpaired creature you control; otherwise pair it only with the creature that entered. they remain paired until either leaves the battlefield, stops being a creature, or stops being under your control. pairing doesn't target") {
+        let trigger = TriggerSpec::EntersBattlefield { filter: ObjectFilter::creature().you_control(), cause_filter: None, origin_condition: None, during_turn: None };
+        return Ok(Some(LineAst::Ability(ParsedAbility {
+            ability: Box::new(ironsmith_core::Ability {
+                kind: ironsmith_core::AbilityKind::Triggered(ironsmith_core::TriggeredAbility {
+                    trigger,
+                    effects: ironsmith_core::ResolutionProgram::from_effects(vec![EffectAst::subject_verb(
+                        crate::model::ast::SubjectVerbRoleAst::Actor, PlayerAst::You,
+                        crate::model::ast::SubjectVerbActionAst::KeywordActions(crate::model::ast::KeywordActionAst::PairUnpairedCreatures))]),
+                    choices: Vec::new(), intervening_if: Some(PredicateAst::UnpairedCreaturesCanPair), presentation_label: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            }), effects_ast: None, reference_imports: Default::default(), trigger_spec: None,
+        })));
+    }
+    if let Some(rest) = prose.strip_prefix("you may cast this spell any time you could cast an instant by sacrificing ")
+        && let Some((quality, rest)) = rest.split_once(" and paying the difference in mana costs between this and the sacrificed ")
+        && let Some(repeated) = rest.strip_suffix(". mana cost includes color.").or_else(|| rest.strip_suffix(". mana cost includes color"))
+        && quality.strip_prefix("a ").or_else(|| quality.strip_prefix("an ")) == Some(repeated) {
+        let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&crate::lexer::lex_line(&format!("Sacrifice {quality}"), 0)?)?;
+        let kind = crate::cost::OptionalCostKind::SacrificeManaCostReduction;
+        return Ok(Some(LineAst::OptionalCost(crate::model::CompilerOptionalCost {
+            reference: crate::cost::OptionalCostRef::new(kind.clone()),
+            kind, source_label: render_token_slice(parse_tokens), cost,
+            repeatable: false, returns_to_hand: false, provenance: None,
+        })));
+    }
+    Ok(None)
+}
+
 pub(super) fn parse_static_line_impl(
     line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    if let Some(parsed) = parse_descriptive_static_program(parse_tokens)? { return Ok(parsed); }
     crate::clause_support::validate_protection_static_line(parse_tokens)?;
     let chosen_option = line.chosen_option.as_ref();
     // A pronoun continuation of an attached subject owns the complete line.

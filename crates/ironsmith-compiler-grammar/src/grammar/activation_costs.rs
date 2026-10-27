@@ -146,6 +146,7 @@ pub enum ActivationCostSegmentCst {
     /// "Reveal the player you chose" (Stalking Leonin).
     RevealChosenPlayer,
     RevealSourceFromHand,
+    RevealSourceFromHandUntilUpkeepEnds,
     RevealFromHand {
         count: Value,
         color_filter: Option<ColorSet>,
@@ -165,6 +166,7 @@ pub enum ActivationCostSegmentCst {
     MoveOpponentOwnedExiledCardToGraveyard,
     ExertSelf {
         display_text: String,
+        descriptive: bool,
     },
     PutCounters {
         counter_type: CounterType,
@@ -198,6 +200,8 @@ pub enum ActivationCostSegmentCst {
         display_x: bool,
         remove_all: bool,
     },
+    ChooseControlledOrReveal { subtype: Subtype },
+    ReturnUnblockedAttacker,
     Behold {
         subtype: Subtype,
         count: u32,

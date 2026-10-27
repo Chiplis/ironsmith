@@ -1,0 +1,92 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+
+test('local art crops, resizes, cancels, and stays editable after saving and reloading', {timeout: 60000}, async () => {
+  const vite = await createServer({server: {host: '127.0.0.1', port: 0, hmr: false, watch: null}, logLevel: 'error'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 900, height: 1000}});
+    page.setDefaultTimeout(15000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/custom-card-art-preview.html`);
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 1000; canvas.height = 600;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ff0000'; ctx.fillRect(0, 0, 500, 600);
+      ctx.fillStyle = '#0000ff'; ctx.fillRect(500, 0, 500, 600);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    const upload = page.getByLabel('Upload card art');
+    await upload.setInputFiles({name:'local-art.png', mimeType:'image/png', buffer:Buffer.from(png, 'base64')});
+    await page.getByLabel('Art crop preview').waitFor();
+    await page.screenshot({path:'/tmp/ironsmith-custom-art-editor.png'});
+    await page.getByLabel('Zoom', {exact:true}).fill('2');
+    await page.getByLabel('Horizontal position').fill('100');
+    await page.getByLabel('Output size').selectOption('411');
+    await page.getByRole('button', {name:'Apply art', exact:true}).click();
+    const art = page.getByAltText('Saved card art');
+    await art.waitFor();
+    const dimensions = await art.evaluate(async image => {
+      await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0);
+      return {width:image.naturalWidth, height:image.naturalHeight, pixel:[...ctx.getImageData(200, 150, 1, 1).data]};
+    });
+    assert.equal(dimensions.width, 411); assert.equal(dimensions.height, 300);
+    assert.ok(dimensions.pixel[2] > 240 && dimensions.pixel[0] < 10, 'right-hand blue half was cropped');
+    const original = await art.getAttribute('src');
+    await page.getByRole('button', {name:'Crop / resize', exact:true}).click();
+    assert.equal(await page.getByLabel('Zoom', {exact:true}).inputValue(), '2');
+    await page.getByRole('button', {name:'Reset crop', exact:true}).click();
+    await page.getByRole('button', {name:'Cancel', exact:true}).click();
+    assert.equal(await art.getAttribute('src'), original, 'cancel preserves applied art');
+    await page.getByRole('button', {name:'Save card', exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Saved'}).waitFor();
+    await page.reload();
+    await page.getByRole('button', {name:'Reopen card', exact:true}).click();
+    await art.waitFor();
+    assert.equal(await art.getAttribute('src'), original);
+    await page.getByRole('button', {name:'Crop / resize', exact:true}).click();
+    assert.equal(await page.getByLabel('Zoom', {exact:true}).inputValue(), '2');
+    assert.equal(await page.getByLabel('Output size').inputValue(), '411');
+    await page.getByRole('button', {name:'Reset crop', exact:true}).click();
+    await page.getByRole('button', {name:'Apply art', exact:true}).click();
+    assert.notEqual(await art.getAttribute('src'), original, 'original source survives for recropping');
+    await upload.setInputFiles({name:'invalid.png', mimeType:'image/png', buffer:Buffer.from('not an image')});
+    await page.getByRole('alert').waitFor();
+    assert.match(await page.getByRole('alert').innerText(), /Could not open/);
+    await page.getByRole('button', {name:'Remove art', exact:true}).click();
+    assert.equal(await art.count(), 0);
+    // Exercise the real Build integration, including its save normalization.
+    await page.goto(page.url().replace('custom-card-art-preview.html', 'sandbox-preview.html'));
+    await page.getByRole('button', {name:'Build', exact:true}).click();
+    await page.getByLabel('Upload card art').setInputFiles({name:'local-art.png', mimeType:'image/png', buffer:Buffer.from(png, 'base64')});
+    await page.getByLabel('Art crop preview').waitFor();
+    await page.getByLabel('Zoom', {exact:true}).fill('2');
+    const preview = page.getByLabel('Art crop preview');
+    await preview.scrollIntoViewIfNeeded();
+    const box = await preview.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2); await page.mouse.up();
+    assert.ok(Number(await page.getByLabel('Horizontal position').inputValue()) < 50, 'drag repositions the art');
+    await page.setViewportSize({width:390, height:844});
+    await preview.scrollIntoViewIfNeeded();
+    await page.screenshot({path:'/tmp/ironsmith-build-art-mobile.png'});
+    assert.ok(await preview.evaluate(node => node.getBoundingClientRect().right <= innerWidth));
+    await page.getByRole('button', {name:'Apply art', exact:true}).click();
+    await page.getByRole('button', {name:'Save', exact:true}).click();
+    await page.getByText(/Saved Custom Card\. Find it/).waitFor();
+    const stored = await page.evaluate(async () => {
+      const {listSavedCustomCards} = await import('/src/lib/custom-card-library.js');
+      return (await listSavedCustomCards()).find(card => card.draft.faces[0].name === 'Custom Card').draft.faces[0];
+    });
+    assert.ok(stored.artUrl.startsWith('data:image/'));
+    assert.ok(stored.artSourceUrl.startsWith('data:image/'));
+    assert.equal(stored.artCrop.zoom, 2);
+    assert.deepEqual(errors, []);
+  } finally {await browser.close(); await vite.close();}
+});

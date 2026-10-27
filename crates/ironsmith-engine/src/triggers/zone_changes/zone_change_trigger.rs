@@ -1815,7 +1815,8 @@ impl TriggerMatcher for ZoneChangeTrigger {
                 let source_stable = ctx.game.object(ctx.source_id).map(|obj| obj.stable_id);
                 let caused_by_source = zc.cause.source.is_some_and(|cause_source| {
                     cause_source == ctx.source_id
-                        || (source_stable.is_some()
+                        || (cause_filter.ability_kind != Some(crate::events::cause::CauseAbilityKindFilter::ChampionTrigger)
+                            && source_stable.is_some()
                             && ctx.game.object(cause_source).map(|obj| obj.stable_id)
                                 == source_stable)
                 });
@@ -2021,6 +2022,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
         if self.from == ZonePattern::Specific(Zone::Battlefield)
             && self.to == ZonePattern::Specific(Zone::Exile)
             && !self.this_object
+            && self.cause_filter.as_ref().is_some_and(|cause| cause.ability_kind == Some(crate::events::cause::CauseAbilityKindFilter::ChampionTrigger))
             && self
                 .cause_filter
                 .as_ref()
@@ -2112,13 +2114,17 @@ mod tests {
 
         game.add_exiled_with_source_link_returning_to(source, duration_member, Zone::Battlefield);
         game.mark_return_exiled_when_source_leaves(source);
+        let return_stable = game.object(duration_member).unwrap().stable_id;
         game.return_exiled_for_source_leave(source);
         game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker)
             .expect("duration return must resolve");
-        let duration_event = game.take_pending_trigger_events().into_iter()
+        // One-shot completion now matches observations at its own boundary.
+        // Inspect that exact completed receipt, not an already-drained queue.
+        let returned_id = game.find_object_by_stable_id(return_stable).unwrap();
+        let duration_event = game.retained_action_observations()
             .find(|event| event.downcast::<ZoneChangeEvent>().is_some_and(|zc| {
-                zc.from == Zone::Exile && zc.to == Zone::Battlefield
-            }))
+                zc.from == Zone::Exile && zc.to == Zone::Battlefield && zc.result_objects.contains(&returned_id)
+            })).cloned()
             .expect("duration return event");
         assert_eq!(duration_event.downcast::<ZoneChangeEvent>().unwrap().cause.duration_return_source, Some(source));
         assert!(trigger.matches(&duration_event, &TriggerContext::for_source(source, alice, &game)));
@@ -2161,10 +2167,11 @@ mod tests {
         game.return_exiled_for_source_leave(source);
         game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker)
             .expect("second duration return must resolve");
-        let event = game.take_pending_trigger_events().into_iter()
+        // One-shot completion matches observations at its own boundary.
+        let event = game.retained_action_observations()
             .find(|event| event.downcast::<ZoneChangeEvent>().is_some_and(|zc| {
                 zc.from == Zone::Exile && zc.to == Zone::Battlefield
-            }))
+            })).cloned()
             .expect("second duration return event");
         let tag = crate::tag::TagKey::from("captured_exile");
         let trigger = ZoneChangeTrigger::new()

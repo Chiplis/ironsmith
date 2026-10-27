@@ -422,6 +422,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ModifyPowerToughnessForEachEffect" => {
             decode_as::<T, ironsmith_core::ModifyPowerToughnessForEachEffect>(effect)
         }
+        "SetPermanentDesignationEffect" => decode_as::<T, ironsmith_core::SetPermanentDesignationEffect>(effect),
         "MonstrosityEffect" => decode_as::<T, ironsmith_core::MonstrosityEffect>(effect),
         "MoveAllCountersEffect" => decode_as::<T, ironsmith_core::MoveAllCountersEffect>(effect),
         "MoveCountersEffect" => decode_as::<T, ironsmith_core::MoveCountersEffect>(effect),
@@ -432,7 +433,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "MoveToLibraryTopOrBottomChoiceEffect" => {
             decode_as::<T, ironsmith_core::MoveToLibraryTopOrBottomChoiceEffect>(effect)
         }
-        "MoveToZoneEffect" => decode_as::<T, ironsmith_core::MoveToZoneEffect>(effect),
+        "MoveToZoneEffect" => decode_as::<T, ironsmith_core::MoveToZoneEffect<wire::WireContinuousModification>>(effect),
         "NinjutsuCostEffect" => decode_as::<T, ironsmith_core::NinjutsuCostEffect>(effect),
         "NinjutsuEffect" => decode_as::<T, ironsmith_core::NinjutsuEffect>(effect),
         "NoteLifeTotalEffect" => decode_as::<T, ironsmith_core::NoteLifeTotalEffect>(effect),
@@ -1624,13 +1625,13 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::MillEffect,
             crate::effects::ModifyPowerToughnessEffect,
             crate::effects::ModifyPowerToughnessForEachEffect,
+            crate::effects::SetPermanentDesignationEffect,
             crate::effects::MonstrosityEffect,
             crate::effects::MoveAllCountersEffect,
             crate::effects::MoveCountersEffect,
             crate::effects::MoveOneCounterEffect,
             crate::effects::MoveToLibraryNthFromTopEffect,
             crate::effects::MoveToLibraryTopOrBottomChoiceEffect,
-            crate::effects::MoveToZoneEffect,
             crate::effects::NinjutsuCostEffect,
             crate::effects::NinjutsuEffect,
             crate::effects::CastFaceDownUsingActivationManaEffect,
@@ -1768,6 +1769,13 @@ pub fn encode_runtime_effect(
         };
     }
     with_native_direct_effect_types!(encode_direct);
+    if let Some(payload) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        let converted = payload.clone().try_map_entry_modifications(continuous_word_codec::encode_modification)?;
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("MoveToZoneEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+
     if let Some(payload) = effect.downcast_ref::<crate::effects::InvestigateEffect>() {
         let converted = ironsmith_core::InvestigateEffect::new(
             payload.count.clone(), payload.player.clone(),

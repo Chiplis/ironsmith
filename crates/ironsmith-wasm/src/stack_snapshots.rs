@@ -89,6 +89,7 @@ pub(super) fn deterministic_match_seed(
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct StackObjectSnapshot {
+    pub(super) owner: Option<u8>,
     pub(super) source_kind: Option<&'static str>,
     pub(super) id: u64,
     pub(super) inspect_object_id: Option<u64>,
@@ -172,6 +173,23 @@ fn stack_source_ability_text(
         ),
         (None, None) => return None,
     };
+    // Calculated abilities can omit printed keyword statics or include grants.
+    // Their slot is not a printed-label index; use the captured origin instead.
+    if let Some(origin) = entry.source_snapshot.as_ref()
+        .and_then(|snapshot| snapshot.ability_origins.as_ref())
+        .and_then(|origins| origins.get(index))
+    {
+        if let ironsmith::continuous::AbilityOrigin::Printed(printed_index) = origin {
+            if let Some(label) = labels.get(*printed_index)
+                .and_then(|line| normalize_stack_display_text(line))
+            {
+                return Some(label);
+            }
+        }
+        return normalize_stack_display_text(
+            &ironsmith::runtime_display::ability_surface_text(&abilities[index]),
+        );
+    }
     // The captured labels name the line each ability came from; the card
     // text is indexed directly only when it has exactly one line per ability.
     ironsmith::runtime_display::aligned_ability_label(labels, compiled, abilities.len(), index)
@@ -271,6 +289,7 @@ pub(super) fn build_stack_object_snapshot(
             .clone()
             .or_else(|| stack_entry_ability_text(entry, obj));
         StackObjectSnapshot {
+            owner: Some(entry.controller.0),
             source_kind,
             id,
             inspect_object_id,
@@ -304,6 +323,7 @@ pub(super) fn build_stack_object_snapshot(
             None
         };
         StackObjectSnapshot {
+            owner: obj.or(source_obj).map(|object| object.owner.0),
             source_kind,
             id,
             inspect_object_id,

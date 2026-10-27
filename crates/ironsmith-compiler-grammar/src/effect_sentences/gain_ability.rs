@@ -3346,7 +3346,7 @@ pub(crate) fn split_anaphor_pair_subject_sentences(
         .any(|token| token.is_any_word(&["is", "are", "it's", "they're", "theyre"]))
         || matches!(
             crate::lexer::token_word_refs(left).as_slice(),
-            ["its", "goaded" | "tapped" | "untapped", ..]
+            ["its", crate::keyword_forms::GOADED | "tapped" | "untapped", ..]
         )
     {
         return None;

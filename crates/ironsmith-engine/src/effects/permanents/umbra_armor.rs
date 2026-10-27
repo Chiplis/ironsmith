@@ -39,9 +39,14 @@ impl EffectExecutor for UmbraArmorEffect {
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                let attached_to = game.object(self.aura).and_then(|aura| aura.attached_to);
+                // The replaced destruction owns its permanent even if this
+                // Aura already left in another part of the simultaneous event.
+                let permanent = ctx.triggering_event.as_ref()
+                    .and_then(|event| event.downcast::<crate::events::DestroyEvent>())
+                    .map(|event| event.permanent)
+                    .or_else(|| game.object(self.aura).and_then(|aura| aura.attached_to).and_then(|target| target.object_id()));
                 let mut children = Vec::new();
-                if let Some(permanent) = attached_to.and_then(|target| target.object_id()) {
+                if let Some(permanent) = permanent {
                     children.push(
                         crate::effects::ClearDamageEffect::specific(permanent)
                             .execute_child_with_outputs(game, ctx)?,

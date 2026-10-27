@@ -166,6 +166,7 @@ pub struct TargetSelectionProfile<'a> {
 /// Modal effect metadata used by target-selection planning.
 #[derive(Debug, Clone, Copy)]
 pub struct ModalEffectSpec<'a> {
+    pub announced_modes: Option<&'a [usize]>,
     pub modes: &'a [EffectMode],
     pub max_modes: &'a Value,
     pub min_modes: &'a Value,

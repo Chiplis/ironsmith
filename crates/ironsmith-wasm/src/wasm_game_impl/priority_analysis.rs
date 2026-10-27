@@ -154,14 +154,24 @@ impl WasmGame {
         })();
         restore_id_counters(counters);
         let eligible = eligible?;
-        let mut displayed = vec![LegalAction::PassPriority];
+        // Land plays have no mana payment to prove. The eligibility query
+        // already checked timing, zone permissions, prohibitions, and the
+        // player's land allowance, so publish them before background analysis.
+        let mut proven = vec![LegalAction::PassPriority];
+        for action in &eligible {
+            if matches!(action, LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. })
+                && !proven.contains(action) {
+                proven.push(action.clone());
+            }
+        }
+        let mut displayed = proven.clone();
         for action in cached {
             if eligible.contains(&action) && !displayed.contains(&action) { displayed.push(action); }
         }
         let mut ctx = ironsmith::decisions::context::PriorityContext::new(&self.game, player, displayed)
             .map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
         ctx.analysis_complete = false;
-        ctx.payment_proven_actions = Some(vec![LegalAction::PassPriority]);
+        ctx.payment_proven_actions = Some(proven);
         ctx.presentation_actions = eligible;
         self.pending_decision = Some(DecisionContext::Priority(ctx));
         self.priority_affordability_seed_key = Some(key);
@@ -290,7 +300,7 @@ impl WasmGame {
             game: self.game.clone(),
             player: ctx.player,
             candidates,
-            actions: vec![LegalAction::PassPriority],
+            actions: ctx.payment_proven_actions.clone().unwrap_or_else(|| vec![LegalAction::PassPriority]),
             presentation_actions: ctx.presentation_actions.clone(),
             provisional_actions: ctx.actions.iter().filter(|action| !matches!(action, LegalAction::PassPriority)).cloned().collect(),
         }));
@@ -434,6 +444,7 @@ mod priority_analysis_tests {
                     wasm.game.create_object_from_definition(&omniscience, alice, ironsmith::Zone::Battlefield);
                 } else {
                     definition.alternative_casts.push(ironsmith::alternative_cast::AlternativeCastingMethod::Warp {
+                        descriptive: false,
                         cost: ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Generic(2), ironsmith::ManaSymbol::Red]),
                         additional_cost: ironsmith::cost::TotalCost::free(),
                     });
@@ -708,6 +719,53 @@ mod priority_analysis_tests {
         });
     }
     #[test]
+    fn land_plays_are_available_before_background_analysis_with_and_without_extra_plays() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            for unlimited in [false, true] {
+                let (mut wasm, _restore) = fixture();
+                let alice = PlayerId::from_index(0);
+                let first = main_phase_with(&mut wasm, "First land", "Type: Land", ironsmith::Zone::Hand);
+                let second = main_phase_with(&mut wasm, "Second land", "Type: Land", ironsmith::Zone::Hand);
+                if unlimited {
+                    main_phase_with(&mut wasm, "Land permission",
+                        "Type: Enchantment\nYou may play any number of lands on each of your turns.",
+                        ironsmith::Zone::Battlefield);
+                }
+                for (index, land) in [first, second].into_iter().enumerate() {
+                    wasm.pending_decision = Some(DecisionContext::Priority(
+                        ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+                    wasm.refresh_priority_affordability_display().unwrap();
+                    let action = LegalAction::PlayLand { land_id: land };
+                    let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else { panic!() };
+                    assert!(!ctx.analysis_complete);
+                    let allowed = index == 0 || unlimited;
+                    assert_eq!(ctx.actions.contains(&action), allowed);
+                    assert_eq!(ctx.payment_proven_actions.as_ref().unwrap().contains(&action), allowed);
+                    if allowed {
+                        let resolved = resolve_priority_action(&wasm.game, ctx, None, Some(&priority_action_ref(&action))).unwrap();
+                        assert_eq!(resolved, Some(action.clone()));
+                        assert!(wasm.begin_priority_analysis("land-menu".into()));
+                        wasm.advance_priority_analysis("land-menu", 1).unwrap();
+                        let Some(DecisionContext::Priority(partial)) = wasm.pending_decision.as_ref() else { panic!() };
+                        assert!(partial.payment_proven_actions.as_ref().unwrap().contains(&action));
+                        if index == 0 {
+                            assert!(partial.payment_proven_actions.as_ref().unwrap().contains(
+                                &LegalAction::PlayLand { land_id: second }));
+                        }
+                        wasm.priority_analysis_job = None;
+                        let mut dm = ironsmith::decision::AutoPassDecisionMaker;
+                        ironsmith::special_actions::perform(
+                            ironsmith::special_actions::SpecialAction::PlayLand { card_id: land },
+                            &mut wasm.game, alice, &mut dm).unwrap();
+                        assert_eq!(wasm.game.object(land).unwrap().zone, ironsmith::Zone::Battlefield);
+                    }
+                }
+            }
+        });
+    }
+
+    #[test]
     fn incremental_land_precedes_warp_and_final_actions_match_full_enumeration() {
         with_fixture_stack(|| {
             let _ids = crate::test_id_counter_guard();
@@ -723,6 +781,7 @@ mod priority_analysis_tests {
                 .build();
             let mut def = ironsmith::cards::CardDefinition::new(card);
             def.alternative_casts.push(ironsmith::alternative_cast::AlternativeCastingMethod::Warp {
+                descriptive: false,
                 cost: ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Generic(2), ironsmith::ManaSymbol::Red]),
                 additional_cost: ironsmith::cost::TotalCost::free(),
             });

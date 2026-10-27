@@ -84,7 +84,7 @@ impl EffectExecutor for ChooseModeEffect {
     }
 
     fn get_modal_spec(&self) -> Option<ModalSpec> {
-        if self.chooser.is_some() {
+        if self.chooser.is_some() || self.announced_modes.is_some() {
             return None;
         }
         Some(ModalSpec {
@@ -108,6 +108,7 @@ impl EffectExecutor for ChooseModeEffect {
             return None;
         }
         Some(ModalEffectSpec {
+            announced_modes: self.announced_modes.as_deref(),
             modes: &self.modes,
             max_modes: &self.choose_count,
             min_modes: &self.min_choose_count,

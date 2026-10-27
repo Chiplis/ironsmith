@@ -3162,13 +3162,12 @@ pub(super) fn compile_subject_verb_late(
             })
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon {
-            undercity_if_no_active,
+            undercity_if_no_active, descriptive,
         }) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-            if *undercity_if_no_active {
-                Effect::venture_into_undercity_player(subject.into_player_filter())
-            } else {
-                Effect::venture_into_dungeon_player(subject.into_player_filter())
-            }
+            let mut effect = ironsmith_core::VentureIntoDungeonEffect::new(subject.into_player_filter());
+            effect.undercity_if_no_active = *undercity_if_no_active;
+            effect.descriptive = *descriptive;
+            Effect::new(effect)
         }),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
@@ -3489,6 +3488,7 @@ pub(super) fn compile_subject_verb_late(
             target,
             follow_up_effects,
             remove_damage_only,
+            ordinary_destruction_replacement,
         }) => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -3554,7 +3554,8 @@ pub(super) fn compile_subject_verb_late(
             )
             .with_follow_up_effects(follow_ups)
             .with_follow_up_player(follow_up_player)
-            .with_remove_damage_only(*remove_damage_only);
+            .with_remove_damage_only(*remove_damage_only)
+            .with_ordinary_destruction_replacement(*ordinary_destruction_replacement);
             let effect =
                 tag_object_target_effect(Effect::new(regenerate), &spec, ctx, "regenerated");
             Ok((vec![effect], choices))

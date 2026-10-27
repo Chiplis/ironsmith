@@ -302,7 +302,7 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
         (&["discarded"], PriorEffectAction::Discarded),
         (&["drawn"], PriorEffectAction::Drawn),
         (&["exiled"], PriorEffectAction::Exiled),
-        (&["goaded"], PriorEffectAction::Goaded),
+        (&[crate::keyword_forms::GOADED], PriorEffectAction::Goaded),
         (&["milled"], PriorEffectAction::Milled),
         // "for each card manifested this way" (Kozilek, the Broken Reality):
         // manifesting puts each card onto the battlefield face down

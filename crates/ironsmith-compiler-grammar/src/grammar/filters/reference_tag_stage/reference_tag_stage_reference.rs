@@ -127,6 +127,7 @@ pub(in super::super) fn parse_object_filter_inner(
             relation_target_count = Some(count);
             target_tokens = rest;
         }
+        let relation_only = target_tokens.first().is_some_and(|token| token.is_word("only"));
         let parse_target_fragment = |fragment_tokens: &[OwnedLexToken]| -> Result<
             (
                 Option<PlayerFilter>,
@@ -162,13 +163,19 @@ pub(in super::super) fn parse_object_filter_inner(
                     .as_word()
                     .is_some_and(|word| word == SINGLE_WORD)
             {
-                count = Some(crate::effect::ChoiceCount::exactly(1));
+                // "Targets only a single ..." counts distinct identities,
+                // not repeated choices of the same target (CR 115.9c).
+                if !only && !relation_only {
+                    count = Some(crate::effect::ChoiceCount::exactly(1));
+                }
                 fragment_tokens.drain(..2);
             } else if fragment_tokens
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == SINGLE_WORD))
             {
-                count = Some(crate::effect::ChoiceCount::exactly(1));
+                if !only && !relation_only {
+                    count = Some(crate::effect::ChoiceCount::exactly(1));
+                }
                 fragment_tokens.drain(..1);
             }
 
@@ -570,8 +577,6 @@ pub(in super::super) fn parse_object_filter_inner(
         }
         if let Some(count) = target_count {
             disjunction = disjunction.with_target_count(count);
-        } else if targets_only {
-            disjunction = disjunction.target_count_exact(1);
         }
         return Ok(disjunction);
     }
@@ -1923,8 +1928,8 @@ pub(in super::super) fn parse_object_filter_inner(
             }
             "token" | "tokens" => filter.token = true,
             "nontoken" => filter.nontoken = true,
-            "foretold" if !is_negated_word => filter.foretold = true,
-            "warped" if !is_negated_word => filter.warped = true,
+            crate::keyword_forms::FORETOLD if !is_negated_word => filter.foretold = true,
+            crate::keyword_forms::WARPED if !is_negated_word => filter.warped = true,
             "other" | "another" => filter.other = true,
             "tapped" => filter.tapped = true,
             "untapped" => filter.untapped = true,
@@ -2019,14 +2024,14 @@ pub(in super::super) fn parse_object_filter_inner(
             "nonhistoric" => filter.nonhistoric = true,
             "historic" if !set_has(&negated_historic_indices, &idx) => filter.historic = true,
             "modified" if !is_negated_word => filter.modified = true,
-            "suspected" if !is_negated_word => filter.suspected = true,
+            crate::keyword_forms::SUSPECTED if !is_negated_word => filter.suspected = true,
             "renowned" if !is_negated_word => filter.renowned = true,
             "transformed" if !is_negated_word => filter.transformed = true,
             "prepared" if !is_negated_word => filter.prepared = true,
             "stickered" if !is_negated_word => {
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
-            "goaded" if !is_negated_word => filter.goaded = true,
+            crate::keyword_forms::GOADED if !is_negated_word => filter.goaded = true,
             _ => {}
         }
 
@@ -2510,8 +2515,6 @@ pub(in super::super) fn parse_object_filter_inner(
     }
     if let Some(count) = target_count {
         filter = filter.with_target_count(count);
-    } else if targets_only {
-        filter = filter.target_count_exact(1);
     }
 
     if let Some(or_subtype) = legendary_or_subtype

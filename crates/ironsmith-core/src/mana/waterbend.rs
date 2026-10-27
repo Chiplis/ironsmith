@@ -9,6 +9,8 @@ pub struct WaterbendObligation {
     pub fixed: u32,
     pub x_symbols: u32,
     pub announced_x: Option<u32>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl WaterbendObligation {
@@ -75,6 +77,7 @@ impl ManaCost {
             fixed: self.generic_mana_total(),
             x_symbols: self.pips.iter().filter(|pip| pip.as_slice() == [ManaSymbol::X]).count() as u32,
             announced_x: None,
+            descriptive: false,
         };
         self.waterbend_payment_scope = Some(WaterbendPaymentScope {
             obligations: vec![amount.clone()], capacity: WaterbendCapacity::Amount(amount), x_pip_binding: None,
@@ -86,10 +89,19 @@ impl ManaCost {
     /// Mark this generic/X component as payable by tapping untapped creatures
     /// the payer controls, one {1} per creature (Heirloom Epic). It shares
     /// Waterbend's scoped tap-payment owner without being a waterbend.
+    pub fn with_artifact_creature_tap_payment(self) -> Self {
+        let mut cost = self.with_waterbend();
+        if let Some(scope) = cost.waterbend_payment_scope.as_mut() {
+            for obligation in &mut scope.obligations { obligation.descriptive = true; }
+        }
+        cost
+    }
+
     pub fn with_creature_tap_payment(self) -> Self {
         let mut cost = self.with_waterbend();
         if let Some(scope) = cost.waterbend_payment_scope.as_mut() {
             scope.creatures_only = true;
+            for obligation in &mut scope.obligations { obligation.descriptive = true; }
         }
         cost
     }
@@ -129,7 +141,10 @@ impl ManaCost {
             if obligation.announced_x.is_none() {
                 for _ in 0..obligation.x_symbols { amount.push(ManaSymbol::X); }
             }
-            parts.push(format!("Waterbend {}", if amount.pips().is_empty() { "{0}".into() } else { amount.to_oracle() }));
+            let price = if amount.pips().is_empty() { "{0}".into() } else { amount.to_oracle() };
+            parts.push(if obligation.descriptive {
+                format!("Pay {price} using any combination of mana and tapping untapped artifacts and creatures you control for {{1}} each")
+            } else { format!("Waterbend {price}") });
         }
         remainder.retain(|pip| !pip.is_empty() && pip.as_slice() != [ManaSymbol::Generic(0)]);
         if !remainder.is_empty() { parts.push(ManaCost::from_pips(remainder).to_oracle()); }
@@ -183,6 +198,7 @@ impl ManaCost {
             }).fold(0, u32::saturating_add),
             x_symbols: self.pips.iter().filter(|pip| pip.as_slice() == [ManaSymbol::X]).count() as u32,
             announced_x: scope.x_pip_binding,
+            descriptive: false,
         };
         scope.capacity = WaterbendCapacity::Minimum(Box::new(scope.capacity.clone()), amount);
     }

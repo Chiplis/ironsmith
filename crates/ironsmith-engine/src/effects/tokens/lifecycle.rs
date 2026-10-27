@@ -234,11 +234,12 @@ pub(crate) fn create_replacement_additional_tokens(
     for key in creation.group_keys() {
         let definition = match key {
             TokenGroupKey::Original => continue,
-            TokenGroupKey::Named(index) => crate::events::tokens::additional_token_definition(
+            TokenGroupKey::Copy(_) => None,
+            TokenGroupKey::Named(index) => Some(crate::events::tokens::additional_token_definition(
                 creation.additional_tokens[index].0,
-            ),
+            )),
             TokenGroupKey::Template(index) => {
-                creation.additional_templates[index].definition.clone()
+                Some(creation.additional_templates[index].definition.clone())
             }
         };
         let count = creation.group_count(key) as usize;
@@ -257,7 +258,14 @@ pub(crate) fn create_replacement_additional_tokens(
                 .transpose()?;
             attack_index += 1;
             let id = game.new_object_id();
-            let mut token = game.object_from_token_definition(id, &definition, controller_id);
+            let mut token = if let TokenGroupKey::Copy(index) = key {
+                let source = &creation.additional_copies[index].token;
+                let mut token = crate::object::Object::token_copy_of(source, id, controller_id);
+                token.token_creation_method = source.token_creation_method;
+                token
+            } else {
+                game.object_from_token_definition(id, definition.as_ref().expect("defined token group"), controller_id)
+            };
             token.zone = Zone::Command;
             let is_creature = token.is_creature();
             game.commit_token_resource_slot()?;
@@ -268,7 +276,9 @@ pub(crate) fn create_replacement_additional_tokens(
                 &mut ctx.decision_maker,
                 instructions.enters_tapped,
                 !instructions.suppress_aura_attachment_choice,
-                instructions.initial_counters.clone(),
+                if let TokenGroupKey::Copy(index) = key {
+                    creation.additional_copies[index].initial_counters.clone()
+                } else { instructions.initial_counters.clone() },
             )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(Vec::new());

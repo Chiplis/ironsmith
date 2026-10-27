@@ -42,13 +42,19 @@ pub fn generate_replacement_effects_from_abilities(
             let controller = chars.controller;
             let zone = object.zone;
 
+            // A described intrinsic stack rider applies to every permitted cast
+            // from its zone, including a different granted price or permission.
+            let intrinsic_exile = zone == crate::zone::Zone::Stack && chars.abilities.iter().any(|ability| {
+                let AbilityKind::Static(ability) = &ability.kind else { return false; };
+                let Some(ironsmith_core::KeywordMarkerMechanic::ExileOnStackExitIfCastFrom { zone }) = ability.keyword_marker_mechanic() else { return false; };
+                crate::condition_eval::evaluate_condition_cast_time(
+                    game, &ironsmith_core::Condition::ThisSpellWasCastFromZone(zone), controller, object_id,
+                )
+            });
             // These payment methods replace every subsequent departure from
             // the stack (CR 702.34, 702.133, 702.180), including counter/bounce.
-            if zone == crate::zone::Zone::Stack && object.cast_alternative_method.as_deref().is_some_and(|method|
-                matches!(method, crate::alternative_cast::AlternativeCastingMethod::Flashback { .. }
-                    | crate::alternative_cast::AlternativeCastingMethod::JumpStart { .. }
-                    | crate::alternative_cast::AlternativeCastingMethod::BeamMeUp { .. }
-                    | crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. })) {
+            if intrinsic_exile || (zone == crate::zone::Zone::Stack && object.cast_alternative_method.as_deref().is_some_and(|method|
+                method.exiles_on_stack_exit())) {
                 effects.push(crate::replacement::ZoneReplacementSpec::new(
                     crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
                     .from_zone(crate::zone::Zone::Stack).build(object_id, controller));
@@ -63,29 +69,11 @@ pub fn generate_replacement_effects_from_abilities(
                     )
                 })
             {
-                // Aftermath (CR 702.127a) and "if a spell cast this way would be
-                // put into your graveyard, exile it instead" grants: a countered
-                // or fizzled spell is exiled too, not only a resolved one.
-                // Aftermath exiles the half "instead of putting it anywhere
-                // else any time it would leave the stack" (a bounce too); the
-                // grants only replace the move to the graveyard.
-                let has_aftermath = object.abilities.iter().any(|ability| {
-                    matches!(
-                        &ability.kind,
-                        AbilityKind::Static(static_ability)
-                            if static_ability
-                                .compiled_model()
-                                .is_some_and(|model| model.label == "Aftermath")
-                    )
-                });
+                // Grants that exile only graveyard departures do not replace a bounce.
                 let spec = crate::replacement::ZoneReplacementSpec::new(
                     crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
-                    .from_zone(crate::zone::Zone::Stack);
-                let spec = if has_aftermath {
-                    spec
-                } else {
-                    spec.to_zone(crate::zone::Zone::Graveyard)
-                };
+                    .from_zone(crate::zone::Zone::Stack)
+                    .to_zone(crate::zone::Zone::Graveyard);
                 effects.push(spec.build(object_id, controller));
             }
 

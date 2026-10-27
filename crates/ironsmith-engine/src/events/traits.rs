@@ -166,6 +166,7 @@ pub enum EventKind {
     BeginningOfDeclareAttackersStep,
     /// A spell or ability was actually inserted, after announcement.
     StackObjectAdded,
+    DungeonRoomEntered,
 }
 
 /// A target within an event that can potentially be redirected.

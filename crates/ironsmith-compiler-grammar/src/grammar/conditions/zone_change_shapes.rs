@@ -160,7 +160,7 @@ fn parse_nonland_left_or_warped(input: &mut LexStream<'_>) -> WResult<Battlefiel
     opt(primitives::kw("the")).parse_next(input)?;
     primitives::phrase(&["battlefield", "this", "turn", "or"]).parse_next(input)?;
     opt(primitives::kw("a")).parse_next(input)?;
-    primitives::phrase(&["spell", "was", "warped", "this", "turn"]).parse_next(input)?;
+    primitives::phrase(&["spell", "was", crate::keyword_forms::WARPED, "this", "turn"]).parse_next(input)?;
     Ok(BattlefieldChangeShape::NonlandPermanentLeftOrSpellWarped)
 }
 

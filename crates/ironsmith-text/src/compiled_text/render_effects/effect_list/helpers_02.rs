@@ -2409,7 +2409,7 @@ pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Optio
         let exile = unwrap_basic_tag_wrappers(exile_effect)
             .downcast_ref::<crate::effects::ExileEffect>()?;
         let manifest = unwrap_basic_tag_wrappers(manifest_effect)
-            .downcast_ref::<crate::effects::ManifestObjectsEffect>()?;
+            .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)?;
         let ChooseSpec::All(filter) = &exile.spec else { return None; };
         let ChooseSpec::Tagged(pile_tag) = &manifest.target else { return None; };
         if *exile != crate::effects::ExileEffect::with_spec(exile.spec.clone()).with_face_down(true)
@@ -2437,7 +2437,7 @@ pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Optio
         return None;
     };
     let manifest = unwrap_basic_tag_wrappers(manifest_effect)
-        .downcast_ref::<crate::effects::ManifestObjectsEffect>()?;
+        .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)?;
     let ChooseSpec::Tagged(pile_tag) = manifest.target.base() else {
         return None;
     };

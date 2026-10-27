@@ -104,6 +104,7 @@ enum MaterializationCost {
     MoveOpponentOwnedExiledCardToGraveyard,
     ExertSelf {
         display_text: String,
+        descriptive: bool,
     },
     EmitKeywordAction {
         kind: crate::events::KeywordActionKind,
@@ -250,6 +251,77 @@ pub fn materialize_compiler_core_total_cost(
     cost: &ironsmith_core::TotalCost<CompilerCost>,
 ) -> Result<TotalCost, CardTextError> {
     materialize_compiler_core_total_cost_with(cost, false)
+}
+
+/// Cumulative upkeep repeats instructions during resolution. An instruction
+/// need not opt into ordinary casting/activation cost execution, but it must
+/// lower without announcement-time target choices.
+pub fn lower_cumulative_upkeep_payment(
+    cost: &ironsmith_core::TotalCost<CompilerCost>,
+) -> Result<Vec<Effect>, CardTextError> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => {
+            let mut effects = Vec::new();
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            let mut pending_costs = Vec::new();
+            for component in components {
+                if let CompilerCost::Effect(effect) | CompilerCost::ValidatedEffect(effect) =
+                    component
+                {
+                    if !pending_costs.is_empty() {
+                        let cost = materialize_compiler_core_total_cost(
+                            &ironsmith_core::TotalCost::from_costs(std::mem::take(
+                                &mut pending_costs,
+                            )),
+                        )?;
+                        effects.extend(crate::costs::total_cost_to_payment_effects(&cost));
+                    }
+                    let (lowered, choices) = crate::compile_support::compile_effect(
+                        effect,
+                        &mut ctx,
+                    )?;
+                    if !choices.is_empty()
+                        || lowered.iter().any(|effect| {
+                            effect
+                                .0
+                                .get_target_spec()
+                                .is_some_and(|spec| spec.is_target())
+                        })
+                    {
+                        return Err(CardTextError::ParseError(
+                            "cumulative upkeep payments must not require targets".to_string(),
+                        ));
+                    }
+                    effects.extend(lowered);
+                } else {
+                    pending_costs.push(component.clone());
+                }
+            }
+            if !pending_costs.is_empty() {
+                let cost = materialize_compiler_core_total_cost(
+                    &ironsmith_core::TotalCost::from_costs(pending_costs),
+                )?;
+                effects.extend(crate::costs::total_cost_to_payment_effects(&cost));
+            }
+            Ok(effects)
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let modes = branches
+                .iter()
+                .map(|branch| {
+                    Ok(crate::effect::EffectMode {
+                        // These are payment alternatives, not authored modal labels.
+                        // The presentation layer renders labels from each program.
+                        source_text: String::new(),
+                        effects: lower_cumulative_upkeep_payment(branch)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, CardTextError>>()?;
+            let mut choice = crate::effects::ChooseModeEffect::choose_one(modes);
+            choice.chooser = Some(PlayerFilter::You);
+            Ok(vec![Effect::new(choice)])
+        }
+    }
 }
 
 /// A resolution-time payment ("sacrifice it unless you pay its mana cost
@@ -447,8 +519,9 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
         CompilerCost::MoveOpponentOwnedExiledCardToGraveyard => {
             MaterializationCost::MoveOpponentOwnedExiledCardToGraveyard
         }
-        CompilerCost::ExertSelf { display } => MaterializationCost::ExertSelf {
+        CompilerCost::ExertSelf { display, descriptive } => MaterializationCost::ExertSelf {
             display_text: display.clone(),
+            descriptive: *descriptive,
         },
         CompilerCost::EmitKeywordAction { kind, amount } => {
             MaterializationCost::EmitKeywordAction {
@@ -1160,11 +1233,11 @@ fn lower_materialization_costs_with(
                     false,
                 )));
             }
-            MaterializationCost::ExertSelf { display_text } => {
+            MaterializationCost::ExertSelf { display_text, descriptive } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                costs.push(Cost::effect(crate::effects::ExertCostEffect::new(
-                    display_text.clone(),
-                )));
+                let mut payment = crate::effects::ExertCostEffect::new(display_text.clone());
+                payment.descriptive = *descriptive;
+                costs.push(Cost::effect(payment));
             }
             MaterializationCost::EmitKeywordAction { kind, amount } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

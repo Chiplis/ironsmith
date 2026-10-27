@@ -92,6 +92,8 @@ pub(crate) fn finish_battlefield_entry_receipts_with_outputs<
 /// Config for moving an object to the battlefield through ETB processing.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BattlefieldEntryOptions {
+    /// The individual movement cause when a simultaneous instruction joins durations.
+    pub cause_override: Option<crate::events::cause::EventCause>,
     pub controller: BattlefieldEntryController,
     pub tapped: bool,
     pub transformed: bool,
@@ -110,6 +112,8 @@ pub(crate) struct BattlefieldEntryOptions {
     pub entry_attachment: Option<crate::object::AttachmentTarget>,
     /// An Aura spell becomes unattached if replacement makes it a non-Aura.
     pub entry_attachment_requires_aura: bool,
+    /// An authored host may be undefined; that still forbids choosing another.
+    pub entry_attachment_specified: bool,
     /// Restricts what an entering Aura may choose to enchant (CR 303.4f).
     pub entry_attachment_filter: Option<crate::filter::ObjectFilter>,
     /// Captured inputs supplied by the enclosing instruction to entry programs.
@@ -119,6 +123,7 @@ pub(crate) struct BattlefieldEntryOptions {
 impl BattlefieldEntryOptions {
     pub(crate) fn preserve(tapped: bool) -> Self {
         Self {
+            cause_override: None,
             controller: BattlefieldEntryController::Preserve,
             tapped,
             transformed: false,
@@ -130,6 +135,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_specified: false,
             entry_attachment_filter: None,
             entry_tagged_objects: Default::default(),
         }
@@ -137,6 +143,7 @@ impl BattlefieldEntryOptions {
 
     pub(crate) fn owner(tapped: bool) -> Self {
         Self {
+            cause_override: None,
             controller: BattlefieldEntryController::Owner,
             tapped,
             transformed: false,
@@ -148,6 +155,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_specified: false,
             entry_attachment_filter: None,
             entry_tagged_objects: Default::default(),
         }
@@ -155,6 +163,7 @@ impl BattlefieldEntryOptions {
 
     pub(crate) fn specific(controller: PlayerId, tapped: bool) -> Self {
         Self {
+            cause_override: None,
             controller: BattlefieldEntryController::Specific(controller),
             tapped,
             transformed: false,
@@ -166,6 +175,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_specified: false,
             entry_attachment_filter: None,
             entry_tagged_objects: Default::default(),
         }
@@ -192,6 +202,7 @@ impl BattlefieldEntryOptions {
         target: Option<crate::object::AttachmentTarget>,
     ) -> Self {
         self.entry_attachment = target;
+        self.entry_attachment_specified = target.is_some();
         self
     }
 
@@ -201,6 +212,7 @@ impl BattlefieldEntryOptions {
     ) -> Self {
         self.entry_attachment = target;
         self.entry_attachment_requires_aura = true;
+        self.entry_attachment_specified = true;
         self
     }
 
@@ -508,6 +520,7 @@ struct EntryProjection {
     original: crate::object::Object,
     projected: crate::object::Object,
     ids: Vec<crate::continuous::ContinuousEffectId>,
+    component_stickers: Vec<(crate::continuous::ContinuousEffectId, ObjectId)>,
     suspended: Option<crate::continuous::SuspendedEntryEffects>,
 }
 impl EntryProjection {
@@ -524,6 +537,9 @@ impl EntryProjection {
         game.effect_store
             .continuous_effects
             .restore_entry_effects(effects)?;
+        for &(id, original) in &self.component_stickers {
+            game.effect_store.continuous_effects.project_sticker_onto_entry(id, original, self.projected.id, self.original.zone);
+        }
         game.refresh_continuous_state()
             .map_err(ExecutionError::ContinuousDiscovery)
     }
@@ -538,6 +554,9 @@ impl EntryProjection {
             && current.stable_id == self.original.stable_id
         {
             current.restore_entry_presentation_from(&self.original);
+        }
+        for &(id, original) in &self.component_stickers {
+            game.effect_store.continuous_effects.retarget_sticker(id, original);
         }
         self.suspended = Some(
             game.effect_store
@@ -709,7 +728,7 @@ fn prepare_battlefield_entry_batch_inner(
             && options.entry_definition.is_none()
             && working.has_day_night()
             && working.is_night
-            && working.current_has_static_ability_id(
+            && working.has_day_night_transform_behavior(
                 *object,
                 crate::static_abilities::StaticAbilityId::Daybound,
             );
@@ -724,6 +743,13 @@ fn prepare_battlefield_entry_batch_inner(
                 }
             }
         }
+        let component_stickers = options.physical_components.iter().copied()
+            .filter(|component| component != object)
+            .flat_map(|component| working.sticker_effects_on_object(component).into_iter().map(move |id| (id, component)))
+            .collect::<Vec<_>>();
+        for &(id, component) in &component_stickers {
+            working.effect_store.continuous_effects.project_sticker_onto_entry(id, component, *object, original.zone);
+        }
         let ids = apply_entry_modifications(&mut working, ctx, *object, options)?;
         provisional_effects.extend(ids.iter().copied());
         provisional_entry_effects.insert(*object, ids.clone());
@@ -735,6 +761,7 @@ fn prepare_battlefield_entry_batch_inner(
             original,
             projected,
             ids,
+            component_stickers,
             suspended: None,
         };
         projection.detach(&mut working)?;
@@ -829,7 +856,7 @@ fn prepare_battlefield_entry_batch_inner(
                         *object,
                         old_zone,
                         Zone::Battlefield,
-                        ctx.cause.clone(),
+                        options.cause_override.clone().unwrap_or_else(|| ctx.cause.clone()),
                         original_snapshots.get(object).cloned(),
                     )
                     .with_provenance(ctx.provenance),
@@ -852,7 +879,7 @@ fn prepare_battlefield_entry_batch_inner(
                     .collect(),
                 old_zone,
                 Zone::Battlefield,
-                ctx.cause.clone(),
+                options.cause_override.clone().unwrap_or_else(|| ctx.cause.clone()),
                 snapshots,
             );
             scope.event = crate::events::Event::new_with_provenance(zone.clone(), ctx.provenance);
@@ -967,6 +994,7 @@ fn prepare_battlefield_entry_batch_inner(
         }
         prepared.entry_attachment = options.entry_attachment;
         prepared.entry_attachment_requires_aura = options.entry_attachment_requires_aura;
+        prepared.entry_attachment_specified = options.entry_attachment_specified;
         prepared.entry_attachment_filter = options.entry_attachment_filter.clone();
         controllers[index] = entering_controller.or_else(|| working.current_controller(*object));
         prepared_entries[index] = Some((old_zone, prepared));
@@ -1057,8 +1085,8 @@ impl PreparedBattlefieldEntryBatch {
                 *object,
                 prepared_entry,
                 entering_controller,
-                ctx.cause.clone(),
-                options.entry_attachment.is_none(),
+                options.cause_override.clone().unwrap_or_else(|| ctx.cause.clone()),
+                !options.entry_attachment_specified,
                 &mut ctx.decision_maker,
             );
             let mut committed = committed?;

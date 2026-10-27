@@ -349,17 +349,23 @@ fn entry_type_changes_apply_before_replacements_and_do_not_survive_blink() {
         .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
             ironsmith::CounterType::PlusOnePlusOne, 1, ironsmith_core::BattlefieldEntryCounterSurface::Inline));
     movement.entry_type_changes = Some(ironsmith_core::effect::BattlefieldEntryTypeChanges {
+        color_changes: Vec::new(),
         added_card_types: vec![CardType::Artifact, CardType::Creature],
         removed_subtype_families: vec![SubtypeFamily::Creature],
         added_subtypes: vec![Subtype::Borg],
     });
-    let wire = serde_json::to_value(&movement).unwrap();
-    let restored: MoveToZoneEffect = serde_json::from_value(wire.clone()).unwrap();
-    assert_eq!(restored, movement);
+    // Runtime modifications contain non-Serde engine types. This fixture has
+    // none, so check the wire format using the core model's unit payload.
+    let portable = movement.clone().try_map_entry_modifications(|_| {
+        Err::<(), _>("unexpected runtime entry modification in serialization fixture")
+    }).unwrap();
+    let wire = serde_json::to_value(&portable).unwrap();
+    let restored: ironsmith_core::MoveToZoneEffect = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(restored, portable);
     let mut legacy = wire;
     legacy.as_object_mut().unwrap().remove("entry_type_changes");
-    assert!(serde_json::from_value::<MoveToZoneEffect>(legacy).unwrap().entry_type_changes.is_none());
-    restored.execute(&mut game, &mut EffectContext::new_default(source, A)).unwrap();
+    assert!(serde_json::from_value::<ironsmith_core::MoveToZoneEffect>(legacy).unwrap().entry_type_changes.is_none());
+    movement.execute(&mut game, &mut EffectContext::new_default(source, A)).unwrap();
     let arrived = game.find_object_by_stable_id(stable).unwrap();
     assert_eq!(game.controller_of_id(arrived), Some(A));
     for kind in [CardType::Enchantment, CardType::Creature, CardType::Artifact] {

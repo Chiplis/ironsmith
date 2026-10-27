@@ -1,0 +1,1 @@
+artifact19;play-permission-duration-player;parent=9a5d92b13554e0c6c9df7210b8e63ebd519b1f32c79b116ecc47a2ecf38a0a0d;crates/ironsmith-core/src/effect.rs:4588a357a59360109c47e3619f2e62d48b487bbd16ccdb937a042bd95376b3b0;UntilYourNextTurnEnd=effect-controller;UntilPlayerNextTurnEnd=permission-holder

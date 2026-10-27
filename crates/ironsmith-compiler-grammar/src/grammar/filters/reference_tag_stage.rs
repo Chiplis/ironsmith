@@ -141,7 +141,7 @@ const TAGGED_COUNTER_STATE_DISJUNCTION_PHRASES: &[&[&str]] = &[
     &["counter", "on", "them", "or"],
 ];
 const SUSPENDED_CARD_DISJUNCTION_PHRASES: &[&[&str]] =
-    &[&["or", "suspended", "card"], &["or", "suspended", "cards"]];
+    &[&["or", crate::keyword_forms::SUSPENDED, "card"], &["or", crate::keyword_forms::SUSPENDED, "cards"]];
 const ENTERED_THIS_TURN_UNSUPPORTED_PHRASE: &[&str] = &["entered", "this", "turn"];
 const BLOCKED_BY_TAGGED_OBJECT_PHRASES: &[&[&str]] = &[
     &["blocked", "by", "one", "of", "those"],

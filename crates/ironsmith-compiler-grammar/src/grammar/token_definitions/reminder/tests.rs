@@ -14,6 +14,7 @@ fn creature_definition() -> TokenDefinitionSpec {
         subtypes: Vec::new(),
         power_toughness: (0, 0),
         legendary: false,
+        snow: false,
         colors: ColorSet::WHITE,
         use_source_chosen_color: false,
         use_source_chosen_creature_type: false,

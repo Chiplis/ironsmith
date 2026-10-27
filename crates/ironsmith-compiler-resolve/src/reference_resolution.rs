@@ -399,6 +399,7 @@ fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str
             if matches!(
                 &subject_verb.action,
                 SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
                     | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
                     | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
             ) =>
@@ -850,6 +851,7 @@ fn created_token_kind(
             ]
         }
         TokenDefinitionSpec::Land(_) => vec![crate::types::CardType::Land],
+        TokenDefinitionSpec::Planeswalker(_) => vec![crate::types::CardType::Planeswalker],
         _ => return None,
     };
     Some(ObjectFilter {
@@ -2178,6 +2180,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread) => {
@@ -2218,7 +2221,7 @@ fn advance_reference_frame_for_effect(
                 }) => {
                     maybe_tag_value_object_target(amount, frame, id_gen, "targeted");
                 }
-                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }) => {
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "airbent")?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. }) => {
@@ -2229,7 +2232,7 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "earthbend"));
                     }
                 }
-                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }) => {
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "explored")?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. }) => {
@@ -2884,6 +2887,7 @@ fn advance_reference_frame_for_effect(
                 // the clash publishes the opponent it chose (CR 701.30a).
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash {
                     opponent: crate::cards::builders::ClashOpponentAst::Opponent,
+                    ..
                 }) => {
                     frame.last_player_filter = Some(PlayerFilter::TaggedPlayer(
                         crate::tag::CompilerReferenceTag::ClashOpponent.bind().into(),
@@ -6745,7 +6749,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             ..
         }) => visit(amount),
         SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. }) => {}
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, .. }) => {
             visit(amount);
             visit(count);
         }
@@ -7394,6 +7398,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
 fn predicate_reads_object_antecedent(predicate: &PredicateAst, env: &ReferenceEnv) -> bool {
     match predicate {
         PredicateAst::ItIsLandCard
+        | PredicateAst::UnpairedCreaturesCanPair
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatches(_)
         | PredicateAst::ItMatchedLastKnown(_) => true,
@@ -7914,6 +7919,8 @@ fn resolve_effect_result_values_in_fields(
     }
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. }) => {},
+            SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => {},
             SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => {
                 if let Some(value) = count_value { resolve_effect_result_value(value, state)?; }
             }
@@ -7923,7 +7930,9 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier, .. }) => {
                 if let Some(modifier) = result_modifier { resolve_effect_result_value(modifier.value_mut(), state)?; }
             }
-            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
             | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count: amount,
                 ..
@@ -8049,7 +8058,7 @@ fn resolve_effect_result_values_in_fields(
             }) => {
                 resolve_effect_result_value(amount, state)?;
             }
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }) => {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, .. }) => {
                 resolve_effect_result_value(amount, state)?;
                 resolve_effect_result_value(count, state)?;
             }
@@ -8078,6 +8087,13 @@ fn resolve_effect_result_values_in_fields(
                 LifeResourceActionAst::DrawForEachTaggedMatching { .. },
             )
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
@@ -8093,6 +8109,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
@@ -8189,7 +8206,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Game(GameActionAst::WinGame)
             | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
             | SubjectVerbActionAst::ZoneMoves(
-                ZoneMoveActionAst::ReturnSourceTransformedFromExile,
+                ZoneMoveActionAst::ReturnSourceTransformedFromExile | ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline | ZoneMoveActionAst::ExchangeSourceWithHandAura,
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
@@ -9401,7 +9418,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { count, .. }) => {
                 bind_unresolved_it_in_value(count, seed_tag)
             }
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }) => {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, .. }) => {
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_value(count, seed_tag)
             }
@@ -9412,6 +9429,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
@@ -9422,6 +9446,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
@@ -9487,7 +9512,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Game(GameActionAst::WinGame)
             | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
             | SubjectVerbActionAst::ZoneMoves(
-                ZoneMoveActionAst::ReturnSourceTransformedFromExile,
+                ZoneMoveActionAst::ReturnSourceTransformedFromExile | ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline | ZoneMoveActionAst::ExchangeSourceWithHandAura,
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
@@ -9701,8 +9726,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated {

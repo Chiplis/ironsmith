@@ -146,7 +146,7 @@ pub(crate) fn rewrite_modification_words(modification: &Modification, change: Te
         // Both payloads are immutable captured foreign definitions, not the
         // source instruction's authored text. Layer-3 application to a receiver
         // still rewrites that receiver's acquired definition in its own owner.
-        Modification::CopyOf { .. } | Modification::SetTextBox(_) => {}
+        Modification::CopyOf { .. } | Modification::MergeComponent { .. } | Modification::SetTextBox(_) => {}
         // RewriteText is a completed runtime selection. Rewriting its values
         // could make a valid replacement an invalid identity substitution.
         Modification::RewriteText(_) => {}

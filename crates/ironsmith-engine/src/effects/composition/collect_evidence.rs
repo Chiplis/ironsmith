@@ -161,6 +161,7 @@ impl EffectExecutor for CollectEvidenceEffect {
                     ));
                 }
                 ctx.tagged_objects = tagged_before;
+                let exiled_count = if ids.is_empty() { 0 } else { outcomes.last().map(|output| output.outcome.count_or_zero()).unwrap_or(0) };
                 let mut outputs = crate::effects::CompletedEffectOutputs::from_children(
                     outcomes,
                     EffectOutcome::aggregate,
@@ -168,6 +169,10 @@ impl EffectExecutor for CollectEvidenceEffect {
                 outputs.outcome = outputs
                     .outcome
                     .with_execution_fact(ExecutionFact::ChosenObjects(ids));
+                if self.ordinary_exile {
+                    outputs.outcome.set_value(OutcomeValue::Count(exiled_count));
+                    return Ok(outputs);
+                }
                 // Collecting zero (including choosing no cards) is one completed
                 // action and triggers “whenever you collect evidence”.
                 outputs.outcome.set_value(OutcomeValue::Count(1));
@@ -204,7 +209,9 @@ impl EffectExecutor for CollectEvidenceEffect {
             Value::X => "X".into(),
             _ => return None,
         };
-        Some(format!("Collect evidence {amount}"))
+        Some(if self.ordinary_exile {
+            format!("Exile cards with total mana value {amount} or greater from your graveyard")
+        } else { format!("Collect evidence {amount}") })
     }
 }
 impl CostExecutableEffect for CollectEvidenceEffect {

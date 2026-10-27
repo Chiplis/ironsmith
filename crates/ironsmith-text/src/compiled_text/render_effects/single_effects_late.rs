@@ -2682,7 +2682,7 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
             triggered.effects.flattened_default_effects(),
             [effect] if effect
                 .downcast_ref::<crate::effects::HauntExileEffect>()
-                .is_some()
+                .is_some_and(|link| !link.descriptive)
         )
     {
         return Some("Haunt".to_string());
@@ -2841,6 +2841,7 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
             also_turns_face_up: false,
             turns_face_up_only: false,
             transforms_into: None,
+            presentation_label: Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Riot)),
             ..
         }) = static_ability.compiled_model().map(|model| &model.payload)
         && let Some(riot) = describe_structural_riot_program(program)
@@ -4247,6 +4248,14 @@ pub(super) fn describe_structural_cumulative_upkeep_keyword(
 }
 
 pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
+    cumulative_upkeep_known_payment_text(payment).or_else(|| {
+        let text = compile_effect_list(payment);
+        let text = text.trim().trim_end_matches('.');
+        (!text.is_empty()).then(|| text.to_string())
+    })
+}
+
+fn cumulative_upkeep_known_payment_text(payment: &[Effect]) -> Option<String> {
     if let [choice, movement] = payment
         && let Some(choice) = choice.downcast_ref::<crate::effects::ChooseObjectsEffect>()
         && let Some(movement) = movement.downcast_ref::<crate::effects::MoveToZoneEffect>()
@@ -4268,6 +4277,7 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
 
     let mut parts = Vec::new();
     for root in payment {
+        let previous_parts = parts.len();
         let effect = if let Some(tagged) = root.downcast_ref::<crate::effects::TaggedEffect>() {
             tagged.effect.as_ref()
         } else if let Some(with_id) = root.downcast_ref::<crate::effects::WithIdEffect>() {
@@ -4368,6 +4378,11 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
                 return None;
             }
             parts.push("Exile the top card of your library".to_string());
+        }
+        // A partial rendering would silently omit an instruction in the cost.
+        // Use the ordinary program renderer unless every component is owned.
+        if parts.len() == previous_parts {
+            return None;
         }
     }
     if parts.is_empty() {
@@ -5853,7 +5868,7 @@ pub(super) fn describe_structural_soulbond_keyword(
     };
     effect
         .downcast_ref::<crate::effects::SoulbondPairEffect>()
-        .is_some()
+        .is_some_and(|pair| !pair.descriptive)
         .then(|| "Soulbond".to_string())
 }
 
@@ -6070,6 +6085,7 @@ fn describe_structural_encore_keyword(
     ability: &Ability,
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<String> {
+    if activated.keyword != Some(ironsmith_core::ActivatedAbilityKeyword::Encore) { return None; }
     if ability.functional_zones != [Zone::Graveyard]
         || activated.timing != ActivationTiming::SorcerySpeed
         || !activated.additional_restrictions.is_empty()
@@ -6145,7 +6161,8 @@ pub(super) fn describe_structural_embalm_keyword(
         return None;
     };
     let create = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
-    if !matches!(create.target.unhinted(), ChooseSpec::Source)
+    if create.creation_method != Some(ironsmith_core::effect::TokenCreationMethod::Embalm)
+        || !matches!(create.target.unhinted(), ChooseSpec::Source)
         || create.count != Value::Fixed(1)
         || create.controller != PlayerFilter::You
         || create.set_colors != Some(crate::color::ColorSet::WHITE)
@@ -6182,7 +6199,8 @@ pub(super) fn describe_structural_eternalize_keyword(
         return None;
     };
     let create = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
-    if !matches!(create.target.unhinted(), ChooseSpec::Source)
+    if create.creation_method != Some(ironsmith_core::effect::TokenCreationMethod::Eternalize)
+        || !matches!(create.target.unhinted(), ChooseSpec::Source)
         || create.count != Value::Fixed(1)
         || create.controller != PlayerFilter::You
         || create.set_colors != Some(crate::color::ColorSet::BLACK)
@@ -6611,6 +6629,8 @@ fn describe_payment_action_predicate(
             ironsmith_core::ActivatedAbilityKeyword::Boast => "activate boast abilities",
             ironsmith_core::ActivatedAbilityKeyword::Exhaust => "activate exhaust abilities",
             ironsmith_core::ActivatedAbilityKeyword::Craft => "activate craft abilities",
+            ironsmith_core::ActivatedAbilityKeyword::Encore => "activate encore abilities",
+            ironsmith_core::ActivatedAbilityKeyword::Fortify => "activate fortify abilities",
         }.to_string()),
         P::DisturbCost => Some("pay a disturb cost".to_string()),
         P::Purpose(Purpose::Foretell) => Some("foretell cards".to_string()),

@@ -1746,7 +1746,7 @@ fn parse_status_flag_union(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    const FLAGS: &[&str] = &["goaded", "suspected"];
+    const FLAGS: &[&str] = &[crate::keyword_forms::GOADED, crate::keyword_forms::SUSPECTED];
     let tokens = match tokens {
         [all, rest @ ..] if all.is_word("all") => rest,
         _ => tokens,
@@ -1782,10 +1782,30 @@ fn parse_status_flag_union(
     Ok(Some(union))
 }
 
+/// Explicit source-relative mana values survive costs that move the source:
+/// resolution evaluates Source through the ability's retained snapshot.
+fn parse_source_mana_value_filter(words: &[&str], other: bool) -> Option<Result<ObjectFilter, CardTextError>> {
+    for marker in [&["with", "the", "same", "mana", "value", "as"][..], &["with", "same", "mana", "value", "as"][..]] {
+        if let Some(start) = words.windows(marker.len()).position(|part| part == marker)
+            && start > 0
+            && crate::util::is_source_reference_words(&words[start + marker.len()..])
+        {
+            return Some(parse_object_filter_words(&words[..start], other).map(|mut filter| {
+                filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
+                    crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
+                )));
+                filter
+            }));
+        }
+    }
+    None
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
     if let Some(rewritten) = without_characteristic_list_commas(tokens) {
         return parse_object_filter(&rewritten, other);
     }
@@ -2183,6 +2203,7 @@ pub fn parse_object_filter_words(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(result) = parse_source_mana_value_filter(word_refs, other) { return result; }
     if let Some(result) = parse_exiled_with_cards_named_filter_words(word_refs, other) {
         return result;
     }
@@ -2295,6 +2316,7 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
     if let Some(rewritten) = without_characteristic_list_commas(tokens) {
         return parse_object_filter_lexed(&rewritten, other);
     }
@@ -2464,7 +2486,7 @@ fn tokens_contain_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToke
         .any(|word| matches!(*word, "permanent" | "permanents"));
     let has_suspended_card = crate::word_primitives::any_sequence_occurs(
         &words,
-        &[&["suspended", "card"], &["suspended", "cards"]],
+        &[&[crate::keyword_forms::SUSPENDED, "card"], &[crate::keyword_forms::SUSPENDED, "cards"]],
     );
     let has_connector = words
         .iter()

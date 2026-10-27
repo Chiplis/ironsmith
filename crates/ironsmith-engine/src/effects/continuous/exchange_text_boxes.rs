@@ -86,16 +86,35 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
             return Ok(EffectOutcome::target_invalid());
         }
 
+        let duration = match &self.duration {
+            crate::effect::Until::ForAsLongAs(predicate) => {
+                let Some(predicate) = super::materialize_duration_predicate(
+                    predicate,
+                    &crate::continuous::EffectTarget::Specific(first),
+                    &None,
+                    game,
+                    ctx,
+                ) else {
+                    return Ok(EffectOutcome::resolved());
+                };
+                if !crate::continuous::continuous_duration_predicate_matches(&predicate, game) {
+                    return Ok(EffectOutcome::resolved());
+                }
+                crate::effect::Until::ForAsLongAs(predicate)
+            }
+            duration => duration.clone(),
+        };
+
         let first_overlay = current_text_box_overlay(game, first, entry)?;
         let second_overlay = current_text_box_overlay(game, second, entry)?;
 
         super::register_resolved_continuous_batch(game, [
             crate::continuous::ContinuousEffect::from_resolution(
                 ctx.source, ctx.controller, vec![first], Modification::SetTextBox(second_overlay),
-            ).until(self.duration.clone()),
+            ).until(duration.clone()),
             crate::continuous::ContinuousEffect::from_resolution(
                 ctx.source, ctx.controller, vec![second], Modification::SetTextBox(first_overlay),
-            ).until(self.duration.clone()),
+            ).until(duration.clone()),
         ]);
 
         Ok(EffectOutcome::resolved())
@@ -224,6 +243,52 @@ mod tests {
             second,
             crate::static_abilities::StaticAbilityId::Flying
         ));
+    }
+
+    #[test]
+    fn presence_duration_latches_but_literal_leave_duration_survives_phasing() {
+        for presence in [false, true] {
+            for phased_before in [false, true] {
+                let mut game = setup_game();
+                let player = PlayerId(0);
+                let flying = CardDefinitionBuilder::new(CardId::new(), "Flying donor")
+                    .card_types(vec![CardType::Creature])
+                    .with_ability(crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::flying(),
+                    )).build();
+                let first = create_creature_from_definition(&mut game, &flying, player);
+                let second = create_creature_from_definition(
+                    &mut game, &vanilla_creature_definition("Plain", 700_202), player,
+                );
+                let source = create_exchange_source(&mut game, player);
+                if phased_before { game.phase_out(source); }
+                let mut ctx = ExecutionContext::new_default(source, player).with_targets(vec![
+                    crate::effects::ResolvedTarget::Object(first),
+                    crate::effects::ResolvedTarget::Object(second),
+                ]);
+                let mut effect = ExchangeTextBoxesEffect::new(
+                    ChooseSpec::target(ChooseSpec::creature())
+                        .with_count(crate::effect::ChoiceCount::exactly(2)),
+                );
+                if presence {
+                    effect.duration = crate::effect::Until::while_source_remains_on_battlefield();
+                }
+                let before = game.effect_store.continuous_effects.effects().len();
+                effect.execute(&mut game, &mut ctx).unwrap();
+                if presence && phased_before {
+                    assert_eq!(game.effect_store.continuous_effects.effects().len(), before,
+                        "an initially false duration never creates an exchange");
+                } else {
+                    assert!(game.object_has_static_ability_id(second,
+                        crate::static_abilities::StaticAbilityId::Flying));
+                }
+                if !phased_before { game.phase_out(source); }
+                game.phase_in(source);
+                assert_eq!(game.object_has_static_ability_id(second,
+                    crate::static_abilities::StaticAbilityId::Flying), !presence,
+                    "only the literal leaves-the-battlefield duration survives phasing");
+            }
+        }
     }
 
     #[test]

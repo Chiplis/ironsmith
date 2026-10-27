@@ -2098,7 +2098,7 @@ fn bind_other_group_to_explicit_target_choice(effects: &mut [EffectAst]) {
             EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
                 SubjectVerbActionAst::KeywordActions(
                     crate::cards::builders::KeywordActionAst::Airbend {
-                        target: TargetAst::Object(filter, None, _),
+                        target: TargetAst::Object(filter, None, _), ..
                     },
                 )
                 | SubjectVerbActionAst::ZoneMoves(

@@ -8,15 +8,292 @@ use crate::model::CompilerAlternativeCastingMethod as AlternativeCastingMethod;
 use crate::static_abilities::ThisSpellCostCondition;
 use crate::util::trim_edge_punctuation;
 
+/// Explanatory prose may restate a paid cost, but must never add a different
+/// payment or silently change the eligible objects.
+fn validates_cost_explanation(
+    tokens: &[OwnedLexToken],
+    cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
+) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    let ["to", "behold", "a" | "an", named, "choose", "a" | "an", controlled,
+        "you", "control", "or", "reveal", "a" | "an", revealed, "card", "from", "your", "hand"] = words.as_slice() else {
+        return false;
+    };
+    let Some(subtype) = crate::util::parse_subtype_flexible(named) else { return false; };
+    if crate::util::parse_subtype_flexible(controlled) != Some(subtype)
+        || crate::util::parse_subtype_flexible(revealed) != Some(subtype) {
+        return false;
+    }
+    fn contains_payment(cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>, subtype: ironsmith_core::types::Subtype) -> bool {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost| matches!(
+                cost, crate::model::CompilerCost::Behold { subtype: paid, .. } if *paid == subtype
+            )),
+            ironsmith_core::TotalCostKind::OneOf(branches) => !branches.is_empty()
+                && branches.iter().all(|branch| contains_payment(branch, subtype)),
+        }
+    }
+    contains_payment(cost, subtype)
+}
+
 /// An intrinsic permission to cast this exact card from its owner's
 /// graveyard for a complete alternative price. It does not grant a price to
 /// other cards or make any other casting zone available.
 pub fn parse_self_zone_alternative_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    let tokens = trim_edge_punctuation(tokens);
+    let tokens = crate::util::trim_statement_separators(tokens).to_vec();
+    let sentences = crate::lexer::split_lexed_sentences(&tokens);
+    let first = sentences.first().copied().unwrap_or(&tokens);
+    let first = trim_edge_punctuation(first);
+    let first_view = TokenWordView::new(&first);
+    let first_words = first_view.word_refs();
+    let prose = render_token_slice(&tokens).to_ascii_lowercase();
+    if let Some(rest) = prose.strip_prefix("you may cast this spell for ")
+        && let Some((price, rest)) = rest.split_once(" rather than pay its mana cost. if you do, put ")
+        && let Some(amount) = rest.trim_end_matches('.').strip_suffix(" +1/+1 counters on target land you control. that land becomes a 0/0 elemental creature with haste. it's still a land")
+        && let Ok(amount) = amount.parse::<u32>() {
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(price, 0)?)?;
+        if matches!(total.kind(), ironsmith_core::TotalCostKind::OneOf(_)) { return Ok(None); }
+        return Ok(Some(AlternativeCastingMethod::Awaken {
+            amount, cost: total.mana_cost().cloned().unwrap_or_default(), effects: Vec::new(), descriptive: true,
+            additional_cost: ironsmith_core::TotalCost::from_costs(total.non_mana_costs().cloned().collect()),
+        }));
+    }
+    if let Some(rest) = prose.strip_prefix("if you could begin to cast this card from your hand, you may pay ")
+        && let Some((price, rest)) = rest.split_once(" and exile it with ")
+        && let Some(time) = rest.trim_end_matches('.').strip_suffix(" time counters on it. this action doesn't use the stack. at the beginning of your upkeep, if this card is exiled with a time counter on it, remove a time counter from it. when the last time counter is removed from this card, if it's exiled, you may play it without paying its mana cost. if you cast a creature spell this way, it gains haste until you lose control of the spell or the permanent it becomes")
+        && let Ok(time) = time.parse::<u32>() {
+        let price = crate::grammar::values::parse_mana_cost_tokens(&lex_line(price, 0)?)?;
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed timed exile", crate::zone::Zone::Exile, ironsmith_core::TotalCost::free(), None, false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            timed_exile: Some((ironsmith_core::SuspendTime::Fixed(time), price)), ..Default::default()
+        })));
+    }
+    for (tail, aura) in [
+        (" rather than pay its mana cost as an aura enchantment spell with enchant creature. if its target is illegal as it begins resolving, it instead resolves using its normal types. if the resulting aura becomes unattached or phases in unattached, it returns to its normal types", true),
+        (" rather than pay its mana cost targeting a non-human creature with the same owner as this spell. as it resolves, if that target is legal, merge this spell above or below that creature without entering the battlefield. the resulting permanent has the top object's characteristics and all abilities of the merged objects. otherwise, this spell resolves normally as a creature", false),
+    ] {
+        if let Some(price) = prose.strip_prefix("you may cast this spell for ").and_then(|rest| rest.trim_end_matches('.').strip_suffix(tail)) {
+            let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(price, 0)?)?;
+            return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                if aura { "Parsed Aura casting choice" } else { "Parsed merging casting choice" }, crate::zone::Zone::Hand, total, None, false,
+            ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+                aura_cast_with_unattached_fallback: aura, merge_with_same_owner_nonhuman: !aura, ..Default::default()
+            })));
+        }
+    }
+    if let Some(rest) = prose.strip_prefix("during your turn, you may pay ")
+        && let Some((prepare, rest)) = rest.split_once(" and exile this card from your hand face down. cast it on a later turn for ") {
+        let price = crate::grammar::values::parse_mana_cost_tokens(&lex_line(prepare, 0)?)?;
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(rest.trim_end_matches('.'), 0)?)?;
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed face-down preparation", crate::zone::Zone::Exile, total, None, false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            exile_preparation: Some(ironsmith_core::alternative_cast_model::ExilePreparation::FaceDown { price }), ..Default::default()
+        })));
+    }
+    if let Some(prepare) = prose.strip_prefix("you may pay ")
+        .and_then(|rest| rest.trim_end_matches('.').strip_suffix(" and exile this card from your hand. cast it as a sorcery on a later turn without paying its mana cost. activate only as a sorcery")) {
+        let price = crate::grammar::values::parse_mana_cost_tokens(&lex_line(prepare, 0)?)?;
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed face-up preparation", crate::zone::Zone::Exile, ironsmith_core::TotalCost::free(), None, false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            exile_preparation: Some(ironsmith_core::alternative_cast_model::ExilePreparation::FaceUpSorcery { price }), ..Default::default()
+        })));
+    }
+    if let Some(rest) = prose.strip_prefix("you may cast this spell with mana cost ")
+        && let Some((price, rest)) = rest.split_once(", color determined by that mana cost, and base power and toughness ")
+        && let Some(pt) = rest.trim_end_matches('.').strip_suffix(". it keeps its abilities and types")
+        && let Some((power, toughness)) = pt.split_once('/')
+        && let (Ok(power), Ok(toughness)) = (power.trim().parse::<i32>(), toughness.trim().parse::<i32>()) {
+        let cost = crate::grammar::values::parse_mana_cost_tokens(&lex_line(price, 0)?)?;
+        return Ok(Some(AlternativeCastingMethod::Composed {
+            name: "Parsed casting characteristics".into(),
+            total_cost: ironsmith_core::TotalCost::from_costs(vec![crate::model::CompilerCost::Mana(cost)]),
+            condition: None, prototype_power_toughness: Some(ironsmith_core::PowerToughness::fixed(power, toughness)),
+        }));
+    }
+    if let Some(price) = prose.strip_prefix("you may reveal this card from your hand as you draw it if it is the first card you drew this turn. when you reveal it this way, you may cast it for ")
+        .and_then(|rest| rest.trim_end_matches('.').strip_suffix(" rather than pay its mana cost")) {
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(price, 0)?)?;
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed first-draw reveal price", crate::zone::Zone::Hand, total, None, false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            first_draw_reveal_cast: true, ..Default::default()
+        })));
+    }
+    if let Some(rest) = prose.strip_prefix("you may cast this spell from your hand for ")
+        && let Some((price, rest)) = rest.split_once(" and sacrifice ")
+        && let Some(quality) = rest.trim_end_matches('.').strip_suffix(" rather than pay its mana cost. reduce that price by an amount of generic mana equal to the sacrificed permanent's mana value") {
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(&format!("{price}, Sacrifice {quality}"), 0)?)?;
+        if matches!(total.kind(), ironsmith_core::TotalCostKind::OneOf(_)) { return Ok(None); }
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed sacrifice-reduced price", crate::zone::Zone::Hand, total, None, false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            sacrifice_reduces_generic_by_mana_value: true, ..Default::default()
+        })));
+    }
+
+    if let Some(rest) = prose.strip_prefix("during your declare blockers step, any time you could cast an instant, you may cast this spell from your hand for ")
+        && let Some(price) = rest.trim_end_matches('.').strip_suffix(" and return an unblocked attacker you control to its owner's hand rather than pay this spell's mana cost. it enters tapped and attacking the same player, planeswalker, or battle as the returned creature") {
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(price, 0)?)?;
+        if matches!(total.kind(), ironsmith_core::TotalCostKind::OneOf(_)) { return Ok(None); }
+        let mut costs = total.costs().to_vec();
+        costs.push(crate::model::CompilerCost::Sneak);
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed attack replacement price", crate::zone::Zone::Hand,
+            ironsmith_core::TotalCost::from_costs(costs), None, false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            returns_attacker_enters_attacking: true, ..Default::default()
+        })));
+    }
+
+    if let Some(rest) = prose.strip_prefix("you may cast this card from your hand for ")
+        && let Some(price) = rest.trim_end_matches('.').strip_suffix(" rather than its mana cost. if you do, exile the permanent this spell becomes at the beginning of the next end step. its owner may cast that card after this turn ends for as long as it remains exiled") {
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&lex_line(price, 0)?)?;
+        if matches!(total.kind(), ironsmith_core::TotalCostKind::OneOf(_)) { return Ok(None); }
+        return Ok(Some(AlternativeCastingMethod::Warp {
+            cost: total.mana_cost().cloned().unwrap_or_default(),
+            additional_cost: ironsmith_core::TotalCost::from_costs(total.non_mana_costs().cloned().collect()),
+            descriptive: true,
+        }));
+    }
+    if let Some((cleave, price)) = described_spell_text_substitution(&tokens) {
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&price)?;
+        let cost = total.mana_cost().cloned().unwrap_or_default();
+        let additional_cost = ironsmith_core::TotalCost::from_costs(total.non_mana_costs().cloned().collect());
+        return Ok(Some(if cleave {
+            AlternativeCastingMethod::Cleave { cost, additional_cost, effects: Vec::new(), descriptive: true }
+        } else {
+            AlternativeCastingMethod::Overload { cost, additional_cost, effects: Vec::new(), descriptive: true }
+        }));
+    }
+    if sentences.len() == 2
+        && first_words == ["if", "you", "discard", "this", "card", "discard", "it", "into", "exile"] {
+        let second = trim_edge_punctuation(sentences[1]);
+        let view = TokenWordView::new(&second);
+        let words = view.word_refs();
+        if words.starts_with(&["when", "you", "do", "cast", "it", "for"])
+            && words.ends_with(&["or", "put", "it", "into", "your", "graveyard"]) {
+            let start = view.token_start_indices()[5] + 1;
+            let end = view.token_start_indices()[words.len() - 6];
+            let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&second[start..end])?;
+            return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                "Parsed discard exile price", crate::zone::Zone::Exile, total_cost, None, false,
+            ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+                cast_when_discarded_into_exile: true, ..Default::default()
+            })));
+        }
+    }
+    if sentences.len() == 3
+        && first_words.starts_with(&["you", "may", "cast", "this", "card", "from", "your", "graveyard", "for"])
+        && TokenWordView::new(sentences[1]).word_refs() == ["you", "may", "tap", "a", "creature", "you", "control", "to", "reduce", "that", "cost", "by", "an", "amount", "of", "generic", "mana", "equal", "to", "its", "power"]
+        && matches!(TokenWordView::new(sentences[2]).word_refs().as_slice(), ["then", "exile", "this", "spell"] | ["then", "exile", "it"]) {
+        let start = first_view.token_start_indices()[8] + 1;
+        let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..])?;
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed creature-assisted graveyard price", crate::zone::Zone::Graveyard, total_cost, None, false,
+        ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+            tap_creature_reduces_generic: true, exile_on_stack_exit: true, ..Default::default()
+        })));
+    }
+    // A condition on this exact graveyard card is independent of keyword
+    // identity. The timing reminder restates the ordinary casting window.
+    if (sentences.len() == 1 || (sentences.len() == 2
+        && TokenWordView::new(sentences[1]).word_refs() == ["timing", "rules", "still", "apply"]))
+        && matches!(first_words.get(..9), Some(["you", "may", "cast", "this", "card" | "spell", "from", "your", "graveyard", "for"]))
+        && first_words.ends_with(&["if", "you", "discarded", "it", "this", "turn"])
+    {
+        let start = first_view.token_start_indices()[8] + 1;
+        let end = first_view.token_start_indices()[first_words.len() - 6];
+        let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..end])?;
+        let condition = ThisSpellCostCondition::ConditionExpr {
+            condition: crate::effect::Condition::SourceMatches(
+                crate::target::ObjectFilter::default()
+                    .discarded_or_cycled_this_turn_by(crate::target::PlayerFilter::You),
+            ),
+            display: "you discarded this card this turn".into(),
+        };
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed conditional graveyard price", crate::zone::Zone::Graveyard,
+            total_cost, Some(condition), false,
+        )));
+    }
+    let exile_on_exit = (2..=3).contains(&sentences.len()) && matches!(
+        TokenWordView::new(sentences[1]).word_refs().as_slice(),
+        ["then", "exile", "it"] | ["then", "exile", "this", "card" | "spell"]
+    );
+    if sentences.len() == 1 || exile_on_exit {
+        if sentences.len() <= 2 && matches!(first_words.get(..7), Some(["you", "may", "cast", "this", "card" | "spell", "converted" | "transformed", "for"])) {
+            let start = first_view.token_start_indices()[6] + 1;
+            let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..])?;
+            return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                "Parsed zone alternative cost", crate::zone::Zone::Hand, total_cost, None, false,
+            ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+                transformed: true, exile_on_stack_exit: exile_on_exit, ..Default::default()
+            })));
+        }
+        // A bare permission whose payment the ordinary graveyard-permission
+        // reader understands stays with it; this reader owns the rest
+        // (Retrace's filtered discard) and complete Jump-start definitions.
+        if sentences.len() <= 2 && matches!(first_words.get(..9), Some(["you", "may", "cast", "this", "card" | "spell", "from", "your", "graveyard", "by"]))
+            && first_words.ends_with(&["in", "addition", "to", "paying", "its", "other", "costs"])
+            && (exile_on_exit || crate::grammar::permission_facts::graveyard_source::parse_graveyard_additional_cost_tokens(
+                &first[first_view.token_start_indices()[8] + 1..first_view.token_start_indices()[first_words.len() - 7]]).is_none())
+        {
+            let start = first_view.token_start_indices()[8] + 1;
+            let end = first_view.token_start_indices()[first_words.len() - 7];
+            let mut payment = first[start..end].to_vec();
+            if let Some(head) = payment.first_mut() {
+                for (gerund, verb) in [("discarding", "discard"), ("sacrificing", "sacrifice"), ("exiling", "exile"), ("returning", "return"), ("paying", "pay"), ("tapping", "tap")] {
+                    if head.is_word(gerund) { head.replace_word(verb); }
+                }
+            }
+            // An unreadable payment belongs to another owner, not an error here.
+            let Ok(total_cost) = crate::activation_and_restrictions::parse_compiler_activation_cost(&payment) else { return Ok(None); };
+            return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard, total_cost, None, false,
+            ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+                add_printed_mana_cost: true, exile_on_stack_exit: exile_on_exit, ..Default::default()
+            })));
+        }
+        if matches!(first_words.get(..8), Some(["you", "may", "cast", "this", "card" | "spell", "from", "your", "graveyard"])) {
+            let transformed = first_words.get(8) == Some(&"transformed");
+            let for_index = if transformed { 9 } else { 8 };
+            if first_words.get(for_index) == Some(&"for") {
+                let start = first_view.token_start_indices()[for_index] + 1;
+                // "and any additional costs" restates CR 601.2f: additional
+                // costs always apply to an alternative price.
+                let end = if first_words.ends_with(&["and", "any", "additional", "costs"]) {
+                    first_view.token_start_indices()[first_words.len() - 4]
+                } else { first.len() };
+                let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..end])?;
+                if sentences.len() == 3 && !validates_cost_explanation(sentences[2], &total_cost) {
+                    return Err(CardTextError::ParseError("alternative-cost explanation does not describe the bound payment".into()));
+                }
+                return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                    "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard, total_cost, None, false,
+                ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+                    transformed, exile_on_stack_exit: exile_on_exit, ..Default::default()
+                })));
+            }
+        }
+    }
     let view = TokenWordView::new(&tokens);
     let words = view.word_refs();
+    // A fully bound reminder price uses the same total-cost grammar as an
+    // activated ability, preserving mana and every non-mana payment. The
+    // zone permission carries no Escape/Flashback keyword identity.
+    if matches!(words.get(..9), Some(["you", "may", "cast", "this", "card" | "spell" | "creature", "from", "your", "graveyard", "for"])) {
+        let cost_start = view.token_start_indices()[8] + 1;
+        let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&tokens[cost_start..])?;
+        return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+            "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard,
+            total_cost, None, false,
+        )));
+    }
     let Some(subject_start) = permission_shapes::find_words(&words, &["you", "may", "cast", "this"]) else {
         return Ok(None);
     };
@@ -95,6 +372,57 @@ pub fn parse_self_zone_alternative_cost(
         "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard,
         total_cost, condition, exiles_after_resolution,
     ).with_entry_counters(entry_counters)))
+}
+
+/// A literal alternative price optionally gated by an independently parsed
+/// condition. The cost, condition, and identity remain separate data.
+pub fn parse_self_bound_alternative_price(tokens: &[OwnedLexToken]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if let Some(method) = parse_price_with_battlefield_instructions(tokens)? { return Ok(Some(method)); }
+    let tokens = trim_edge_punctuation(tokens);
+    let view = TokenWordView::new(&tokens);
+    let words = view.word_refs();
+    if !matches!(words.get(..6), Some(["you", "may", "cast", "this", "spell" | "card" | "creature", "for"])) {
+        return Ok(None);
+    }
+    let start = view.token_start_indices()[5] + 1;
+    let if_index = tokens[start..].iter().position(|token| token.is_word("if")).map(|index| index + start);
+    let mut additional_payment = None;
+    let condition = if let Some(index) = if_index {
+        let tail = &tokens[index + 1..];
+        if tail.first().is_some_and(|token| token.is_word("you"))
+            && tail.get(1).is_some_and(|token| token.is_word("also"))
+        {
+            additional_payment = Some(crate::activation_and_restrictions::parse_compiler_activation_cost(&tail[2..])?);
+            None
+        } else {
+            let Some(condition) = parse_this_spell_cost_condition(tail) else {
+                return Ok(None);
+            };
+            Some(condition)
+        }
+    } else { None };
+    let mut cost_tokens = &tokens[start..if_index.unwrap_or(tokens.len())];
+    let cost_view = TokenWordView::new(cost_tokens);
+    let cost_words = cost_view.word_refs();
+    if cost_words.ends_with(&["rather", "than", "its", "mana", "cost"]) {
+        cost_tokens = &cost_tokens[..cost_view.token_start_indices()[cost_words.len() - 5]];
+    }
+    let mut total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(cost_tokens)?;
+    if let Some(additional) = additional_payment {
+        total_cost = conjoin_total_costs(&total_cost, &additional);
+    }
+    Ok(Some(AlternativeCastingMethod::Composed {
+        name: "Parsed alternative cost".into(), total_cost, condition, prototype_power_toughness: None,
+    }))
+}
+
+fn conjoin_total_costs<C: Clone>(left: &ironsmith_core::TotalCost<C>, right: &ironsmith_core::TotalCost<C>) -> ironsmith_core::TotalCost<C> {
+    use ironsmith_core::{TotalCost, TotalCostKind};
+    match (left.kind(), right.kind()) {
+        (TotalCostKind::OneOf(branches), _) => TotalCost::one_of(branches.iter().map(|branch| conjoin_total_costs(branch, right)).collect()),
+        (_, TotalCostKind::OneOf(branches)) => TotalCost::one_of(branches.iter().map(|branch| conjoin_total_costs(left, branch)).collect()),
+        (TotalCostKind::All(a), TotalCostKind::All(b)) => TotalCost::from_costs(a.iter().chain(b).cloned().collect()),
+    }
 }
 
 pub fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
@@ -686,4 +1014,58 @@ mod intrinsic_zone_alternative_tests {
             "You may cast this card from your graveyard by paying 2 life in addition to paying its other costs.",
         ] { assert!(parse(text).unwrap().is_none(), "{text}"); }
     }
+}
+
+/// The price owns the complete conditional battlefield instructions. Keeping
+/// them on the chosen casting method also preserves spell-copy behavior.
+fn parse_price_with_battlefield_instructions(tokens: &[OwnedLexToken]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [first, second] = sentences.as_slice() else { return Ok(None); };
+    let first = trim_edge_punctuation(first);
+    let view = TokenWordView::new(&first);
+    let words = view.word_refs();
+    let tail = TokenWordView::new(second).word_refs();
+    let mut instructions = ironsmith_core::ZoneCastInstructions::default();
+    let cost_end;
+    if words.get(..6) == Some(&["you", "may", "cast", "this", "spell", "for"])
+        && matches!(tail.as_slice(), ["if", "you", "do", "it", "gains", "haste", "and", "it's" | "its", "returned", "from", "the", "battlefield", "to", "its", "owners" | "owner's", "hand", "at", "the", "beginning", "of", "the", "next", "end", "step"]) {
+        instructions.haste_on_battlefield = true;
+        instructions.return_at_next_end_step = true;
+        cost_end = first.len();
+    } else if words.get(..6) == Some(&["you", "may", "cast", "this", "spell", "for"])
+        && matches!(tail.as_slice(), ["if", "you", "do", "it's" | "its", "sacrificed", "when", "it", "enters"]) {
+        instructions.sacrifice_on_entry = true;
+        cost_end = first.len();
+    } else if words.get(..6) == Some(&["if", "you", "cast", "this", "spell", "for"])
+        && tail == ["sacrifice", "it", "at", "the", "beginning", "of", "the", "next", "end", "step"] {
+        let Some(grant_start) = words.windows(2).position(|part| part == ["it", "gains"]) else { return Ok(None); };
+        let grant_start = view.token_start_indices()[grant_start];
+        let Some(comma) = first[..grant_start].iter().rposition(|token| token.kind == crate::lexer::TokenKind::Comma) else { return Ok(None); };
+        let grant = TokenWordView::new(&first[comma + 1..]).word_refs();
+        if grant != ["it", "gains", "haste", "and", "when", "this", "creature", "dies", "draw", "a", "card"] { return Ok(None); }
+        instructions.haste_on_battlefield = true;
+        instructions.draw_on_death = true;
+        instructions.sacrifice_at_next_end_step = true;
+        cost_end = comma;
+    } else { return Ok(None); }
+    let start = view.token_start_indices()[5] + 1;
+    let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..cost_end])?;
+    Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+        "Parsed conditional battlefield price", crate::zone::Zone::Hand, total_cost, None, false,
+    ).with_zone_cast_instructions(instructions)))
+}
+
+/// Complete prose describing a casting-time text substitution, before targets
+/// or modes are chosen. A generic price uses the same document rewrite owner.
+pub(crate) fn described_spell_text_substitution(tokens: &[OwnedLexToken]) -> Option<(bool, Vec<OwnedLexToken>)> {
+    let text = crate::lexer::render_token_slice(tokens).to_ascii_lowercase().replace(". \"", ".\"");
+
+    let rest = text.trim_end_matches('.').strip_prefix("you may cast this spell for ")?;
+    let (price, consequence) = rest.split_once(". if you do, ")?;
+    let cleave = match consequence {
+        "remove the words in square brackets" => true,
+        "change its text by replacing all instances of \"target\" with \"each.\"" | "change \"target\" in its text to \"each.\"" => false,
+        _ => return None,
+    };
+    Some((cleave, crate::lexer::lex_line(price, 0).ok()?))
 }

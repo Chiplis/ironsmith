@@ -1456,6 +1456,7 @@ pub(super) fn splice_transaction_adds_ordered_text_costs_targets_and_retains_car
         .card_types(vec![CardType::Instant])
         .with_ability(Ability::static_ability(StaticAbility::splice(
             crate::static_abilities::SpliceSpec {
+                    descriptive: false,
                 quality: crate::static_abilities::SpliceQuality::Arcane,
                 cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::validated_effect(
                     Effect::new(crate::effects::GainLifeEffect::with_filter(
@@ -1473,6 +1474,7 @@ pub(super) fn splice_transaction_adds_ordered_text_costs_targets_and_retains_car
         .card_types(vec![CardType::Instant])
         .with_ability(Ability::static_ability(StaticAbility::splice(
             crate::static_abilities::SpliceSpec {
+                    descriptive: false,
                 quality: crate::static_abilities::SpliceQuality::Arcane,
                 cost: crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Red])),
                 cost_surface: None,
@@ -1650,6 +1652,7 @@ pub(super) fn splice_can_be_declined_and_illegal_selection_rolls_back_cast() {
             .card_types(vec![CardType::Instant])
             .with_ability(Ability::static_ability(StaticAbility::splice(
                 crate::static_abilities::SpliceSpec {
+                    descriptive: false,
                     quality: crate::static_abilities::SpliceQuality::Arcane,
                     cost: crate::cost::TotalCost::free(),
                     cost_surface: None,
@@ -1814,6 +1817,7 @@ pub(super) fn splice_is_announced_before_hybrid_payment_symbols_and_targets() {
         .card_types(vec![CardType::Instant])
         .with_ability(Ability::static_ability(StaticAbility::splice(
             crate::static_abilities::SpliceSpec {
+                    descriptive: false,
                 quality: crate::static_abilities::SpliceQuality::Arcane,
                 cost: crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
                     ManaSymbol::Red,
@@ -6206,6 +6210,7 @@ fn i062_escalate_spell(exact_modes: Option<u32>) -> crate::cards::CardDefinition
         .card_types(vec![CardType::Sorcery])
         .with_ability(Ability::static_ability(StaticAbility::escalate(
             crate::static_abilities::EscalateSpec {
+                descriptive: false,
                 cost: escalate_cost,
                 cost_surface: Some("{1}, Discard a card".to_string()),
             },

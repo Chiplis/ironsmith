@@ -115,8 +115,12 @@ impl StaticAbilityModelInterpreter {
                     display
                 )
             }
-            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
-                format!("ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}")
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display, definition } => {
+                if let Some(definition) = definition {
+                    format!("ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?}, definition: {definition:?} }}")
+                } else {
+                    format!("ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}")
+                }
             }
             ironsmith_core::StaticAbilityPayload::ThisSpellXMinimum { minimum, display } => {
                 format!("ThisSpellXMinimum {{ minimum: {minimum:?}, display: {display:?} }}")
@@ -658,6 +662,7 @@ impl StaticAbilityModelInterpreter {
     ) -> Option<super::ActivatedAbilityCostReduction> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional,
                 filter,
                 reduction,
                 replacement_mana_cost,
@@ -698,6 +703,7 @@ impl StaticAbilityModelInterpreter {
                 if let Some(minimum) = minimum_total_mana {
                     converted = converted.with_minimum_total_mana(*minimum);
                 }
+                converted.optional = *optional;
                 converted.multiplier = multiplier.clone();
                 if let Some(per_matching_objects) = per_matching_objects {
                     converted = converted.with_per_matching_objects(per_matching_objects.clone());
@@ -1042,6 +1048,7 @@ impl StaticAbilityModelInterpreter {
         }
 
         Some(match &model.payload {
+            ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { .. } => return None,
             ironsmith_core::StaticAbilityPayload::Enchant(_)
             | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
             | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_)
@@ -1315,7 +1322,7 @@ impl StaticAbilityModelInterpreter {
                 }])
             }
             ironsmith_core::StaticAbilityPayload::Protection(from) => {
-                StaticAbility::protection(from.clone())
+                StaticAbility::new(super::protection::Protection { from: from.clone(), descriptive: model.id.is_none().then(|| model.label.clone()) })
             }
             ironsmith_core::StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(
                 filter,
@@ -1359,6 +1366,16 @@ impl StaticAbilityModelInterpreter {
                 )
             }
             ironsmith_core::StaticAbilityPayload::Ward(cost) => StaticAbility::ward(cost.clone()),
+            ironsmith_core::StaticAbilityPayload::Morph(cost)
+            | ironsmith_core::StaticAbilityPayload::Disguise(cost)
+            | ironsmith_core::StaticAbilityPayload::Megamorph(cost) if model.id.is_none() => {
+                StaticAbility::new(super::misc::DefinedFaceDown {
+                    cost: cost.clone(),
+                    ward: matches!(&model.payload, ironsmith_core::StaticAbilityPayload::Disguise(_)),
+                    counter: matches!(&model.payload, ironsmith_core::StaticAbilityPayload::Megamorph(_)),
+                    text: model.label.clone(),
+                })
+            }
             ironsmith_core::StaticAbilityPayload::Morph(cost) => StaticAbility::morph(cost.clone()),
             ironsmith_core::StaticAbilityPayload::Disguise(cost) => {
                 StaticAbility::disguise(cost.clone())
@@ -1680,7 +1697,11 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EnlistAttack {
                 linked_trigger,
                 display,
-            } => StaticAbility::enlist_attack(linked_trigger.clone(), display.clone()),
+            } => {
+                let mut ability = super::combat::EnlistAttack::new(linked_trigger.clone(), display.clone());
+                ability.descriptive = model.id.is_none();
+                StaticAbility::new(ability)
+            },
             ironsmith_core::StaticAbilityPayload::EquipmentGrant(abilities) => {
                 StaticAbility::equipment_grant(
                     abilities
@@ -1810,7 +1831,7 @@ impl StaticAbilityModelInterpreter {
                     display.clone(),
                 )
             }
-            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display, .. } => {
                 StaticAbility::this_spell_x_maximum(maximum.clone(), display.clone())
             }
             ironsmith_core::StaticAbilityPayload::ThisSpellXMinimum { minimum, display } => {
@@ -2864,6 +2885,9 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn display(&self) -> String {
+        if let ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { name } = self.payload() {
+            return name.clone();
+        }
         if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
             filter,
             from_zone: Some(crate::zone::Zone::Battlefield),
@@ -3373,7 +3397,8 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn is_keyword(&self) -> bool {
-        Self::is_simple_keyword_id(self.id())
+        matches!(self.payload(), ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { .. })
+            || Self::is_simple_keyword_id(self.id())
     }
 
     fn grants_evasion(&self) -> bool {
@@ -3503,6 +3528,9 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             _ => None,
         }
     }
+
+    fn defined_face_down_ward(&self) -> Option<bool> { self.leaf_static_ability()?.defined_face_down_ward() }
+    fn turn_face_up_adds_counter(&self) -> bool { self.leaf_static_ability().is_some_and(|a| a.turn_face_up_adds_counter()) }
 
     fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
         self.leaf_static_ability()?.turn_face_up_cost()
@@ -4167,6 +4195,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.leaf_static_ability()?.this_spell_x_maximum_value()
     }
 
+    fn this_spell_x_definition_value(&self) -> Option<crate::effect::Value> {
+        match &self.model.payload {
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { definition, .. } => definition.clone(),
+            _ => None,
+        }
+    }
+
     fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
         self.leaf_static_ability()?.this_spell_x_minimum_value()
     }
@@ -4213,14 +4248,17 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn has_delve(&self) -> bool {
         self.id() == StaticAbilityId::Delve
+            || self.leaf_static_ability().is_some_and(|ability| ability.has_delve())
     }
 
     fn has_convoke(&self) -> bool {
         self.id() == StaticAbilityId::Convoke
+            || self.leaf_static_ability().is_some_and(|ability| ability.has_convoke())
     }
 
     fn has_improvise(&self) -> bool {
         self.id() == StaticAbilityId::Improvise
+            || self.leaf_static_ability().is_some_and(|ability| ability.has_improvise())
     }
 }
 

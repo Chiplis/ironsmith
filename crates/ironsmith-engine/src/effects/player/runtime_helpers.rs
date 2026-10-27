@@ -81,6 +81,7 @@ pub(super) struct EffectDrivenCastOption {
     pub from_zone: Zone,
     pub casting_method: CastingMethod,
     pub label: String,
+    pub requirement: Option<(crate::target::ObjectFilter, crate::filter::FilterContext)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -139,25 +140,8 @@ pub(super) fn complete_native_cast_with_outputs(
     )
 }
 
-fn cast_filter_matches(
-    game: &GameState,
-    caster: PlayerId,
-    source: ObjectId,
-    view: &crate::object::Object,
-    filter: &crate::target::ObjectFilter,
-) -> bool {
-    let filter_ctx = game
-        .filter_context_for(caster, Some(source))
-        .with_caster(Some(caster));
-    filter.matches(view, &filter_ctx, game)
-}
-
-/// As [`cast_filter_matches`], against a caller-supplied filter context.
-///
-/// A permission granted mid-resolution can name its cards by a tag bound
-/// earlier in the same resolution ("a spell from among them"). Those bindings
-/// live on the execution context, not on the game, so a context built from the
-/// game alone can never match them.
+/// Match a caller-supplied permission context, including retained tags from
+/// earlier instructions in the same resolution.
 fn cast_filter_matches_in_context(
     game: &GameState,
     filter_ctx: &crate::target::FilterContext,
@@ -233,9 +217,23 @@ fn effect_driven_cast_options_inner(
     payment: EffectDrivenCastPayment,
     filter_ctx: Option<&crate::target::FilterContext>,
 ) -> Vec<EffectDrivenCastOption> {
-    let matches_filter = |object: &crate::object::Object| match filter_ctx {
-        Some(filter_ctx) => cast_filter_matches_in_context(game, filter_ctx, object, filter),
-        None => cast_filter_matches(game, caster, source, object, filter),
+    let fallback_context = game.filter_context_for(caster, Some(source)).with_caster(Some(caster));
+    let context = filter_ctx.unwrap_or(&fallback_context);
+    let matches_filter = |object: &crate::object::Object| {
+        if matches!(payment, EffectDrivenCastPayment::WithoutPayingManaCost) {
+            match crate::decision::spell_matches_requirement_with_defined_x(game, caster, object, filter, context) {
+                Ok(Some(allowed)) => return allowed,
+                Ok(None) => {},
+                Err(error) => { game.record_token_resource_failure(&error); return false; }
+            }
+        }
+        cast_filter_matches_in_context(game, context, object, filter)
+    };
+    let requirement_for = |view: &crate::object::Object| {
+        (matches!(payment, EffectDrivenCastPayment::WithoutPayingManaCost)
+            && view.abilities.iter().any(|ability| matches!(&ability.kind,
+                crate::ability::AbilityKind::Static(rule) if rule.this_spell_x_definition_value().is_some())))
+            .then(|| (filter.clone(), context.clone()))
     };
     let Some(object) = game.object(object_id) else {
         return Vec::new();
@@ -264,6 +262,7 @@ fn effect_driven_cast_options_inner(
                     from_zone,
                     casting_method: CastingMethod::Alternative(idx),
                     label: format!("Cast {} for its {} cost", object.name, method.name()),
+                    requirement: requirement_for(chosen_half),
                 });
             }
         }
@@ -285,17 +284,19 @@ fn effect_driven_cast_options_inner(
             from_zone,
             casting_method,
             label: format!("Cast {}", object.name),
+            requirement: requirement_for(chosen_half),
         });
     }
 
     if let Some(other_half) = crate::decision::spell_view_for_split_other_half_cast(game, object)
-        && cast_filter_matches(game, caster, source, &other_half, filter)
+        && matches_filter(&other_half)
     {
         options.push(EffectDrivenCastOption {
             object_id,
             from_zone,
             casting_method: CastingMethod::SplitOtherHalf,
             label: format!("Cast {}", other_half.name),
+            requirement: requirement_for(&other_half),
         });
     }
 
@@ -370,17 +371,21 @@ pub(super) fn cast_effect_driven_spell_with_payment_policy(
     option: &EffectDrivenCastOption, payment: EffectDrivenCastPayment,
     cancellation_is_decline: bool,
 ) -> Result<Option<EffectDrivenCastResult>, ExecutionError> {
-    let result = crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
-        game,
-        option.object_id,
-        option.from_zone,
-        caster,
-        &option.casting_method,
-        matches!(payment, EffectDrivenCastPayment::WithoutPayingManaCost),
-        None,
-        ctx.provenance,
-        &mut ctx.decision_maker,
-    );
+    let result = if let Some((filter, context)) = &option.requirement {
+        crate::game_loop::cast_spell_from_resolving_effect_with_price_lock_and_outputs(
+            game, option.object_id, option.from_zone, caster, &option.casting_method,
+            matches!(payment, EffectDrivenCastPayment::WithoutPayingManaCost),
+            None, None, None, ironsmith_core::value_model::ManaSpendMode::Normal,
+            false, ctx.tagged_objects.clone(), ctx.provenance, &mut ctx.decision_maker,
+            Some((filter, context)),
+        )
+    } else {
+        crate::game_loop::cast_spell_from_resolving_effect_with_outputs(
+            game, option.object_id, option.from_zone, caster, &option.casting_method,
+            matches!(payment, EffectDrivenCastPayment::WithoutPayingManaCost),
+            None, ctx.provenance, &mut ctx.decision_maker,
+        )
+    };
     let result = match result {
         Err(crate::game_loop::GameLoopError::ActionCancelled(_)) if cancellation_is_decline => None,
         other => other.map_err(effect_driven_cast_error)?,

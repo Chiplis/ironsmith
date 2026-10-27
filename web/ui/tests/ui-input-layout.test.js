@@ -36,3 +36,10 @@ test("editing a number cannot accidentally submit an empty or illegal choice", (
     assert.equal(parseNumberChoice(value, 0, 10), null, value);
   }
 });
+
+
+test("unbounded X choices accept large values within the engine number range", () => {
+  assert.equal(parseNumberChoice("1000000", 0, 0xffffffff), 1000000);
+  assert.equal(parseNumberChoice("4294967295", 0, 0xffffffff), 0xffffffff);
+  assert.equal(parseNumberChoice("4294967296", 0, 0xffffffff), null);
+});

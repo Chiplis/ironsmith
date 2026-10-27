@@ -523,6 +523,7 @@ pub(super) fn describe_backup_keyword(
         return None;
     };
     let backup = effect.downcast_ref::<crate::effects::BackupEffect>()?;
+    if backup.descriptive { return None; }
     Some(format!("Backup {}", backup.amount))
 }
 
@@ -1129,7 +1130,27 @@ pub(crate) fn describe_ability(
                 if activated_cost_exiles_source(&activated.mana_cost)));
     let previous =
         RENDERING_EXILE_FUNCTIONAL_ABILITY.with(|flag| flag.replace(source_in_exile));
-    let rendered = describe_ability_in_zone(index, ability, subject, rewrite_it_deals);
+    let protected = match &ability.kind {
+        AbilityKind::Triggered(triggered) => triggered.effects.ability_cant_be_countered,
+        AbilityKind::Activated(activated) => activated.effects.ability_cant_be_countered,
+        AbilityKind::Static(_) => false,
+    };
+    let bare = protected.then(|| {
+        let mut bare = ability.clone();
+        match &mut bare.kind {
+            AbilityKind::Triggered(triggered) => triggered.effects.ability_cant_be_countered = false,
+            AbilityKind::Activated(activated) => activated.effects.ability_cant_be_countered = false,
+            AbilityKind::Static(_) => {},
+        }
+        bare
+    });
+    let mut rendered = describe_ability_in_zone(index, bare.as_ref().unwrap_or(ability), subject, rewrite_it_deals);
+    if protected {
+        if let Some(last) = rendered.last_mut() {
+            if !last.ends_with('.') { last.push('.'); }
+            last.push_str(" This ability can't be countered.");
+        } else { rendered.push("This ability can't be countered.".into()); }
+    }
     RENDERING_EXILE_FUNCTIONAL_ABILITY.with(|flag| flag.set(previous));
     rendered
 }
@@ -1541,7 +1562,7 @@ fn describe_ability_in_zone(
             if matches!(
                 triggered.presentation_label,
                 Some(PresentationLabel::Keyword(
-                    PresentationKeyword::Melee | PresentationKeyword::Provoke
+                    PresentationKeyword::Melee | PresentationKeyword::Provoke | PresentationKeyword::Storm | PresentationKeyword::Riot | PresentationKeyword::Increment
                 ))
             ) {
                 return vec![format!(
@@ -1625,6 +1646,7 @@ fn describe_ability_in_zone(
                     PresentationKeyword::Firebending(_)
                         | PresentationKeyword::Melee
                         | PresentationKeyword::Provoke
+                        | PresentationKeyword::Storm | PresentationKeyword::Riot | PresentationKeyword::Increment
                 ))
             );
             let mut clauses = Vec::new();
@@ -1919,7 +1941,7 @@ fn describe_ability_in_zone(
                 && activated.effects.segments[0].default_effects.len() == 1
                 && activated.effects.segments[0].default_effects[0]
                     .downcast_ref::<crate::effects::UnearthEffect>()
-                    .is_some()
+                    .is_some_and(|effect| !effect.descriptive)
             {
                 return vec![format!(
                     "Unearth {}",
@@ -3516,6 +3538,9 @@ pub(crate) fn describe_imprint_from_hand_phrase(
 }
 
 pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> String {
+    if cost.kind == OptionalCostKind::SacrificeManaCostReduction {
+        return cost.source_label.trim_end_matches('.').to_owned();
+    }
     use crate::cost::OptionalCostKind;
 
     if let Some(line) = optional_additional_source_line(cost) {
@@ -3679,6 +3704,7 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             }
             // Most optional-cost keywords render with a space-separated payload.
             OptionalCostKind::Bargain => label.to_string(),
+            OptionalCostKind::ChooseAllModes => format!("You may pay {cost_text} as an additional cost to cast this spell. If you do, choose all modes."),
             OptionalCostKind::Kicker
             | OptionalCostKind::Multikicker
             | OptionalCostKind::Buyback

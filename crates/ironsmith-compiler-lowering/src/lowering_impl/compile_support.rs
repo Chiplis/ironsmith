@@ -2055,14 +2055,13 @@ fn compile_exchange_zones_effect(
 fn compile_exchange_text_boxes_effect(
     target: &TargetAst,
     include_source: bool,
+    duration: &Until,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
     let mut exchange = crate::effects::ExchangeTextBoxesEffect::new(spec);
     exchange.include_source = include_source;
-    if include_source {
-        exchange.duration = Until::Forever;
-    }
+    exchange.duration = duration.clone();
     let effect = Effect::new(exchange);
     let tag = ctx.next_tag("exchanged");
     ctx.last_object_tag = Some(tag.clone());
@@ -3426,8 +3425,15 @@ fn build_creature_token_definition(
         .token()
         .card_types(shape.card_types)
         .power_toughness(PowerToughness::fixed(power, toughness));
+    let mut supertypes = Vec::new();
     if shape.legendary {
-        builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
+        supertypes.push(crate::types::Supertype::Legendary);
+    }
+    if shape.snow {
+        supertypes.push(crate::types::Supertype::Snow);
+    }
+    if !supertypes.is_empty() {
+        builder = builder.supertypes(supertypes);
     }
     if !shape.subtypes.is_empty() {
         builder = builder.subtypes(shape.subtypes);
@@ -3769,6 +3775,13 @@ pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDe
             }
             Some(apply_embedded_token_rules(builder, &shape.token_rules).build())
         }
+        TokenDefinitionSpec::Planeswalker(shape) => {
+            let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
+                .token().card_types(vec![CardType::Planeswalker]).subtypes(shape.subtypes)
+                .color_indicator(shape.colors).loyalty(shape.loyalty);
+            if shape.legendary { builder = builder.supertypes(vec![crate::types::Supertype::Legendary]); }
+            Some(builder.build())
+        }
         TokenDefinitionSpec::Land(shape) => {
             let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
                 .token()
@@ -3836,6 +3849,9 @@ pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDe
                     construct.power_toughness.0,
                     construct.power_toughness.1,
                 ));
+            if construct.snow {
+                builder = builder.supertypes(vec![crate::types::Supertype::Snow]);
+            }
             match construct.artifact_scaling {
                 Some(ConstructArtifactScalingShape::CharacteristicDefining) => {
                     let count = Value::Count(ObjectFilter::artifact().you_control());

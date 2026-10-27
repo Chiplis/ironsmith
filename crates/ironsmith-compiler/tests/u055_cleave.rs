@@ -46,7 +46,7 @@ fn cleave_compiles_normal_and_bracket_removed_search_programs() {
         .alternative_casts
         .iter()
         .find_map(|method| match method {
-            AlternativeCastingMethod::Cleave { cost, effects } => Some((cost, effects)),
+            AlternativeCastingMethod::Cleave { cost, effects, .. } => Some((cost, effects)),
             _ => None,
         })
         .expect("Dig Up should have a typed Cleave method");
@@ -115,7 +115,7 @@ fn cleave_instances_remain_independent_alternative_costs() {
         .alternative_casts
         .iter()
         .filter_map(|method| match method {
-            AlternativeCastingMethod::Cleave { cost, effects } => Some((cost, effects)),
+            AlternativeCastingMethod::Cleave { cost, effects, .. } => Some((cost, effects)),
             _ => None,
         })
         .collect::<Vec<_>>();

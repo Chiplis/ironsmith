@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('Keep hand shares one row with auto-resolve and loop controls', async () => {
+test('priority icons stack above the unchanged local zone column', async () => {
   const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();
   const browser = await chromium.launch();
@@ -14,20 +14,34 @@ test('Keep hand shares one row with auto-resolve and loop controls', async () =>
       await page.setViewportSize({width, height:900});
       await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?decisionDock&keepHand&loopControls`);
       const dock = page.locator('[data-human-action-dock]');
-      const keep = dock.getByRole('button', {name:'Keep hand',exact:true});
-      await keep.waitFor({state:'visible'});
+      await dock.getByRole('button', {name:'Keep hand',exact:true}).waitFor({state:'visible'});
       await page.waitForTimeout(700);
-      const main = await keep.boundingBox();
-      const auto = await dock.locator('.battlefield-auto-pass-toggle').boundingBox();
-      const loop = await dock.getByRole('button', {name:'Record loop',exact:true}).boundingBox();
-      const bounds = await dock.boundingBox();
-      assert.ok(auto.x >= main.x + main.width, 'auto-resolve is right of Keep hand');
-      assert.ok(loop.x >= auto.x + auto.width, 'loop follows auto-resolve');
-      for (const icon of [auto, loop]) {
-        assert.ok(Math.abs(icon.y + icon.height / 2 - main.y - main.height / 2) < 2, 'icons share the main action row');
-        assert.ok(icon.x + icon.width <= bounds.x + bounds.width + 1, 'icons fit inside the dock');
+      const controls = page.locator('[data-local-zone-piles] .zone-priority-controls');
+      const auto = await controls.locator('.battlefield-auto-pass-toggle').boundingBox();
+      const hand = controls.getByRole('button', {name:'Full control',exact:true});
+      const handBox = await hand.boundingBox();
+      const loop = await controls.getByRole('button', {name:'Record loop',exact:true}).boundingBox();
+      const zones = page.locator('[data-local-zone-piles] > .zone-icon-row');
+      const before = await zones.evaluateAll(nodes => nodes.map(n => {const r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}));
+      assert.equal(before.length, 3);
+      assert.ok(auto.y + auto.height <= handBox.y, 'clock precedes hand');
+      assert.ok(handBox.y + handBox.height <= loop.y, 'hand precedes loop');
+      assert.ok(Math.abs(loop.y + loop.height + 6 - before[0].y) < 2, 'loop sits just above Exile');
+      for (const icon of [auto, handBox, loop]) {
+        assert.ok(Math.abs(icon.x + icon.width - before[0].x - before[0].width) < 2, 'icons align with the zone column');
       }
+      assert.equal(await dock.locator('.battlefield-auto-pass-toggle, .player-full-control, .loop-shortcut-control').count(), 0);
+      await hand.click();
+      assert.equal(await hand.getAttribute('aria-pressed'), 'true');
+      await hand.click();
+      assert.equal(await hand.getAttribute('aria-pressed'), 'false');
+      await controls.evaluate(node => {node.style.display='none';});
+      await page.waitForTimeout(100);
+      const after = await zones.evaluateAll(nodes => nodes.map(n => {const r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}));
+      assert.deepEqual(after, before, 'priority controls do not change zone geometry');
     }
+    await page.locator('.zone-priority-controls').evaluate(node => {node.style.display='';});
+    await page.screenshot({path:'/tmp/ironsmith-zone-priority-controls.png'});
   } finally {await browser.close();await vite.close();}
 });
 

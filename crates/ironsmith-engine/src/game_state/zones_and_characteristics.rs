@@ -32,11 +32,20 @@ pub(crate) struct PreparedEtbChoices {
     pub(crate) as_enters_tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     pub(crate) transfer_as_enters_source_links: bool,
+    pub(crate) as_enters_linked_exile: Vec<EntryLinkedExileTransfer>,
     pub(crate) as_enters_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
     /// Actual programme packets; metadata clones share their producer handles.
     pub(crate) as_enters_outputs: Vec<crate::effects::PublishedEffectOutputs>,
     /// Exact native acquisition shared by prospective and committed duration copies.
     pub(crate) entry_copy_registration: Option<crate::continuous::ContinuousEffectId>,
+}
+
+/// Only relationships actually created by an as-enters program cross entry.
+#[derive(Debug, Clone)]
+pub(crate) struct EntryLinkedExileTransfer {
+    pub(crate) owner: crate::linked_exile::LinkedExileOwner,
+    pub(crate) members: Vec<ObjectId>,
+    pub(crate) aliases: Vec<crate::linked_exile::LinkedExileOwner>,
 }
 
 /// Real source cards represented by one prospective entering permanent.
@@ -60,6 +69,7 @@ pub(crate) struct PreparedEtbEntry {
     /// Attachment specified by the authoring effect, validated during this commit.
     pub(crate) entry_attachment: Option<AttachmentTarget>,
     pub(crate) entry_attachment_requires_aura: bool,
+    pub(crate) entry_attachment_specified: bool,
     /// Further restricts what an Aura entering without a fixed attachment may
     /// choose to enchant ("Only creatures can be enchanted this way"). With
     /// it, an Aura that would enchant a player has no legal choice.
@@ -157,6 +167,7 @@ fn ability_retains_counters_moving_to(
 
 #[derive(Default)]
 struct AsEntersProgramExecution {
+    linked_exile: Vec<EntryLinkedExileTransfer>,
     outputs: Vec<crate::effects::CompletedEffectOutputs>,
     ran: bool,
     /// "put this into its owner's graveyard instead of onto the battlefield".
@@ -425,6 +436,7 @@ impl GameState {
         source: ObjectId,
         controller: PlayerId,
         programs: Vec<crate::resolution::ResolutionProgram>,
+        linked_owner: Option<crate::linked_exile::LinkedExileOwner>,
         preparing_entry: bool,
         entry_event: Option<&crate::events::EnterBattlefieldEvent>,
         entry_reserved_objects: &std::collections::HashSet<ObjectId>,
@@ -440,6 +452,7 @@ impl GameState {
             source,
             controller,
             programs,
+            linked_owner,
             preparing_entry,
             entry_event,
             entry_reserved_objects,
@@ -460,6 +473,7 @@ impl GameState {
         source: ObjectId,
         controller: PlayerId,
         programs: Vec<crate::resolution::ResolutionProgram>,
+        linked_owner: Option<crate::linked_exile::LinkedExileOwner>,
         preparing_entry: bool,
         entry_event: Option<&crate::events::EnterBattlefieldEvent>,
         entry_reserved_objects: &std::collections::HashSet<ObjectId>,
@@ -481,11 +495,18 @@ impl GameState {
             .map(|object| object.optional_costs_paid.clone())
             .unwrap_or_default();
         for program in programs {
+            let linked_before = if preparing_entry {
+                linked_owner.as_ref().map(|owner| self.linked_exile_pair_members(owner)
+                    .map(<[ObjectId]>::to_vec)).transpose()?
+            } else { None };
+            let alias_readers_before = self.exile_tracking.linked_exile_pair_aliases.keys()
+                .cloned().collect::<std::collections::HashSet<_>>();
             let provenance = self.provenance_graph_mut().alloc_root(
                 crate::provenance::ProvenanceNodeKind::EffectExecution { source, controller },
             );
             let mut context =
                 crate::effects::ExecutionContext::new(source, controller, decision_maker)
+                    .with_linked_exile_owner(linked_owner.clone())
                     .with_optional_costs_paid(optional_costs_paid.clone())
                     .with_cause(crate::events::cause::EventCause::from_effect(
                         source, controller,
@@ -537,6 +558,16 @@ impl GameState {
                 None,
                 &[],
             )?;
+            if let (Some(owner), Some(before)) = (linked_owner.as_ref(), linked_before) {
+                execution.linked_exile.push(EntryLinkedExileTransfer {
+                    owner: owner.clone(),
+                    members: self.linked_exile_pair_members(owner)?.iter().copied()
+                        .filter(|member| !before.contains(member)).collect(),
+                    aliases: self.exile_tracking.linked_exile_pair_aliases.iter()
+                        .filter(|(reader, creator)| *creator == owner && !alias_readers_before.contains(*reader))
+                        .map(|(reader, _)| reader.clone()).collect(),
+                });
+            }
             for event in completed.events {
                 self.queue_trigger_event(provenance, event);
             }
@@ -578,6 +609,7 @@ impl GameState {
             source,
             controller,
             programs,
+            None,
             entry_event,
             &std::collections::HashSet::from([source]),
             dm,
@@ -589,6 +621,7 @@ impl GameState {
         source: ObjectId,
         controller: PlayerId,
         programs: Vec<crate::resolution::ResolutionProgram>,
+        linked_owner: Option<crate::linked_exile::LinkedExileOwner>,
         entry_event: Option<&crate::events::EnterBattlefieldEvent>,
         entry_reserved_objects: &std::collections::HashSet<ObjectId>,
         dm: &mut dyn crate::decision::DecisionMaker,
@@ -598,6 +631,7 @@ impl GameState {
             source,
             controller,
             programs,
+            linked_owner,
             entry_event,
             entry_reserved_objects,
             dm,
@@ -614,6 +648,7 @@ impl GameState {
         source: ObjectId,
         controller: PlayerId,
         programs: Vec<crate::resolution::ResolutionProgram>,
+        linked_owner: Option<crate::linked_exile::LinkedExileOwner>,
         entry_event: Option<&crate::events::EnterBattlefieldEvent>,
         entry_reserved_objects: &std::collections::HashSet<ObjectId>,
         dm: &mut dyn crate::decision::DecisionMaker,
@@ -627,6 +662,7 @@ impl GameState {
             source,
             controller,
             programs,
+            linked_owner,
             true,
             entry_event,
             entry_reserved_objects,
@@ -656,6 +692,7 @@ impl GameState {
             as_enters_counters: counters,
             as_enters_tagged_objects: execution.tagged_objects,
             transfer_as_enters_source_links: execution.ran,
+            as_enters_linked_exile: execution.linked_exile,
             as_enters_continuous_effects: execution.continuous_effects,
             as_enters_outputs: execution
                 .outputs
@@ -722,6 +759,7 @@ impl GameState {
                     source,
                     controller,
                     vec![program],
+                    None,
                     !for_turn_face_up,
                     None,
                     &std::collections::HashSet::new(),
@@ -736,6 +774,7 @@ impl GameState {
                     &mut combined.tagged_objects,
                     &execution.tagged_objects,
                 );
+                combined.linked_exile.extend(execution.linked_exile);
                 combined.outputs.extend(execution.outputs);
                 if decision_maker.awaiting_choice() {
                     return Ok(combined);
@@ -804,6 +843,7 @@ impl GameState {
             source,
             controller,
             programs,
+            None,
             false,
             None,
             &std::collections::HashSet::new(),
@@ -1199,7 +1239,7 @@ impl GameState {
         };
         let turn_face_up_before_action = self.object_annotations.turn_face_up_before_action.contains(&old_id);
         let was_face_down = self.is_face_down(old_id);
-        let was_foretold = self.is_foretold(old_id);
+        let was_foretold = self.is_prepared_face_down(old_id);
         let preserved_exile_viewers = if self
             .objects
             .get(&old_id)
@@ -1211,6 +1251,12 @@ impl GameState {
         } else {
             None
         };
+        // Source cleanup retires its hold records. Capture their exact
+        // participants first, but phase them in only after this physical move.
+        let phase_duration_returns = if self.objects.get(&old_id).is_some_and(|object| object.zone == Zone::Battlefield)
+            && new_zone != Zone::Battlefield {
+            self.take_phase_out_holds_for_source(old_id)
+        } else { std::collections::BTreeMap::new() };
         if self
             .objects
             .get(&old_id)
@@ -1220,7 +1266,6 @@ impl GameState {
             if let Some(snapshot) = pre_move_snapshot.as_ref() {
                 self.register_lingering_static_effects_on_leave(old_id, snapshot);
             }
-            self.release_phase_out_holds_for_source(old_id);
             self.note_attraction_left_battlefield(old_id);
             // CR 506.4: a planeswalker or battle that leaves the battlefield
             // stops being attacked.
@@ -1291,6 +1336,8 @@ impl GameState {
         self.object_store.changes.record(old_id);
         self.object_store.render_changes.record(old_id);
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
+        self.auxiliary_tracking_mut().acquired_spell_keywords.remove(&old_id);
+        self.auxiliary_tracking_mut().duration_windows.remove(&crate::game_state::LibraryTopAnnouncement::Cast(old_id));
         self.effect_store.continuous_effects.remove_source_bound_static_effects(old_id);
         self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
         self.turn_store
@@ -1417,6 +1464,8 @@ impl GameState {
                 }
             }
 
+            self.complete_source_phase_duration_returns(phase_duration_returns);
+        self.reconcile_library_top_identity();
             #[cfg(debug_assertions)]
             self.debug_assert_zone_consistency();
             self.reconcile_ring_bearers();
@@ -1474,6 +1523,8 @@ impl GameState {
                 }
             }
 
+            self.complete_source_phase_duration_returns(phase_duration_returns);
+        self.reconcile_library_top_identity();
             #[cfg(debug_assertions)]
             self.debug_assert_zone_consistency();
 
@@ -1690,11 +1741,6 @@ impl GameState {
             if let Some(definition) = entry_definition {
                 new_object.card = Some(definition.card.id);
             }
-            for component in physical_components {
-                if component.snapshot.object_id != old_id {
-                    self.remove_object(component.snapshot.object_id);
-                }
-            }
         }
         if new_zone == Zone::Battlefield {
             new_object.linked_face_mana_cost = entry_linked_face_mana_cost
@@ -1704,6 +1750,14 @@ impl GameState {
         }
         let sticker_identity = new_object.stable_id;
         self.add_object(new_object);
+        // The component objects cease to exist as representations, but their
+        // physical stickers belong to the combined entrant (CR 123.5a).
+        self.absorb_component_stickers_batch(
+            physical_components.iter().map(|component| component.snapshot.stable_id), new_id,
+        );
+        for component in physical_components {
+            if component.snapshot.object_id != old_id { self.remove_object(component.snapshot.object_id); }
+        }
         if turn_face_up_before_action && old_zone == Zone::Stack && new_zone == Zone::Battlefield {
             self.register_turn_face_up_before_action(new_id);
         }
@@ -1861,6 +1915,8 @@ impl GameState {
             self.record_zone_change_results(component.snapshot.object_id, vec![new_id]);
         }
 
+        self.complete_source_phase_duration_returns(phase_duration_returns);
+        self.reconcile_library_top_identity();
         // Validate zone consistency in debug builds
         #[cfg(debug_assertions)]
         self.debug_assert_zone_consistency();
@@ -2274,6 +2330,7 @@ impl GameState {
                 linked_face_mana_cost: None,
                 entry_attachment: None,
                 entry_attachment_requires_aura: false,
+                entry_attachment_specified: false,
                 entry_attachment_filter: None,
             }));
         }
@@ -2283,17 +2340,8 @@ impl GameState {
             .or_else(|| self.object(old_id));
         // Entry choices must see the same layer-one copy values as replacement
         // matching and commit, including a source that is itself a temporary copy.
-        let prospective_copiable_values = result.enters_as_copy_of.and_then(|source| {
-            let effects = self.all_continuous_effects();
-            crate::continuous::copiable_values_with_effects(
-                source,
-                self.objects_map(),
-                &effects,
-                &self.battlefield,
-                self.commander_objects(),
-                self,
-            )
-        });
+        let prospective_copiable_values = result.enters_as_copy_of
+            .and_then(|source| crate::continuous::referenced_copiable_values(source, self));
         let prospective_controller = result
             .controller_override
             .or(entering_controller)
@@ -2304,7 +2352,14 @@ impl GameState {
         // is its caster, but the player currently controlling the spell makes
         // the permanent's own entry choices.
         let entering_default_controller = prospective_controller;
-        let prospective_controller = if result.controller_override.is_none()
+        // The proposal processor also stores the caller's default entry
+        // controller here. That is not a replacement changing control and
+        // must not hide a resolving spell's current controller (CR 110.2b).
+        let resolving_entering_spell = result.replacement_context.as_ref()
+            .and_then(|context| context.zone_change_context.as_ref())
+            .is_some_and(|zone| zone.cause.source == Some(old_id));
+        let prospective_controller = if (result.controller_override.is_none()
+            || (result.controller_override == entering_controller && resolving_entering_spell))
             && self
                 .object(old_id)
                 .is_some_and(|object| object.zone == Zone::Stack)
@@ -2364,6 +2419,7 @@ impl GameState {
                     linked_face_mana_cost: None,
                     entry_attachment: None,
                     entry_attachment_requires_aura: false,
+                    entry_attachment_specified: false,
                     entry_attachment_filter: None,
                 }));
             }
@@ -2378,6 +2434,7 @@ impl GameState {
                 linked_face_mana_cost: None,
                 entry_attachment: None,
                 entry_attachment_requires_aura: false,
+                entry_attachment_specified: false,
                 entry_attachment_filter: None,
             }));
         }
@@ -2453,6 +2510,7 @@ impl GameState {
                 linked_face_mana_cost: None,
                 entry_attachment: None,
                 entry_attachment_requires_aura: false,
+                entry_attachment_specified: false,
                 entry_attachment_filter: None,
             }));
         }
@@ -3163,6 +3221,7 @@ impl GameState {
             linked_face_mana_cost: None,
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_specified: false,
             entry_attachment_filter: None,
         }))
     }
@@ -3515,6 +3574,7 @@ impl GameState {
             linked_face_mana_cost,
             entry_attachment,
             entry_attachment_requires_aura,
+            entry_attachment_specified,
             entry_attachment_filter,
         } = prepared_entry;
         crate::effects::PublishedEffectOutputs::append_distinct(
@@ -3590,7 +3650,7 @@ impl GameState {
         // CR 303.4g is not a second zone change. If attachment proves
         // impossible, restore this exact pre-entry state.
         let mut aura_entry_checkpoint =
-            (prospective_aura_entry || entry_attachment.is_some()).then(|| self.clone());
+            (prospective_aura_entry || entry_attachment_specified).then(|| self.clone());
 
         if choices.discard_hand {
             let controller = result
@@ -3687,6 +3747,9 @@ impl GameState {
         // migrate any choices they recorded to the battlefield id.
         if new_id != old_id {
             let choice_store = self.choice_store_mut();
+            if let Some(memory) = choice_store.chosen_color_acquisitions.remove(&old_id) {
+                choice_store.chosen_color_acquisitions.insert(new_id, memory);
+            }
             if let Some(color) = choice_store.chosen_colors.remove(&old_id) {
                 choice_store.chosen_colors.insert(new_id, color);
             }
@@ -3762,6 +3825,7 @@ impl GameState {
             }
         }
         if choices.transfer_as_enters_source_links {
+            self.transfer_entry_linked_exile_pairs(&choices.as_enters_linked_exile, new_id);
             self.transfer_exiled_with_source_links(old_id, new_id);
             let imprinted_cards = self.get_imprinted_cards(old_id).to_vec();
             self.clear_imprinted_cards(old_id);
@@ -3803,15 +3867,7 @@ impl GameState {
             .flatten();
         if let Some(copy_source_id) = result.enters_as_copy_of {
             if let Some(duration) = temporary_copy_duration.clone() {
-                let effects = self.all_continuous_effects();
-                let copiable_values = crate::continuous::copiable_values_with_effects(
-                    copy_source_id,
-                    self.objects_map(),
-                    &effects,
-                    &self.battlefield,
-                    self.commander_objects(),
-                    self,
-                );
+                let copiable_values = crate::continuous::referenced_copiable_values(copy_source_id, self);
                 if let Some(mut copiable_values) = copiable_values {
                     crate::static_abilities::exclude_cdas_from_copy(
                         &mut copiable_values.abilities, &mut copiable_values.ability_labels,
@@ -3922,21 +3978,9 @@ impl GameState {
             } else {
                 // CR 707.9b: "it doesn't copy that creature's color" keeps the
                 // entering object's own colors as its copiable color.
-                let copy_source = self.object(copy_source_id).cloned();
-                let effects = self.all_continuous_effects();
-                let copiable_values = crate::continuous::copiable_values_with_effects(
-                    copy_source_id,
-                    self.objects_map(),
-                    &effects,
-                    &self.battlefield,
-                    self.commander_objects(),
-                    self,
-                );
-                if let (Some(source_obj), Some(new_obj)) = (copy_source, self.object_mut(new_id)) {
-                    new_obj.copy_copiable_values_from(&source_obj);
-                    if let Some(values) = copiable_values.as_ref() {
-                        new_obj.copy_copiable_values_from_values(values);
-                    }
+                let copiable_values = crate::continuous::referenced_copiable_values(copy_source_id, self);
+                if let (Some(values), Some(new_obj)) = (copiable_values.as_ref(), self.object_mut(new_id)) {
+                    new_obj.copy_copiable_values_from_values(values);
                     if result.set_base_power_toughness.is_some() {
                         crate::static_abilities::exclude_pt_cdas_from_copy(
                             &mut new_obj.abilities,
@@ -4406,20 +4450,17 @@ impl GameState {
             }
         }
 
-        if let Some(target) = entry_attachment
+        if entry_attachment_specified
             && (!entry_attachment_requires_aura
                 || self.calculated_subtypes(new_id).contains(&Subtype::Aura))
         {
             // Inspect the resolved entrant: copy/type replacements can make the
             // authored object an Aura or make a requested Aura a non-Aura.
             let is_aura = self.calculated_subtypes(new_id).contains(&Subtype::Aura);
-            let already_attached = self
-                .object(new_id)
-                .is_some_and(|object| object.attached_to == Some(target));
-            let attached = already_attached
-                || crate::effects::permanents::attach_battlefield_object_to_target(
-                    self, new_id, target,
-                );
+            let attached = entry_attachment.is_some_and(|target| {
+                self.object(new_id).is_some_and(|object| object.attached_to == Some(target))
+                    || crate::effects::permanents::attach_battlefield_object_to_target(self, new_id, target)
+            });
             if is_aura && !attached {
                 let checkpoint = aura_entry_checkpoint.take().ok_or_else(|| {
                     crate::effects::ExecutionError::InternalError(
@@ -4511,6 +4552,8 @@ impl GameState {
         if !self.objects.contains_key(&id) {
             return;
         }
+        self.auxiliary_tracking_mut().acquired_spell_keywords.remove(&id);
+        self.auxiliary_tracking_mut().duration_windows.remove(&crate::game_state::LibraryTopAnnouncement::Cast(id));
         self.object_annotations_mut().noted_life_totals.remove(&id);
         self.object_annotations_mut().noted_creature_types.remove(&id);
         self.object_annotations_mut().stored_die_results.remove(&id);
@@ -4574,6 +4617,9 @@ impl GameState {
         if zone == Zone::Stack {
             return;
         }
+        // This isolated world is an unfinished casting announcement, not a
+        // completed library move. Keep its new top concealed during queries.
+        self.begin_library_top_announcement(super::LibraryTopAnnouncement::Cast(id));
         self.remove_from_zone_index(id, zone, owner);
         // Casting face up from concealed exile is not a turn-face-up action.
         // The isolated declaration clears old concealment; its caller reapplies
@@ -4582,6 +4628,7 @@ impl GameState {
             let flags = self.battlefield_flags_mut();
             flags.manifested.remove(&id);
             flags.cloaked.remove(&id);
+            flags.described_face_down.remove(&id);
             flags.face_down.remove(&id)
         };
         self.object_mut(id).expect("proposal source exists").zone = Zone::Stack;
@@ -5339,9 +5386,10 @@ impl GameState {
         &self,
         object: ObjectId,
     ) -> Option<crate::continuous::CalculatedCharacteristics> {
-        // CR 406.3a and hidden-agenda rules: these face-down objects have no
-        // characteristics. Their identities and zones remain available.
-        if !self.is_face_down_conspiracy(object)
+        // CR 121.8, 406.3a and hidden-agenda rules: these face-down objects
+        // have no characteristics. Their identities and zones remain available.
+        if !self.drawn_card_waits_for_announcement(object)
+            && !self.is_face_down_conspiracy(object)
             && !(self.is_face_down(object)
                 && self
                     .object(object)
@@ -5769,6 +5817,9 @@ impl GameState {
         let Some(object) = self.object(id) else {
             return Ok(None);
         };
+        if let Some(chars) = self.characteristicless_face_down_characteristics(id) {
+            return Ok(Some(chars));
+        }
         if object.zone == Zone::Battlefield && self.is_phased_out(id) {
             return Ok(None);
         }
@@ -5862,6 +5913,9 @@ impl GameState {
         let Some(object) = self.object(id) else {
             return Ok(None);
         };
+        if let Some(chars) = self.characteristicless_face_down_characteristics(id) {
+            return Ok(Some(chars));
+        }
         if object.zone == Zone::Battlefield && self.is_phased_out(id) {
             return Ok(None);
         }
@@ -6841,7 +6895,7 @@ impl GameState {
         // or remove cant-relevant static abilities silently skips restriction
         // tracking (e.g. an aura's "doesn't untap" never taking effect).
         match modification {
-            Modification::CopyOf { .. }
+            Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
         | Modification::RewriteText(_)
             | Modification::SetTextBox(_)

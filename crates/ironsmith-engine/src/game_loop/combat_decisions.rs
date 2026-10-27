@@ -2683,7 +2683,7 @@ fn apply_prepared_blocker_declarations(
         game.mark_continuous_state_dirty();
     }
     queue_block_declaration_events_after(
-        game, combat, trigger_queue, &pairs, defending_player, &blocked_before,
+        game, combat, trigger_queue, &pairs, defending_player, &blocked_before, true,
     );
     Ok(())
 }
@@ -2763,7 +2763,7 @@ pub fn queue_block_declaration_events(
     pairs: &[(ObjectId, ObjectId)],
     defending_player: Option<PlayerId>,
 ) {
-    queue_block_declaration_events_after(game, combat, trigger_queue, pairs, defending_player, &[]);
+    queue_block_declaration_events_after(game, combat, trigger_queue, pairs, defending_player, &[], true);
 }
 
 /// [`queue_block_declaration_events`] for a declaration whose attackers in
@@ -2777,6 +2777,7 @@ pub(crate) fn queue_block_declaration_events_after(
     pairs: &[(ObjectId, ObjectId)],
     defending_player: Option<PlayerId>,
     blocked_before: &[ObjectId],
+    include_unblocked: bool,
 ) {
     // Capture every required event snapshot before checking any trigger. A
     // trigger check can update pass-local state, but all declaration events
@@ -2897,6 +2898,9 @@ pub(crate) fn queue_block_declaration_events_after(
 
     // Generate "attacks and isn't blocked" triggers for unblocked attackers
     for info in &combat.attackers {
+        if !include_unblocked {
+            break;
+        }
         if defending_player.is_some_and(|player| {
             crate::combat_state::defending_player_for_attacker(game, combat, info.creature)
                 != Some(player)

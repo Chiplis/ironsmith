@@ -132,8 +132,8 @@ fn classify_dynamic_filter(tokens: &[OwnedLexToken]) -> DynamicCostValueShape<'_
     if starts_with_any(
         tokens,
         &[
-            &["time", "this", "was", "kicked"],
-            &["time", "this", "spell", "was", "kicked"],
+            &["time", "this", "was", crate::keyword_forms::KICKED],
+            &["time", "this", "spell", "was", crate::keyword_forms::KICKED],
         ],
     ) {
         return DynamicCostValueShape::KickCount;

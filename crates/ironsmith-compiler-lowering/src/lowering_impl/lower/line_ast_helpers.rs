@@ -25,6 +25,7 @@ pub struct PendingBackup {
     /// the keyword appeared. Migration-only keyword actions are not abilities.
     pub ability_boundary: usize,
     pub amount: u32,
+    pub descriptive: bool,
 }
 
 /// "This ability costs {N} less to activate" follows the activated ability

@@ -6,6 +6,8 @@ use ironsmith_compiler_ast::TagRef;
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum ZoneMoveActionAst {
     ReturnSourceTransformedFromExile,
+    ReturnSourceWithHasteAndExileDeadline,
+    ExchangeSourceWithHandAura,
     ExileWhenSourceLeaves {
         target: TargetAst,
     },
@@ -18,6 +20,7 @@ pub enum ZoneMoveActionAst {
     /// to `ChooseSpec::Iterated`; otherwise the tagged collection is used.
     /// Lowers to `Effect::put_onto_battlefield`.
     PutOntoBattlefield {
+        described_face_down: bool,
         target: TargetAst,
         tapped: bool,
         controller: ReturnControllerAst,
@@ -75,6 +78,7 @@ pub enum ZoneMoveActionAst {
         explicit_return_surface: bool,
     },
     MoveToZone {
+        entry_grants: Vec<GrantedAbilityAst>,
         entry_type_changes: Option<ironsmith_core::effect::BattlefieldEntryTypeChanges>,
         entry_counters: Vec<ironsmith_core::BattlefieldEntryCounterSpec>,
         retained_reference_tags: Vec<TagRef>,

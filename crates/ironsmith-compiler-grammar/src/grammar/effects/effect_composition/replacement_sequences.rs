@@ -87,7 +87,7 @@ fn conditional_search_shuffle<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 }
 
 fn kicked_destination_replacement<'a>(input: &mut LexStream<'a>) -> WResult<(Zone, Zone)> {
-    primitives::phrase(&["if", "this", "spell", "was", "kicked"]).parse_next(input)?;
+    primitives::phrase(&["if", "this", "spell", "was", crate::keyword_forms::KICKED]).parse_next(input)?;
     commas(input)?;
     primitives::phrase(&["put", "those", "cards"]).parse_next(input)?;
     alt((primitives::kw("onto"), primitives::kw("into"))).parse_next(input)?;

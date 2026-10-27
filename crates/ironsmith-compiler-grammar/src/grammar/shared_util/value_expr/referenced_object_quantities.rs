@@ -221,7 +221,7 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
             offset + 10,
         ));
     }
-    if rest.starts_with(&["number", "of", "times", "that", "spell", "was", "kicked"]) {
+    if rest.starts_with(&["number", "of", "times", "that", "spell", "was", crate::keyword_forms::KICKED]) {
         return Some((
             Value::KicksPaidOf(tagged(Tag::It, "that spell")),
             offset + 7,

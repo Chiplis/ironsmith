@@ -323,7 +323,11 @@ impl ManaProduction<'_> {
             } => {
                 let count = amount(value)?;
                 // CR 106.5: an undefined chosen color produces no mana of it.
-                let Some(chosen) = game.chosen_color(ctx.source) else {
+                let chars = game.current_characteristics(ctx.source);
+                let origin = ctx.ability_index.and_then(|slot| ctx.source_snapshot.as_ref()
+                    .and_then(|snapshot| snapshot.ability_origins.as_ref()).and_then(|origins| origins.get(slot))
+                    .or_else(|| chars.as_ref().and_then(|chars| chars.abilities.origin(slot))));
+                let Some(chosen) = game.chosen_color_for_ability(ctx.source, origin) else {
                     return Ok(ResolvedManaProduction {
                         player: recipient,
                         output: match fixed_option {

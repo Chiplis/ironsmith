@@ -346,7 +346,7 @@ fn parse_turn_history_intervening_predicate(
     // Passive source lifecycle predicates retain the authored source surface.
     for (action, kind) in [
         (&["was", "cast"][..], 0u8),
-        (&["was", "kicked"][..], 1u8),
+        (&["was", crate::keyword_forms::KICKED][..], 1u8),
         (&["entered", "this", "turn"][..], 2u8),
         (&["attacked", "this", "turn"][..], 3u8),
     ] {
@@ -3265,7 +3265,7 @@ pub(super) fn parse_spell_lifecycle_predicate(tokens: &[OwnedLexToken]) -> Optio
 
 /// A prior foretell designation is distinct from exile origin and paid cost.
 fn parse_this_spell_was_foretold_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    surface::exact(LexedClause::new(tokens), &["this", "spell", "was", "foretold"])
+    surface::exact(LexedClause::new(tokens), &["this", "spell", "was", crate::keyword_forms::FORETOLD])
         .then_some(PredicateAst::ThisSpellWasForetold)
 }
 
@@ -3392,7 +3392,7 @@ pub(super) fn is_kicked_source_clause(clause: LexedClause<'_>) -> bool {
 }
 
 pub(super) fn is_was_kicked_action_clause(clause: LexedClause<'_>) -> bool {
-    surface::exact(clause, &["was", "kicked"])
+    surface::exact(clause, &["was", crate::keyword_forms::KICKED])
 }
 
 pub(super) fn is_bargained_source_clause(clause: LexedClause<'_>) -> bool {
@@ -3400,7 +3400,7 @@ pub(super) fn is_bargained_source_clause(clause: LexedClause<'_>) -> bool {
 }
 
 pub(super) fn is_was_bargained_action_clause(clause: LexedClause<'_>) -> bool {
-    surface::exact(clause, &["was", "bargained"])
+    surface::exact(clause, &["was", crate::keyword_forms::BARGAINED])
 }
 
 pub(super) fn is_that_clause(clause: LexedClause<'_>) -> bool {
@@ -3585,7 +3585,7 @@ pub(super) fn parse_this_spell_was_kicked_with_cost_shape(
     let was_idx = token_index_for_word(tokens, "was")?;
     if !tokens
         .get(was_idx + 1)
-        .is_some_and(|token| token.is_word("kicked"))
+        .is_some_and(|token| token.is_word(crate::keyword_forms::KICKED))
         || !tokens
             .get(was_idx + 2)
             .is_some_and(|token| token.is_word("with"))
@@ -3629,7 +3629,7 @@ pub(super) fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Opt
     let atoms = [
         WinnowSequence::subject(
             "subject",
-            WinnowCaptureKind::UntilPhrase(&["was", "kicked"]),
+            WinnowCaptureKind::UntilPhrase(&["was", crate::keyword_forms::KICKED]),
         ),
         WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
@@ -3652,7 +3652,7 @@ pub(super) fn parse_this_spell_was_bargained_shape(
     let atoms = [
         WinnowSequence::subject(
             "subject",
-            WinnowCaptureKind::UntilPhrase(&["was", "bargained"]),
+            WinnowCaptureKind::UntilPhrase(&["was", crate::keyword_forms::BARGAINED]),
         ),
         WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
@@ -3768,7 +3768,7 @@ pub(super) fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option
         ));
     }
     let clause = LexedClause::new(tokens);
-    let action_phrases: &[&[&str]] = &[&["was", "beheld"], &["beheld"]];
+    let action_phrases: &[&[&str]] = &[&["was", crate::keyword_forms::BEHELD], &[crate::keyword_forms::BEHELD]];
     let atoms = [
         WinnowSequence::object("subtype", WinnowCaptureKind::UntilAnyPhrase(action_phrases)),
         WinnowSequence::any_phrase(action_phrases),
@@ -3836,7 +3836,7 @@ pub(super) fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<
     let atoms = [
         WinnowSequence::subject(
             "subject",
-            WinnowCaptureKind::UntilPhrase(&["was", "kicked"]),
+            WinnowCaptureKind::UntilPhrase(&["was", crate::keyword_forms::KICKED]),
         ),
         WinnowSequence::action("action", WinnowCaptureKind::WordCount(2)),
     ];
@@ -4277,7 +4277,7 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     if descriptor.tokens().is_empty() {
         return Ok(None);
     }
-    let mut filter = if descriptor.word_refs().as_slice() == ["suspected"] {
+    let mut filter = if descriptor.word_refs().as_slice() == [crate::keyword_forms::SUSPECTED] {
         ObjectFilter::default().suspected()
     } else if descriptor.word_refs().as_slice() == ["modified"] {
         ObjectFilter::default().modified()
@@ -6739,6 +6739,29 @@ pub(super) fn parse_counter_placement_result_count(tokens: &[OwnedLexToken]) -> 
 }
 
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    let control_words = crate::lexer::token_word_refs(clean);
+    let comparison_words = control_words.strip_prefix(&["if"]).unwrap_or(&control_words);
+    if let Some(subject) = comparison_words.strip_prefix(&[
+        "the", "amount", "of", "mana", "you", "spent", "is", "greater", "than",
+    ]) {
+        let comparison = |right| PredicateAst::ValueComparison {
+            left: Value::CasterManaSpentToCastTriggeringObject,
+            operator: crate::effect::ValueComparisonOperator::GreaterThan, right,
+        };
+        if let Some(source) = subject.strip_suffix(&["power", "or", "toughness"])
+            && matches!(source, ["this", "creature's" | "creatures" | "permanent's" | "permanents"])
+        {
+            return Ok(PredicateAst::Or(Box::new(comparison(Value::SourcePower)), Box::new(comparison(Value::SourceToughness))));
+        }
+    }
+
+    if control_words.len() == clean.len()
+        && let [subject @ .., "came", "under", "your", "control", "since", "the", "beginning", "of", "your", "last", "upkeep"] = control_words.strip_prefix(&["if"]).unwrap_or(&control_words)
+        && (subject == &["this"] || crate::util::is_source_reference_words(subject))
+    {
+        return Ok(PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlSinceYourLastUpkeep));
+    }
     if let Some(predicate) = parse_counter_placement_result_count(tokens) {
         return Ok(predicate);
     }

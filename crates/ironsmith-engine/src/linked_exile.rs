@@ -7,6 +7,7 @@ use ironsmith_core::LinkedExilePair;
 pub enum LinkedExileAcquisition {
     Printed,
     Effect(AbilityEffectOrigin),
+    EffectGroup(crate::continuous::ContinuousEffectGroupId),
     Borrowed {
         effect: AbilityEffectOrigin,
         donor: ObjectId,
@@ -22,8 +23,16 @@ pub enum LinkedExileAcquisition {
 }
 
 impl LinkedExileAcquisition {
+    pub(crate) fn is_printed_rules_text(&self) -> bool {
+        matches!(self, Self::Printed)
+            || matches!(self, Self::Effect(effect) if effect.defines_rules_text())
+    }
+
     fn for_pair(host: ObjectId, pair: LinkedExilePair, origin: &AbilityOrigin) -> Option<Self> {
         match origin {
+            AbilityOrigin::Effect { effect, .. } if effect.linked_exile_self_grant_owner(host, pair).is_some() => {
+                Some(effect.linked_exile_self_grant_owner(host, pair)?.acquisition.clone())
+            }
             AbilityOrigin::Effect { effect, .. } => match effect.linked_exile_parent(host, pair) {
                 Some(parent) => Self::for_pair(host, pair, parent),
                 None => Self::from_origin(origin),
@@ -41,7 +50,10 @@ impl LinkedExileAcquisition {
     fn from_origin(origin: &AbilityOrigin) -> Option<Self> {
         Some(match origin {
             AbilityOrigin::Printed(_) => Self::Printed,
-            AbilityOrigin::Effect { effect, .. } => Self::Effect(effect.clone()),
+            AbilityOrigin::Effect { effect, .. } => match effect.linked_exile_group() {
+                Some(group) => Self::EffectGroup(group),
+                None => Self::Effect(effect.clone()),
+            },
             AbilityOrigin::Borrowed { effect, source, origin } => Self::Borrowed {
                 effect: effect.clone(), donor: *source,
                 origin: Box::new(Self::from_origin(origin)?),
@@ -180,3 +192,9 @@ mod class_acquisition_tests {
         assert_ne!(owner(host, member, &AbilityOrigin::Printed(0)), owner(host, member, &reader));
     }
 }
+
+#[cfg(test)]
+mod grant_group_tests;
+
+#[cfg(test)]
+mod self_grant_tests;

@@ -18,6 +18,9 @@ pub(crate) fn hand_special_action(
     card_id: crate::ids::ObjectId,
 ) -> Option<crate::special_actions::SpecialAction> {
     use crate::special_actions::SpecialAction;
+    if method.suspend_spec().is_some() { return Some(SpecialAction::Suspend { card_id }); }
+    if method.prepares_face_down() { return Some(SpecialAction::Foretell { card_id }); }
+    if method.prepares_face_up_sorcery() { return Some(SpecialAction::Plot { card_id }); }
     match method {
         AlternativeCastingMethod::Plot { .. } => Some(SpecialAction::Plot { card_id }),
         AlternativeCastingMethod::Foretell { .. } => Some(SpecialAction::Foretell { card_id }),
@@ -54,33 +57,46 @@ pub(crate) fn ensure_alternative_battlefield_abilities(
     method: &AlternativeCastingMethod,
     current_turn: u32,
 ) {
-    let (name, blitz) = match method {
-        AlternativeCastingMethod::Dash { .. } => ("Dash", false),
-        AlternativeCastingMethod::Blitz { .. } => ("Blitz", true),
-        _ => return,
-    };
+    let instructions = method.battlefield_instructions();
+    if !instructions.haste_on_battlefield && !instructions.draw_on_death && !instructions.sacrifice_on_entry { return; }
+    let name = method.name();
+    let blitz = instructions.draw_on_death;
     let condition = crate::ConditionExpr::ThisSpellPaidLabel(name.into());
     let haste = crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::haste());
     let death_draw = crate::ability::Ability::triggered(
         crate::triggers::Trigger::this_dies(),
         vec![crate::effect::Effect::target_draws(1, crate::target::PlayerFilter::You)],
     );
+    let mut entry_sacrifice = crate::ability::Ability::triggered(
+        crate::triggers::Trigger::this_enters_battlefield(),
+        vec![crate::effect::Effect::new(crate::effects::SacrificeTargetEffect::new(crate::target::ChooseSpec::Source))],
+    );
+    if let crate::ability::AbilityKind::Triggered(trigger) = &mut entry_sacrifice.kind {
+        trigger.intervening_if = Some(condition.clone());
+    }
     let abilities = object.abilities.iter().filter_map(|ability| match &ability.kind {
         crate::ability::AbilityKind::Static(ability) => Some(ability.clone()),
         _ => None,
     }).chain(object.temporary_static_ability_grants.iter().filter(|grant| !grant.is_expired(current_turn)).filter_map(|grant| grant.materialize()));
     let mut has_haste = false;
     let mut has_death_draw = false;
+    let mut has_entry_sacrifice = false;
     for ability in abilities {
         if ability.granted_inline_condition() != Some(&condition) { continue; }
         for granted in ability.source_granted_inline_abilities() {
             has_haste |= granted == &haste;
             has_death_draw |= is_blitz_death_draw_ability(granted);
+            if let crate::ability::AbilityKind::Triggered(trigger) = &granted.kind {
+                has_entry_sacrifice |= trigger.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>() == Some(&crate::triggers::ZoneChangeTrigger::this_enters_battlefield())
+                    && trigger.intervening_if.as_ref() == Some(&condition)
+                    && trigger.effects.all_effects().iter().any(|effect| effect.downcast_ref::<crate::effects::SacrificeTargetEffect>().is_some_and(|sacrifice| sacrifice.target == crate::target::ChooseSpec::Source));
+            }
         }
     }
     let mut missing = Vec::new();
-    if !has_haste { missing.push(haste); }
+    if instructions.haste_on_battlefield && !has_haste { missing.push(haste); }
     if blitz && !has_death_draw { missing.push(death_draw); }
+    if instructions.sacrifice_on_entry && !has_entry_sacrifice { missing.push(entry_sacrifice); }
     if missing.is_empty() { return; }
     let mut grant = crate::static_abilities::GrantObjectAbilityForFilter::new(
         crate::target::ObjectFilter::source(),

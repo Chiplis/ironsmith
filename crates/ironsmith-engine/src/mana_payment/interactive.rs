@@ -55,7 +55,10 @@ pub(crate) fn activate_mana_during_payment_with_outputs(
     }
     if let Some(error) = game.token_resource_failure() {
         result = Err(crate::special_actions::ActionError::ExecutionFailure { source, error });
-        game.restore_execution_checkpoint(checkpoint, false);
+    }
+    if result.is_err() || dm.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && dm.awaiting_choice());
+        if result.is_ok() { result = Ok(None); }
     }
     game.end_token_resource_scope(root, &meter);
     result
@@ -77,14 +80,13 @@ fn activate_mana_during_payment_inner(
     let checkpoint = game.clone();
     // A spell's activation exclusions (a resolving instruction's land-only
     // payment lock) also bind the nested costs of the abilities it activates.
-    let mut exclusions = if request.reason.is_mana_ability()
+    let exclusions = if request.reason.is_mana_ability()
         || request.reason == crate::costs::PaymentReason::CastSpell
     {
         request.activation_excluded_sources.clone()
     } else {
         Vec::new()
     };
-    exclusions.push(source);
     let result = crate::special_actions::perform_mana_ability_with_payment_outputs(
         game,
         request.payer,
@@ -128,6 +130,16 @@ fn activate_mana_during_payment_inner(
     outputs.push(super::publish_mana_activation_with_outputs(
         game, activation,
     ));
+    // CR 605.4a: triggered mana abilities resolve before the interrupted
+    // payment resumes. Ordinary triggers remain pending until priority.
+    outputs.extend(crate::game_loop::resolve_pending_mana_triggers_with_outputs(game, dm)
+        .map_err(|error| crate::special_actions::ActionError::ExecutionFailure {
+            source,
+            error: match error {
+                crate::game_loop::GameLoopError::ExecutionFailed(error) => error,
+                error => crate::effects::ExecutionError::InternalError(error.to_string()),
+            },
+        })?);
     Ok(Some(outputs))
 }
 
@@ -448,3 +460,7 @@ mod outer_transaction_tests {
         assert!(game.take_pending_trigger_events().is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "manual_trigger_tests.rs"]
+mod manual_trigger_tests;

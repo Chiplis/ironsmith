@@ -38,6 +38,7 @@ pub fn static_ability_zone_defaults(
             if source_only => all_zones(),
         Some(
             CharacteristicDefiningPT
+            | Deathtouch | Lifelink | Wither | Infect
             | ShuffleIntoLibraryFromGraveyard
             | CountersRemainAcrossZoneChanges
             | SpellManaSpendingRestriction,
@@ -94,6 +95,12 @@ impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond> {
 
 impl<T, E, C, Cond, ICond> StaticAbilityFunctionalZones for StaticAbility<T, E, C, Cond, ICond> {
     fn default_functional_zones(&self) -> Vec<Zone> {
+        if matches!(&self.payload, StaticAbilityPayload::KeywordMarkerMechanic {
+            mechanic: crate::KeywordMarkerMechanic::CastAtInstantTiming
+                | crate::KeywordMarkerMechanic::DamageIsLethalToCreatures
+                | crate::KeywordMarkerMechanic::DamageGrantsControllerLife
+                | crate::KeywordMarkerMechanic::DamageAsCounters { .. },
+        }) { return all_zones(); }
         // A conditional size assignment is not a characteristic-defining ability.
         if matches!(&self.payload, StaticAbilityPayload::Conditional { .. })
             && self.id == Some(StaticAbilityId::CharacteristicDefiningPT)

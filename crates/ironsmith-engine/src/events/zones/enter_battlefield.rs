@@ -57,7 +57,7 @@ pub struct EnterBattlefieldEvent {
     /// If set, the object enters under this player's control.
     pub controller_override: Option<PlayerId>,
     /// Selected entry program awaiting execution without committing the event.
-    pub(crate) pending_program: Option<(crate::resolution::ResolutionProgram, PlayerId)>,
+    pub(crate) pending_program: Option<(crate::resolution::ResolutionProgram, PlayerId, Option<crate::linked_exile::LinkedExileOwner>)>,
     /// Effects and links accumulated by entry programs before final choices.
     pub(crate) program_choices: crate::game_state::PreparedEtbChoices,
     /// As-entry choices already collected against this provisional object.
@@ -374,20 +374,8 @@ impl EnterBattlefieldEvent {
     /// zone change.
     pub(crate) fn prospective_game_state(&self, game: &GameState) -> Option<GameState> {
         let mut prospective = game.clone();
-        let source_object = self
-            .enters_as_copy_of
-            .and_then(|source| game.object(source).cloned());
-        let copiable_values = self.enters_as_copy_of.and_then(|source| {
-            let effects = game.all_continuous_effects();
-            crate::continuous::copiable_values_with_effects(
-                source,
-                game.objects_map(),
-                &effects,
-                &game.battlefield,
-                game.commander_objects(),
-                game,
-            )
-        });
+        let copiable_values = self.enters_as_copy_of
+            .and_then(|source| crate::continuous::referenced_copiable_values(source, game));
 
         {
             let object = prospective.object_mut(self.object)?;
@@ -399,9 +387,6 @@ impl EnterBattlefieldEvent {
             let retained_colors = self.copy_followups
                 .contains(&ironsmith_core::EnterAsCopyFollowup::RetainOwnColors)
                 .then(|| object.colors());
-            if let Some(source) = source_object.as_ref() {
-                object.copy_copiable_values_from(source);
-            }
             if let Some(values) = copiable_values {
                 object.copy_copiable_values_from_values(&values);
             }

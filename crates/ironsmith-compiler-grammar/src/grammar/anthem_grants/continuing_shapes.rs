@@ -130,7 +130,7 @@ pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSeg
         })
         .or_else(|| {
             for (phrases, shape) in [
-                (&[&["cant", "become", "suspected"][..], &["can't", "become", "suspected"], &["cannot", "become", "suspected"]][..], ContinuingSegmentShape::CantBecomeSuspected),
+                (&[&["cant", "become", crate::keyword_forms::SUSPECTED][..], &["can't", "become", crate::keyword_forms::SUSPECTED], &["cannot", "become", crate::keyword_forms::SUSPECTED]][..], ContinuingSegmentShape::CantBecomeSuspected),
                 (
                     &[
                         &["cant", "attack"][..],
@@ -180,7 +180,7 @@ pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSeg
                     ContinuingSegmentShape::AssignUsingToughness,
                 ),
                 (
-                    &[&["is", "goaded"][..], &["are", "goaded"]][..],
+                    &[&["is", crate::keyword_forms::GOADED][..], &["are", crate::keyword_forms::GOADED]][..],
                     ContinuingSegmentShape::Goaded,
                 ),
             ] {

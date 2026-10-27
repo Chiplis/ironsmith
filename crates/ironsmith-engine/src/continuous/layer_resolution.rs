@@ -106,7 +106,7 @@ pub(super) fn calculate_with_layers(
     use crate::dependency::sort_layer_effects;
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
-    let mut chars = initial_characteristics(object, ctx.game.turn.turn_number);
+    let mut chars = initial_characteristics(object, ctx.game.turn.turn_number, Some(ctx.game));
     if chars.world_supertype_since.is_some() {
         chars.world_supertype_since = ctx.effects.get_entry_timestamp(object.id).or(Some(0));
     }
@@ -307,6 +307,9 @@ pub(super) fn calculate_with_layers(
             let had_world = chars.supertypes.contains(&Supertype::World);
             chars.abilities.begin_effect(effect);
             match &effect.modification {
+                Modification::MergeComponent { component, on_top } => {
+                    apply_merge_component(&mut chars, object, *component, *on_top, effect, ctx.game);
+                }
                 // Layer 1: Copy
                 Modification::CopyOf {
                     copiable_values,
@@ -1005,6 +1008,7 @@ pub(super) fn apply_layer_7_effects(
         }
 
         match &effect.modification {
+            Modification::MergeComponent { .. } => {},
             Modification::SetPower { value, .. } => {
                 power = Some(crate::effects::helpers::value_eval::resolve_continuous_characteristic(
                     value,

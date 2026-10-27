@@ -65,12 +65,14 @@ impl EffectExecutor for ResolvesDespiteIllegalTargetsEffect {
 pub struct BackupEffect {
     pub amount: u32,
     pub granted_abilities: Vec<crate::ability::Ability>,
+    pub descriptive: bool,
 }
 
 impl BackupEffect {
     pub fn new(amount: u32, granted_abilities: Vec<crate::ability::Ability>) -> Self {
         Self {
             amount,
+            descriptive: false,
             granted_abilities,
         }
     }
@@ -156,11 +158,12 @@ impl EffectExecutor for BackupEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExploreEffect {
     pub target: ChooseSpec,
+    pub descriptive: bool,
 }
 
 impl ExploreEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, descriptive: false }
     }
 }
 
@@ -406,14 +409,7 @@ impl EffectExecutor for ExploreEffect {
                             .with_snapshot(pre_snapshot.clone()),
                             ctx.provenance,
                         );
-                        let iteration_outcome =
-                            crate::effects::composition::execute_keyword_action_with_outputs(
-                                game,
-                                ctx,
-                                would_event,
-                                crate::effects::composition::KeywordActionOutput::Objects,
-                                crate::effects::composition::KeywordActionAmount::Repetitions,
-                                |game, ctx, action| {
+                        let mut run = |game: &mut GameState, ctx: &mut ExecutionContext, action: &KeywordActionEvent| {
                                     let controller = action.player;
                                     let target_id = action.source;
                                     let mut explored_objects = Vec::new();
@@ -496,11 +492,20 @@ impl EffectExecutor for ExploreEffect {
                                                 )
                                             },
                                         );
-                                    super::complete_keyword_action_with_outputs(
-                                        game, ctx, original, completion,
-                                    )
-                                },
-                            )?;
+                                    if self.descriptive { Ok(original) } else {
+                                        super::complete_keyword_action_with_outputs(game, ctx, original, completion)
+                                    }
+                                };
+                        let iteration_outcome = if self.descriptive {
+                            let action = KeywordActionEvent::new(KeywordActionKind::Explore, controller, instruction.object_id, 1).with_snapshot(pre_snapshot);
+                            run(game, ctx, &action)?
+                        } else {
+                            crate::effects::composition::execute_keyword_action_with_outputs(
+                                game, ctx, would_event,
+                                crate::effects::composition::KeywordActionOutput::Objects,
+                                crate::effects::composition::KeywordActionAmount::Repetitions, run,
+                            )?
+                        };
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                                 EffectOutcome::count(0),
@@ -680,6 +685,7 @@ pub struct ManifestDreadEffect {
 pub struct ManifestTopCardOfLibraryEffect {
     pub player: PlayerFilter,
     pub cloak: bool,
+    pub descriptive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -690,6 +696,7 @@ pub type ManifestObjectsEffect = ironsmith_core::ManifestObjectsEffect;
 impl ManifestTopCardOfLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
+            descriptive: false,
             player,
             cloak: false,
         }
@@ -697,6 +704,7 @@ impl ManifestTopCardOfLibraryEffect {
 
     pub fn cloak(player: PlayerFilter) -> Self {
         Self {
+            descriptive: false,
             player,
             cloak: true,
         }
@@ -831,14 +839,18 @@ impl EffectExecutor for ManifestObjectsEffect {
                         })?;
                         match &receipt.outcome {
                             BattlefieldEntryOutcome::Moved(new_id) => {
-                                if self.cloak {
+                                if self.descriptive {
+                                    game.set_described_face_down(*new_id);
+                                } else if self.cloak {
                                     game.set_cloaked(*new_id);
                                 } else {
                                     game.set_manifested(*new_id);
                                 }
                                 moved_ids.push(*new_id);
                                 affected_memory.push(memory);
-                                let keyword = super::complete_keyword_action_with_outputs(
+                                let keyword = if self.descriptive {
+                                    crate::effects::CompletedEffectOutputs::aggregate_only(phase)
+                                } else { super::complete_keyword_action_with_outputs(
                                     game,
                                     ctx,
                                     crate::effects::CompletedEffectOutputs::aggregate_only(phase),
@@ -852,7 +864,7 @@ impl EffectExecutor for ManifestObjectsEffect {
                                         ctx.source,
                                         1,
                                     ),
-                                )?;
+                                )? };
                                 if ctx.decision_maker.awaiting_choice() {
                                     return Ok(
                                         crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -929,7 +941,9 @@ impl EffectExecutor for ManifestObjectsEffect {
                             match &receipt.outcome {
                                 BattlefieldEntryOutcome::Moved(id) => {
                                     entered_count += 1;
-                                    if self.cloak {
+                                    if self.descriptive {
+                                        game.set_described_face_down(*id);
+                                    } else if self.cloak {
                                         game.set_cloaked(*id);
                                     } else {
                                         game.set_manifested(*id);
@@ -955,7 +969,7 @@ impl EffectExecutor for ManifestObjectsEffect {
                             EffectOutcome::with_objects(moved_ids)
                                 .with_affected_object_memory(affected_memory),
                         );
-                        if entered_count > 0 {
+                        if entered_count > 0 && !self.descriptive {
                             let action = if self.cloak {
                                 KeywordActionKind::Cloak
                             } else {
@@ -1099,7 +1113,7 @@ impl EffectExecutor for ManifestDreadEffect {
                     .and_then(|objects| objects.first()).copied().ok_or(ExecutionError::InvalidTarget)?;
 
                 let (mut outcome, entry_receipt) =
-                    prepare_manifest_entry(game, ctx, card_to_manifest, player, false)?;
+                    prepare_manifest_entry(game, ctx, card_to_manifest, player, false, false)?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         outcome,
@@ -1182,6 +1196,7 @@ fn manifest_selected_card(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     cloak: bool,
+    descriptive: bool,
     select: impl FnOnce(
         &mut GameState,
         &mut ExecutionContext,
@@ -1203,11 +1218,11 @@ fn manifest_selected_card(
                 card,
                 ctx.controller,
                 cloak,
-                if cloak {
+                (!descriptive).then_some(if cloak {
                     KeywordActionKind::Cloak
                 } else {
                     KeywordActionKind::Manifest
-                },
+                }),
             )
         },
     )
@@ -1232,7 +1247,7 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        manifest_selected_card(game, ctx, self.cloak, |game, ctx| {
+        manifest_selected_card(game, ctx, self.cloak, self.descriptive, |game, ctx| {
             let library_owner =
                 crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
             let Some(&card_id) = game
@@ -1266,7 +1281,7 @@ impl EffectExecutor for ManifestCardFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        manifest_selected_card(game, ctx, false, |game, ctx| {
+        manifest_selected_card(game, ctx, false, false, |game, ctx| {
             let hand = game
                 .player(ctx.controller)
                 .map(|player| player.hand.to_vec())
@@ -2025,7 +2040,6 @@ impl EffectExecutor for AmplifyEffect {
                     .filter(|&id| {
                         game.object(id).is_some_and(|obj| {
                             obj.zone == Zone::Hand
-                                && obj.has_card_type(crate::types::CardType::Creature)
                                 && source_creature_types
                                     .iter()
                                     .any(|&subtype| obj.has_subtype(subtype))
@@ -2039,8 +2053,7 @@ impl EffectExecutor for AmplifyEffect {
                 // drop out of `candidates` on every peer alike.
                 let creature_filter = crate::filter::ObjectFilter::default()
                     .in_zone(Zone::Hand)
-                    .owned_by(crate::target::PlayerFilter::Specific(ctx.controller))
-                    .with_type(crate::types::CardType::Creature);
+                    .owned_by(crate::target::PlayerFilter::Specific(ctx.controller));
                 let hand: Vec<ObjectId> = game
                     .player(ctx.controller)
                     .map(|player| {

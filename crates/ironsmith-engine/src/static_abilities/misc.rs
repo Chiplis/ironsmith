@@ -805,6 +805,29 @@ impl StaticAbilityKind for Morph {
     }
 }
 
+/// An explicitly defined face-down casting/turn-up ability. Its behavior
+/// uses the same overlay and special action without a native keyword ID.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefinedFaceDown {
+    pub cost: crate::cost::TotalCost,
+    pub ward: bool,
+    pub counter: bool,
+    pub text: String,
+}
+impl StaticAbilityKind for DefinedFaceDown {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::KeywordMarker }
+    fn display(&self) -> String { self.text.clone() }
+    fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> { Some(&self.cost) }
+    fn defined_face_down_ward(&self) -> Option<bool> { Some(self.ward) }
+    fn turn_face_up_adds_counter(&self) -> bool { self.counter }
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        let mut model = if self.ward { super::CompiledStaticAbility::disguise(self.cost.clone()) }
+            else if self.counter { super::CompiledStaticAbility::megamorph(self.cost.clone()) }
+            else { super::CompiledStaticAbility::morph(self.cost.clone()) };
+        model.id = None; model.label = self.text.clone(); Some(model)
+    }
+}
+
 /// Disguise keyword ability (turn face up by paying disguise cost as a special action).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Disguise {

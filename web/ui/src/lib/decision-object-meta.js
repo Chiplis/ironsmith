@@ -237,3 +237,56 @@ export function getObjectAccent(state, objectId, explicitControllerId = null) {
   }
   return getPlayerAccent(state?.players || [], controllerId, state?.perspective);
 }
+
+const OBJECT_ZONES = new Set(['hand', 'library', 'graveyard', 'exile', 'command', 'battlefield', 'stack', 'ante', 'sideboard']);
+export function normalizeObjectZone(zone) {
+  const value = String(zone || '').toLowerCase().replace(/[_ -]/g, '').replace(/zone$/, '');
+  return OBJECT_ZONES.has(value) ? value : null;
+}
+
+// Read only snapshot-visible metadata; never inspect or fetch a hidden card.
+export function buildObjectLocationById(state) {
+  const locations = new Map();
+  const add = (card, zone, owner, controller) => {
+    if (card?.id == null) return;
+    const value = {
+      zone: normalizeObjectZone(card.zone) || normalizeObjectZone(zone),
+      owner: card.owner ?? owner ?? null,
+      controller: card.controller ?? controller ?? null,
+    };
+    for (const id of [card.id, ...(card.member_ids || [])]) locations.set(String(id), value);
+  };
+  for (const player of state?.players || []) {
+    for (const zone of ['hand', 'library', 'graveyard', 'exile', 'command', 'ante', 'sideboard']) {
+      for (const card of player[`${zone}_cards`] || []) add(card, zone, player.id, player.id);
+    }
+    for (const card of player.battlefield || []) add(card, 'battlefield', null, player.id);
+    for (const card of player.persistent_look_cards || []) add(card, card.zone, player.id, player.id);
+  }
+  for (const card of getVisibleStackObjects(state)) {
+    // Display ids are synthetic and can collide with real card ids. An
+    // ability's inspect id names its source, which stays in its own zone.
+    const ids = [card.target_object_id ?? card.id];
+    if (!card.ability_kind) ids.push(card.inspect_object_id);
+    for (const id of ids) add({ ...card, id }, 'stack', null, card.controller);
+  }
+  const viewed = decisionViewedCards(state);
+  for (const card of viewed?.cards || []) {
+    // A viewed card can have moved since the look started. Prefer its current
+    // visible location over the original view's subject/zone.
+    if (!locations.has(String(card.id))) add(card, viewed.zone, viewed.subject, viewed.subject);
+  }
+  return locations;
+}
+
+export function decisionObjectLocation(locations, objectId, object = {}) {
+  if (objectId == null) return null;
+  const known = locations.get(String(objectId));
+  const zone = normalizeObjectZone(object.zone ?? object.hidden_ref?.zone) || known?.zone;
+  if (!zone) return null;
+  return {
+    zone,
+    owner: object.object_owner ?? object.owner ?? object.hidden_ref?.owner ?? known?.owner ?? null,
+    controller: object.object_controller ?? object.controller ?? known?.controller ?? null,
+  };
+}

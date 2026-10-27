@@ -1,3 +1,5 @@
+import { cardSearchKey } from "../lib/card-search.js";
+import { startSandbox, sandboxCatalogNames } from "../lib/sandbox.js";
 import { ANALYSIS_SEED_MIN_OPERATIONS, createLocalAnalysisJournal, localReplayCaughtUp, localReplayTransfer, releaseRestoredRuntimeSavepoints, seededLocalReplay } from "../lib/local-analysis-replay.js";
 import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
@@ -116,6 +118,7 @@ const RUNTIME_EVALUATION_METHODS = new Set([
 // method that starts or rebuilds a game loads the baked dungeon routes the
 // card index lists, so venturing into the dungeon has compiled rooms.
 const DUNGEON_LOADING_METHODS = new Set([
+  "startSandbox",
   "loadDecks",
   "loadDemoDecks",
   "replayTrustedMatch",
@@ -457,6 +460,9 @@ function stickerSheetRouteName(name) {
 function collectNamesForMethod(method, args) {
   const names = [];
   switch (method) {
+    case "startSandbox":
+      names.push(...sandboxCatalogNames(args[0]));
+      break;
     case "reset":
     case "loadDemoDecks":
       names.push(...DEMO_CARD_NAMES);
@@ -549,7 +555,7 @@ async function loadCardIndex() {
         const name = String(card?.name || "").trim();
         return {
           name,
-          lower: name.toLocaleLowerCase("en-US"),
+          lower: cardSearchKey(name),
           route: String(card?.route || cardRouteKey(name)),
           score: Number.isFinite(Number(card?.score)) ? Number(card.score) : null,
         };
@@ -743,7 +749,7 @@ async function autocompleteFromCardIndex(query, limit) {
   if (!trimmed) return [];
   const index = await loadCardIndex();
   if (!index) return [];
-  const queryLower = trimmed.toLocaleLowerCase("en-US");
+  const queryLower = cardSearchKey(trimmed);
   const cappedLimit = Math.max(1, Math.min(25, Math.floor(Number(limit) || 5)));
   const threshold = await currentSemanticThreshold();
   const matches = [];
@@ -1195,6 +1201,7 @@ function handleCall(msg) {
     const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)
       : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
       : method === "previewCryptoRequirementsWithMaterial" ? (command, material) => previewCryptoRequirementsWithMaterial(game, command, material)
+      : method === "startSandbox" ? plan => startSandbox(game, plan)
       : method === "replaceHandWithCustomCards" ? (player, drafts) => replaceHandWithCustomCards(game, player, drafts)
       // An engine without the lean variant still answers with a full snapshot.
       : method === "dispatchForAutomation" && typeof game.dispatchForAutomation !== "function" ? game.dispatch

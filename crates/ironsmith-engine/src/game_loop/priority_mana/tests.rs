@@ -1143,7 +1143,7 @@ fn mandatory_trigger_action_loop_104_4b_ends_the_game_in_a_draw() {
 }
 
 #[test]
-fn optional_priority_action_prevents_104_4b_automatic_draw() {
+fn unrelated_optional_priority_action_does_not_prevent_104_4b_mandatory_draw() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
@@ -1198,14 +1198,16 @@ fn optional_priority_action_prevents_104_4b_automatic_draw() {
             }
             GameProgress::StackResolved => {
                 resolutions += 1;
-                if resolutions == 4 {
-                    break;
-                }
                 advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
                     .expect("optional loop should continue after resolution")
             }
             GameProgress::GameOver(GameResult::Draw) => {
-                panic!("a loop with an available optional action must not draw")
+                // CR 732.4-5: this blank instant is outside the mandatory
+                // loop. Its availability cannot force a player to take an
+                // unrelated action or prevent the mandatory-loop draw.
+                assert!(saw_optional_action);
+                assert!(resolutions > 0);
+                return;
             }
             GameProgress::GameOver(other) => {
                 panic!("interruptible loop produced an unexpected result: {other:?}")
@@ -1217,8 +1219,7 @@ fn optional_priority_action_prevents_104_4b_automatic_draw() {
         };
     }
 
-    assert!(saw_optional_action);
-    assert_eq!(resolutions, 4);
+    panic!("an unrelated optional spell must not prevent the CR 104.4b/732.4 draw");
 }
 
 #[derive(Debug, Clone)]
@@ -1814,7 +1815,7 @@ fn indexed_grant_cost_keeps_announcement_method_after_provider_leaves() {
         total_cost: TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(amount)])),
         condition: None,
         exiles_after_resolution: false,
-        entry_counters: Vec::new(),
+        entry_counters: Vec::new(), instructions: Default::default(),
     };
     let first = cost_method(1);
     let second = cost_method(3);

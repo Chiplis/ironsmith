@@ -31,7 +31,14 @@ fn fallback_static_ability_issue(
                 ability.display()
             ));
         }
-    } else {
+    } else if !matches!(ability.payload,
+        crate::static_abilities::StaticAbilityPayload::Protection(_)
+        | crate::static_abilities::StaticAbilityPayload::Morph(_)
+        | crate::static_abilities::StaticAbilityPayload::Disguise(_)
+        | crate::static_abilities::StaticAbilityPayload::Megamorph(_)
+        | crate::static_abilities::StaticAbilityPayload::EnlistAttack { .. }
+        | crate::static_abilities::StaticAbilityPayload::Splice(_)
+        | crate::static_abilities::StaticAbilityPayload::Escalate(_)) {
         return Some(format!(
             "{context} compiled to an unsupported static ability without a semantic id: {}",
             ability.display()

@@ -895,7 +895,7 @@ impl GameState {
             .filter(|object| {
                 object.abilities.iter().any(|ability| {
                     matches!(&ability.kind, AbilityKind::Static(ability)
-                        if ability.id() == StaticAbilityId::StartingPlayer)
+                        if matches!(ability.id(), StaticAbilityId::StartingPlayer | StaticAbilityId::YouAreTheStartingPlayer))
                 })
             })
             .map(|object| object.owner)

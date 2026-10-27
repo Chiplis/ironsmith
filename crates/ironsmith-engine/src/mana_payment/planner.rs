@@ -625,8 +625,7 @@ fn useful_manual_mana_abilities_with_resolved(
             continue;
         }
         let mut staged = game.clone();
-        let mut exclusions = unconstrained.activation_excluded_sources.clone();
-        exclusions.push(choice.source);
+        let exclusions = unconstrained.activation_excluded_sources.clone();
         let mut decision_maker = SelectFirstDecisionMaker;
         let Ok(completed) = crate::special_actions::perform_mana_ability_with_payment_outputs(
             &mut staged,
@@ -2432,8 +2431,7 @@ fn activate_with_mana_triggers_retaining_state_with_outputs(
     decision_maker: &mut dyn crate::decision::DecisionMaker,
     retain_continuous: bool,
 ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, crate::game_loop::GameLoopError> {
-    let mut exclusions = request.activation_excluded_sources.clone();
-    exclusions.push(source);
+    let exclusions = request.activation_excluded_sources.clone();
     let completed = crate::special_actions::perform_mana_ability_with_payment_outputs(
         game,
         request.payer,
@@ -4499,6 +4497,10 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
         })
         .hash(&mut hasher);
     }
+    unordered_digest(&game.active_mana_ability_locks(), |(source, origin), hasher| {
+        source.hash(hasher);
+        origin.hash(hasher);
+    }).hash(&mut hasher);
     for id in &game.battlefield {
         id.hash(&mut hasher);
         game.is_tapped(*id).hash(&mut hasher);

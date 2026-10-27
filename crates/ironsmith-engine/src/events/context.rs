@@ -13,6 +13,7 @@ use crate::target::FilterContext;
 /// Contains all the information a replacement effect needs to determine if it applies.
 #[derive(Debug, Clone)]
 pub struct EventContext<'a> {
+    pub ability_origin: Option<crate::continuous::AbilityOrigin>,
     /// The controller of the replacement effect being checked.
     pub controller: PlayerId,
 
@@ -68,6 +69,7 @@ impl<'a> EventContext<'a> {
         game: &'a GameState,
     ) -> Self {
         Self {
+            ability_origin: None,
             controller,
             source,
             filter_ctx,
@@ -75,6 +77,11 @@ impl<'a> EventContext<'a> {
             prospective_etb_game: None,
             event_source_snapshot: None,
         }
+    }
+
+    pub fn with_ability_origin(mut self, origin: Option<&crate::continuous::AbilityOrigin>) -> Self {
+        self.ability_origin = origin.cloned();
+        self
     }
 
     pub fn with_prospective_etb_game(mut self, game: Option<&'a GameState>) -> Self {
@@ -103,6 +110,7 @@ impl<'a> EventContext<'a> {
             None => event.try_prospective_game_state(&original)?,
         };
         let context = EventContext {
+            ability_origin: self.ability_origin.clone(),
             controller: self.controller,
             source: self.source,
             filter_ctx: self.filter_ctx.clone(),
@@ -145,6 +153,7 @@ impl<'a> EventContext<'a> {
             }
         }
         let context = EventContext {
+            ability_origin: self.ability_origin.clone(),
             controller: self.controller,
             source: self.source,
             filter_ctx: self.filter_ctx.clone(),

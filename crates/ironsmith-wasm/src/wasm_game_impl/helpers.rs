@@ -1055,7 +1055,12 @@ pub(super) fn current_ability_action_text(
             ability_index,
         );
         if !text.is_empty() {
-            return Some(normalize_action_text(&text));
+            return Some(effective_equip_action_text(
+                game,
+                source,
+                ability_index,
+                normalize_action_text(&text),
+            ));
         }
     }
     ironsmith::runtime_display::indexed_ability_surface_text(
@@ -1063,7 +1068,65 @@ pub(super) fn current_ability_action_text(
         &characteristics.compiled_card_text,
         ability_index,
     )
-    .map(|text| normalize_action_text(&text))
+    .map(|text| {
+        effective_equip_action_text(game, source, ability_index, normalize_action_text(&text))
+    })
+}
+
+fn effective_equip_action_text(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+    text: String,
+) -> String {
+    let Some(ability) = game.current_ability(source, ability_index) else {
+        return text;
+    };
+    let ironsmith::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        return text;
+    };
+    if activated.keyword != Some(ironsmith_core::ActivatedAbilityKeyword::Equip) {
+        return text;
+    }
+    let Some(base) = activated.mana_cost.mana_cost() else {
+        return text;
+    };
+    // X and target-dependent prices are settled after announcement. Here we
+    // display the same pre-target estimate used by the activation menu.
+    if base.has_x() {
+        return text;
+    }
+    let Some(object) = game.object(source) else {
+        return text;
+    };
+    let activator = game
+        .turn
+        .priority_player
+        .unwrap_or_else(|| game.controller_of(object));
+    let facts =
+        ironsmith::decision::ActivationCostAbility::at(game, activator, source, ability_index);
+    let effective = ironsmith::decision::calculate_effective_activation_total_cost_for_ability(
+        game,
+        activator,
+        source,
+        &activated.mana_cost,
+        &[],
+        facts,
+    );
+    let Some(mana) = effective.mana_cost() else {
+        return text;
+    };
+    let price = if mana.reduce_generic(0).is_empty() {
+        "{0}".to_string()
+    } else {
+        mana.to_oracle()
+    };
+    let printed = if base.reduce_generic(0).is_empty() {
+        "{0}".to_string()
+    } else {
+        base.to_oracle()
+    };
+    text.replacen(&printed, &price, 1)
 }
 
 pub(super) fn zone_display_name(zone: Zone) -> &'static str {

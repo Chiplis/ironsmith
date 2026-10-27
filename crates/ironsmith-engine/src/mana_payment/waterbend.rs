@@ -92,6 +92,7 @@ pub(crate) fn record_waterbend_payment_with_outputs(
     }
     let mut outputs = Vec::new();
     for obligation in &scope.obligations {
+        if obligation.descriptive { continue; }
         let amount = obligation.amount(request.x_value).ok_or_else(|| {
             crate::effects::ExecutionError::IncompleteEvidence(
                 "Waterbend receipt quantity overflows".into(),

@@ -625,6 +625,16 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
         &mut ExecutionContext<'a>,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    fn can_start_duration(effect: &Effect) -> bool {
+        if effect.downcast_ref::<crate::effects::ExileUntilEffect>().is_some() { return true; }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| found |= can_start_duration(child));
+        found
+    }
+    // A return choice can suspend after the original instruction has completed.
+    // Retain that entire instruction's checkpoint whenever it can end a duration.
+    let duration_boundary = ctx.decision_maker.answers_player_choices()
+        && (game.has_duration_end_work() || can_start_duration(effect));
     let (root, meter) = game.begin_token_resource_scope();
     let result = crate::effects::composition::execute_error_transaction_if(
         game,
@@ -632,6 +642,7 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
         root,
         ExecutionError::is_incomplete_execution,
         |game, ctx| {
+            let mut body = |game: &mut GameState, ctx: &mut ExecutionContext<'a>| {
             let (mut result, recorded) =
                 crate::effects::outcome_recording::capture_instruction_records(game, |game| {
                     match game.token_resource_failure() {
@@ -646,16 +657,28 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
                     }
                 });
             if let Ok(outputs) = &mut result {
-                let outcome = &mut outputs.outcome;
                 if !ctx.decision_maker.awaiting_choice() {
-                    crate::effects::outcome_recording::complete_outcome(
+                    game.reconcile_library_top_identity();
+                    crate::effects::outcome_recording::complete_outputs(
                         game,
                         effect.0.result_action(),
                         Some(ctx.controller),
-                        outcome,
+                        outputs,
                         recorded,
                     );
                     outputs.synchronize_observations();
+                    if ctx.decision_maker.answers_player_choices()
+                        && game.has_duration_end_work()
+                        && !game.has_open_simultaneous_action()
+                    {
+                        // Match original observations first; return one-shots now,
+                        // retaining triggers until the ordinary priority boundary.
+                        let mut queue = crate::triggers::TriggerQueue::new();
+                        crate::game_loop::drain_pending_trigger_events_with_dm(
+                            game, &mut queue, &mut *ctx.decision_maker,
+                        )?;
+                        game.defer_trigger_entries(queue.take_all());
+                    }
                 }
             }
             if matches!(purpose, EffectExecutionPurpose::Payment)
@@ -674,6 +697,14 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
                 result = Err(error);
             }
             result
+            };
+            if duration_boundary {
+                crate::effects::composition::execute_transaction(
+                    game, ctx,
+                    || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                    body,
+                )
+            } else { body(game, ctx) }
         },
     );
     game.end_token_resource_scope(root, &meter);

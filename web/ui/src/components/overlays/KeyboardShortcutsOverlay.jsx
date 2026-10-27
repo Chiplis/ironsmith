@@ -10,9 +10,11 @@ import "./keyboard-shortcuts.css";
 const SHORTCUTS = [
   { keys: ["Space", "Enter"], action: "Pass priority, or confirm the highlighted main action" },
   { keys: ["←", "→"], action: "Move between cards in your hand. With the hand open, → starts at the first card and ← at the last" },
-  { keys: ["Space", "Enter"], scope: "on a hand card", action: "Play or cast that card" },
+  { keys: ["Enter"], scope: "on a hand card", action: "Play or cast that card" },
   { keys: ["."], action: "Open or close your hand" },
-  { keys: ["Esc"], action: "Cancel placing a card, or close a menu" },
+  { keys: ["Ctrl"], action: "Raise your hand and show card numbers. Press . to close it" },
+  { keys: ["1–9"], action: "Show a card in your hand by position. For card 10 or higher, type its digits within 700 ms (1 then 1 shows card 11)" },
+  { keys: ["Esc"], action: "Cancel casting or placing a card, or close a menu" },
   { keys: ["Tab"], action: "Move focus between controls" },
   { keys: ["Double-click"], scope: "on a hand card", action: "Play or cast that card, keeping any required choices manual" },
   { keys: ["?"], action: "Show this list" },

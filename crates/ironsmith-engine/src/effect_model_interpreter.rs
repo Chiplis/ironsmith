@@ -281,6 +281,7 @@ where
         converted.mode_point_costs = payload.mode_point_costs.clone();
         converted.spree = payload.spree;
         converted.tiered = payload.tiered;
+        converted.descriptive_mode_costs = payload.descriptive_mode_costs;
         converted.mode_additional_mana_costs = payload.mode_additional_mana_costs.clone();
         converted.common_suffix_effect_count = payload.common_suffix_effect_count;
         converted.disallow_previously_chosen_modes = payload.disallow_previously_chosen_modes;
@@ -293,6 +294,7 @@ where
         converted.cast_chooser = payload.cast_chooser.clone();
         converted.optional_choice = payload.optional_choice;
         converted.cost_choice_keywords = payload.cost_choice_keywords.clone();
+        converted.announced_modes = payload.announced_modes.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -342,10 +344,10 @@ where
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::HauntExileEffect<M::Effect>>(&effect) {
-        return Ok(Effect::new(crate::effects::HauntExileEffect::new(
-            convert_effects(payload.haunt_effects.iter().cloned(), hooks)?,
-            payload.haunt_choices.clone(),
-        )));
+        return Ok(Effect::new(crate::effects::HauntExileEffect {
+            haunt_effects: convert_effects(payload.haunt_effects.iter().cloned(), hooks)?,
+            haunt_choices: payload.haunt_choices.clone(), descriptive: payload.descriptive,
+        }));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::DrawCardsEffect>(&effect) {
         return Ok(converted);
@@ -633,6 +635,9 @@ where
             ).with_mode(payload.mode),
         ));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::MoveToZoneEffect<M::ContinuousModification>>(&effect) {
+        return Ok(Effect::new(payload.clone().try_map_entry_modifications(|modification| hooks.runtime_continuous_modification_hook(modification))?));
+    }
     if let Some(payload) = M::downcast_ref::<
         ironsmith_core::ApplyContinuousEffect<
             M::ContinuousTarget,
@@ -739,7 +744,8 @@ where
             crate::effects::RegenerateEffect::new(payload.target.clone(), payload.duration.clone())
                 .with_follow_up_effects(follow_up_effects)
                 .with_follow_up_player(payload.follow_up_player.clone())
-                .with_remove_damage_only(payload.remove_damage_only),
+                .with_remove_damage_only(payload.remove_damage_only)
+                .with_ordinary_destruction_replacement(payload.ordinary_destruction_replacement),
         ));
     }
     if let Some(converted) =
@@ -1371,6 +1377,7 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ProliferateEffect>(&effect) {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::SetPermanentDesignationEffect>(&effect) { return Ok(converted); }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::MonstrosityEffect>(&effect) {
         return Ok(converted);
     }
@@ -1958,9 +1965,9 @@ where
         return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ExploreEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ExploreEffect::new(
-            payload.target.clone(),
-        )));
+        let mut runtime = crate::effects::ExploreEffect::new(payload.target.clone());
+        runtime.descriptive = payload.descriptive;
+        return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RemoveUpToCountersEffect>(&effect) {
         return Ok(Effect::new(crate::effects::RemoveUpToCountersEffect::new(
@@ -1990,23 +1997,23 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::BackupEffect<M::Ability>>(&effect) {
-        return Ok(Effect::new(crate::effects::BackupEffect::new(
-            payload.amount,
+        return Ok(Effect::new(crate::effects::BackupEffect {
+            amount: payload.amount, descriptive: payload.descriptive,
+            granted_abilities:
             payload
                 .granted_abilities
                 .iter()
                 .cloned()
                 .map(|ability| hooks.runtime_ability_hook(ability))
                 .collect::<Result<Vec<_>, _>>()?,
-        )));
+        }));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::BeholdEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::BeholdEffect::new(
-            payload.subtype,
-            payload.count,
-            payload.chooser.clone(),
-        )));
+        let mut result = crate::effects::BeholdEffect::new(payload.subtype, payload.count, payload.chooser.clone());
+        result.descriptive = payload.descriptive;
+        return Ok(Effect::new(result));
     }
+
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ManifestDreadEffect>(&effect) {
         return Ok(Effect::new(
             crate::effects::ManifestDreadEffect::for_player(payload.player.clone()),
@@ -2015,11 +2022,12 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ManifestTopCardOfLibraryEffect>(&effect)
     {
-        let runtime = if payload.cloak {
+        let mut runtime = if payload.cloak {
             crate::effects::ManifestTopCardOfLibraryEffect::cloak(payload.player.clone())
         } else {
             crate::effects::ManifestTopCardOfLibraryEffect::new(payload.player.clone())
         };
+        runtime.descriptive = payload.descriptive;
         return Ok(Effect::new(runtime));
     }
     if M::downcast_ref::<ironsmith_core::ManifestCardFromHandEffect>(&effect).is_some() {
@@ -2038,10 +2046,9 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ConniveEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ConniveEffect::new_with_count(
-            payload.target.clone(),
-            payload.count.clone(),
-        )));
+        let mut runtime = crate::effects::ConniveEffect::new_with_count(payload.target.clone(), payload.count.clone());
+        runtime.descriptive = payload.descriptive;
+        return Ok(Effect::new(runtime));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RippleEffect>(&effect) {
         return Ok(converted);
@@ -2353,13 +2360,12 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::VentureIntoDungeonEffect>(&effect) {
-        let converted = if payload.undercity_if_no_active {
-            crate::effects::VentureIntoDungeonEffect::via_initiative(payload.player.clone())
-        } else {
-            crate::effects::VentureIntoDungeonEffect::new(payload.player.clone())
-        };
-        return Ok(Effect::new(converted));
+        let mut effect = crate::effects::VentureIntoDungeonEffect::new(payload.player.clone());
+        effect.undercity_if_no_active = payload.undercity_if_no_active;
+        effect.descriptive = payload.descriptive;
+        return Ok(Effect::new(effect));
     }
+
     if let Some(payload) = M::downcast_ref::<ironsmith_core::TakeInitiativeEffect>(&effect) {
         return Ok(Effect::new(crate::effects::TakeInitiativeEffect::new(
             payload.player.clone(),
@@ -2579,7 +2585,6 @@ where
         crate::effects::MoveCountersEffect,
         crate::effects::MoveToLibraryNthFromTopEffect,
         crate::effects::MoveToLibraryTopOrBottomChoiceEffect,
-        crate::effects::MoveToZoneEffect,
         crate::effects::PayAnyEnergyEffect,
         crate::effects::PayAnyLifeEffect,
         crate::effects::TagPlayersEffect,

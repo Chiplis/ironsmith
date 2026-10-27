@@ -1614,6 +1614,9 @@ fn cr_113_12_muraganda_distinguishes_granted_abilities_from_stated_qualities() {
         ("has flying", Some("Enchanted creature has flying."), 2),
         ("is red", Some("Enchanted creature is red."), 4),
         ("can't be blocked", Some("Enchanted creature can't be blocked."), 4),
+        ("can't attack", Some("Enchanted creature can't attack."), 4),
+        ("can't block", Some("Enchanted creature can't block."), 4),
+        ("can't attack or block", Some("Enchanted creature can't attack or block."), 4),
     ] {
         let mut game = new_game(A);
         game.create_object_from_definition(&petroglyphs, A, Zone::Battlefield);
@@ -1627,6 +1630,51 @@ fn cr_113_12_muraganda_distinguishes_granted_abilities_from_stated_qualities() {
         if p != Some(expected) {
             failures.push(format!("{label}: power {p:?}, expected {expected}"));
         }
+        let restrictions = |game: &GameState| (
+            game.can_attack(host), game.can_block(host), game.can_be_blocked(host),
+        );
+        let required = (
+            !matches!(label, "can't attack" | "can't attack or block"),
+            !matches!(label, "can't block" | "can't attack or block"),
+            label != "can't be blocked",
+        );
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(restrictions(&game), required, "{label}: the stated restriction applies");
+        ironsmith::effects::ApplyContinuousEffect::new(
+            ironsmith::continuous::EffectTarget::Specific(host),
+            ironsmith::continuous::Modification::RemoveAllAbilities,
+            ironsmith::Until::EndOfTurn,
+        ).execute(&mut game, &mut EffectContext::new_default(host, A)).unwrap();
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_power(host), Some(4), "{label}: the host has no abilities");
+        assert_eq!(restrictions(&game), required, "{label}: removing host abilities preserves the Aura's restriction");
+    }
+    for (text, has_flying) in [
+        ("Creatures can't be blocked.", false),
+        ("Creatures with no abilities can't be blocked.", false),
+        ("Creatures have flying and can't be blocked.", true),
+        ("Creatures can't be blocked and have flying.", true),
+        ("Creatures can't be blocked as long as you control an artifact.", false),
+    ] {
+        let mut game = new_game(A);
+        game.create_object_from_definition(&petroglyphs, A, Zone::Battlefield);
+        let host = game.create_object_from_definition(&bear, A, Zone::Battlefield);
+        let quality = compile("External quality source", &format!("Mana cost: {{0}}\nType: Artifact\n{text}"));
+        let source = game.create_object_from_definition(&quality, A, Zone::Battlefield);
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_power(host), Some(if has_flying { 2 } else { 4 }), "{text}");
+        assert!(!game.can_be_blocked_by_defender(host, B), "the global quality restricts blocking: {text}");
+        ironsmith::effects::ApplyContinuousEffect::new(
+            ironsmith::continuous::EffectTarget::Specific(host),
+            ironsmith::continuous::Modification::RemoveAllAbilities,
+            ironsmith::Until::EndOfTurn,
+        ).execute(&mut game, &mut EffectContext::new_default(host, A)).unwrap();
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_power(host), Some(4), "{text}: ability loss removes only grants");
+        assert!(!game.can_be_blocked_by_defender(host, B), "{text}: the external quality survives host ability loss");
+        game.remove_object(source);
+        game.refresh_continuous_state().unwrap();
+        assert!(game.can_be_blocked_by_defender(host, B), "{text}: removing the source ends the quality");
     }
     assert!(failures.is_empty(), "CR 113.12: {failures:?}");
 }

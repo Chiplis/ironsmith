@@ -72,3 +72,6 @@ pub(crate) use lifecycle_snapshot::{freeze_completed_lifecycle_events, retain_de
 
 mod monarch_changed;
 pub use monarch_changed::MonarchChangedEvent;
+
+mod dungeon_room_entered;
+pub use dungeon_room_entered::DungeonRoomEnteredEvent;

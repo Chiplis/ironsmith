@@ -193,8 +193,8 @@ fn parse_anthem_goaded_lexed<'a>(input: &mut LexStream<'a>) -> WResult<AnthemGoa
     let and_token = initial_len.saturating_sub(input.len());
     primitives::kw("and").parse_next(input)?;
     alt((
-        primitives::phrase(&["is", "goaded"]),
-        primitives::phrase(&["are", "goaded"]),
+        primitives::phrase(&["is", crate::keyword_forms::GOADED]),
+        primitives::phrase(&["are", crate::keyword_forms::GOADED]),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;

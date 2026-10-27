@@ -5,8 +5,8 @@ use super::*;
 pub(super) fn parse_clear_suspected_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::token_word_refs(tokens);
-    if !words.ends_with(&["no", "longer", "suspected"]) { return Ok(None); }
-    if words.as_slice() == ["all", "suspected", "creatures", "are", "no", "longer", "suspected"] { return Ok(None); }
+    if !words.ends_with(&["no", "longer", crate::keyword_forms::SUSPECTED]) { return Ok(None); }
+    if words.as_slice() == ["all", crate::keyword_forms::SUSPECTED, "creatures", "are", "no", "longer", crate::keyword_forms::SUSPECTED] { return Ok(None); }
     let positions: Vec<_> = tokens.iter().enumerate().filter_map(|(i, t)| t.as_word().map(|_| i)).collect();
     let copula = words.len().saturating_sub(4);
     let (subject, contracted) = match words.get(copula).copied() {

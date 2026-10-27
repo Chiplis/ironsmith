@@ -59,7 +59,7 @@ pub(super) fn validate(tokens: &[OwnedLexToken]) -> Result<(), CardTextError> {
     for tokens in crate::lexer::split_lexed_sentences(tokens) {
         let words = crate::lexer::parser_token_word_refs(tokens);
         let state_head = [
-            &["if", "this", "spell", "was", "kicked"][..],
+            &["if", "this", "spell", "was", crate::keyword_forms::KICKED][..],
             &["if", "you", "cast", "this", "spell"],
             &["card", "types", "among", "cards", "in", "your", "graveyard"],
         ].iter().any(|head| words.windows(head.len()).any(|part| part == *head));

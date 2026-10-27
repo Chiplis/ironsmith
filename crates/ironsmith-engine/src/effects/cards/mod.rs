@@ -50,7 +50,7 @@ pub use look_at_hand::LookAtHandEffect;
 pub use look_at_objects::LookAtObjectsEffect;
 pub use look_at_top::LookAtTopCardsEffect;
 pub use mill::MillEffect;
-pub(crate) use miracle_draw::{draw_cards_with_miracle_window, miracle_reveal_event};
+pub(crate) use miracle_draw::{draw_cards_with_miracle_window, miracle_reveal_event, choose_deferred_miracle_as_drawn};
 pub use put_tagged_remainder_on_library_bottom::PutTaggedRemainderOnLibraryBottomEffect;
 pub use rearrange_looked_cards_in_library::RearrangeLookedCardsInLibraryEffect;
 pub use reorder_top_planar_deck::ReorderTopPlanarDeckEffect;

@@ -204,12 +204,14 @@ fn source_filtered_target_restriction(
             // to its source, not to the controller of the ability on the stack.
             source_filter
         }
-        TargetRestrictionEnvelope::ControlledSpellsOrAbilities { opponents } => {
-            ObjectFilter::spell_or_ability().controlled_by(if opponents {
-                PlayerFilter::Opponent
-            } else {
-                PlayerFilter::You
-            })
+        TargetRestrictionEnvelope::ControlledSpellsOrAbilities { opponents, descriptors } => {
+            let mut filter = if let Some(range) = descriptors {
+                parse_object_filter(&tokens[range], false)?
+            } else { ObjectFilter::default() };
+            filter.zone = Some(crate::zone::Zone::Stack);
+            filter.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
+            filter.controller = Some(if opponents { PlayerFilter::Opponent } else { PlayerFilter::You });
+            filter
         }
         TargetRestrictionEnvelope::FilteredSources {
             spell_descriptor_tokens,

@@ -262,7 +262,7 @@ impl EffectExecutor for ClashEffect {
                 move_revealed_cards_to_bottom(game, &cards_to_bottom);
 
                 let player_tags = winner_tags(clash_winner);
-                for player in [ctx.controller, opponent] {
+                for player in [ctx.controller, opponent].into_iter().filter(|_| !self.descriptive) {
                     let keyword =
                         crate::effects::composition::publish_keyword_action_completion_receipt(
                             game,

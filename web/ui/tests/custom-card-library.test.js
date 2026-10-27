@@ -34,6 +34,6 @@ test('user creations without Reddit sources can register flavor safely', () => {
 });
 
 test('storage unavailability is reported and never pretends a save succeeded', async () => {
-  await assert.rejects(saveCustomCard({faces:[{name:'Unsaved'}]}), /IndexedDB/);
+  await assert.rejects(saveCustomCard({faces:[{name:'Unsaved'}]}, {compile: async () => ({canCreate: true})}), /IndexedDB/);
   await assert.rejects(listSavedCustomCards(), /IndexedDB/);
 });

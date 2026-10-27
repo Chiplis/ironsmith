@@ -34,6 +34,8 @@ pub(crate) use prepared_move::{
 };
 mod battlefield_entry;
 mod continuation;
+mod duration_returns;
+pub(crate) use duration_returns::execute_duration_returns;
 pub(crate) use continuation::{
     ZoneInstructionDraws, complete_zone_instruction, prepare_zone_instruction_completion,
 };

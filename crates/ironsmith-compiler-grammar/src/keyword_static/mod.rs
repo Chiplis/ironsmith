@@ -1,4 +1,9 @@
 mod characteristic_assertions;
+mod reminder_definitions;
+
+pub(crate) fn parse_descriptive_reminder_line(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
+    reminder_definitions::parse(tokens)
+}
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::PredicateAst;
 use crate::cards::builders::SourcePredicateAst;
@@ -590,6 +595,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("this", "equipment"),
         ],
         "parse_conditional_source_spell_keyword_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "spell"),
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "this"),
         ],
@@ -679,25 +686,6 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("enchanted"),
             StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
             StaticAbilityLineHeadHint::Pair("enchanted", "permanent"),
-            StaticAbilityLineHeadHint::Single("equipped"),
-            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
-        ],
-        "parse_subject_has_keywords_and_cant_be_blocked_line"
-        | "parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line" => vec![
-            StaticAbilityLineHeadHint::Single("as"),
-            StaticAbilityLineHeadHint::Pair("as", "long"),
-            StaticAbilityLineHeadHint::Single("this"),
-            StaticAbilityLineHeadHint::Pair("this", "creature"),
-            StaticAbilityLineHeadHint::Single("enchanted"),
-            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
-            StaticAbilityLineHeadHint::Single("equipped"),
-            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
-        ],
-        "parse_subject_cant_be_blocked_and_has_keywords_line" => vec![
-            StaticAbilityLineHeadHint::Single("this"),
-            StaticAbilityLineHeadHint::Pair("this", "creature"),
-            StaticAbilityLineHeadHint::Single("enchanted"),
-            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
             StaticAbilityLineHeadHint::Single("equipped"),
             StaticAbilityLineHeadHint::Pair("equipped", "creature"),
         ],
@@ -2576,6 +2564,7 @@ fn parse_source_attacks_player_each_combat_line(
 pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(abilities) = reminder_definitions::parse(tokens) { return Ok(Some(abilities)); }
     // An otherwise branch may change its subject from the attachment's
     // creature to the attachment itself. Keep both sentences under one owner.
     if let Some(abilities) = parse_as_long_as_attached_otherwise_source_keyword_line(tokens)? {
@@ -6178,6 +6167,7 @@ fn parse_graveyard_metric_threshold_condition(
 pub fn parse_conditional_source_spell_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
     let Some(spec) = static_keyword_line_shapes::parse_conditional_spell_keyword(tokens) else {
         return Ok(None);
     };

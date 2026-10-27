@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { installMainDecisionShortcut } from '../src/lib/main-decision-shortcut';
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
@@ -18,15 +19,16 @@ const context = {
   dispatch:async()=>{}, dispatchInBackground:async()=>{},
 };
 export function DefenderTarget() {
-  const { combatMode } = useCombatArrows();
-  return <button onClick={()=>combatMode?.onTargetAreaClick?.(1, null)}>Defend Bob</button>;
+  const { combatMode, arrows } = useCombatArrows();
+  return <button data-combat-arrows={JSON.stringify(arrows)} data-selected-attacker={combatMode?.selectedAttacker ?? ""} onClick={()=>combatMode?.onTargetAreaClick?.(1, null)}>Defend Bob</button>;
 }
 export function CombatDecisionFixture() {
+  useEffect(() => installMainDecisionShortcut(document), []);
   const [opponent, setOpponent] = useState(false);
   const [started, setStarted] = useState(false);
   const [result, setResult] = useState("");
   const battlefield = [{...cards[0], id:10, stable_id:10, lane:"creatures", controller:0}];
-  const combatDecision = {kind:"attackers", player:0, attacker_options:[{creature:10, creature_name:"Myr Moonvessel", valid_targets:[{Player:1}]}]};
+  const combatDecision = {kind:"attackers", player:0, attacker_options:[{creature:10, creature_name:"Myr Moonvessel", valid_targets:new URLSearchParams(location.search).get("targets") === "0" ? [] : new URLSearchParams(location.search).get("targets") === "2" ? [{Player:1},{Planeswalker:20}] : [{Player:1}]}]};
   const gameState = {...context.state, decision:started ? combatDecision : {kind:"priority",player:0,actions:[]}, players:context.state.players.map((player,index)=>({...player,life:20,battlefield:index===0?battlefield:[], hand_cards:[],graveyard_cards:[],exile_cards:[],command_cards:[],mana_pool:{}})), snapshot_id:1, perspective:opponent ? 1 : 0, phase:"Combat", step:"DeclareAttackers", cancelable:true};
   return <I18nProvider><GameContext.Provider value={{...context, state:gameState, holdRule:"never", setHoldRule:()=>{}, cancelDecision:()=>setResult("cancelled"), dispatch:async action=>setResult(JSON.stringify(action))}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
     <main style={{height:"90vh"}}>

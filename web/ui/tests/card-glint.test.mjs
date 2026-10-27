@@ -181,3 +181,71 @@ test('basic land frames retain their palette before and after printing metadata 
   assert.deepEqual(cardGlintFace({type_line:'Basic Land',name:'Wastes'}).frameColors,[]);
   assert.deepEqual(cardGlintFace({type_line:'Land — Forest',intrinsic_mana:[]}).frameColors,[]);
 });
+
+test('Adventure and Aftermath keep both panels and their outer frame when selecting the spell', async () => {
+  const {cardFrameFaceIndex} = await import('../src/lib/card-frame-snapshot.mjs');
+  const {cardGlintDraftFace} = await import('../src/lib/card-glint/draft.mjs');
+  for (const layout of ['adventure','aftermath','split']) {
+    const card={layout,card_faces:[
+      {name:'Guardian',type_line:'Creature — Human',mana_cost:'{2}{G}',oracle_text:'Vigilance',power:'4',toughness:'5'},
+      {name:'Journey',type_line:layout==='adventure'?'Instant — Adventure':'Sorcery',mana_cost:'{U}',oracle_text:layout==='adventure'?'Draw two cards.':'Aftermath\nDraw two cards.'},
+    ]};
+    const face=cardGlintFace(card,{faceIndex:1});
+    assert.equal(face.layout,layout==='split'?'aftermath':layout);
+    assert.equal(face.name,'Guardian');
+    assert.equal(face.power,'4');
+    assert.deepEqual(face.faces.map(f=>f.rulesText),card.card_faces.map(f=>f.oracle_text));
+    assert.deepEqual(face.faces.map(f=>f.colors),[['G'],['U']]);
+    assert.equal(cardFrameFaceIndex({...card,name:'Journey'},'/back/image.jpg'),0);
+  }
+  const draft={layout:'transform_like',faces:[
+    {name:'Guardian',cardTypes:['Creature'],oracleText:'Vigilance'},
+    {name:'Journey',cardTypes:['Instant'],subtypes:['Adventure'],oracleText:'Draw two cards.'},
+  ]};
+  assert.equal(cardGlintDraftFace(draft,1).layout,'adventure');
+  assert.equal(cardGlintDraftFace(draft,1).faces[1].rulesText,'Draw two cards.');
+});
+
+test('special layout imports preserve physical frames and compiler-compatible layouts', async()=>{
+  const {cardBuildDraft}=await import('../src/lib/card-build-draft.js');
+  const {normalizeDraftForApi}=await import('../src/lib/custom-card-draft.js');
+  const {cardGlintDraftFace}=await import('../src/lib/card-glint/draft.mjs');
+  const {specialLayoutCard}=await import('./card-glint-special-layouts-fixture.mjs');
+  for(const [layout,compiler] of [['prepare','prepare'],['room','split'],['flip','transform_like'],['modal_dfc','transform_like'],['aftermath','split'],['battle','transform_like']]) {
+    const card=specialLayoutCard(layout),draft=cardBuildDraft(card);
+    assert.equal(draft.frameLayout,layout);
+    assert.equal(normalizeDraftForApi(draft).layout,compiler);
+    const face=cardGlintDraftFace(draft);
+    assert.equal(face.layout,layout==='room'?'split':layout);
+    if(['prepare','room','flip','aftermath'].includes(layout)) {
+      assert.equal(face.faces.length,2);
+      assert.deepEqual(face.faces.map(f=>f.rulesText),card.card_faces.map(f=>f.oracle_text));
+    } else assert.equal(cardGlintDraftFace(draft,1).name,'Journey');
+    if(layout==='battle') {
+      assert.deepEqual(face.reverseStats,{power:'5',toughness:'6'});
+      assert.equal(face.frameTemplate,'battle');
+      assert.equal(cardGlintDraftFace(draft,1).frameTemplate,undefined);
+      assert.equal(cardGlintDraftFace(draft,1).reverseStats,undefined);
+    }
+  }
+});
+
+test('frame audit retains printing treatments, canonical types, Saga stats, stamps and Fuse',async()=>{
+  const {frameAuditCases}=await import('./card-glint-frame-audit-fixture.mjs');
+  const faces=Object.fromEntries(frameAuditCases().map(({id,card})=>[id,cardGlintFace(card)]));
+  assert.equal(faces.eighth.frameAssetFamily,'eighth');
+  assert.equal(faces.colorshifted.frameTreatment,'colorshifted');
+  assert.equal(faces.retro.frameStyle,'retro');
+  assert.equal(faces.future.frameTemplate,'future');
+  assert.equal(faces.class.canonicalTypeLine,'Enchantment — Class');
+  assert.equal(faces.class.typeLine,'Encantamiento — Clase');
+  assert.deepEqual(faces['transforming-saga'].reverseStats,{power:'4',toughness:'5'});
+  assert.match(faces.fuse.rulesText,/\nFuse$/);
+  const {cardBuildDraft}=await import('../src/lib/card-build-draft.js');
+  const {cardGlintDraftFace}=await import('../src/lib/card-glint/draft.mjs');
+  assert.match(cardGlintDraftFace(cardBuildDraft(frameAuditCases().find(c=>c.id==='fuse').card)).rulesText,/\nFuse$/);
+  const card={layout:'modal_dfc',card_faces:[{name:'Front'},{name:'Back'}]};
+  assert.equal(cardGlintFace(card,{faceIndex:1,printing:{security_stamp:'oval',frame:'2003'}}).securityStamp,'none');
+  assert.equal(cardGlintFace(card,{faceIndex:1,printing:{frame:'2003'}}).frameAssetFamily,undefined);
+  assert.equal(cardGlintFace({...card,card_faces:[{type_line:'Enchantment — Saga'}, {type_line:'Land'}]}).reverseStats,undefined);
+});

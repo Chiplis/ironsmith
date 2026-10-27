@@ -33123,8 +33123,9 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
     let mut mismatches = Vec::new();
     for actor in [PlayerId::from_index(0), PlayerId::from_index(1)] {
         for cast_right in [false, true] {
-            // Physical cast; copied spell; token copies of one/both/neither unlocked.
-            for path in 0..5 {
+            // Physical cast; copied spell; token copies of one/both/neither
+            // unlocked; and a second-generation copy of a fully unlocked copy.
+            for path in 0..6 {
                 for first_linked in [false, true] {
                     if path == 0 && first_linked {
                         continue;
@@ -33194,7 +33195,7 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
                         .build();
                     let observer =
                         game.create_object_from_definition(&observer, actor, Zone::Battlefield);
-                    let room;
+                    let mut room;
                     if path == 1 {
                         game.stack.push(StackEntry::ability(
                             observer,
@@ -33237,7 +33238,7 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
                             !game.room_has_no_unlocked_door(donor)
                                 && !game.is_room_fully_unlocked(donor)
                         );
-                        if path == 3 {
+                        if path == 3 || path == 5 {
                             ironsmith::special_actions::perform(
                                 SpecialAction::UnlockRoomDoor {
                                     room_id: donor,
@@ -33286,6 +33287,22 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
                                 .find(|id| !before.contains(id))
                                 .unwrap();
                             assert_ne!(game.object(room).unwrap().stable_id, physical_stable);
+                            if path == 5 {
+                                for door in [RoomDoor::Current, RoomDoor::Linked] {
+                                    ironsmith::special_actions::perform(
+                                        SpecialAction::UnlockRoomDoor { room_id: room, door },
+                                        &mut game, actor,
+                                        &mut ironsmith::decision::SelectFirstDecisionMaker,
+                                    ).unwrap();
+                                }
+                                assert!(game.is_room_fully_unlocked(room));
+                                let before = game.battlefield.clone();
+                                game.stack.push(StackEntry::ability(observer, actor, vec![
+                                    Effect::new(CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(room)))
+                                ]));
+                                ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+                                room = game.battlefield.iter().copied().find(|id| !before.contains(id)).unwrap();
+                            }
                         }
                     }
                     assert_eq!(
@@ -33437,10 +33454,10 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
             }
         }
     }
-    assert_eq!(cases, 36);
+    assert_eq!(cases, 44);
     assert!(
         mismatches.is_empty(),
-        "CR709.5b/d: {} discrepancies among36 copied/physical Room fixtures:\n{}",
+        "CR709.5b/d: {} discrepancies among44 copied/physical Room fixtures:\n{}",
         mismatches.len(),
         mismatches.join("\n")
     );
@@ -39055,6 +39072,16 @@ fn cr_audit_adventure_copy_fixture(
     actor: PlayerId,
     mode: u8,
 ) -> (GameState, ironsmith::ObjectId, ironsmith::ObjectId) {
+    cr_audit_adventure_copy_fixture_with_layout(
+        actor, mode, ironsmith::card::LinkedFaceLayout::TransformLike,
+    )
+}
+
+fn cr_audit_adventure_copy_fixture_with_layout(
+    actor: PlayerId,
+    mode: u8,
+    layout: ironsmith::card::LinkedFaceLayout,
+) -> (GameState, ironsmith::ObjectId, ironsmith::ObjectId) {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::continuous::EffectTarget;
     use ironsmith::effects::{ApplyContinuousEffect, CreateTokenCopyEffect, RuntimeModification};
@@ -39063,7 +39090,9 @@ fn cr_audit_adventure_copy_fixture(
         Until, Zone,
     };
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-    let (front, adventure) = cr_audit_adventurer_definitions();
+    let (mut front, mut adventure) = cr_audit_adventurer_definitions();
+    front.card.linked_face_layout = layout;
+    adventure.card.linked_face_layout = layout;
     game.register_linked_face_definition(&front);
     game.register_linked_face_definition(&adventure);
     let adventurer = game.create_object_from_definition(&front, actor, Zone::Battlefield);
@@ -39263,9 +39292,10 @@ fn cr_715_2a_b_has_an_adventure_follows_current_copiable_values_in_both_directio
     use ironsmith::{CardType, Effect, ObjectFilter, StackEntry, Subtype, Value, Zone};
     let mut cases = 0;
     let mut mismatches = Vec::new();
+    for layout in [ironsmith::card::LinkedFaceLayout::TransformLike, ironsmith::card::LinkedFaceLayout::None] {
     for actor in [PlayerId::from_index(0), PlayerId::from_index(1)] {
         for mode in 0..9 {
-            let (mut game, subject, observer) = cr_audit_adventure_copy_fixture(actor, mode);
+            let (mut game, subject, observer) = cr_audit_adventure_copy_fixture_with_layout(actor, mode, layout);
             for expired in [false, true] {
                 if expired {
                     ironsmith::turn::execute_cleanup_step(&mut game);
@@ -39296,16 +39326,17 @@ fn cr_715_2a_b_has_an_adventure_follows_current_copiable_values_in_both_directio
                 ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
                 let gained = game.player(actor).unwrap().life - old;
                 if gained != i32::from(expected) {
-                    mismatches.push(format!("has-Adventure copy actor={actor:?}, mode={mode}, expired={expired}: name={:?}, gain={gained}, required{}",chars.name,i32::from(expected)));
+                    mismatches.push(format!("has-Adventure copy layout={layout:?}, actor={actor:?}, mode={mode}, expired={expired}: name={:?}, gain={gained}, required{}",chars.name,i32::from(expected)));
                 }
             }
             cases += 1;
         }
     }
-    assert_eq!(cases, 18);
+    }
+    assert_eq!(cases, 36);
     assert!(
         mismatches.is_empty(),
-        "CR715.2a/b: {} discrepancies among18 native current-copy/ordinary/DFC Adventure-characteristic fixtures:\n{}",
+        "CR715.2a/b: {} discrepancies among36 native current-copy/ordinary/DFC Adventure-characteristic fixtures:\n{}",
         mismatches.len(),
         mismatches.join("\n")
     );
@@ -51107,7 +51138,7 @@ fn cr_121_2a_616_1g_draw_instruction_modifiers_precede_individual_draw_replaceme
     let mut discrepancies = Vec::new();
     let mut cases = 0;
     for actor in [PlayerId::from_index(0), PlayerId::from_index(1)] {
-        for count in [2, 3, 5] {
+        for count in [0, 1, 2, 3, 5] {
             for empty in [false, true] {
                 for quantity_modifier in [false, true] {
                     for prefer_quantity in [false, true] {
@@ -51168,7 +51199,7 @@ fn cr_121_2a_616_1g_draw_instruction_modifiers_precede_individual_draw_replaceme
                         ));
                         ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
                         let actual = game.player(actor).unwrap().life - 20;
-                        let required = count + i32::from(quantity_modifier);
+                        let required = count + i32::from(quantity_modifier && count > 0);
                         if actual != required || dm.competing != 0 {
                             discrepancies.push(format!("actor={actor:?},count={count},empty={empty},modifier={quantity_modifier},prefer_quantity={prefer_quantity}:gain{actual},required{required},outer-vs-inner choice prompts{} (required0)",dm.competing));
                         }
@@ -51190,10 +51221,10 @@ fn cr_121_2a_616_1g_draw_instruction_modifiers_precede_individual_draw_replaceme
             }
         }
     }
-    assert_eq!(cases, 48);
+    assert_eq!(cases, 80);
     assert!(
         discrepancies.is_empty(),
-        "CR121.2a/616.1g: {} wrong quantity/individual replacement results across48 native draw-instruction fixtures:\n{}",
+        "CR121.2a/616.1g: {} wrong quantity/individual replacement results across80 native draw-instruction fixtures:\n{}",
         discrepancies.len(),
         discrepancies.join("\n")
     );
@@ -53838,7 +53869,11 @@ fn cr_205_3m_creature_type_choices_match_the_complete_cr_inventory() {
 }
 
 fn cr_audit_cr_creature_subtypes() -> &'static [&'static str] {
+    // Current CR inventory plus the printed Star Trek types intentionally
+    // supported by this app (user decision, 2026-10-25). Keep this independent
+    // of the product's enum/table so missing or obsolete entries still fail.
     &[
+        "Borg", "El-Aurian", "Ferengi", "Klingon", "Officer", "Q", "Tribble", "Vulcan",
         "Advisor",
         "Aetherborn",
         "Alien",
@@ -58088,13 +58123,20 @@ fn cr_616_1c_f_competing_copy_replacements_precede_other_entry_replacements() {
                         let label = format!(
                             "order={order:?} first={first} origin={origin:?} owner={owner:?} actor={actor:?}"
                         );
-                        if dm.menus.len() != 1
+                        // CR 616.1c requires the two copy replacements first.
+                        // After both apply, 616.1e/f also gives the entering
+                        // controller a choice between tapped and counters.
+                        if dm.menus.len() != 2
                             || dm.menus[0].0 != actor
                             || dm.menus[0].1.len() != 2
                             || !dm.menus[0].1.contains(&donors[0])
                             || !dm.menus[0].1.contains(&donors[1])
+                            || dm.menus[1].0 != actor
+                            || dm.menus[1].1.len() != 2
+                            || !dm.menus[1].1.contains(&source)
+                            || !dm.menus[1].1.contains(&old)
                         {
-                            discrepancies.push(format!("{label}: copy-priority menu {:?}, required only both copy replacements for the entering controller",dm.menus));
+                            discrepancies.push(format!("{label}: replacement menus {:?}, required copies first, then tapped/counters, both for the entering controller",dm.menus));
                         }
                         if game.object(current).unwrap().zone != Zone::Battlefield
                             || game.current_name(current)
@@ -62094,7 +62136,7 @@ fn check_unrelated_chosen_color_after_ability_change(mana_reader: bool) {
             Color::Red,
             Color::Green,
         ] {
-            for mode in 0..2 {
+            for mode in 0..3 {
                 let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
                 let reader = if mana_reader {
                     Ability::mana_with_effects(
@@ -62117,7 +62159,7 @@ fn check_unrelated_chosen_color_after_ability_change(mana_reader: bool) {
                         .power_toughness(ironsmith::PowerToughness::fixed(3, 12))
                         .with_ability(chooser.clone());
                 // Mode0 exercises the reader whose own entry choice was actually made.
-                if mode == 0 {
+                if mode != 1 {
                     initial = initial.with_ability(reader.clone());
                 }
                 let initial = initial.with_ability(Ability::static_ability(StaticAbility::haste())).build();
@@ -62199,6 +62241,9 @@ fn check_unrelated_chosen_color_after_ability_change(mana_reader: bool) {
                     // The rule constrains use of the old choice, not whether
                     // the engine keeps that information in its internal store.
                 }
+                if mode == 2 {
+                    ironsmith::turn::execute_cleanup_step(&mut game);
+                }
                 if mana_reader {
                     let ability_index = 1;
                     ironsmith::special_actions::perform_activate_mana_ability(
@@ -62223,7 +62268,7 @@ fn check_unrelated_chosen_color_after_ability_change(mana_reader: bool) {
                         pool.green,
                         pool.colorless,
                     );
-                    let expected = if mode == 0 {
+                    let expected = if mode != 1 {
                         match color {
                             Color::White => (1, 0, 0, 0, 0, 0),
                             Color::Blue => (0, 1, 0, 0, 0, 0),
@@ -62260,7 +62305,7 @@ fn check_unrelated_chosen_color_after_ability_change(mana_reader: bool) {
                             .execute(&mut game, &mut EffectContext::new_default(source, holder))
                             .unwrap();
                         let actual = game.damage_on(subject) - before;
-                        let expected = u32::from(mode != 0 || damage_color != color);
+                        let expected = u32::from(mode == 1 || damage_color != color);
                         if actual != expected {
                             failures.push(format!("holder={holder:?} color={color:?} mode={mode} damage_color={damage_color:?}: damage {actual}, expected {expected}"));
                         }
@@ -62277,7 +62322,7 @@ fn check_unrelated_chosen_color_after_ability_change(mana_reader: bool) {
             }
         }
     }
-    assert_eq!(checked, 20);
+    assert_eq!(checked, 30);
     assert!(
         failures.is_empty(),
         "CR 607.2d/607.5a: a copied reader cannot consume an unrelated old color choice; reader_mana={mana_reader}; {} mismatches in {checked} fixtures:\n{}",
@@ -75798,9 +75843,11 @@ fn cr_102_1_810_11_large_rosters_preserve_people_and_additional_head_teams() {
     use ironsmith::effects::LoseLifeEffect;
     use ironsmith::{CardId, CardType, ChooseSpec, Zone};
     use std::collections::HashSet;
+    // User-approved engine/protocol limit: at most 255 players. Exercise
+    // boundary identities and the largest equal teams within that scope.
     let mut cases = 0;
     let mut discrepancies = Vec::new();
-    for count in [2usize, 3, 255, 256, 257, 258] {
+    for count in [2usize, 3, 254, 255] {
         let mut game = GameState::new((0..count).map(|i| format!("Person{i}")).collect(), 20);
         assert_eq!(game.players.len(), count);
         let unique = game
@@ -75848,7 +75895,7 @@ fn cr_102_1_810_11_large_rosters_preserve_people_and_additional_head_teams() {
         }
         cases += 1;
     }
-    for heads in [128usize, 129] {
+    for heads in [2usize, 3, 127] {
         let mut game = GameState::new(
             (0..2 * heads)
                 .map(|i| format!("Extended head{i}"))
@@ -75875,7 +75922,9 @@ fn cr_102_1_810_11_large_rosters_preserve_people_and_additional_head_teams() {
         }
         cases += 1;
     }
-    assert_eq!(cases, 8);
+    // Reject unsupported rosters rather than silently aliasing PlayerId values.
+    assert!(std::panic::catch_unwind(|| GameState::new(vec!["Person".into(); 256], 20)).is_err());
+    assert_eq!(cases, 7);
     assert!(
         discrepancies.is_empty(),
         "CR102.1/810.11: separate people remain individually addressable in multiplayer games,and equal additional-head teams can be configured without silently aliasing players: {}",
@@ -83945,10 +83994,11 @@ fn cr_601_2b_702_47b_modes_added_by_splice_are_announced_before_cast_completion(
     for seat in 0..2 {
         for main_modal in [false, true] {
             for added_modal in [false, true] {
+              for copy_spell in [false, true] {
                 let actor = PlayerId::from_index(seat);
                 let other = PlayerId::from_index(1 - seat);
                 let label =
-                    format!("seat={seat} main_modal={main_modal} added_modal={added_modal}");
+                    format!("seat={seat} main_modal={main_modal} added_modal={added_modal} copy={copy_spell}");
                 let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
                 game.turn.active_player = actor;
                 game.turn.priority_player = Some(actor);
@@ -83964,6 +84014,7 @@ fn cr_601_2b_702_47b_modes_added_by_splice_are_announced_before_cast_completion(
                         .mana_cost(ManaCost::new())
                         .with_spell_effect(vec![program(added_modal, true)])
                         .with_ability(Ability::static_ability(StaticAbility::splice(SpliceSpec {
+                    descriptive: false,
                             quality: SpliceQuality::Arcane,
                             cost: ironsmith::cost::TotalCost::free(),
                             cost_surface: Some("{0}".into()),
@@ -84007,6 +84058,10 @@ fn cr_601_2b_702_47b_modes_added_by_splice_are_announced_before_cast_completion(
                         "splice-modal-announcement {label}: no mode choice before completed cast"
                     ));
                 }
+                if copy_spell {
+                    cr_audit_announce_target_domain_effect(&mut game, actor, 0,
+                        Effect::copy_spell(ironsmith::target::ChooseSpec::SpecificObject(spell)), &mut dm);
+                }
                 // Only the decision recorder changes epoch here. All game changes
                 // still follow real passes, queue processing and effect execution.
                 dm.resolving = true;
@@ -84029,7 +84084,7 @@ fn cr_601_2b_702_47b_modes_added_by_splice_are_announced_before_cast_completion(
                     }
                 }
                 let life = game.player(actor).unwrap().life;
-                let required = if added_modal { 31 } else { 23 };
+                let required = 20 + (if added_modal { 11 } else { 3 }) * (if copy_spell { 2 } else { 1 });
                 eprintln!(
                     "splice-modal-observed {label}: life={life} required={required} cast_choices={} resolution_choices={} splice_prompts={}",
                     dm.cast_modes, dm.resolution_modes, dm.splices
@@ -84049,10 +84104,11 @@ fn cr_601_2b_702_47b_modes_added_by_splice_are_announced_before_cast_completion(
                 assert!(game.stack.is_empty());
                 game.validate_zone_consistency().unwrap();
                 games += 1;
+              }
             }
         }
     }
-    assert_eq!(games, 8);
+    assert_eq!(games, 16);
     assert!(
         errors.is_empty(),
         "CR601.2b/700.2a/702.47b/612.10: legal native modal splice text adds choices which must be announced during casting, and independent modal instructions retain their selected options: {}",
@@ -88812,13 +88868,14 @@ fn cr_608_2c_boneyard_parley_caster_chooses_between_the_opponents_two_exiled_pil
                     .map(|o| o.index)
                     .collect();
             }
-            if c.options.len() == 1
-                && g.players
-                    .iter()
-                    .any(|p| p.name.to_string() == c.options[0].description)
+            if !c.options.is_empty() && c.options.iter().all(|option|
+                g.players.iter().any(|p| p.name.to_string() == option.description))
             {
-                assert!(c.options[0].legal);
-                return vec![c.options[0].index];
+                assert_eq!(c.player, self.caster);
+                let name = g.player(self.opponent).unwrap().name.to_string();
+                let option = c.options.iter().find(|option| option.legal && option.description == name)
+                    .expect("caster can select the intended opponent to separate piles");
+                return vec![option.index];
             }
             let ids = self.pool(g);
             let chosen = self.selected(&ids);
@@ -88886,16 +88943,17 @@ fn cr_608_2c_boneyard_parley_caster_chooses_between_the_opponents_two_exiled_pil
         mut restored,
         mut foreign_returned,
     ) = (0, 0, 0, 0, 0, 0, 0, 0);
-    for seat in 0..2 {
+    for player_count in [2u8, 3] {
+    for seat in 0..player_count {
         for ownership in 0..3 {
             for split_size in 0usize..=3 {
                 for choose_split in [false, true] {
                     let caster = PlayerId::from_index(seat);
-                    let opponent = PlayerId::from_index(1 - seat);
+                    let opponent = PlayerId::from_index((seat + player_count - 1) % player_count);
                     let label = format!(
                         "seat={seat} ownership={ownership} split={split_size} choose_split={choose_split}"
                     );
-                    let mut g = GameState::new(vec!["A".into(), "B".into()], 20);
+                    let mut g = GameState::new((0..player_count).map(|index| format!("Player {index}")).collect(), 20);
                     g.turn.active_player = caster;
                     g.turn.priority_player = Some(caster);
                     g.turn.phase = Phase::FirstMain;
@@ -89043,7 +89101,8 @@ fn cr_608_2c_boneyard_parley_caster_chooses_between_the_opponents_two_exiled_pil
             }
         }
     }
-    assert_eq!(games, 48);
+    }
+    assert_eq!(games, 120);
     eprintln!(
         "boneyard-piles-summary games={games} casts={casts} separations={separations} selections={selections} target_declarations={target_calls} returned={returned} restored={restored} foreign_returned={foreign_returned}"
     );
@@ -95496,6 +95555,14 @@ fn cr_702_74a_evoke_works_from_library_exile_and_command_with_native_cast_permis
         if let Some(hand)=transport_hand{let a=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==hand)).expect("real zero-cost placement spell has an actual creature-card target in graveyard");cr_audit_complete_priority_action_with_dm(&mut g,actor,a,&mut d,&mut q).unwrap();assert_eq!(g.stack.len(),1);one(&mut g,&mut q,&mut d);assert!(g.stack.is_empty()&&q.is_empty());let old=card;card=g.find_object_by_stable_id(physical).unwrap();assert_ne!(card,old);assert_eq!(g.object(card).unwrap().zone,Zone::Command);assert_eq!(g.object(card).unwrap().owner,actor);assert!(g.player(actor).unwrap().get_commanders().is_empty());assert_eq!(d.transport_targets,1);command_transports+=1;eprintln!("evoke-remote-command-placement {label} transported=true target_choices=1 commanders=0");}
         for payer in payers{let action=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::ActivateManaAbility{source,ability_index:0}if *source==payer)).unwrap();cr_audit_complete_priority_action_with_dm(&mut g,actor,action,&mut d,&mut q).unwrap();assert!(g.is_tapped(payer));mana_actions+=1;}
         let spec=g.current_abilities(grant).unwrap().iter().find_map(|a|match &a.kind{ironsmith::AbilityKind::Static(s)=>s.grant_spec(),_=>None}).expect("actual static PlayFrom permission is present");assert!(matches!(spec.grantable,Grantable::PlayFrom));assert_eq!(spec.zone,from);assert_eq!(spec.beneficiary,PlayerFilter::You);assert_eq!(spec.filter,ObjectFilter{card_types:vec![CardType::Creature],owner:Some(PlayerFilter::You),..Default::default()});assert_eq!(g.current_controller(grant),Some(actor));assert_eq!(g.object(grant).unwrap().zone,Zone::Battlefield);assert_eq!(g.object(card).unwrap().owner,actor);assert_eq!(g.object(card).unwrap().zone,from);assert!(g.current_characteristics(card).unwrap().card_types.contains(&CardType::Creature));assert!(spec.usage_limit.is_none()&&spec.max_plays.is_none());
+        // Removing the permission must revoke every remote casting method,
+        // even with the actual mana already available.
+        let mut without_permission = g.clone();
+        without_permission.move_object_by_effect(grant, Zone::Graveyard).unwrap();
+        without_permission.refresh_continuous_state().unwrap();
+        assert!(!ironsmith::compute_legal_actions(&without_permission, actor).unwrap().iter().any(|action|
+            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == card)
+        ), "remote casting requires the grant: {label}");
         let alt=if evoke{Some(0)}else{None};let action=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().find(|a|matches!(a,LegalAction::CastSpell{spell_id,from_zone,casting_method:CastingMethod::PlayFrom{source,zone,use_alternative}}if *spell_id==card&&*from_zone==from&&*source==grant&&*zone==from&&*use_alternative==alt));let Some(action)=action else{errors.push(format!("evoke-remote-denied {label} paid_pool={paid} expected_legal=true"));assert_eq!(g.object(card).unwrap().zone,from);assert!(g.stack.is_empty()&&q.is_empty());g.validate_zone_consistency().unwrap();games+=1;eprintln!("evoke-remote-denied-observed {label} funded={paid}");continue;};cr_audit_complete_priority_action_with_dm(&mut g,actor,action,&mut d,&mut q).unwrap();casts+=1;let spell=g.find_object_by_stable_id(physical).unwrap();assert_eq!(g.object(spell).unwrap().mana_spent_to_cast.total(),paid);assert_eq!(g.object(spell).unwrap().mana_cost.as_ref().unwrap().mana_value(),5);one(&mut g,&mut q,&mut d);let source=g.find_object_by_stable_id(physical).unwrap();assert_eq!(g.object(source).unwrap().zone,Zone::Battlefield);let entries=g.stack.iter().filter(|e|e.is_ability&&e.object_id==source).count();if entries!=if evoke{2}else{1}{errors.push(format!("evoke-remote-condition {label} entries={entries} expected={}",if evoke{2}else{1}));}
         for _ in 0..32{ironsmith::game_loop::advance_priority_with_dm(&mut g,&mut q,&mut d).unwrap();if g.stack.is_empty(){break;}one(&mut g,&mut q,&mut d);}assert!(g.stack.is_empty()&&q.is_empty());let zone=g.object(g.find_object_by_stable_id(physical).unwrap()).unwrap().zone;let cards=library.iter().filter(|stable|g.object(g.find_object_by_stable_id(**stable).unwrap()).unwrap().zone==Zone::Hand).count();let life=g.player(actor).unwrap().life;let expected_zone=if evoke{Zone::Graveyard}else{Zone::Battlefield};if zone!=expected_zone||cards!=2||life!=20+i32::from(evoke){errors.push(format!("evoke-remote-result {label} source={zone:?} expected={expected_zone:?} drawn={cards} expected_drawn=2 life={life} expected_life={}",20+i32::from(evoke)));}if zone==Zone::Graveyard{sacrifices+=1;}drawn+=cards;assert_eq!(g.player(other).unwrap().life,20);assert_eq!(g.current_controller(grant),Some(actor));assert_eq!(g.object(grant).unwrap().zone,Zone::Battlefield);for p in &g.players{assert_eq!(p.mana_pool.total(),0);assert_eq!(p.poison_counters,0);}g.validate_zone_consistency().unwrap();games+=1;eprintln!("evoke-remote-observed {label} paid={paid} mana_value=5 entries={entries} source={zone:?} drawn={cards} actor_life={life}");
     }}}}
@@ -119496,6 +119563,14 @@ fn cr_702_89a_full_umbra_survives_simultaneous_aura_creature_destruction_in_eith
                         assert_eq!(g.turn.active_player, actor);
                         assert!(g.stack.is_empty() && q.is_empty());
                         g.validate_zone_consistency().unwrap();
+                        // Armor protects only the original simultaneous event.
+                        // Its departed Aura cannot replace a later destruction.
+                        if source_zone == Zone::Battlefield {
+                            let mut later = g.clone();
+                            let result = ironsmith::events::processing::process_destroy_full(&mut later, final_source, None).unwrap();
+                            assert_eq!(result, ironsmith::events::processing::DestroyResult::Destroyed { final_zone: Zone::Graveyard });
+                            assert_eq!(later.object(later.find_object_by_stable_id(physical).unwrap()).unwrap().zone, Zone::Graveyard);
+                        }
                         games += 1;
                         completed += 1;
                         eprintln!(
@@ -125955,4 +126030,35 @@ fn cr_702_26b_d_702_95a_c_new_soulbond_pairs_cannot_use_phased_out_objects() {
         "CR702.26b/d and702.95a/c: phased-out permanents must be ignored for new Soulbond eligibility and pairing. Actual source/candidate phasing before entry or before trigger resolution cannot create a new pair; real next-own-turn phase-in is not an entry and cannot resurrect such an illegal pair. Visible named-card abilities/P/T checked after phase-in, not only raw ignored-state flags. mismatches={}",
         errors.len()
     );
+}
+
+#[test]
+fn entry_grants_retain_parameterized_and_executable_abilities_in_artifacts() {
+    use ironsmith::ability::{Ability, AbilityKind};
+    use ironsmith::continuous::Modification;
+    use ironsmith::cost::TotalCost;
+    use ironsmith::effect::Effect;
+    use ironsmith::effects::DrawCardsEffect;
+    use ironsmith::static_abilities::StaticAbility;
+    use ironsmith_runtime_catalog::artifact_materializer::{encode_runtime_effect, materialize_effect};
+    use ironsmith::{ManaCost, ManaSymbol, Zone};
+    use ironsmith::target::ChooseSpec;
+    use ironsmith::effects::MoveToZoneEffect;
+    let mut movement = MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false);
+    let cost = TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]));
+    let grant = Ability::activated(TotalCost::free(),
+        vec![Effect::new(DrawCardsEffect::you(2))]);
+    movement.entry_modifications = vec![
+        Modification::AddAbility(StaticAbility::ward(cost.clone())),
+        Modification::AddAbilityGeneric(grant),
+    ];
+    let wire = encode_runtime_effect(Effect::new(movement)).unwrap();
+    let json = serde_json::to_string(&wire).unwrap();
+    let restored = materialize_effect(serde_json::from_str(&json).unwrap()).unwrap();
+    let model = restored.downcast_ref::<MoveToZoneEffect>().unwrap();
+    let Modification::AddAbility(ward) = &model.entry_modifications[0] else { unreachable!() };
+    assert_eq!(ward.ward_cost(), Some(&cost));
+    let Modification::AddAbilityGeneric(ability) = &model.entry_modifications[1] else { unreachable!() };
+    let AbilityKind::Activated(ability) = &ability.kind else { unreachable!() };
+    assert_eq!(ability.effects[0].downcast_ref::<DrawCardsEffect>().unwrap().count, ironsmith::effect::Value::Fixed(2));
 }

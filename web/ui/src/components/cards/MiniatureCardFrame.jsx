@@ -12,7 +12,7 @@ const WIDTH = CARD_FRAME_RENDER_WIDTH;
 const HEIGHT = CARD_FRAME_RENDER_HEIGHT;
 
 // A landscape frame (a battle, a plane) passes its own composition size.
-export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0, renderWidth=WIDTH, renderHeight=HEIGHT }) {
+export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0, renderWidth=WIDTH, renderHeight=HEIGHT, deferUpgrade=false }) {
   const host = useRef(null);
   const [scale, setScale] = useState(0);
   useLayoutEffect(() => {
@@ -28,7 +28,7 @@ export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0, render
       position:'absolute',left:'50%',top:'50%',
       transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin:'center', visibility: scale > 0 ? 'visible' : 'hidden',
     }}>
-      <CardFramePresentation card={card} imageUrl={imageUrl} faceIndex={faceIndex}/>
+      <CardFramePresentation card={card} imageUrl={imageUrl} faceIndex={faceIndex} deferUpgrade={deferUpgrade}/>
     </div>
   </div>;
 }

@@ -362,7 +362,7 @@ pub(super) fn parse_kicked_amount_override(sentence: &[OwnedLexToken]) -> Option
     let ((), rest) = primitives::parse_prefix(
         clean,
         (
-            primitives::phrase(&["if", "this", "spell", "was", "kicked"]),
+            primitives::phrase(&["if", "this", "spell", "was", crate::keyword_forms::KICKED]),
             opt(primitives::comma()),
             primitives::phrase(&["prevent", "the", "next"]),
         )

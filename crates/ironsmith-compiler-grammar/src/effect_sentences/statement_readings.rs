@@ -60,6 +60,80 @@ pub(super) const STATEMENT_REGISTRY: RuleId = RuleId::new("statement-reading-reg
 /// The readings, in the order they were ranked.
 const STATEMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("exchange-attached-source-with-hand-aura"),
+        head: HeadDiscriminator::Words(&["exchange", "you"]),
+        admits: |_| true,
+        read: |input| {
+            let words = crate::lexer::token_word_refs(input.sentence);
+            let words = words.strip_prefix(&["you", "may"]).unwrap_or(&words);
+            let matches = matches!(words, ["exchange", "this", "aura" | "permanent", "with", "an", "aura", "card", "in", "your", "hand"]);
+            input.outcome(Ok(matches.then(|| vec![EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor, crate::cards::builders::PlayerAst::You,
+                crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::ExchangeSourceWithHandAura))])))
+        },
+    },
+
+    Reading {
+        id: RuleId::new("put-source-counter-and-pay-each"),
+        head: HeadDiscriminator::Words(&["put"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_source_counter_payment(input.sentence)),
+    },
+    Reading {
+        id: RuleId::new("exile-graveyard-total-mana-value"),
+        head: HeadDiscriminator::Words(&["exile"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_exile_graveyard_total_value(input.sentence)),
+    },
+    Reading {
+        id: RuleId::new("retrieve-outside-card-or-rummage"),
+        head: HeadDiscriminator::Words(&["you"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_retrieve_outside_or_rummage(input.sentence)),
+    },
+    Reading {
+        id: RuleId::new("counter-placement-and-permanent-designation"),
+        head: HeadDiscriminator::Words(&["if", "put"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_counter_designation(input.sentence)),
+    },
+    Reading {
+        id: RuleId::new("optional-untap-and-block-source"),
+        head: HeadDiscriminator::Words(&["you"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_optional_untap_and_block_source(input.sentence)),
+    },
+
+    Reading {
+        id: RuleId::new("optional-counter-adjustment-for-each-holder"),
+        head: HeadDiscriminator::Words(&["for"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_optional_counter_adjustment(input.sentence)),
+    },
+
+    Reading {
+        id: RuleId::new("grow-counters-on-chosen-holders"),
+        head: HeadDiscriminator::Words(&["choose"]),
+        admits: |_| true,
+        read: |input| {
+            let words = crate::lexer::token_word_refs(input.sentence);
+            let matches = words == ["choose", "any", "number", "of", "permanents", "and/or", "players", "then", "give", "each", "another", "counter", "of", "each", "kind", "already", "there"];
+            input.outcome(Ok(matches.then(|| vec![EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::Actor,
+                crate::cards::builders::PlayerAst::You,
+                crate::cards::builders::SubjectVerbActionAst::Counters(
+                    crate::cards::builders::CounterActionAst::GrowCountersOnChosenHolders,
+                ),
+            )])))
+        },
+    },
+
+    Reading {
+        id: RuleId::new("inline-looked-card-partition"),
+        head: HeadDiscriminator::Words(&["look"]),
+        admits: |_| true,
+        read: |input| input.outcome(Ok(super::chain_carry::parse_inline_looked_card_partition_chain(input.sentence))),
+    },
+    Reading {
         id: RuleId::new("transform-any-number"),
         head: HeadDiscriminator::Words(&["transform", "then"]),
         admits: |_| true,
@@ -1217,6 +1291,10 @@ fn read_exile_single_segment(
         return Ok(None);
     }
 
+    if read_exile_graveyard_total_value(input.sentence)?.is_some() {
+        return Ok(None);
+    }
+
     // The object-filter reader accepts a trailing where clause but cannot
     // bind the enclosing target count. Let the sentence binder own it.
     if effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(input.sentence)
@@ -1876,5 +1954,138 @@ fn read_transform_any_number(
                 ),
             )],
         }),
+    ]))
+}
+
+fn read_optional_counter_adjustment(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !words.starts_with(&["for", "each"]) || words.last() != Some(&"counter") {
+        return Ok(None);
+    }
+    let Some(split) = words.windows(6).position(|part| part == ["you", "may", "add", "or", "remove", "a"]) else {
+        return Ok(None);
+    };
+    if split <= 2 { return Ok(None); }
+    let Some(counter) = crate::grammar::filters::parse_counter_type_words(&words[split + 6..]) else {
+        return Ok(None);
+    };
+    let filter_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[view.token_start_indices()[2]..view.token_start_indices()[split]]);
+    let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)?;
+    Ok(Some(vec![EffectAst::subject_verb_fixed_counter_kind_put_or_remove(
+        crate::cards::builders::TargetAst::Object(filter, None, None), counter, true,
+    )]))
+}
+
+fn read_optional_untap_and_block_source(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !words.starts_with(&["you", "may", "have"]) { return Ok(None); }
+    let Some(untap) = words.iter().position(|word| *word == "untap") else { return Ok(None); };
+    if untap <= 3 || !matches!(&words[untap..],
+        ["untap", "and", "block", "it", "if", "able"]
+        | ["untap", "and", "block", "this", "creature", "if", "able"]) { return Ok(None); }
+    let target = crate::util::parse_target_phrase(
+        &tokens[view.token_start_indices()[3]..view.token_start_indices()[untap]],
+    )?;
+    let tag = crate::tag::declared_key("reminder_required_blocker");
+    // CR 702.39's printed shorthand describes one optional instruction. Its
+    // full operation imposes the blocking requirement before untapping, and
+    // works on a creature that was already untapped as well.
+    Ok(Some(vec![EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
+        effects: vec![
+            EffectAst::subject_verb_target_only(target),
+            EffectAst::SnapshotLastObjectTag { into: tag.clone().into() },
+            EffectAst::subject_verb_cant(
+                crate::effect::Restriction::must_block_specific_attacker(
+                    crate::target::ObjectFilter::tagged(tag.clone()),
+                    crate::target::ObjectFilter::source(),
+                ), crate::effect::Until::EndOfCombat, None,
+            ),
+            EffectAst::subject_verb_untap(crate::cards::builders::TargetAst::Tagged(tag.into(), None)),
+        ],
+    })]))
+}
+
+/// Read the entire state-changing instruction atomically. Counter replacement may
+/// move the source, so a separate "become" effect would incorrectly mark a new object.
+fn read_counter_designation(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::{CounterActionAst, PlayerAst, SubjectVerbActionAst, SubjectVerbRoleAst};
+    let text = crate::lexer::render_token_slice(tokens).to_ascii_lowercase().replace('’', "'");
+    let text = text.trim().trim_end_matches('.');
+    for designation in ["monstrous", "renowned"] {
+        let prefix = format!("if this creature isn't {designation}, ");
+        let body = text.strip_prefix(&prefix).unwrap_or(text);
+        let Some(body) = body.strip_prefix("put ") else { continue; };
+        let tail = format!(" on it and it becomes {designation}");
+        let Some(body) = body.strip_suffix(&tail) else { continue; };
+        let Some(amount) = body.strip_suffix(" +1/+1 counters").or_else(|| body.strip_suffix(" +1/+1 counter")) else { continue; };
+        let amount = if amount == "x" && designation == "monstrous" {
+            crate::effect::Value::X
+        } else {
+            let Some(n) = amount.parse::<i32>().ok().or_else(|| crate::util::parse_number_word_i32(amount)) else { continue; };
+            if n < 0 { continue; }
+            crate::effect::Value::Fixed(n)
+        };
+        let action = if designation == "monstrous" {
+            CounterActionAst::PutCountersThenBecomeMonstrous { amount }
+        } else {
+            let crate::effect::Value::Fixed(amount) = amount else { continue; };
+            CounterActionAst::PutCountersThenBecomeRenowned { amount: amount as u32 }
+        };
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You, SubjectVerbActionAst::Counters(action))]));
+    }
+    Ok(None)
+}
+
+fn read_retrieve_outside_or_rummage(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let tail = ["you", "own", "from", "outside", "the", "game", "and", "put", "it", "into", "your", "hand", "or", "discard", "a", "card", "to", "draw", "a", "card"];
+    if !words.starts_with(&["you", "may", "reveal"]) || !words.ends_with(&tail) || words.len() <= tail.len() + 3 {
+        return Ok(None);
+    }
+    let end = words.len() - tail.len();
+    let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        &tokens[view.token_start_indices()[3]..view.token_start_indices()[end]], false,
+    )?;
+    Ok(Some(vec![EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::Actor, crate::cards::builders::PlayerAst::You,
+        crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::RetrieveOutsideOrRummage { filter }),
+    )]))
+}
+
+fn read_exile_graveyard_total_value(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let ["exile", "cards", "with", "total", "mana", "value", amount, "or", "greater", "from", "your", "graveyard"] = words.as_slice() else { return Ok(None); };
+    let amount = if *amount == "x" { crate::effect::Value::X } else {
+        let Some(amount) = amount.parse::<i32>().ok().or_else(|| crate::util::parse_number_word_i32(amount)) else { return Ok(None); };
+        if amount < 0 { return Ok(None); }
+        crate::effect::Value::Fixed(amount)
+    };
+    Ok(Some(vec![EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::Actor, crate::cards::builders::PlayerAst::You,
+        crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ExileGraveyardForTotalManaValue { amount }),
+    )]))
+}
+
+fn read_source_counter_payment(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::{CounterActionAst, PlayerAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst};
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !matches!(words.get(..2), Some(["put", "a" | "an"])) || !words.ends_with(&["counter", "on", "it"]) { return Ok(None); }
+    let Some(counter_end) = words.iter().position(|word| *word == "counter") else { return Ok(None); };
+    let Some(then) = words.iter().position(|word| *word == "then") else { return Ok(None); };
+    if words.get(counter_end + 1) != Some(&"on") || then <= counter_end + 2
+        || !crate::util::is_source_reference_words(&words[counter_end + 2..then])
+        || words.get(then..then + 5) != Some(&["then", "sacrifice", "it", "unless", "you"]) { return Ok(None); }
+    let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(&words[2..counter_end]) else { return Ok(None); };
+    let Some(each) = words.windows(2).rposition(|part| part == ["for", "each"]) else { return Ok(None); };
+    if each <= then + 5 || crate::grammar::filters::parse_counter_type_words(&words[each + 2..words.len() - 3]) != Some(counter_type) { return Ok(None); }
+    let price = crate::util::trim_edge_punctuation_tokens(&tokens[view.token_start_indices()[then + 5]..view.token_start_indices()[each]]);
+    let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(price)?;
+    Ok(Some(vec![
+        EffectAst::subject_verb_put_counters(counter_type, crate::effect::Value::Fixed(1), TargetAst::Source(None), None, false),
+        EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You, SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { counter_type, cost })),
     ]))
 }

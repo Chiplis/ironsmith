@@ -674,13 +674,13 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 parse_object_filter_lexed(filter_tokens, other)
                     .map(|mut filter| {
                         filter.other |= other;
-                        if parser_filter_words.contains(&"kicked")
+                        if parser_filter_words.contains(&crate::keyword_forms::KICKED)
                             && !filter
                                 .ability_markers
                                 .iter()
-                                .any(|marker| marker == "kicked")
+                                .any(|marker| marker == crate::keyword_forms::KICKED)
                         {
-                            filter.ability_markers.push("kicked".to_string());
+                            filter.ability_markers.push(crate::keyword_forms::KICKED.to_string());
                         }
                         if using_teamwork {
                             filter.ability_markers.push("teamwork".to_string());
@@ -5173,7 +5173,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     // "Whenever this creature becomes saddled" (Stubborn Burrowfiend) watches
     // the permanent becoming saddled (CR 702.171b), not this creature
     // saddling another Mount.
-    if let [subject @ .., "becomes", "saddled"] = words.as_slice()
+    if let [subject @ .., "becomes", crate::keyword_forms::SADDLED] = words.as_slice()
         && is_source_reference_words(subject)
     {
         return Ok(TriggerSpec::KeywordActionFromSource {

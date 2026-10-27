@@ -21,7 +21,8 @@ export default function NumberDecision({
   const stripLayout = layout === "strip";
   const inputId = useId();
   const min = decision.min ?? 0;
-  const max = decision.max ?? 999;
+  const max = decision.max ?? 0xffffffff;
+  const hasUpperLimit = max !== 0xffffffff;
   const [value, setValue] = useState(String(min));
   const number = parseNumberChoice(value, min, max);
   const valid = number !== null;
@@ -63,7 +64,7 @@ export default function NumberDecision({
           aria-describedby={`${inputId}-range`}
           aria-invalid={!valid}
           min={min}
-          max={max}
+          max={hasUpperLimit ? max : undefined}
           step={1}
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -79,7 +80,7 @@ export default function NumberDecision({
           "decision-helper-text",
           stripLayout ? "text-[12px] whitespace-nowrap" : "text-[14px]"
         )}>
-          ({min} – {max})
+          {hasUpperLimit ? `(${min} – ${max})` : `(${min}+)`}
         </span>
       </div>
     </div>

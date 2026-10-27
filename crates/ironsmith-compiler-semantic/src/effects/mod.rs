@@ -52,9 +52,9 @@ pub use ironsmith_core::{
     ManaRetentionDuration, ManaTypeSource, ManifestCardFromHandEffect, ManifestDreadEffect,
     ManifestObjectsEffect, ManifestTopCardOfLibraryEffect, MayCastForMiracleCostEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, MayEffect, MayMoveToZoneEffect, MeldEffect,
-    MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
+    SetPermanentDesignationEffect, PermanentDesignation, MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
-    MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
+    MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode,
     NewTargetRestriction, NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect,
     CastFaceDownUsingActivationManaEffect, RegisterExtraDieReplacementEffect, NoteActivationManaTypeEffect, NoteActivationManaPaymentEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect,
@@ -264,3 +264,5 @@ pub type CastTaggedEffect = CoreCastTaggedEffect<crate::costs::Cost>;
 pub type GrantPlayTaggedEffect = CoreGrantPlayTaggedEffect<crate::costs::Cost>;
 
 pub use ironsmith_core::DealDamageToRecipientsEffect;
+
+pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect<crate::continuous::Modification>;

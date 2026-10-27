@@ -291,3 +291,65 @@
 [data-local-zone-piles="true"] > .zone-icon-row {
   top: var(--local-zone-rows-shift, 0px);
 }
+
+/* Anchor the priority icons above Exile without adding height to the zones. */
+.table-shell[data-focused-hud="true"] .zone-priority-controls {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% - var(--local-zone-rows-shift, 0px) + 6px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  pointer-events: auto;
+}
+.table-shell[data-focused-hud="true"] .zone-priority-controls > .battlefield-auto-pass-toggle {
+  order: -1;
+}
+.table-shell[data-focused-hud="true"] .zone-priority-controls button:not(.loop-shortcut-action) {
+  position: relative;
+  flex: none !important;
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border: 1px solid var(--fc-line) !important;
+  border-bottom: 2px solid #a986dd !important;
+  border-radius: 3px !important;
+  background: var(--fc-surface) !important;
+  color: var(--fc-ink) !important;
+}
+.table-shell[data-focused-hud="true"] .zone-priority-controls button:not(.loop-shortcut-action):is(:hover, [aria-pressed="true"]) {
+  border-color: #c3a1ff !important;
+  background: rgba(57, 36, 95, 0.95) !important;
+}
+.table-shell[data-focused-hud="true"] .zone-priority-controls button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"]) {
+  border-color: var(--resolve-glow) !important;
+  color: var(--resolve-glow) !important;
+  box-shadow: 0 0 7px var(--resolve-glow), inset 0 0 3px var(--resolve-glow) !important;
+}
+.table-shell[data-focused-hud="true"] .zone-priority-controls .loop-shortcut-control--recording {
+  flex-direction: column;
+  height: auto;
+}
+.table-shell[data-focused-hud="true"] .zone-priority-controls .loop-shortcut-status {
+  position: relative;
+  flex-direction: column;
+}
+.table-shell[data-focused-hud="true"] .zone-priority-controls .loop-shortcut-status > span {
+  position: absolute;
+  right: calc(100% + 8px);
+  bottom: 0;
+}
+
+/* Keep location indicators in one trailing column, independent of name length. */
+.decision-object-label { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
+.decision-object-label-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.decision-object-zone { display: inline-flex; flex: 0 0 20px; margin-left: auto; align-items: center; justify-content: center; color: #a59c8b; }
+.decision-object-zone .zone-icon { width: 19px; height: 19px; }
+.decision-object-label .decision-object-name { color: var(--decision-object-controller, inherit); -webkit-text-fill-color: var(--decision-object-controller, currentColor); }
+.decision-option-row:hover .decision-object-zone,
+.decision-option-row:focus-visible .decision-object-zone { filter: drop-shadow(0 0 4px currentColor); }

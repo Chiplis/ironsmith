@@ -103,3 +103,45 @@ test('warming uses live inspector details, including explicitly removed abilitie
   assert.deepEqual(face.frameColors,['R']);
   assert.equal(face.rulesParagraphs[0].runs[0].text,details.flavor_text);
 });
+
+test('superseded queued frames are skipped without delaying the latest frame',async()=>{
+  let release;
+  const painted=[];
+  const queue=new CardGlintRenderQueue(async face=>{
+    painted.push(face.name);
+    if(face.name==='busy')await new Promise(resolve=>{release=resolve;});
+    return raster();
+  },{concurrency:1});
+  const busy=queue.render(card('busy'));await flush();
+  const controller=new AbortController();
+  const stale=queue.render(card('intermediate'),{signal:controller.signal});
+  const rejected=assert.rejects(stale,{name:'AbortError'});
+  controller.abort();
+  const latest=queue.render(card('final'));
+  release();await Promise.all([busy,rejected,latest]);
+  assert.deepEqual(painted,['busy','final']);
+  assert.equal(queue.has(card('intermediate')),false);
+});
+
+test('cancelling one consumer preserves another consumer of the same frame',async()=>{
+  const queue=new CardGlintRenderQueue(async()=>raster());
+  const controller=new AbortController();
+  const first=queue.render(card('shared'),{signal:controller.signal});
+  const second=queue.render(card('shared'));
+  controller.abort();
+  assert.equal(first,second);
+  assert.ok((await second).canvas);
+});
+
+test('superseded frames skip composition after the renderer library loads',async()=>{
+  let loaded, composed=0;
+  const queue=new CardGlintRenderQueue(async(_face,{throwIfObsolete})=>{
+    await new Promise(resolve=>{loaded=resolve;});
+    throwIfObsolete();composed++;return raster();
+  });
+  const controller=new AbortController();
+  const pending=queue.render(card('old'),{signal:controller.signal});
+  const rejected=assert.rejects(pending,{name:'AbortError'});
+  await flush();controller.abort();loaded();await rejected;
+  assert.equal(composed,0);
+});

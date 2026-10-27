@@ -163,6 +163,7 @@ pub fn parse_exert_segment_tokens(
         "activation-exert-segment",
     )
     .map(|()| ActivationCostSegmentCst::ExertSelf {
+        descriptive: false,
         display_text: render_token_slice(tokens).trim().to_string(),
     })
     .map_err(|_| {
@@ -402,7 +403,8 @@ fn parse_counted_energy_payment<'a>(
         leaf::parse_leaf_number_prefix_lexed.map(|n| Value::Fixed(n as i32)),
     ))
     .parse_next(input)?;
-    parse_energy_symbol.parse_next(input)?;
+    alt((parse_energy_symbol, primitives::phrase(&["energy", "counters"]), primitives::phrase(&["energy", "counter"])))
+        .parse_next(input)?;
     eof.parse_next(input)?;
     Ok(match amount {
         Value::Fixed(amount) => ActivationCostSegmentCst::Energy(amount as u32),

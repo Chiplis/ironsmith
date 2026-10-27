@@ -209,6 +209,7 @@ fn execute_captured_miracle(
     };
     let price = match &proof.instance.price {
         DrawnMiraclePrice::Fixed(cost) => cost.to_oracle(),
+        DrawnMiraclePrice::Descriptive(cost) => cost.display(),
         DrawnMiraclePrice::ReducedManaCost {
             generic_reduction, ..
         } => format!("its mana cost reduced by {{{generic_reduction}}}"),

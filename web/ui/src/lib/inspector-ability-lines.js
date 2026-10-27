@@ -75,6 +75,10 @@ export function matchInteractiveActionsToRulesLines(lines = [], actions = []) {
       }
     });
     if (bestIndex < 0 || bestScore === 0) {
+      // A described action with no matching line may belong to a hidden
+      // ability (e.g. Forest mana on a fetch land under Yavimaya). Never
+      // relabel it as a different ability just because a line is available.
+      if (needle) return;
       // A filtered action list is not an ability index. Only use ordering
       // when every activated line has an action, or there is just one line.
       bestIndex = activatedLineIndices.length === 1 ? activatedLineIndices[0]

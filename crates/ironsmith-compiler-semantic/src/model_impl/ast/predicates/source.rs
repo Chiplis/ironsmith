@@ -79,4 +79,5 @@ pub enum SourcePredicateAst {
     /// "if Tolsimir attacked this combat": this exact object was declared as
     /// an attacker in the current combat.
     SourceAttackedThisCombat,
+    SourceCameUnderYourControlSinceYourLastUpkeep,
 }

@@ -471,8 +471,7 @@ fn execute_planned_mana_activations_with_outputs(
         let request = payment
             .request
             .reserving_alternatives(&payment.plan.allocations);
-        let mut exclusions = request.activation_excluded_sources.clone();
-        exclusions.push(step.source);
+        let exclusions = request.activation_excluded_sources.clone();
         let completed = crate::special_actions::perform_mana_ability_with_payment_outputs(
             game,
             payer,
@@ -645,6 +644,17 @@ fn execute_planned_keyword_payments(
     // CR 702.66a / 603.2c: the cards exiled with delve leave the graveyard
     // together, as one event ("whenever one or more cards leave your
     // graveyard").
+    // Sharing a payment algorithm must not publish a native keyword action
+    // or a "convoked this spell" receipt for a custom definition. Freeze
+    // identity before payment taps can change continuously granted abilities.
+    let native_payment_identity = |id| game.object(pending.spell_id).is_some_and(|spell| {
+        spell.abilities.iter().any(|ability| matches!(&ability.kind,
+            crate::ability::AbilityKind::Static(ability) if ability.id() == id))
+            || crate::decision::spell_granted_cost_static_abilities(game, spell)
+                .iter().any(|ability| ability.id() == id)
+    });
+    let native_convoke = native_payment_identity(crate::static_abilities::StaticAbilityId::Convoke);
+    let native_improvise = native_payment_identity(crate::static_abilities::StaticAbilityId::Improvise);
     let mut taps =
         crate::effects::permanents::TapAction::new(game, pending.caster, pending.provenance)?;
     let opened_batch = game.open_simultaneous_action();
@@ -705,6 +715,12 @@ fn execute_planned_keyword_payments(
                     "planned {effect:?} permanent {permanent_id:?} could not be tapped"
                 )));
             }
+            if !match effect {
+                AlternativePaymentEffect::Convoke => native_convoke,
+                AlternativePaymentEffect::Improvise => native_improvise,
+            } {
+                continue;
+            }
             let event_provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::KeywordAction);
@@ -762,12 +778,7 @@ pub(super) fn prompt_pending_mana_ability_payment(
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
     }
-    request.activation_excluded_sources.extend(
-        state
-            .pending_mana_parents
-            .iter()
-            .map(|parent| parent.source),
-    );
+
     if pending.other_costs.iter().any(|cost| cost.requires_tap()) {
         request.reserved_tap_sources.push(pending.source);
     }
@@ -1382,6 +1393,7 @@ fn apply_mana_payment_plan_response_inner(
         let canceled = state.pending_mana_ability.take();
         let canceled_provenance = canceled.as_ref().map(|pending| pending.provenance);
         if let Some(mut child) = canceled {
+            game.end_mana_activation_guard(child.provenance);
             game.finish_library_top_announcement(
                 crate::game_state::LibraryTopAnnouncement::Activation(child.provenance),
             );
@@ -1962,6 +1974,7 @@ pub(super) fn apply_modes_response(
         GameLoopError::InvalidState("No pending cast or activation for modes response".to_string())
     })?;
 
+    let main_modes = pending.chosen_modes.clone();
     let required_optional_cost =
         match cast_mode_selection_required_optional_cost(game, &pending, modes) {
             Ok(required) => required,
@@ -2077,6 +2090,17 @@ pub(super) fn apply_modes_response(
     if x_from_modes.is_some() {
         pending.x_value = x_from_modes;
     }
+    if !pending.spliced_cards.is_empty() {
+        let program = game.object(pending.spell_id)
+            .and_then(|spell| spell.spell_effect_owned()).unwrap_or_default();
+        let program = super::priority_cast::bind_next_cast_modes(game, program,
+            pending.caster, pending.spell_id, &printed_mode_order(modes))?;
+        game.object_mut(pending.spell_id).expect("proposed spell exists").spell_effect = Some(program.into());
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        pending.chosen_modes = main_modes;
+        pending.mode_chooser = None;
+        return check_modes_or_continue(game, trigger_queue, state, pending, decision_maker);
+    }
     // Continue through splice and additional/optional costs before announcing X.
     check_splice_or_continue(game, trigger_queue, state, pending, decision_maker)
 }
@@ -2176,7 +2200,7 @@ pub(super) fn apply_optional_costs_response(
     // state rather than rebuilding a dirty full-board baseline per candidate.
     game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
-    if pending.optional_costs_paid.was_entwined()
+    if pending.optional_costs_paid.paid_to_choose_all_modes()
         && let Some(modal_spec) =
             extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
     {
@@ -2525,6 +2549,14 @@ pub(super) fn execute_pending_mana_ability_with_outputs(
             declaration
                 .validate(pending.source, pending.activator, pending.provenance)
                 .map_err(GameLoopError::ExecutionFailed)?;
+            let origin = pending.activation_origin.clone().or_else(|| {
+                game.current_characteristics(pending.source)
+                    .and_then(|chars| chars.abilities.origin(pending.ability_index).cloned())
+            }).ok_or_else(|| GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+                "pending mana activation lost its acquired ability identity".into())))?;
+            if !game.begin_mana_activation_guard(pending.provenance, pending.source, origin) {
+                return Err(GameLoopError::InvalidState("This mana ability is already resolving".into()));
+            }
             let mut payment_children = funding.clone();
             let mut root_outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
                 crate::effect::EffectOutcome::resolved(),
@@ -2689,6 +2721,7 @@ pub(super) fn execute_pending_mana_ability_with_outputs(
                 try_drain_pending_trigger_events(game, trigger_queue)?;
             }
 
+            game.end_mana_activation_guard(pending.provenance);
             let mut prepared = declaration
                 .with_published_payment(
                     x_value_from_costs,
@@ -3259,6 +3292,9 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
+                    let target_id = game.randomize_uninspected_exile_choices(pending.activator, vec![target_id], &legal_objects)
+                        .into_iter().next().ok_or_else(|| GameLoopError::InvalidState("selected exile pile is empty".into()))?;
+
                     pay_selected_cost_with_outputs(
                         game,
                         &cost,
@@ -3680,6 +3716,9 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
+                    let chosen_id = game.randomize_uninspected_exile_choices(pending.caster, vec![chosen_id], &legal_objects)
+                        .into_iter().next().ok_or_else(|| GameLoopError::InvalidState("selected exile pile is empty".into()))?;
+
                     pay_selected_cost_with_outputs(
                         game,
                         &cost,
@@ -4032,11 +4071,12 @@ fn propose_spell_cast_with_origin(
     // Another permission may authorize a different price for the same card.
     let cast_was_foretold = game
         .object(spell_id)
-        .is_some_and(|object| object.zone == Zone::Exile && game.is_foretold(spell_id));
+        .is_some_and(|object| object.zone == Zone::Exile && game.is_prepared_face_down(spell_id));
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
-    let proposed_face = match (casting_method, game.object(spell_id)) {
+    let mut proposed_face = match (casting_method.without_exact_permission(), game.object(spell_id)) {
+        (CastingMethod::PlayFrom { .. }, Some(object)) => Some(object.clone()),
         (CastingMethod::SplitOtherHalfPlayFrom { .. }, Some(object)) => {
             crate::decision::spell_view_for_split_other_half_cast(game, object)
         }
@@ -4050,6 +4090,19 @@ fn propose_spell_cast_with_origin(
         }
         _ => None,
     };
+    if let Some(face) = proposed_face.as_mut()
+        && !matches!(casting_method.without_exact_permission(), CastingMethod::FaceDownPlayFrom { .. })
+        && let Some(method) = selected_method_for_overlay.as_ref()
+    {
+        if method.is_bestow() {
+            face.apply_bestow_cast_overlay();
+        }
+        if let Some(power_toughness) = method.prototype_power_toughness()
+            && let Some(cost) = method.mana_cost()
+        {
+            face.apply_prototype_cast_overlay(cost.clone(), power_toughness);
+        }
+    }
     let proposed_query = proposed_face
         .as_ref()
         .map(|face| crate::grant_registry::proposed_card_face_query(game, face))
@@ -4260,15 +4313,25 @@ fn propose_spell_cast_with_origin(
             )
         })
         .transpose()?;
-    let new_id = game
-        .move_object_by_effect(spell_id, Zone::Stack)
-        .ok_or_else(|| {
-            GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
-        })?;
-    game.register_library_top_announcement(
-        crate::game_state::LibraryTopAnnouncement::Cast(new_id),
-        visibility_boundary,
-    );
+    // Suppress the newly exposed top before the physical proposal changes
+    // the library. Transfer ownership to the stack incarnation afterward.
+    let provisional_owner = crate::game_state::LibraryTopAnnouncement::Cast(spell_id);
+    game.register_library_top_announcement(provisional_owner, visibility_boundary.clone());
+    let duration_start = game.duration_window_for_owner(provisional_owner).expect("cast announcement owns its duration window");
+    let new_id = match game.move_object_by_effect(spell_id, Zone::Stack) {
+        Some(new_id) => new_id,
+        None => {
+            game.finish_library_top_announcement(provisional_owner);
+            return Err(GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string()));
+        }
+    };
+    game.retain_stack_duration_window(new_id, duration_start);
+    if new_id != spell_id {
+        game.register_library_top_announcement(
+            crate::game_state::LibraryTopAnnouncement::Cast(new_id), visibility_boundary,
+        );
+        game.finish_library_top_announcement(provisional_owner);
+    }
     if let Some(completion) = use_completion {
         game.capture_cast_grant_completion(new_id, completion);
     }
@@ -4473,7 +4536,7 @@ fn propose_spell_cast_with_origin(
         match casting_method.without_exact_permission() {
             CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => {
                 let disguise_ward =
-                    face_down_kind == Some(crate::game_state::FaceDownCastKind::Disguise);
+                    face_down_kind.is_some_and(crate::game_state::FaceDownCastKind::grants_ward);
                 obj.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
                 mark_face_down = true;
             }
@@ -5460,6 +5523,10 @@ fn apply_decision_context_with_dm_inner<D: DecisionMaker>(
         }
         DecisionContext::SelectObjects(objects_ctx) => {
             let result = decision_maker.decide_objects(game, objects_ctx);
+            if state.pending_cast.as_ref().is_some_and(|pending| pending.stage == CastStage::ChoosingCostReferences) {
+                if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+                return super::spell_cost_references::apply_response(game, trigger_queue, state, &result, decision_maker);
+            }
             if state
                 .pending_cast
                 .as_ref()
@@ -5495,6 +5562,14 @@ fn apply_decision_context_with_dm_inner<D: DecisionMaker>(
         }
         DecisionContext::SelectOptions(options_ctx) => {
             let result = decision_maker.decide_options(game, options_ctx);
+            if state.pending_cast.as_ref().is_some_and(|pending| pending.stage == CastStage::ChoosingX) {
+                if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+                if result.len() != 1 || !options_ctx.options.iter().any(|option| option.legal && option.index == result[0]) {
+                    return Err(ResponseError::IllegalChoice("Choose one defined value of X".into()).into());
+                }
+                return apply_x_value_response(game, trigger_queue, state,
+                    u32::try_from(result[0]).map_err(|_| ResponseError::IllegalChoice("X is out of range".into()))?, decision_maker);
+            }
             if options_ctx.exile_face_down_choice {
                 let pending = state.pending_exile_face_down.as_ref().ok_or_else(|| {
                     GameLoopError::InvalidState("No face-down declaration owns this prompt".into())
@@ -7541,14 +7616,17 @@ mod retained_effect_model_stack_program_proposal_tests {
                     let effects = vec![crate::effect::Effect::gain_life(7)];
                     definition.alternative_casts.push(match method_index {
                         0 => AlternativeCastingMethod::Overload {
+                            descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                             cost: crate::mana::ManaCost::new(),
                             effects,
                         },
                         1 => AlternativeCastingMethod::Cleave {
+                            descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                             cost: crate::mana::ManaCost::new(),
                             effects,
                         },
                         _ => AlternativeCastingMethod::Awaken {
+                            descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                             amount: 3,
                             cost: crate::mana::ManaCost::new(),
                             effects,

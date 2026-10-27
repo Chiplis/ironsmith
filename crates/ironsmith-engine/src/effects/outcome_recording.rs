@@ -26,7 +26,11 @@ pub(crate) fn event_facts(game: &GameState, event: &TriggerEvent) -> Vec<Executi
     use crate::events::*;
     use PriorEffectAction as A;
     let mut facts = Vec::new();
-    if let Some(draw) = event.downcast::<CardsDrawnEvent>() {
+    if let Some(milled) = event.downcast::<CardMilledEvent>() {
+        // CR 701.17c: characteristic follow-ups read the exact publicly
+        // observable destination, never the old library card or a later return.
+        facts.push(record(A::Milled, Some(milled.player), milled.snapshot.iter().cloned().collect()));
+    } else if let Some(draw) = event.downcast::<CardsDrawnEvent>() {
         facts.push(record(A::Drawn, Some(draw.player), draw.snapshots.clone()));
     } else if let Some(zone) = event.downcast::<ZoneChangeEvent>() {
         let snapshots = zone.snapshots().to_vec();
@@ -48,7 +52,9 @@ pub(crate) fn event_facts(game: &GameState, event: &TriggerEvent) -> Vec<Executi
         if zone.to == Zone::Hand {
             let mut players = std::collections::BTreeMap::<PlayerId, Vec<ObjectSnapshot>>::new();
             for snapshot in &zone.destination_snapshots {
-                if snapshot.kind != crate::object::ObjectKind::Card {
+                if snapshot.zone != Zone::Hand
+                    || snapshot.kind != crate::object::ObjectKind::Card
+                {
                     continue;
                 }
                 players
@@ -61,6 +67,7 @@ pub(crate) fn event_facts(game: &GameState, event: &TriggerEvent) -> Vec<Executi
             if zone.destination_snapshots.is_empty() {
                 for id in &zone.result_objects {
                     if let Some(snapshot) = ObjectSnapshot::from_object_id(game, *id)
+                        && snapshot.zone == Zone::Hand
                         && snapshot.kind == crate::object::ObjectKind::Card
                     {
                         players.entry(snapshot.owner).or_default().push(snapshot);
@@ -174,6 +181,56 @@ pub(crate) fn action_objects(
         }
     }
     known.then_some(objects)
+}
+
+/// Publish original semantics from retained packets without appending their
+/// already-published chronological observations to the enclosing outcome.
+pub(crate) fn complete_outputs(
+    game: &GameState,
+    action: Option<PriorEffectAction>,
+    actor: Option<PlayerId>,
+    outputs: &mut crate::effects::CompletedEffectOutputs,
+    recorded: Vec<ExecutionFact>,
+) {
+    if action == Some(PriorEffectAction::Milled) {
+        fn collect(outputs: &crate::effects::CompletedEffectOutputs, facts: &mut Vec<ExecutionFact>) {
+            for fact in &outputs.outcome.execution_facts {
+                if matches!(fact, ExecutionFact::ActionObjects { action: PriorEffectAction::Milled, .. }) && !facts.contains(fact) {
+                    facts.push(fact.clone());
+                }
+            }
+            // Shared children are actual batch/published producers. Participant
+            // projections are alternative views and are never added again.
+            for shared in &outputs.shared { collect(&shared.outputs, facts); }
+        }
+        let mut facts = Vec::new();
+        collect(outputs, &mut facts);
+        for fact in &recorded {
+            if matches!(fact, ExecutionFact::ActionObjects { action: PriorEffectAction::Milled, .. }) && !facts.contains(fact) {
+                facts.push(fact.clone());
+            }
+        }
+        if !facts.is_empty() {
+            let evidence = EffectOutcome::count(0);
+            let evidence = facts.iter().cloned().fold(evidence, |outcome, fact| outcome.with_execution_fact(fact));
+            let cards = action_objects(&evidence, PriorEffectAction::Milled, None).unwrap_or_default();
+            let ids = cards.iter().map(|card| card.object_id).collect::<Vec<_>>();
+            let mut original = &mut outputs.outcome;
+            while let Some(ref mut child) = original.instruction_result { original = child; }
+            original.execution_facts.retain(|fact| !matches!(fact, ExecutionFact::ActionObjects { action: PriorEffectAction::Milled, .. }));
+            original.execution_facts.extend(facts);
+            if !cards.is_empty() {
+                // CR 701.17d: each replacement-milled card is also a result of
+                // this mill for tags and characteristic/variable follow-ups.
+                original.execution_facts.retain(|fact| !matches!(fact,
+                    ExecutionFact::AffectedObjects(_) | ExecutionFact::ResultObjectMemory(_)));
+                original.execution_facts.push(ExecutionFact::AffectedObjects(ids.clone()));
+                original.execution_facts.push(ExecutionFact::ResultObjectMemory(cards));
+                outputs.outcome.set_value(crate::effect::OutcomeValue::Objects(ids));
+            }
+        }
+    }
+    complete_outcome(game, action, actor, &mut outputs.outcome, recorded);
 }
 
 pub(crate) fn complete_outcome(
@@ -529,13 +586,7 @@ impl crate::effects::SimultaneousEffectProposal for RecordedProposal {
         if let Ok(committed) = &mut result {
             if !ctx.decision_maker.awaiting_choice() {
                 let had_result_memory = committed.outcome.outcome.result_object_memory().is_some();
-                complete_outcome(
-                    game,
-                    action,
-                    Some(ctx.controller),
-                    &mut committed.outcome.outcome,
-                    recorded,
-                );
+                complete_outputs(game, action, Some(ctx.controller), &mut committed.outcome, recorded);
                 if let Some(completion) = committed.completion.take() {
                     // Origin receipts are available now. Destination
                     // characteristics must wait until every simultaneous
@@ -599,6 +650,9 @@ impl RecordedCompletion {
             complete_outcome(game, self.action, Some(self.actor), original, Vec::new());
         });
         let mut receipt = phase.dispatch(self.inner, game, ctx)?;
+        if self.action == Some(PriorEffectAction::Milled) {
+            complete_outputs(game, self.action, Some(self.actor), &mut receipt.outcome, Vec::new());
+        }
         receipt.completion = receipt.completion.map(|inner| {
             Box::new(Self {
                 inner,
@@ -618,7 +672,11 @@ impl RecordedCompletion {
         original.update_original(|original| {
             complete_outcome(game, self.action, Some(self.actor), original, Vec::new());
         });
-        original.dispatch(self.inner, game, ctx)
+        let mut outputs = original.dispatch(self.inner, game, ctx)?;
+        if self.action == Some(PriorEffectAction::Milled) {
+            complete_outputs(game, self.action, Some(self.actor), &mut outputs, Vec::new());
+        }
+        Ok(outputs)
     }
 }
 

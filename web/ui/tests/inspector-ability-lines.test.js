@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { interactiveRulesView, activatedAbilityLineIndices } from '../src/lib/inspector-ability-lines.js';
+import { intrinsicManaColors, withoutIntrinsicManaLines } from '../src/lib/land-mana-choices.js';
+
+test('a fetch land made a Forest never binds hidden green mana to its fetch line', () => {
+  const fetchText = '{T}, Pay 1 life, Sacrifice this land: Search your library for a Mountain or Plains card, put it onto the battlefield, then shuffle.';
+  const green = { kind: 'activate_mana_ability', ability_index: 1, ability_text: '{T}: Add {G}.' };
+  const fetch = { kind: 'activate_ability', ability_index: 0, ability_text: fetchText };
+  const visible = withoutIntrinsicManaLines([fetchText, green.ability_text], intrinsicManaColors('Land — Forest')).join('\n');
+  assert.equal(visible, fetchText);
+  for (const actions of [[green, fetch], [fetch, green], [green], []]) {
+    for (const displayed of [visible, '{T}, Pagar 1 vida, sacrificar esta tierra: Busca en tu biblioteca una carta de Montaña o Llanura.']) {
+      const view = interactiveRulesView(visible, displayed, actions);
+      assert.deepEqual(view.actions.get(0) || [], actions.includes(fetch) ? [fetch] : []);
+    }
+  }
+});
+
+test('unmatched ability text cannot fall back to equal-count line ordering', () => {
+  const text = '{T}: Draw a card.\n{2}: Gain 1 life.';
+  const draw = { ability_text: '{T}: Draw a card.' };
+  const green = { ability_text: '{T}: Add {G}.' };
+  const view = interactiveRulesView(text, text, [draw, green]);
+  assert.deepEqual([...view.actions], [[0, [draw]]]);
+});
 
 const canonical = 'Flying\n{T}: Add {G}.\n{4}, {T}: Draw a card.';
 const draw = { index: 17, ability_index: 2, ability_text: '{4}, {T}: Draw a card.', action_ref: { id: 'draw' } };

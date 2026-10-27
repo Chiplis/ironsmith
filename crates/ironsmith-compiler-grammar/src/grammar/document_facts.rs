@@ -24,9 +24,10 @@ pub fn parse_document_semantic_facts<'a>(
     let mut cleave_keyword_line_index = None;
 
     for (index, tokens) in lines {
-        if parse_overload_keyword_tokens(tokens).is_some() {
+        let prose = super::shared_util::alternative_cost_lines::described_spell_text_substitution(tokens);
+        if prose.as_ref().is_some_and(|(cleave, _)| !cleave) || parse_overload_keyword_tokens(tokens).is_some() {
             overload_keyword_line_index.get_or_insert(index);
-        } else if is_cleave_keyword_tokens(tokens) {
+        } else if prose.as_ref().is_some_and(|(cleave, _)| *cleave) || is_cleave_keyword_tokens(tokens) {
             cleave_keyword_line_index.get_or_insert(index);
         } else {
             overload_target_spans.extend(

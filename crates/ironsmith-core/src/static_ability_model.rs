@@ -192,6 +192,8 @@ pub struct SpliceSpec<C> {
     /// Payment remains represented by `cost`; this field prevents typed choose-then-pay
     /// costs from being rendered as their lower-level execution steps.
     pub cost_surface: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 /// Typed CR 702.120 escalate ability payload.
@@ -202,6 +204,9 @@ pub struct EscalateSpec<C> {
     pub cost: TotalCost<C>,
     /// The canonical oracle surface for the escalate cost, when parsing retained one.
     pub cost_surface: Option<String>,
+    /// Ordinary per-mode payment has no Escalate keyword identity.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -777,17 +782,126 @@ pub enum KeywordMarkerMechanic {
     /// "You may remove a loyalty counter from a planeswalker you control
     /// rather than pay this Vehicle's crew cost."
     LoyaltyCounterPaysCrewCost,
+    /// Attacking does not cause the source to tap. This operation does not
+    /// itself give the source the keyword identity Vigilance.
+    AttackingDoesNotCauseTap,
+    /// A timing permission, independent of the Flash keyword's identity.
+    CastAtInstantTiming,
+    /// Deal damage in the first combat damage step, optionally also in the
+    /// regular step. Does not confer either strike keyword's identity.
+    EarlyCombatDamage { also_regular: bool },
+    /// Nonzero damage to a creature is lethal, independently of keyword identity.
+    DamageIsLethalToCreatures,
+    /// Damage also causes the source's controller to gain that much life.
+    DamageGrantsControllerLife,
+    /// Damage to creatures places -1/-1 counters; optionally damage to
+    /// players gives poison counters instead of life loss. No keyword identity.
+    DamageAsCounters { poison_players: bool },
+    /// Destroy instructions and lethal damage cannot destroy this permanent.
+    DestructionImmune,
+    /// An attachment may be attached even while it has the creature type.
+    AttachWhileCreature,
+    /// Replace destruction of the attached permanent by clearing its damage and destroying this source.
+    DestroyAttachmentInstead,
+    /// Exchange phased-in/out status during the controller's untap turn action.
+    PhaseDuringUntap,
+    /// Poison counters added to player combat damage without a Toxic identity.
+    CombatDamageAddsPoison { amount: u32 },
+    /// Assign excess combat damage beyond blockers, optionally beyond planeswalkers.
+    OverflowCombatDamage { through_planeswalkers: bool },
+    ExileGraveyardCardsForGenericMana,
+    TapCreaturesForMana,
+    TapArtifactsForGenericMana,
+    /// Replace stack departures after a cast from the specified zone, irrespective of price.
+    ExileOnStackExitIfCastFrom { zone: crate::Zone },
+    /// A lasting player designation awarded by a continuous permanent-count condition.
+    PermanentCountGrantsDesignation { minimum: u32, historic_only: bool, enduring_story: bool },
+    EntryLoyaltyReductionPerLifePip,
+    DayNightTransformDefinition { day_face: bool },
+    AnotherPlayerPaysGeneric,
+    ChooseSagaEntryChapter,
+    InitializeControllerSpeed,
+    AssignCreatureSectors,
+    CombatBandsAndDamageChoice,
+    EntryCountersFromSpentColors,
+    RecurringCopyOnFirstNameResolution,
+    LinkOnGraveyardArrival,
+    CastBothSplitHalvesFromHand,
+    RevealSharedTypesForEntryCounters { amount: u32 },
+    EntryCountersAndFollowingAbilities { amount: u32 },
 }
 
 /// The mechanic a keyword-marker line carries, if the engine implements one.
 pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
     use KeywordMarkerMechanic as M;
+    if text.trim().trim_end_matches('.').eq_ignore_ascii_case("If this spell was cast from your graveyard, exile it instead of putting it anywhere else any time it would leave the stack") {
+        return Some(M::ExileOnStackExitIfCastFrom { zone: crate::Zone::Graveyard });
+    }
     let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
+    if normalized == "if it's neither day nor night and no permanent establishes day, it becomes night. as it becomes day, if this permanent is back face up, transform it. this permanent can't transform except due to this ability. if a player casts at least two spells during their own turn, it becomes day next turn" { return Some(M::DayNightTransformDefinition { day_face: false }); }
+    if normalized == "if it's neither day nor night, it becomes day. if it's night, this permanent enters transformed. as it becomes night, if this permanent is front face up, transform it. this permanent can't transform except due to this ability. if a player casts no spells during their own turn, it becomes night next turn" { return Some(M::DayNightTransformDefinition { day_face: true }); }
+    if normalized == "as you cast this spell, before activating mana abilities, you may choose another player. that player may activate mana abilities before you do and may pay any amount of the generic mana in this spell's total cost before you pay the rest" { return Some(M::AnotherPlayerPaysGeneric); }
+    if normalized == "if you have no speed while you control this permanent, your speed becomes 1 as a state-based action. whenever one or more opponents lose life during your turn, if your speed is less than 4, your speed increases by 1. this inherent ability has no source and triggers only once each turn. your speed remains after this permanent leaves the battlefield. max speed is 4" { return Some(M::InitializeControllerSpeed); }
+    if normalized == "as a state-based action, each creature without a sector designation is assigned alpha, beta, or gamma sector by its controller. players who don't control a permanent with this ability assign first, then the other players assign, in active-player order within each group. a permanent keeps its sector until no player controls a permanent with this ability or an ability whose source has this ability. sector designations aren't copiable" { return Some(M::AssignCreatureSectors); }
+    if normalized == "as you declare attackers, you may group one or more attacking creatures with this ability and up to one other attacking creature into a band. each creature can belong to only one band, and all members must attack the same player, planeswalker, or battle. the band lasts for the rest of combat even if this ability is lost; creatures removed from combat leave the band. members don't share abilities. a creature blocking any member blocks all members, and an effect that blocks one member blocks the whole band. if this creature is blocking an attacker, you choose how that attacker divides its combat damage among its blockers. if this creature is blocked, you choose how its blockers divide their combat damage among the creatures they block" { return Some(M::CombatBandsAndDamageChoice); }
+    if normalized == "as this saga enters, choose a number between one and its final chapter number. it enters with the chosen number of lore counters. chapter abilities of this saga can't trigger the turn it entered unless it has exactly the number of lore counters specified in that chapter's symbol" { return Some(M::ChooseSagaEntryChapter); }
+    if normalized == "if this permanent is entering as a creature, ignoring type-changing effects that would affect it, it enters with a +1/+1 counter on it for each color of mana spent to cast it. otherwise, it enters with a charge counter on it for each color of mana spent to cast it" { return Some(M::EntryCountersFromSpentColors); }
+    if normalized == "if this permanent would enter with one or more loyalty counters on it and the player who cast it paid life for phyrexian mana symbols in its cost, it instead enters with two fewer loyalty counters for each of those symbols" { return Some(M::EntryLoyaltyReductionPerLifePip); }
+    if let Some(rest) = normalized.strip_prefix("when this creature enters, put ")
+        && let Some(amount) = rest.strip_suffix(" +1/+1 counters on target creature. if that's another creature, it gains the following abilities until end of turn")
+            .or_else(|| rest.strip_suffix(" +1/+1 counter on target creature. if that's another creature, it gains the following abilities until end of turn")) {
+        let amount = match amount { "a" | "one" => Some(1), "two" => Some(2), "three" => Some(3), _ => amount.parse().ok() };
+        if let Some(amount) = amount { return Some(M::EntryCountersAndFollowingAbilities { amount }); }
+    }
+    if normalized == "if this is the first time a spell you control with this spell's name has resolved this game, at the beginning of each of your precombat main phases for the rest of the game, create a copy of this object in exile. you may cast the copy without paying its mana cost. exile this spell" { return Some(M::RecurringCopyOnFirstNameResolution); }
+    if normalized == "you may cast one or both halves of this card from your hand. if you cast both, combine their characteristics and mana costs into one spell, then follow the left half's instructions before the right half's instructions" { return Some(M::CastBothSplitHalvesFromHand); }
+    if normalized == "as this creature enters, reveal any number of cards from your hand that share a creature type with it. this creature enters with a +1/+1 counter on it for each card revealed this way" { return Some(M::RevealSharedTypesForEntryCounters { amount: 1 }); }
+    if normalized == "on a permanent, this ability means \"when this permanent is put into a graveyard from the battlefield, exile it haunting target creature.\" on an instant or sorcery spell, this ability means \"when this spell is put into a graveyard during its resolution, exile it haunting target creature.\"" { return Some(M::LinkOnGraveyardArrival); }
+    if normalized == "for each phyrexian mana symbol paid with life, this planeswalker enters with two fewer loyalty counters" { return Some(M::EntryLoyaltyReductionPerLifePip); }
+    if let Some(amount) = normalized.strip_prefix("players dealt combat damage by this creature also get ")
+        .and_then(|s| s.strip_suffix(" poison counters"))
+        .and_then(|s| s.parse::<u32>().ok())
+    { return Some(M::CombatDamageAddsPoison { amount }); }
+    if let Some(rest) = normalized.strip_prefix("if you control ") {
+        if let Some((amount, rest)) = rest.split_once(" or more ") {
+            let minimum = match amount { "one" => Some(1), "two" => Some(2), "three" => Some(3), "four" => Some(4), "five" => Some(5), "six" => Some(6), "seven" => Some(7), "eight" => Some(8), "nine" => Some(9), "ten" => Some(10), _ => amount.parse().ok() };
+            for (filter, historic_only) in [("permanents", false), ("artifacts, legendaries, and/or sagas", true)] {
+                if let Some(result) = rest.strip_prefix(filter).and_then(|s| s.strip_prefix(", ")) {
+                    let enduring_story = match result { "you get the city's blessing for the rest of the game" => Some(false), "you have an enduring story for the rest of the game" => Some(true), _ => None };
+                    if let (Some(minimum), Some(enduring_story)) = (minimum, enduring_story) {
+                        return Some(M::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story });
+                    }
+                }
+            }
+        }
+    }
     match normalized.as_str() {
+        "each card you exile from your graveyard while casting this spell pays for {1}" => return Some(M::ExileGraveyardCardsForGenericMana),
+        "each creature you tap while casting this spell pays for {1} or one mana of that creature's color" => return Some(M::TapCreaturesForMana),
+        "each artifact you tap after you're done activating mana abilities pays for {1}" => return Some(M::TapArtifactsForGenericMana),
+
+        "this creature can deal excess combat damage to the controller of the planeswalker it's attacking" => return Some(M::OverflowCombatDamage { through_planeswalkers: true }),
+        "this creature can deal excess combat damage to the player or planeswalker it's attacking" => return Some(M::OverflowCombatDamage { through_planeswalkers: false }),
+
+        "this permanent cannot be destroyed" => return Some(M::DestructionImmune),
+        "this permanent can be attached while it's a creature" => return Some(M::AttachWhileCreature),
+        "if enchanted creature would be destroyed, instead remove all damage from it and destroy this aura"
+        | "if enchanted permanent would be destroyed, instead remove all damage from it and destroy this aura" => return Some(M::DestroyAttachmentInstead),
+        "this phases in or out before you untap during each of your untap steps" => return Some(M::PhaseDuringUntap),
+        "this deals damage to creatures in the form of -1/-1 counters" => return Some(M::DamageAsCounters { poison_players: false }),
+        "this deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters" => return Some(M::DamageAsCounters { poison_players: true }),
+        "any amount of damage this deals to a creature is enough to destroy it" => return Some(M::DamageIsLethalToCreatures),
+        "damage dealt by this creature also causes you to gain that much life" => return Some(M::DamageGrantsControllerLife),
         "sunburst" => return Some(M::Sunburst),
         "compleated" => return Some(M::Compleated),
         "epic" => return Some(M::Epic),
         "paradigm" => return Some(M::Paradigm),
+        "you may cast this spell any time you could cast an instant" => return Some(M::CastAtInstantTiming),
+        "this creature deals combat damage before creatures without first strike" => return Some(M::EarlyCombatDamage { also_regular: false }),
+        "this creature deals both first-strike and regular combat damage" => return Some(M::EarlyCombatDamage { also_regular: true }),
+        "attacking doesn't cause this creature to tap" => {
+            return Some(M::AttackingDoesNotCauseTap);
+        }
         "this creature assigns combat damage as though its power were positive" => {
             return Some(M::AssignsCombatDamageAsThoughPowerPositive);
         }
@@ -967,6 +1081,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ThisSpellXMaximum {
         maximum: Value,
         display: String,
+        /// A text-defined X is an exact value, not merely an upper bound.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        definition: Option<Value>,
     },
     ThisSpellXMinimum {
         minimum: Value,
@@ -1309,6 +1426,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         player: PlayerFilter,
     },
     ActivatedAbilityCostReduction {
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "static_implied_words_are_false"))]
+        optional: bool,
         filter: ObjectFilter,
         reduction: u32,
         replacement_mana_cost: Option<ManaCost>,
@@ -1599,7 +1718,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         display: String,
         /// "... except the first card you draw during each of your draw
         /// steps" (Reed Richards): that draw is never replaced.
-        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "static_implied_words_are_false"))]
         except_first_of_draw_step: bool,
     },
     /// "If you would draw one or more cards, you draw that many cards plus
@@ -2130,6 +2249,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// "This creature attacks a player you noted for cards named <name>
     /// each combat if able" (Cogwork Tracker). Appended.
     MustAttackDraftNotedPlayers { card_name: String },
+    /// Identity of a user-defined keyword. Its executable rules are separate
+    /// abilities, not an alias for an official keyword with similar behavior.
+    CustomKeywordIdentity { name: String },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2210,7 +2332,7 @@ where
                 effects: triggered.effects.try_map_effects(map_effect)?,
                 choices: triggered.choices,
                 intervening_if: triggered.intervening_if.map(map_intervening).transpose()?,
-                presentation_label: None,
+                presentation_label: triggered.presentation_label,
             })
         }
 
@@ -2541,6 +2663,9 @@ where
             FI: FnMut(IC) -> Result<IC2, Err>,
         {
             let payload = match ability.payload {
+            StaticAbilityPayload::CustomKeywordIdentity { name } => {
+                StaticAbilityPayload::CustomKeywordIdentity { name }
+            }
             StaticAbilityPayload::None => StaticAbilityPayload::None,
             StaticAbilityPayload::SelfSubjectSurface { surface } => {
                 StaticAbilityPayload::SelfSubjectSurface { surface }
@@ -2579,12 +2704,14 @@ where
                 StaticAbilityPayload::ConditionalSpellKeyword(spec)
             }
             StaticAbilityPayload::Splice(spec) => StaticAbilityPayload::Splice(SpliceSpec {
+                descriptive: spec.descriptive,
                 quality: spec.quality,
                 cost: spec.cost.try_map(&mut *map_cost)?,
                 cost_surface: spec.cost_surface,
             }),
             StaticAbilityPayload::Escalate(spec) => {
                 StaticAbilityPayload::Escalate(EscalateSpec {
+                    descriptive: spec.descriptive,
                     cost: spec.cost.try_map(&mut *map_cost)?,
                     cost_surface: spec.cost_surface,
                 })
@@ -2764,8 +2891,8 @@ where
             StaticAbilityPayload::ThisSpellCastRestriction { kind, display } => {
                 StaticAbilityPayload::ThisSpellCastRestriction { kind, display }
             }
-            StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
-                StaticAbilityPayload::ThisSpellXMaximum { maximum, display }
+            StaticAbilityPayload::ThisSpellXMaximum { maximum, display, definition } => {
+                StaticAbilityPayload::ThisSpellXMaximum { maximum, display, definition }
             }
             StaticAbilityPayload::ThisSpellXMinimum { minimum, display } => {
                 StaticAbilityPayload::ThisSpellXMinimum { minimum, display }
@@ -3397,6 +3524,7 @@ where
                 StaticAbilityPayload::BuybackCostReduction(amount)
             }
             StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional,
                 filter,
                 reduction,
                 replacement_mana_cost,
@@ -3408,6 +3536,7 @@ where
                 minimum_total_mana,
                 reduction_mana,
             } => StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional,
                 filter,
                 reduction,
                 replacement_mana_cost,
@@ -4487,7 +4616,7 @@ impl<
         Self {
             id: Some(StaticAbilityId::ThisSpellXMaximum),
             label: display.clone(),
-            payload: StaticAbilityPayload::ThisSpellXMaximum { maximum, display },
+            payload: StaticAbilityPayload::ThisSpellXMaximum { maximum, display, definition: None },
         }
     }
 
@@ -4692,8 +4821,8 @@ impl<
         )
     }
 
-    pub fn keyword_marker(marker: impl std::fmt::Debug) -> Self {
-        let text = format!("{marker:?}").trim_matches('"').to_string();
+    pub fn keyword_marker(marker: impl Into<String>) -> Self {
+        let text = marker.into();
         if let Some(ability) = Self::known_keyword_marker(&text) {
             return ability;
         }
@@ -4704,6 +4833,15 @@ impl<
                 payload: StaticAbilityPayload::KeywordMarkerMechanic { mechanic },
             },
             None => Self::identified(StaticAbilityId::KeywordMarker, text),
+        }
+    }
+
+    pub fn custom_keyword_identity(name: impl Into<String>) -> Self {
+        let name = name.into();
+        Self {
+            id: Some(StaticAbilityId::KeywordMarker),
+            label: name.clone(),
+            payload: StaticAbilityPayload::CustomKeywordIdentity { name },
         }
     }
 
@@ -4744,6 +4882,13 @@ impl<
         }
     }
 
+    pub fn reveal_to_add_spell_text(quality: SpliceQuality, cost: TotalCost<C>, cost_surface: String) -> Self
+    where C: CostComponent,
+    {
+        Self { id: None, label: format!("As you cast an {} spell, you may reveal this card from your hand and pay {cost_surface}. If you do, add this card's effects to that spell.", quality.oracle_surface()),
+            payload: StaticAbilityPayload::Splice(SpliceSpec { quality, cost, cost_surface: Some(cost_surface), descriptive: true }) }
+    }
+
     pub fn splice(quality: SpliceQuality, cost: TotalCost<C>) -> Self
     where
         C: CostComponent,
@@ -4773,11 +4918,19 @@ impl<
                 rendered_cost
             ),
             payload: StaticAbilityPayload::Splice(SpliceSpec {
+                descriptive: false,
                 quality,
                 cost,
                 cost_surface,
             }),
         }
+    }
+
+    pub fn payment_per_extra_mode(cost: TotalCost<C>, cost_surface: String) -> Self
+    where C: CostComponent,
+    {
+        Self { id: None, label: format!("Pay {cost_surface} for each mode chosen beyond the first."),
+            payload: StaticAbilityPayload::Escalate(EscalateSpec { cost, cost_surface: Some(cost_surface), descriptive: true }) }
     }
 
     pub fn escalate(cost: TotalCost<C>) -> Self
@@ -4800,7 +4953,7 @@ impl<
         Self {
             id: Some(StaticAbilityId::Escalate),
             label: format!("Escalate{separator}{rendered_cost}"),
-            payload: StaticAbilityPayload::Escalate(EscalateSpec { cost, cost_surface }),
+            payload: StaticAbilityPayload::Escalate(EscalateSpec { cost, cost_surface, descriptive: false }),
         }
     }
 
@@ -6145,6 +6298,7 @@ impl<
             id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
             label: "reduce activated ability costs".into(),
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional: false,
                 filter,
                 reduction,
                 replacement_mana_cost: None,
@@ -6168,6 +6322,7 @@ impl<
             id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
             label: "reduce activated ability costs".into(),
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional: false,
                 filter,
                 reduction,
                 replacement_mana_cost: None,
@@ -6220,6 +6375,7 @@ impl<
             id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
             label: "reduce activated ability costs if targets".into(),
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional: false,
                 filter,
                 reduction,
                 replacement_mana_cost: None,
@@ -6243,6 +6399,7 @@ impl<
             id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
             label: "reduce activated ability costs for each".into(),
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional: false,
                 filter,
                 reduction,
                 replacement_mana_cost: None,
@@ -6266,6 +6423,7 @@ impl<
             id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
             label: "reduce activated ability costs for each basic land type".into(),
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional: false,
                 filter,
                 reduction,
                 replacement_mana_cost: None,
@@ -6288,6 +6446,7 @@ impl<
             id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
             label: "replace activated ability mana cost".into(),
             payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                optional: false,
                 filter,
                 reduction: 0,
                 replacement_mana_cost: Some(replacement_mana_cost),

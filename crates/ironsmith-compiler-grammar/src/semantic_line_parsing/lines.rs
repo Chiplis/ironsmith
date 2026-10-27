@@ -732,6 +732,7 @@ fn grammar_proven_named_explore_surface(
                 action:
                     SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore {
                         target: TargetAst::Object(filter, _, _),
+                        ..
                     }),
                 ..
             }) = effect
@@ -781,7 +782,7 @@ fn recognize_named_explore_source_surface(
         let mut count = 0;
         for effect in effects {
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }),
+                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, .. }),
                 ..
             }) = effect
                 && plain_source_target(target)
@@ -812,7 +813,7 @@ fn recognize_named_explore_source_surface(
         let mut changed = false;
         for effect in effects {
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }),
+                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, .. }),
                 ..
             }) = effect
                 && plain_source_target(target)
@@ -2727,6 +2728,7 @@ use lines_ability_programs::{
     try_lower_partner_variant_keyword,
 };
 pub use lines_ability_programs::{parse_keyword_special_cases, parse_static_line};
+pub(crate) use lines_ability_programs::parse_descriptive_static_program;
 #[cfg(test)]
 use lines_ability_programs::{
     standard_flanking_reminder_is_typed_without_broad_keyword_expansion,

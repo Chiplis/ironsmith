@@ -36,6 +36,30 @@ pub(crate) struct GrantedSpellKeywordInstance {
     pub(crate) keyword: GrantedSpellKeyword<crate::costs::Cost>,
 }
 
+/// One CR 610.5 acquisition, bound to the gained ability occurrence rather
+/// than to the continued presence of its original granting permanent.
+#[derive(Debug, Clone)]
+pub(crate) struct AcquiredSpellKeyword {
+    pub(crate) identity: String,
+    pub(crate) ability: crate::static_abilities::StaticAbilityInstanceId,
+}
+
+pub(crate) fn acquire_spell_keywords_for_cast(game: &mut GameState, spell: ObjectId, caster: PlayerId) {
+    if !game.object(spell).is_some_and(|object| object.zone == Zone::Stack)
+        || game.acquired_spell_keywords(spell).is_some() { return; }
+    let instances = granted_spell_keywords(game, spell, caster, true);
+    let mut acquired = Vec::new();
+    for instance in instances {
+        let marker = crate::static_abilities::StaticAbility::grant_spell_keyword(
+            crate::target::ObjectFilter::specific(spell), instance.keyword.clone(), None,
+            instance.keyword.kind.keyword_text(),
+        );
+        acquired.push(AcquiredSpellKeyword { identity: instance.identity, ability: marker.instance_id() });
+        game.grant_incarnation_static_ability(spell, marker);
+    }
+    game.set_acquired_spell_keywords(spell, acquired);
+}
+
 fn grant_payload(
     static_ability: &crate::static_abilities::StaticAbility,
 ) -> Option<(&crate::target::ObjectFilter, &GrantedSpellKeyword<crate::costs::Cost>)> {
@@ -64,6 +88,15 @@ pub(crate) fn granted_spell_keywords(
     let Some(spell) = game.object(spell_id) else {
         return Vec::new();
     };
+    if let Some(acquired) = game.acquired_spell_keywords(spell_id) {
+        let view = crate::derived_view::DerivedGameView::new(game);
+        let Some(current) = view.static_abilities_rc(spell_id) else { return Vec::new(); };
+        return acquired.iter().filter_map(|instance| {
+            let ability = current.iter().find(|ability| ability.instance_id() == instance.ability)?;
+            let (_, keyword) = grant_payload(ability)?;
+            Some(GrantedSpellKeywordInstance { identity: instance.identity.clone(), keyword: keyword.clone() })
+        }).collect();
+    }
     let mut spell_for_filter = spell.clone();
     if let Some(chars) = game.current_characteristics(spell_id) {
         spell_for_filter.name = chars.name;
@@ -360,3 +393,7 @@ pub(crate) fn demonstrate_triggered_ability() -> crate::ability::TriggeredAbilit
         presentation_label: None,
     }
 }
+
+#[cfg(test)]
+#[path = "granted_spell_keyword_acquisition_tests.rs"]
+mod acquisition_tests;

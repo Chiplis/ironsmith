@@ -970,13 +970,13 @@ pub fn parse_spell_activity_trigger(
                     Ok(mut filter) => {
                         // A kicked spell records a paid optional cost; merely having
                         // kicker in its rules text does not satisfy this qualifier.
-                        if filter_words.contains(&"kicked")
+                        if filter_words.contains(&crate::keyword_forms::KICKED)
                             && !filter
                                 .ability_markers
                                 .iter()
-                                .any(|marker| marker == "kicked")
+                                .any(|marker| marker == crate::keyword_forms::KICKED)
                         {
-                            filter.ability_markers.push("kicked".to_string());
+                            filter.ability_markers.push(crate::keyword_forms::KICKED.to_string());
                         }
                         if let Some(origin_filter) = parse_spell_origin_zone_filter() {
                             filter.zone = origin_filter.zone;

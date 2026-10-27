@@ -208,6 +208,14 @@ impl CardDefinitionBuilder {
         self
     }
 
+    /// Retain a user-defined keyword's identity separately from its compiled
+    /// rules. In particular, a custom restriction does not grant Defender.
+    pub fn with_custom_keyword(self, name: impl Into<String>) -> Self {
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::custom_keyword_identity(name),
+        ))
+    }
+
     pub fn with_ability(mut self, ability: crate::ability::Ability) -> Self {
         self.abilities.push(ability);
         self
@@ -236,15 +244,26 @@ impl CardDefinitionBuilder {
     }
 
     pub fn enchants(mut self, filter: AuraAttachmentFilter) -> Self {
-        let mut attachment =
-            ResolutionProgram::from_effects(vec![crate::effect::Effect::attach_to(
-                filter.target_spec(),
-            )]);
-        if let Some(existing) = self.spell_effect.take() {
-            attachment.extend(existing);
+        // Each enchant keyword survives independently, but they constrain
+        // one attachment target rather than introducing separate targets.
+        let already_enchants = self.abilities.iter().any(|ability| {
+            matches!(&ability.kind, crate::ability::AbilityKind::Static(ability)
+                if matches!(ability.payload, ironsmith_core::StaticAbilityPayload::Enchant(_)))
+        });
+        self.abilities.push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enchant(filter.clone()),
+        ));
+        if self.aura_attach_filter.is_none() || !already_enchants {
+            let mut attachment =
+                ResolutionProgram::from_effects(vec![crate::effect::Effect::attach_to(
+                    filter.target_spec(),
+                )]);
+            if let Some(existing) = self.spell_effect.take() {
+                attachment.extend(existing);
+            }
+            self.spell_effect = Some(attachment);
+            self.aura_attach_filter = Some(filter);
         }
-        self.spell_effect = Some(attachment);
-        self.aura_attach_filter = Some(filter);
         self
     }
 
@@ -563,7 +582,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: None,
+                presentation_label: Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Storm)),
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
@@ -700,6 +719,7 @@ impl CardDefinitionBuilder {
         );
         if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
             triggered.intervening_if = Some(crate::ConditionExpr::increment());
+            triggered.presentation_label = Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Increment));
         }
         self.with_ability(ability)
     }
@@ -909,7 +929,7 @@ impl CardDefinitionBuilder {
                 "this creature",
                 false,
                 false,
-                None,
+                Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Riot)),
             ),
         ))
     }
@@ -1101,14 +1121,16 @@ impl CardDefinitionBuilder {
                 crate::effect::Until::Forever,
             )),
         ];
-        self.with_ability(
-            crate::ability::Ability::activated_with_timing(
+        let mut ability = crate::ability::Ability::activated_with_timing(
                 cost,
                 effects,
                 crate::ability::ActivationTiming::SorcerySpeed,
             )
-            .in_zones(vec![crate::zone::Zone::Graveyard]),
-        )
+            .in_zones(vec![crate::zone::Zone::Graveyard]);
+        if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind {
+            activated.keyword = Some(ironsmith_core::ActivatedAbilityKeyword::Encore);
+        }
+        self.with_ability(ability)
     }
 
     pub fn eternalize(self, cost: TotalCost) -> Self {
@@ -1134,7 +1156,7 @@ impl CardDefinitionBuilder {
             .set_colors(crate::color::ColorSet::BLACK)
             .added_subtype(crate::types::Subtype::Zombie)
             .set_base_power_toughness(4, 4)
-            .without_mana_cost(),
+            .without_mana_cost().created_by(ironsmith_core::effect::TokenCreationMethod::Eternalize),
         );
 
         self.with_ability(crate::ability::Ability {
@@ -1425,6 +1447,7 @@ impl CardDefinitionBuilder {
     pub fn warp(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(crate::alternative_cast::AlternativeCastingMethod::Warp {
+                descriptive: false,
                 cost,
                 additional_cost: Default::default(),
             });
@@ -1506,6 +1529,7 @@ impl CardDefinitionBuilder {
     pub fn overload(mut self, cost: ManaCost) -> Self {
         self.alternative_casts.push(
             crate::alternative_cast::AlternativeCastingMethod::Overload {
+                descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                 cost,
                 effects: Vec::new(),
             },
@@ -1516,6 +1540,7 @@ impl CardDefinitionBuilder {
     pub fn cleave(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(crate::alternative_cast::AlternativeCastingMethod::Cleave {
+                descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                 cost,
                 effects: Vec::new(),
             });
@@ -1536,6 +1561,7 @@ impl CardDefinitionBuilder {
         ));
         self.alternative_casts
             .push(crate::alternative_cast::AlternativeCastingMethod::Awaken {
+                descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                 amount,
                 cost,
                 effects,
@@ -1633,8 +1659,10 @@ impl CardDefinitionBuilder {
     }
 
     pub fn cumulative_upkeep(self, total_cost: TotalCost) -> Self {
-        let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+        self.cumulative_upkeep_effects(crate::costs::total_cost_to_payment_effects(&total_cost))
+    }
 
+    pub(crate) fn cumulative_upkeep_effects(self, payment_effects: Vec<crate::effect::Effect>) -> Self {
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
@@ -1734,7 +1762,7 @@ impl CardDefinitionBuilder {
     pub fn demonstrate(self) -> Self {
         let opponent_tag = crate::tag::CompilerReferenceTag::DemonstrateOpponent.bind();
         let opponent = crate::target::PlayerFilter::TaggedPlayer(opponent_tag.clone().into());
-        self.with_ability(
+        let mut ability =
             crate::ability::Ability::triggered(
                 crate::triggers::Trigger::you_cast_this_spell(),
                 vec![crate::effect::Effect::may(vec![
@@ -1743,6 +1771,11 @@ impl CardDefinitionBuilder {
                         crate::effect::Effect::new(crate::effects::CopySpellEffect::single(
                             crate::target::ChooseSpec::Source,
                         )),
+                    ),
+                    crate::effect::Effect::if_then(crate::effect::EffectId(0), crate::effect::EffectPredicate::Happened, vec![
+                    crate::effect::Effect::may_choose_new_targets_player(
+                        crate::effect::EffectId(0),
+                        crate::target::PlayerFilter::You,
                     ),
                     crate::effect::Effect::new(crate::effects::ChoosePlayerEffect::new(
                         crate::target::PlayerFilter::You,
@@ -1760,17 +1793,17 @@ impl CardDefinitionBuilder {
                         ),
                     ),
                     crate::effect::Effect::may_choose_new_targets_player(
-                        crate::effect::EffectId(0),
-                        crate::target::PlayerFilter::You,
-                    ),
-                    crate::effect::Effect::may_choose_new_targets_player(
                         crate::effect::EffectId(1),
                         opponent,
                     ),
+                    ]),
                 ])],
             )
-            .in_zones(vec![crate::zone::Zone::Stack]),
-        )
+            .in_zones(vec![crate::zone::Zone::Stack]);
+        if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+            triggered.presentation_label = Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Demonstrate));
+        }
+        self.with_ability(ability)
     }
 
     pub fn conspire(mut self) -> Self {
@@ -1883,11 +1916,10 @@ impl CardDefinitionBuilder {
         ))
     }
 
-    pub fn haunt(self) -> Self {
-        let trigger = if self
-            .card_builder
-            .card_types_ref()
-            .contains(&CardType::Creature)
+    pub fn haunt(self) -> Self { self.graveyard_arrival_link(false) }
+
+    pub fn graveyard_arrival_link(self, descriptive: bool) -> Self {
+        let trigger = if !self.card_builder.card_types_ref().iter().any(|kind| matches!(kind, CardType::Instant | CardType::Sorcery))
         {
             crate::triggers::Trigger::this_dies()
         } else {
@@ -1899,10 +1931,7 @@ impl CardDefinitionBuilder {
                     .this(),
             )
         };
-        let functional_zones = if self
-            .card_builder
-            .card_types_ref()
-            .contains(&CardType::Creature)
+        let functional_zones = if !self.card_builder.card_types_ref().iter().any(|kind| matches!(kind, CardType::Instant | CardType::Sorcery))
         {
             vec![crate::zone::Zone::Battlefield]
         } else {
@@ -1913,7 +1942,7 @@ impl CardDefinitionBuilder {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    crate::effect::Effect::exile(crate::target::ChooseSpec::Source),
+                    crate::effect::Effect::new(crate::effects::HauntExileEffect { haunt_effects: Vec::new(), haunt_choices: Vec::new(), descriptive }),
                 ]),
                 choices: vec![crate::target::ChooseSpec::target(
                     crate::target::ChooseSpec::creature(),
@@ -2602,7 +2631,11 @@ impl CardDefinitionBuilder {
 
         let filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
-            .same_stable_id_as_tagged(ironsmith_compiler_semantic::tag::declared_key(trigger_tag));
+            .same_stable_id_as_tagged(ironsmith_compiler_semantic::tag::declared_key(trigger_tag))
+            .match_tagged(
+                ironsmith_compiler_semantic::tag::declared_key(trigger_tag),
+                crate::filter::TaggedOpbjectRelation::SameObjectId,
+            );
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -2651,7 +2684,11 @@ impl CardDefinitionBuilder {
 
         let filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
-            .same_stable_id_as_tagged(ironsmith_compiler_semantic::tag::declared_key(trigger_tag));
+            .same_stable_id_as_tagged(ironsmith_compiler_semantic::tag::declared_key(trigger_tag))
+            .match_tagged(
+                ironsmith_compiler_semantic::tag::declared_key(trigger_tag),
+                crate::filter::TaggedOpbjectRelation::SameObjectId,
+            );
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {

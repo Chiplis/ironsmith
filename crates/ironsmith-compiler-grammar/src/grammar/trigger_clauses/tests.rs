@@ -817,10 +817,9 @@ fn targets_only_relation_preserves_named_source_exclusion() {
     else {
         panic!("expected a player spell-cast trigger: {parsed:#?}");
     };
-    assert_eq!(
-        spell.target_count,
-        Some(crate::effect::ChoiceCount::exactly(1))
-    );
+    // CR 115.9c: "targets only" requires one distinct target, so repeated
+    // choices of that target are not limited by a target-instance count.
+    assert_eq!(spell.target_count, None);
     let target = spell
         .targets_only_object
         .as_deref()

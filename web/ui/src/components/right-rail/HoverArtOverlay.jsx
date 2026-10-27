@@ -1078,6 +1078,22 @@ export default function HoverArtOverlay({
     );
   }, [canonicalRulesText, translatedRulesText, faceUpRules]);
   const rulesView = useMemo(() => groupManaAbilities(ungroupedRulesView, locale), [ungroupedRulesView, locale]);
+  // Missing legal actions still need a discoverable, non-dispatching surface
+  // on our battlefield cards (targets, timing, loyalty limits, other costs).
+  const frameRulesView = useMemo(() => {
+    const controller = details?.controller ?? previewCard?.controller;
+    if (inspectorZone.toLowerCase() !== "battlefield"
+      || controller == null || Number(controller) !== Number(state?.perspective)
+      || state?.decision?.kind !== "priority") return rulesView;
+    const actions = new Map(rulesView.actions);
+    for (const index of activatedAbilityLineIndices(rulesView.lines)) {
+      if (!actions.get(index)?.length) actions.set(index, [{
+        available: false, legal: false,
+        unavailable_reason: "This ability cannot be activated right now.",
+      }]);
+    }
+    return {...rulesView, actions};
+  }, [rulesView, details?.controller, previewCard?.controller, inspectorZone, state?.perspective, state?.decision?.kind]);
   const displayRulesLines = rulesView.lines;
   const displayRulesText = displayRulesLines.join("\n");
   const interactiveRuleLineActions = rulesView.actions;
@@ -2365,7 +2381,7 @@ export default function HoverArtOverlay({
     const frameCard = {...liveCard, ...display, type_line: typeLine || liveCard.type_line};
     // The renderer consumes selected face fields for DFCs. Apply live and
     // localized text to that face without replacing its canonical type.
-    if (Array.isArray(liveCard.card_faces) && !['split','adventure'].includes(liveCard.layout)) {
+    if (Array.isArray(liveCard.card_faces) && !['split','aftermath','adventure','prepare','room','flip'].includes(liveCard.layout)) {
       frameCard.card_faces = liveCard.card_faces.map((face,index) => index === faceIndex
         ? {...face,...display, type_line: frameCard.type_line,
           power: liveCard.power ?? face.power, toughness: liveCard.toughness ?? face.toughness,
@@ -2373,7 +2389,7 @@ export default function HoverArtOverlay({
     }
     return <div className="absolute inset-0 z-30 pointer-events-auto" data-zone-transition-token={transientPreview?.token || undefined}>
       <CardFramePresentation card={frameCard} imageUrl={imageUrl} faceIndex={faceIndex} inspector
-        rulesView={isMiniatureFrame ? null : rulesView} onActivate={onInteractiveAction}
+        rulesView={isMiniatureFrame ? null : frameRulesView} onActivate={onInteractiveAction}
         highlighted={highlightedRuleLineIndices} stats={displayStatsText} counters={displayCountersLine}
         zone={displayZoneLine} badges={displayTypeLineBadges} onReadyChange={onCardFrameReadyChange}/>
       {chosenValuesBadge}
@@ -2849,6 +2865,7 @@ export default function HoverArtOverlay({
                         const content = (
                           <SymbolText
                             text={line}
+                            keywordHelpers={!canClickAbility}
                             className={cn(
                               rulesTextClassName,
                               "inspector-oracle-line",

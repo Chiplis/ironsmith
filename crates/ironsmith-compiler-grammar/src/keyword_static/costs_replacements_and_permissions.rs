@@ -5349,7 +5349,8 @@ pub fn parse_attached_untap_and_activation_restrictions_line(
     else { return Ok(None); };
     let beam_prohibition = match crate::lexer::parser_token_word_refs(tail_tokens).as_slice() {
         ["and", "its", "activated", "abilities", "cant", "be", "activated"] => false,
-        ["and", "cant" | "can't", "be", "beamed", "up"] => true,
+        ["and", "cant" | "can't", "be", participle @ ..]
+            if crate::keyword_forms::words_spell(participle, crate::keyword_forms::BEAMED_UP) => true,
         _ => return Ok(None),
     };
     let Some(and_index) = tokens.iter().position(|token| token.is_word("and")) else {
@@ -6350,6 +6351,36 @@ pub fn parse_each_player_source_exiled_by_them_line(
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // A complete zone-specific free-cast line on a permanent is a standing
+    // permission. The document dispatcher gives spell statements precedence
+    // on instants/sorceries; activated and triggered bodies use effect parsing.
+    if let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+        tokens,
+        crate::grammar::primitives::phrase(&["you", "may", "cast"]),
+    ) && let Some(fact) = crate::grammar::permission_facts::zone_free_cast::parse_free_cast_from_zone_tokens(rest)
+        && matches!(fact.zone, Zone::Graveyard | Zone::Exile)
+        && fact.mana_value.is_none()
+        && let Some(mut filter) = crate::grammar::permission_facts::subject_filters::parse_permission_subject_filter_tokens(fact.filter_tokens)?
+    {
+        filter.zone = None;
+        filter.stack_kind = None;
+        if !filter.excluded_card_types.contains(&crate::types::CardType::Land) {
+            filter.excluded_card_types.push(crate::types::CardType::Land);
+        }
+        if fact.zone == Zone::Graveyard {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        let method = ironsmith_core::AlternativeCastingMethod::<
+            EffectAst, crate::model::CompilerCost, ironsmith_core::ThisSpellCostCondition,
+        >::cast_from_zone_with_total_cost(
+            "Cast without paying mana cost", fact.zone,
+            ironsmith_core::TotalCost::<crate::model::CompilerCost>::free(), None, false,
+        );
+        return Ok(Some(vec![StaticAbility::grants(crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::AlternativeCast(method), filter, fact.zone,
+        ))]));
+    }
+
     if let Some(abilities) = parse_source_exiled_lands_or_budgeted_spells_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -7020,7 +7051,7 @@ pub fn parse_you_have_protection_from_opponents_line(
 
 /// "Any player may cast creature spells with mana value 3 or less without
 /// paying their mana costs and as though they had flash." (Aluren): a free
-/// alternative cast from hand and flash timing for the same spells.
+/// alternative price and flash timing for the same spells.
 pub fn parse_player_may_cast_spells_free_and_flash_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -7065,11 +7096,24 @@ pub fn parse_player_may_cast_spells_free_and_flash_line(
     // the stack.
     filter.zone = None;
     filter.stack_kind = None;
-    let mut free =
-        crate::model::CompilerGrantSpecCore::cast_from_hand_without_paying_mana_cost_matching(
-            filter.clone(),
-        );
+    // No origin is named: this replaces the price of any independently
+    // authorized cast, including graveyard/exile permissions.
+    let mut free = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::AlternativePrice {
+            costs: Vec::new(),
+            origin: None,
+        },
+        filter.clone(),
+        Zone::Hand,
+    );
     free.beneficiary = beneficiary.clone();
+    // Preserve this price's authored label independently of the flash grant.
+    let price_end = view.map_word_to_token_boundary(rest_start + without + FREE.len())
+        .unwrap_or(tokens.len());
+    let surface = crate::lexer::render_token_slice(&tokens[..price_end]);
+    let mut chars = surface.trim().trim_end_matches('.').chars();
+    free.filtered_zone_surface = chars.next()
+        .map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
     let mut abilities = vec![StaticAbility::grants(free)];
     if with_flash {
         let mut flash =

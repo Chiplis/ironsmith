@@ -2972,6 +2972,7 @@ fn compile_conditional_ast(
 fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::ItIsLandCard
+        | PredicateAst::UnpairedCreaturesCanPair
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatches(_)
         | PredicateAst::ItMatchedLastKnown(_)

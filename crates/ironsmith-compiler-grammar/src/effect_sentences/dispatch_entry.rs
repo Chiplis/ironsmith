@@ -6649,6 +6649,14 @@ fn parse_composable_typed_statements(
             }
             continue;
         }
+        // "It becomes foretold. Its foretell cost is ..." completes the
+        // preceding designation, exactly as in the sequential reader.
+        if let Some(reduction) = parse_foretell_cost_reduction_sentence(sentence) {
+            if !attach_foretell_cost_reduction(&mut effects, reduction) {
+                return Ok(None);
+            }
+            continue;
+        }
         if let Some(mut statement_effects) =
             independent_typed_statement_or_program_defer(sentence, is_document, sentences)?
         {
@@ -7841,9 +7849,187 @@ fn parse_put_or_remove_then_when_removed_this_way(
     Ok(Some(effects))
 }
 
+pub(crate) fn parse_described_effect_bundle(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // The complete instruction binds every later "it" to the actual return
+    // result. No keyword name is introduced by this reading.
+    let body = crate::lexer::render_token_slice(tokens).to_ascii_lowercase();
+
+    if let Some(tail) = body.strip_prefix("look at the top card of your library. you may put that card on the bottom.") {
+        let expanded = format!("Look at the top one cards of your library, then put any number of them on the bottom of your library and the rest on top in any order.{tail}");
+        return parse_effect_sentences_lexed(&crate::lexer::lex_line(&expanded, 0)?).map(Some);
+    }
+    if body.trim_end_matches('.') == "reveal the top card of your library. put that card into your hand if it's a land. otherwise, put a +1/+1 counter on the exploring creature, then put the card back or put it into your graveyard"
+        || body.trim_end_matches('.') == "reveal the top card of your library. put that card into your hand if it's a land. otherwise, put a +1/+1 counter on this creature, then put the card back or put it into your graveyard" {
+        let mut effect = EffectAst::subject_verb_explore(TargetAst::Source(None));
+        if let EffectAst::SubjectVerb(subject) = &mut effect {
+            if let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { descriptive, .. }) = &mut subject.action { *descriptive = true; }
+        }
+        return Ok(Some(vec![effect]));
+    }
+    if matches!(body.trim_end_matches('.'),
+        "draw a card, then discard a card. if you discarded a nonland card, put a +1/+1 counter on that creature" |
+        "draw a card, then discard a card. if you discarded a nonland card, put a +1/+1 counter on this creature") {
+        let mut effect = EffectAst::subject_verb_connive(TargetAst::Source(None), Value::Fixed(1));
+        if let EffectAst::SubjectVerb(subject) = &mut effect {
+            if let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { descriptive, .. }) = &mut subject.action { *descriptive = true; }
+        }
+        return Ok(Some(vec![effect]));
+    }
+    if let Some(opponent) = body.strip_prefix("you and ").and_then(|s| s.strip_suffix(" each reveal the top card of your library, then each puts that card on their choice of the top or bottom. a player wins if their card had a greater mana value.")) {
+        let mode = match opponent {
+            "an opponent" => Some(crate::ClashOpponentAst::Opponent),
+            "target opponent" => Some(crate::ClashOpponentAst::TargetOpponent),
+            "defending player" => Some(crate::ClashOpponentAst::DefendingPlayer),
+            _ => None,
+        };
+        if let Some(mode) = mode {
+            let mut effect = EffectAst::subject_verb_clash(mode);
+            if let EffectAst::SubjectVerb(subject) = &mut effect {
+                if let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { descriptive, .. }) = &mut subject.action { *descriptive = true; }
+            }
+            return Ok(Some(vec![effect]));
+        }
+    }
+    if let Some(amount) = body.strip_prefix("target land you control becomes a 0/0 creature with haste that's still a land. put ")
+        .and_then(|s| s.strip_suffix(" +1/+1 counters on it. when it dies or is exiled, return it to the battlefield tapped under your control.")) {
+        let amount_tokens = crate::lexer::lex_line(amount, 0)?;
+        if let Some((amount, used)) = crate::util::parse_value(&amount_tokens)
+            && used == amount_tokens.len() {
+            let mut effect = EffectAst::subject_verb_earthbend(amount);
+            if let EffectAst::SubjectVerb(subject) = &mut effect {
+                if let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { descriptive, .. }) = &mut subject.action { *descriptive = true; }
+            }
+            return Ok(Some(vec![effect]));
+        }
+    }
+    if let Some(rest) = body.strip_prefix("put ")
+        && let Some((amount, rest)) = rest.split_once(" +1/+1 counters on an army creature you control. it's also a ")
+        && let Some((subtype, rest)) = rest.split_once(". if you don't control an army creature, create a 0/0 black ")
+        && rest.trim_end_matches('.') == format!("{subtype} army creature token first")
+        && let Some(subtype) = crate::util::parse_subtype_word(subtype) {
+        let amount_tokens = crate::lexer::lex_line(amount, 0)?;
+        if let Some((amount, used)) = crate::util::parse_value(&amount_tokens)
+            && used == amount_tokens.len() {
+            return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { subtype: Some(subtype), amount, descriptive: true }))]));
+        }
+    }
+    if matches!(body.trim_end_matches('.'),
+        "you may copy it and you may choose new targets for the copy. if you copy the spell, choose an opponent. that player copies the spell and may choose new targets for that copy" |
+        "you may copy it. if you do, choose an opponent to also copy it. players may choose new targets for their copies" |
+        "you may copy this spell. if you do, choose an opponent to also copy it. players may choose new targets for their copies") {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent))]));
+    }
+    if body.trim_start_matches("then ").trim_end_matches('.') == "you may exile this spell card encoded on a creature you control. whenever that creature deals combat damage to a player, its controller may cast a copy of the encoded card without paying its mana cost" {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies))]));
+    }
+    if body.trim_end_matches('.') == "for each opponent, create a token copy that attacks that opponent this turn if able. they gain haste. sacrifice them at the beginning of the next end step" {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents))]));
+    }
+    if matches!(body.trim_end_matches('.'),
+        "put this card onto the battlefield from your hand or the command zone tapped and attacking" |
+        "put this card onto the battlefield from your hand tapped and attacking" |
+        "put this card onto the battlefield from your hand or the command zone tapped and attacking the same player, planeswalker, or battle as the returned creature" |
+        "put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature") {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender))]));
+    }
+    if let Some(rest) = body.strip_prefix("choose an ").or_else(|| body.strip_prefix("choose a "))
+        && let Some((controlled, rest)) = rest.split_once(" you control or reveal ")
+        && let Some(revealed) = rest.strip_prefix("an ").or_else(|| rest.strip_prefix("a "))
+        && let Some(revealed) = revealed.trim_end_matches('.').strip_suffix(" card from your hand")
+        && let Some(subtype) = crate::util::parse_subtype_word(controlled)
+        && crate::util::parse_subtype_word(revealed) == Some(subtype) {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { subtype, count: 1, descriptive: true }))]));
+    }
+    if matches!(body.trim_end_matches('.'),
+        "enter the first room or advance to the next room" |
+        "if you don't own a dungeon in the command zone, choose a dungeon from outside the game, put it into the command zone, and put your marker on its first room. otherwise, move your marker to an adjacent room following an arrow. if your marker is in the final room, first remove that dungeon from the game and complete it, then start a new dungeon") {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon { undercity_if_no_active: false, descriptive: true }))]));
+    }
+    if body.trim_end_matches('.') == "if this permanent isn't harnessed, it becomes harnessed" {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { designation: ironsmith_core::PermanentDesignation::Harnessed }))]));
+    }
+    if body.trim_end_matches('.') == "return this card transformed under its owner's control" {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile))]));
+    }
+    if let Some(rest) = body.strip_prefix("exile ")
+        && let Some((target, price)) = rest.split_once(". while it's exiled, its owner may cast it for ")
+        && let Some((price, tail)) = price.split_once(" rather than its mana cost")
+        && (tail.is_empty() || tail.starts_with('.')) {
+        let cost_tokens = crate::lexer::lex_line(price, 0)?;
+        let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&cost_tokens)?;
+        let target_tokens = crate::lexer::lex_line(&format!("airbend {target}."), 0)?;
+        let mut effects = parse_effect_sentences_lexed(&target_tokens)?;
+        fn assign(effects: &mut [EffectAst], cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>) {
+            for effect in effects {
+                if let EffectAst::SubjectVerb(subject) = effect {
+                    if let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { descriptive_cost, .. }) = &mut subject.action { *descriptive_cost = Some(cost.clone()); }
+                }
+                crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| assign(nested, cost));
+            }
+        }
+        assign(&mut effects, &cost);
+        let tail = tail.trim_start_matches('.').trim().strip_prefix("then ").unwrap_or(tail.trim_start_matches('.').trim());
+        if !tail.is_empty() { effects.extend(parse_effect_sentences_lexed(&crate::lexer::lex_line(tail, 0)?)?); }
+        return Ok(Some(effects));
+    }
+    if let Some(expanded) = crate::preprocess::described_face_down_action(&body) {
+        let expanded_tokens = crate::lexer::lex_line(&expanded, 0)?;
+        let mut effects = parse_effect_sentences_lexed(&expanded_tokens)?;
+        fn describe(effects: &mut [EffectAst]) {
+            for effect in effects {
+                if let EffectAst::SubjectVerb(subject) = effect {
+                    match &mut subject.action {
+                        SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary) => subject.action = SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { cloak: false }),
+                        SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary) => subject.action = SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { cloak: true }),
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { manifest, cloak, described_face_down, .. }) if *manifest || *cloak => *described_face_down = true,
+                        _ => {},
+                    }
+                }
+                crate::model::visit::for_each_nested_effects_mut(effect, true, describe);
+            }
+        }
+        describe(&mut effects);
+        return Ok(Some(effects));
+    }
+
+    let compact: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+    if let Some(rest) = compact.strip_prefix("createanincubatortokenwith") {
+        for noun in ["counter", "counters"] {
+            let suffix = format!("+1/+1{noun}onitand\"{{2}}:transformthistoken.\"ittransformsintoa0/0phyrexianartifactcreature");
+            if let Some(number) = rest.trim_end_matches('.').strip_suffix(&suffix) {
+                let amount = match number { "a" | "one" => Some(1), "two" => Some(2), "three" => Some(3), "four" => Some(4), "five" => Some(5), "six" => Some(6), "seven" => Some(7), "eight" => Some(8), "nine" => Some(9), "ten" => Some(10), other => other.parse::<i32>().ok() };
+                if let Some(amount) = amount.filter(|n| *n >= 0) {
+                    return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+                        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount: Value::Fixed(amount), count: Value::Fixed(1), descriptive: true }))]));
+                }
+            }
+        }
+    }
+
+    if body.trim_end_matches('.') == "return this card from your graveyard to the battlefield. it gains haste. exile it at the beginning of the next end step or if it would leave the battlefield" {
+        return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline))]));
+    }
+
+    Ok(None)
+}
+
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_described_effect_bundle(tokens)? { return Ok(effects); }
+    if let Some(effects) = super::bundle_rules::parse_entry_type_rider(tokens)? {
+        return Ok(effects);
+    }
     // "sacrifice this creature unless you pay {10}. This cost is reduced by
     // {2} for each basic land type among lands you control." (Draco): the
     // trailing sentence modifies the payment printed just before it.
@@ -14863,6 +15049,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
             replace_in_filter(filter, replacement, clause)?;
         }
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { filter }) => { replace_in_filter(filter, replacement, clause)?; },
+            SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => {},
             SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. }) => {}
             SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeBasePtCreature {
@@ -14883,7 +15071,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 replace_value(amount, replacement, clause)?;
                 replace_in_target(target, replacement, clause)?;
             }
-            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
             | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count: amount,
                 ..
@@ -14909,7 +15099,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
-                counters: amount,
+                counters: amount, ..
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
                 count: amount,
@@ -15019,7 +15209,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 replace_in_target(source, replacement, clause)?;
                 replace_in_target(target, replacement, clause)?;
             }
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }) => {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, .. }) => {
                 replace_value(amount, replacement, clause)?;
                 replace_value(count, replacement, clause)?;
             }
@@ -15194,6 +15384,13 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
@@ -15206,6 +15403,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
@@ -15293,7 +15491,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Game(GameActionAst::WinGame)
             | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
             | SubjectVerbActionAst::ZoneMoves(
-                ZoneMoveActionAst::ReturnSourceTransformedFromExile,
+                ZoneMoveActionAst::ReturnSourceTransformedFromExile | ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline | ZoneMoveActionAst::ExchangeSourceWithHandAura,
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
@@ -16014,10 +16212,10 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                     target: effect_target,
                 })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend {
-                    target: effect_target,
+                    target: effect_target, ..
                 })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore {
-                    target: effect_target,
+                    target: effect_target, ..
                 })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure {
                     target: effect_target,

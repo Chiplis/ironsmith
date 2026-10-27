@@ -375,8 +375,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControlHeterogeneous {
@@ -1574,6 +1574,10 @@ fn target_references_event_derived_amount(target: &TargetAst) -> bool {
 
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     match action {
+        SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. }) => None,
+        SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount }) => Some(amount),
+        SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => None,
         SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. }) => None,
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => count_value.as_ref(),
         SubjectVerbActionAst::Random(RandomActionAst::RollDiceTotal { count, .. }) => Some(count),
@@ -1708,7 +1712,14 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
@@ -1719,6 +1730,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
         | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
@@ -1802,7 +1814,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Game(GameActionAst::LoseGame)
         | SubjectVerbActionAst::Game(GameActionAst::WinGame)
         | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
-        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile)
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile | ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline | ZoneMoveActionAst::ExchangeSourceWithHandAura)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Casualty { .. })
@@ -2924,6 +2936,7 @@ fn delayed_trigger_references_tag(effect: &EffectAst, key: &str) -> bool {
 fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::ItIsLandCard
+        | PredicateAst::UnpairedCreaturesCanPair
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatches(_)
         | PredicateAst::ItMatchedLastKnown(_)

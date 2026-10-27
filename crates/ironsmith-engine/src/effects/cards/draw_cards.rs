@@ -341,6 +341,10 @@ pub(crate) fn automatic_reveal_events_for_draw(
 
     for candidate in collect_automatic_draw_reveal_candidates(game, player_id, drawn, draws_before)?
     {
+        if game.drawn_card_waits_for_announcement(candidate.card_id) {
+            game.defer_hidden_automatic_draw_reveal(pending_hidden_automatic_draw_reveal(&candidate), provenance);
+            continue;
+        }
         // Hidden-information matches: the drawn card is known to its owner
         // only, so the reveal (and the "whenever you reveal ... this way"
         // trigger reading its characteristics) must wait for the owner to
@@ -758,7 +762,8 @@ fn execute_draw_instruction(
 /// so a replacement that watches the whole instruction ("If an opponent would
 /// draw two or more cards, instead ...", Alms Collector) sees its number and
 /// may modify or replace it (CR 121.2, 614.1a). Each card is still drawn as
-/// its own event; single draws are unchanged and skip the proposal.
+/// its own event. A one-card instruction also permits whole-instruction
+/// additions before that card's replacements are considered.
 pub(crate) fn execute_prepared_draw_instruction(
     prepared: PreparedDrawInstruction,
     game: &mut GameState,
@@ -767,7 +772,7 @@ pub(crate) fn execute_prepared_draw_instruction(
     if ctx.decision_maker.awaiting_choice() {
         return Ok(EffectOutcome::count(0));
     }
-    if prepared.requested_count < 2
+    if prepared.requested_count == 0
         || !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game)
     {
         return execute_prepared_draw_cards(prepared, game, ctx);
@@ -997,15 +1002,8 @@ fn execute_prepared_draw_cards(
                     return Ok(EffectOutcome::count(0));
                 }
                 replacement_count += replacement_outcome.count_or_zero();
-                original_draw_facts.extend(
-                    replacement_outcome
-                        .instruction_result()
-                        .events
-                        .iter()
-                        .flat_map(|event| {
-                            crate::effects::outcome_recording::event_facts(game, event)
-                        }),
-                );
+                // Replacement draws publish their own events, but are not cards
+                // drawn by the instruction that was replaced (CR 121.6c).
                 events.extend(replacement_outcome.events);
                 replacement_facts.extend(replacement_outcome.execution_facts);
                 continue;
@@ -1235,7 +1233,7 @@ fn execute_prepared_draw_cards(
         })
         .cloned()
         .collect::<Vec<_>>();
-    let original = EffectOutcome::count(original_count)
+    let mut original = EffectOutcome::count(original_count)
         .with_result_objects(ids)
         .with_affected_object_memory(snapshots.clone())
         .with_execution_fact(crate::effect::ExecutionFact::ResultObjectMemory(snapshots))
@@ -1243,6 +1241,10 @@ fn execute_prepared_draw_cards(
         .with_events(original_events);
     replacement_facts.extend(original_draw_facts);
     if attempted_empty_library_draw {
+        // CR 118.12 / 121.3: beginning this draw can pay a draw cost even
+        // when the library is empty. Keep that acknowledgement on the
+        // original receipt as well as the aggregate replacement observation.
+        original = original.with_execution_fact(crate::effect::ExecutionFact::Accepted);
         replacement_facts.push(crate::effect::ExecutionFact::Accepted);
     }
     let mut observed = EffectOutcome::count(total_drawn + replacement_count)
@@ -1901,6 +1903,31 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .unwrap();
         assert_eq!(game.player(alice).unwrap().hand.len(), 3);
+    }
+
+    #[test]
+    fn whole_instruction_additions_precede_per_card_doubling_without_reapplying() {
+        for actor in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+            for requested in [0, 1, 2, 3] {
+                let mut game = setup_game();
+                add_cards_to_library(&mut game, actor, 20);
+                for _ in 0..2 {
+                    add_static_source(&mut game, actor, "Whole instruction addition",
+                        crate::static_abilities::StaticAbility::draw_extra_cards_replacement(1,
+                            "If you would draw one or more cards, draw that many plus one instead."));
+                }
+                add_static_source(&mut game, actor, "Individual draw doubling",
+                    crate::static_abilities::StaticAbility::draw_extra_cards_replacement_with_options(
+                        1, false, false, "If you would draw a card, draw two cards instead."));
+                game.update_replacement_effects().unwrap();
+                let mut ctx = ExecutionContext::new_default(game.new_object_id(), actor);
+                let result = DrawCardsEffect::you(requested).execute(&mut game, &mut ctx).unwrap();
+                let expected = if requested == 0 { 0 } else { (requested + 2) * 2 };
+                assert_eq!(game.player(actor).unwrap().hand.len(), expected as usize);
+                assert_eq!(game.player(actor).unwrap().library.len(), 20 - expected as usize);
+                assert_eq!(result.value, crate::effect::OutcomeValue::Count(expected as i64));
+            }
+        }
     }
 
     #[test]

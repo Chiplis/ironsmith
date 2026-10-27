@@ -29,6 +29,7 @@ pub struct BeholdEffect {
     pub subtype: Subtype,
     pub count: u32,
     pub chooser: PlayerFilter,
+    pub descriptive: bool,
 }
 
 impl BeholdEffect {
@@ -37,6 +38,7 @@ impl BeholdEffect {
             subtype,
             count,
             chooser,
+            descriptive: false,
         }
     }
 
@@ -136,6 +138,7 @@ impl EffectExecutor for BeholdEffect {
 
     fn cost_description(&self) -> Option<String> {
         let subtype_name = self.subtype.to_string();
+        if self.descriptive { return Some(format!("Choose a {subtype_name} you control or reveal a {subtype_name} card from your hand")); }
         if self.count == 1 {
             return Some(format!("Behold a {}", subtype_name));
         }

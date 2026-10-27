@@ -52,6 +52,9 @@ mod life_payments;
 mod mana_and_permissions;
 pub(crate) use life_payments::PreparedLifePayment;
 mod announcement_visibility;
+mod duration_windows;
+mod mana_activation_guards;
+pub(crate) use duration_windows::DurationWindowStart;
 mod monarch;
 mod object_state_and_events;
 pub(crate) use object_state_and_events::AuthoredAbilityDuplicatePolicy;
@@ -217,6 +220,16 @@ mod hidden_hand_regression_tests;
 mod tests;
 #[cfg(test)]
 mod mana_invalidation_tests;
+#[cfg(test)]
+mod simultaneous_library_position_tests;
+#[cfg(test)]
+mod phase_duration_return_tests;
+#[cfg(test)]
+mod exile_duration_return_tests;
+#[cfg(test)]
+mod meld_sticker_entry_tests;
+#[cfg(test)]
+mod entry_linked_pair_tests;
 
 /// Pending replacement effect choice when multiple effects apply to the same event.
 ///
@@ -521,6 +534,8 @@ struct BattlefieldFlags {
     face_down: HashSet<ObjectId>,
     /// Face-down permanents created via manifest.
     manifested: HashSet<ObjectId>,
+    /// A definition grants printed-mana-cost turn-up without native provenance.
+    described_face_down: HashSet<ObjectId>,
     /// Exact cloak origin, distinct from manifest.
     cloaked: HashSet<ObjectId>,
     /// Split Room permanents whose linked locked door has been unlocked.
@@ -577,6 +592,8 @@ struct CastPermissionFlags {
     /// Cards exiled via Foretell, with the turn they became foretold
     /// (CR 702.143a/d: castable only after that turn has ended).
     foretold_cards: HashMap<ObjectId, u32>,
+    /// Same preparation behavior, without Foretell/Plot designations.
+    descriptive_exile_preparations: HashSet<ObjectId>,
     /// Cards exiled after resolving as Adventure spells, with the player who
     /// controlled the Adventure spell (CR 715.3d: "that player may cast it").
     adventure_exiled: HashMap<ObjectId, PlayerId>,
@@ -701,6 +718,9 @@ struct ExileTracking {
     /// and the turn number of that exile ("... this turn", Uba Mask).
     source_exilers: HashMap<ObjectId, (PlayerId, u32)>,
     linked_exile_pairs: HashMap<crate::linked_exile::LinkedExileOwner, Vec<ObjectId>>,
+    /// A created emblem's exact printed pair reads its creator's captured pair.
+    /// Native clones retain this relation even after the creator leaves play.
+    linked_exile_pair_aliases: HashMap<crate::linked_exile::LinkedExileOwner, crate::linked_exile::LinkedExileOwner>,
     /// True after a source-only import, which cannot establish pair absence.
     linked_exile_pairs_incomplete: bool,
     /// Monotonic count of successful exile events attributed to each source
@@ -775,6 +795,7 @@ pub(crate) struct CombatRoleLookback {
 
 #[derive(Debug, Clone, Default)]
 struct AuxiliaryTrackingState {
+    active_mana_abilities: HashMap<crate::provenance::ProvNodeId, (ObjectId, crate::continuous::AbilityOrigin)>,
     /// A shared rules procedure proved a CR 104.4b mandatory-action loop.
     mandatory_loop_draw_pending: bool,
     /// Controllers of objects proved to participate in that loop (CR 801.16).
@@ -868,7 +889,8 @@ struct AuxiliaryTrackingState {
     departed_command_zone_tokens: BTreeSet<ObjectId>,
     /// Exile-until returns whose duration ended where no player decision
     /// channel was available (CR 610.3c), as (duration source, returns).
-    pending_duration_end_returns: Vec<(ObjectId, Vec<(ObjectId, crate::zone::Zone)>)>,
+    pending_duration_end_returns: Vec<Vec<(ObjectId, Vec<(ObjectId, crate::zone::Zone)>)>>,
+    pending_phase_duration_returns: HashMap<crate::provenance::ProvNodeId, std::collections::BTreeMap<ObjectId, bool>>,
     /// Hidden cards that are the subject of a pending public claim (chosen
     /// for a filter, withheld from a forced reveal, cast face down), marked
     /// identically on every peer. Such a card entering a library is anchored
@@ -918,6 +940,13 @@ struct AuxiliaryTrackingState {
     /// simultaneous event (CR 603.2c), and "one or more" triggers group on
     /// its identity.
     simultaneous_action_scope: Option<SimultaneousActionScope>,
+    /// Exact library placements owned by one simultaneous physical action.
+    /// Retained original frames can resume that batch after an added program;
+    /// distinct instructions have distinct batch IDs. Cleared each turn.
+    simultaneous_library_placements: HashMap<crate::provenance::ProvNodeId, Vec<(ObjectId, crate::effects::cards::LibraryCardPosition)>>,
+    /// One-shot keyword acquisitions made as each exact spell is proposed.
+    acquired_spell_keywords: HashMap<ObjectId, Vec<crate::granted_spell_keywords::AcquiredSpellKeyword>>,
+    duration_windows: HashMap<LibraryTopAnnouncement, DurationWindowStart>,
     /// CR 603.7b: the simultaneous matches of a queued one-shot delayed
     /// trigger, first match first. Its controller chooses which of them
     /// causes it to trigger when it is put on the stack.
@@ -1452,6 +1481,7 @@ pub struct ChoiceStore {
     pub chosen_modes_by_ability: HashMap<(ObjectId, usize), HashSet<usize>>,
     /// Chosen colors for permanents ("as this enters, choose a color").
     pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
+    pub(crate) chosen_color_acquisitions: HashMap<ObjectId, HashMap<crate::continuous::AbilityOrigin, (crate::color::Color, u64)>>,
     /// Several chosen colors for one permanent ("as this enters, choose two
     /// colors", Seal of the Guildpact). Single-color readers keep using
     /// `chosen_colors`; set readers union both.
@@ -1544,6 +1574,7 @@ struct EnterAsCopySourceCache {
 #[derive(Debug)]
 struct RuntimeCacheState {
     library_top_announcements: HashMap<LibraryTopAnnouncement, LibraryTopVisibilityBoundary>,
+    library_top_identity: announcement_visibility::LibraryTopIdentityState,
     pending_grant_use_completions:
         HashMap<ObjectId, Vec<crate::grant_registry::GrantUseCompletion>>,
     pending_land_permission_grants: HashMap<ObjectId, Vec<StaticAbility>>,
@@ -1619,6 +1650,7 @@ impl Clone for RuntimeCacheState {
     fn clone(&self) -> Self {
         Self {
             library_top_announcements: self.library_top_announcements.clone(),
+            library_top_identity: self.library_top_identity.clone(),
             pending_grant_use_completions: self.pending_grant_use_completions.clone(),
             pending_land_permission_grants: self.pending_land_permission_grants.clone(),
             token_creation_limits: self.token_creation_limits,
@@ -1683,6 +1715,7 @@ impl RuntimeCacheState {
     fn new(active_player: PlayerId) -> Self {
         Self {
             library_top_announcements: HashMap::new(),
+            library_top_identity: Default::default(),
             pending_grant_use_completions: HashMap::new(),
             pending_land_permission_grants: HashMap::new(),
             token_creation_limits: Default::default(),
@@ -5373,6 +5406,9 @@ impl GameState {
         }
         // Pinning a look-back opens one simultaneous action; the events it
         // queues share one batch identity until the pin is released.
+        let phase_return_batch = if lookback.is_none() {
+            self.auxiliary_tracking.simultaneous_action_scope.filter(|scope| scope.opened_by_lookback).and_then(|scope| scope.batch)
+        } else { None };
         let pinning = lookback.is_some();
         let combat_lookback = if !pinning {
             None
@@ -5396,6 +5432,8 @@ impl GameState {
             }
             _ => {}
         }
+        if !pinning { self.reconcile_library_top_identity(); }
+        if let Some(batch) = phase_return_batch { self.finish_phase_duration_returns(batch); }
     }
 
     /// Remember the simultaneous matches of a one-shot delayed trigger; the
@@ -5485,7 +5523,10 @@ impl GameState {
     pub(crate) fn close_simultaneous_action(&mut self, opened: bool) {
         if opened {
             self.finalize_milling_event_snapshots();
+            let batch = self.auxiliary_tracking.simultaneous_action_scope.and_then(|scope| scope.batch);
             self.auxiliary_tracking_mut().simultaneous_action_scope = None;
+            self.reconcile_library_top_identity();
+            if let Some(batch) = batch { self.finish_phase_duration_returns(batch); }
         }
     }
 
@@ -5545,6 +5586,10 @@ impl GameState {
         let tracking = self.auxiliary_tracking_mut();
         tracking.simultaneous_action_scope = parent_scope;
         tracking.simultaneous_event_lookback = parent_lookback;
+        if frame.scope != parent_scope {
+            self.reconcile_library_top_identity();
+            if let Some(batch) = frame.scope.and_then(|scope| scope.batch) { self.finish_phase_duration_returns(batch); }
+        }
         result
     }
 
@@ -5670,6 +5715,8 @@ impl GameState {
 
     /// Creates a new game state with the given players.
     pub fn new(player_names: Vec<String>, starting_life: i32) -> Self {
+        assert!(player_names.len() <= u8::MAX as usize,
+            "Ironsmith supports at most 255 players");
         let players: Vec<Player> = player_names
             .into_iter()
             .enumerate()
@@ -6385,6 +6432,13 @@ impl GameState {
         Some(())
     }
 
+    pub(crate) fn sticker_effects_on_object(&self, object: ObjectId) -> Vec<crate::continuous::ContinuousEffectId> {
+        self.object(object).and_then(|object| self.object_annotations.object_stickers.get(&object.stable_id))
+            .into_iter().flatten()
+            .flat_map(|marker| marker.name_effect.into_iter().chain(marker.ability_effects.iter().copied()))
+            .collect()
+    }
+
     /// CR 613.7k: when an object receives a new timestamp, each sticker on it
     /// receives a new timestamp immediately after, keeping their relative order.
     pub(crate) fn restamp_object_stickers(&mut self, object_id: ObjectId) {
@@ -6659,26 +6713,29 @@ impl GameState {
     /// CR 123.5a/b: stickers on each component of a melded or merged
     /// permanent belong to that permanent, keeping their relative timestamps.
     pub(crate) fn absorb_component_stickers(&mut self, from: StableId, into_object: ObjectId) {
-        let Some(into) = self.object(into_object).map(|object| object.stable_id) else {
-            return;
-        };
-        if from == into {
-            return;
+        self.absorb_component_stickers_batch([from], into_object);
+    }
+
+    /// Transfer every component before cleanup, then restamp the combined set
+    /// once. Restamping one component before collecting its siblings would
+    /// reverse their relative order against its newly allocated timestamps.
+    pub(crate) fn absorb_component_stickers_batch(
+        &mut self,
+        sources: impl IntoIterator<Item = StableId>,
+        into_object: ObjectId,
+    ) {
+        let Some(into) = self.object(into_object).map(|object| object.stable_id) else { return; };
+        let mut markers = Vec::new();
+        for from in sources {
+            if from != into {
+                markers.extend(self.object_annotations_mut().object_stickers.remove(&from).unwrap_or_default());
+            }
         }
-        let Some(markers) = self.object_annotations_mut().object_stickers.remove(&from) else {
-            return;
-        };
-        for id in markers
-            .iter()
-            .flat_map(|marker| marker.name_effect.into_iter().chain(marker.ability_effects.iter().copied()))
-        {
+        if markers.is_empty() { return; }
+        for id in markers.iter().flat_map(|marker| marker.name_effect.into_iter().chain(marker.ability_effects.iter().copied())) {
             self.effect_store.continuous_effects.retarget_sticker(id, into_object);
         }
-        self.object_annotations_mut()
-            .object_stickers
-            .entry(into)
-            .or_default()
-            .extend(markers);
+        self.object_annotations_mut().object_stickers.entry(into).or_default().extend(markers);
         self.restamp_object_stickers(into_object);
         self.mark_continuous_state_dirty();
     }
@@ -8019,7 +8076,50 @@ impl GameState {
     }
 
     /// Shuffle a player's library using the deterministic match RNG.
+    pub(crate) fn record_simultaneous_library_placement(&mut self, card: ObjectId, position: crate::effects::cards::LibraryCardPosition) {
+        if !self.object(card).is_some_and(|object| object.zone == Zone::Library) { return; }
+        if let Some(batch) = self.simultaneous_action_batch() {
+            self.auxiliary_tracking_mut().simultaneous_library_placements.entry(batch).or_default().push((card, position));
+        }
+    }
+
     pub fn shuffle_player_library(&mut self, player_id: PlayerId) {
+        let placements = self.auxiliary_tracking.simultaneous_action_scope
+            .and_then(|scope| scope.batch)
+            .and_then(|batch| self.auxiliary_tracking.simultaneous_library_placements.get(&batch))
+            .cloned().unwrap_or_default();
+        let retained = self.player(player_id).map(|player| player.library.iter().copied().enumerate()
+            .filter(|(_, card)| placements.iter().any(|(placed, _)| placed == card)).collect::<Vec<_>>()).unwrap_or_default();
+        if retained.is_empty() {
+            self.shuffle_player_library_random_part(player_id);
+            return;
+        }
+        // CR 701.24g: randomize the complement of the cards whose positions
+        // belong to this same action. Internal staging of shuffled cards is
+        // not a specified placement and never enters this set.
+        let before_order = self.player(player_id).unwrap().library.to_vec();
+        let retained_ids = retained.iter().map(|(_, id)| *id).collect::<HashSet<_>>();
+        self.player_mut(player_id).unwrap().library.retain(|id| !retained_ids.contains(id));
+        self.shuffle_player_library_random_part(player_id);
+        let state = self.player_mut(player_id).unwrap();
+        for (index, card) in retained { state.library.insert(index.min(state.library.len()), card); }
+        let after_order = state.library.to_vec();
+        if before_order.last() != after_order.last() { self.bump_library_top_revision(player_id); }
+        self.record_library_reorder(player_id, before_order, after_order, "simultaneous specified library positions retained during shuffle");
+        // Reapply the authored placements in the already chosen order against
+        // the completed library, including every newly shuffled arrival.
+        for (card, position) in placements {
+            use crate::effects::cards::LibraryCardPosition;
+            match position {
+                LibraryCardPosition::Top => { self.move_library_card_to_top(player_id, card, "simultaneous top placement after randomization"); }
+                LibraryCardPosition::Bottom => { self.move_library_card_to_bottom(player_id, card, "simultaneous bottom placement after randomization"); }
+                LibraryCardPosition::NthFromTop(position) => { self.move_library_card_to_nth_from_top(player_id, card, position, "simultaneous fixed placement after randomization"); }
+            }
+        }
+        self.reconcile_library_top_identity();
+    }
+
+    fn shuffle_player_library_random_part(&mut self, player_id: PlayerId) {
         let (random_count_before, random_count_after) = self.record_irreversible_random();
         let seed = self.next_random_u64();
         let Some(index) = self
@@ -8034,6 +8134,9 @@ impl GameState {
             });
             return;
         };
+        let revealed_top = self.revealed_library_top_before_shuffle(player_id);
+        let reconciling_reveal = self.runtime_cache.library_top_identity.reconciling;
+        self.runtime_cache.library_top_identity.reconciling = true;
         let before_order = self.players[index].library.to_vec();
         let input_commitments = before_order
             .iter()
@@ -8105,6 +8208,14 @@ impl GameState {
             random_count_before,
             random_count_after,
         });
+        self.runtime_cache.library_top_identity.reconciling = reconciling_reveal;
+        // CR 701.20d also applies when the random order happens to leave the
+        // revealed card in its original position. Anonymous shuffle epochs
+        // may already have replaced this identity, in which case it is gone.
+        if let Some(revealed) = revealed_top {
+            self.reidentify_reordered_library_card(revealed);
+        }
+        self.reconcile_library_top_identity();
     }
 
     fn same_object_multiset(left: &[ObjectId], right: &[ObjectId]) -> bool {
@@ -8164,6 +8275,7 @@ impl GameState {
             self.bump_library_top_revision(player);
         }
         self.record_library_reorder(player, before_order, after_order, reason);
+        self.reconcile_library_top_identity();
         true
     }
 
@@ -8300,6 +8412,7 @@ impl GameState {
             return true;
         }
         let selected_set: HashSet<_> = selected.iter().copied().collect();
+        let opened = self.open_simultaneous_action();
         if let Some(player_state) = self.player_mut(player) {
             player_state.library.retain(|id| !selected_set.contains(id));
         }
@@ -8312,12 +8425,14 @@ impl GameState {
             });
             player_state.library.to_vec()
         } else {
+            self.close_simultaneous_action(opened);
             return false;
         };
         if before_order.last() != after_order.last() {
             self.bump_library_top_revision(player);
         }
         self.record_library_reorder(player, before_order, after_order, reason);
+        self.close_simultaneous_action(opened);
         true
     }
 
@@ -8331,16 +8446,35 @@ impl GameState {
     }
 
     /// CR 701.20d: a revealed library card that is reordered becomes a new
-    /// object in the same library position. Cards tracked by the hidden-card
-    /// layer already lose their identity through anonymous shuffle slots.
+    /// object in the same library position. A known hidden commitment keeps
+    /// its physical identity and records the new public object generation.
     pub(crate) fn reidentify_reordered_library_card(&mut self, old: ObjectId) -> Option<ObjectId> {
-        if self.hidden_card_info(old).is_some() {
-            return None;
-        }
         let object = self.object(old).filter(|o| o.zone == Zone::Library)?.clone();
         let owner = object.owner;
         let position = self.player(owner)?.library.iter().position(|id| *id == old)?;
+        let hidden = self.hidden_card_info(old).cloned();
+        let next_generation = match hidden.as_ref().and_then(|info| info.incarnation) {
+            Some(value) => match value.checked_add(1) {
+                Some(next) => Some(next),
+                None => {
+                    self.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                        "hidden library identity generation is exhausted".into(),
+                    ));
+                    return None;
+                }
+            },
+            None => None,
+        };
+        if self.has_open_simultaneous_action() {
+            self.runtime_cache.library_top_identity.pending_reorders.insert(old);
+            return None;
+        }
+        let reentrant = self.runtime_cache.library_top_identity.reconciling;
+        self.runtime_cache.library_top_identity.reconciling = true;
         let new_id = self.new_object_id();
+        self.auxiliary_tracking_mut().hidden_cards.remove(&old);
+        self.forget_public_hidden_card_reveal(old);
+        self.effect_store.grant_registry.remove_stable_card_grants_for_zone(object.stable_id, Zone::Library);
         self.remove_object(old);
         let mut object = object;
         object.id = new_id;
@@ -8352,7 +8486,19 @@ impl GameState {
                 ids.insert(position, new_id);
             });
         }
+        if let Some(mut info) = hidden {
+            let audit = info.clone();
+            info.incarnation = next_generation;
+            self.set_hidden_card_info(new_id, info);
+            self.hydrate_verified_library_replay_zone(new_id, Zone::Library);
+            self.push_hidden_info_operation(HiddenInfoOperation::HiddenMove {
+                owner: audit.owner, old_object_id: old, new_object_id: new_id,
+                from: Zone::Library, to: Zone::Library, slot: audit.slot, commitment: audit.commitment,
+            });
+        }
         self.bump_library_top_revision(owner);
+        self.runtime_cache.library_top_identity.reconciling = reentrant;
+        if !reentrant { self.reconcile_library_top_identity(); }
         Some(new_id)
     }
 
@@ -8836,6 +8982,14 @@ impl GameState {
             .collect()
     }
 
+    pub(crate) fn acquired_spell_keywords(&self, spell: ObjectId) -> Option<&[crate::granted_spell_keywords::AcquiredSpellKeyword]> {
+        self.auxiliary_tracking.acquired_spell_keywords.get(&spell).map(Vec::as_slice)
+    }
+
+    pub(crate) fn set_acquired_spell_keywords(&mut self, spell: ObjectId, acquired: Vec<crate::granted_spell_keywords::AcquiredSpellKeyword>) {
+        self.auxiliary_tracking_mut().acquired_spell_keywords.insert(spell, acquired);
+    }
+
     /// Attach and consume every matching one-shot spell-ability grant as the
     /// spell is put on the stack during CR 601.2a.
     ///
@@ -8925,6 +9079,7 @@ impl GameState {
                 effect.remaining_uses -= 1;
             }
         }
+        crate::granted_spell_keywords::acquire_spell_keywords_for_cast(self, spell_id, player);
     }
 
     /// Pure timing query against the already selected prospective face. It
@@ -9772,6 +9927,11 @@ impl GameState {
     /// Whether this is the player's own draw step, and their prior actual draws.
     pub fn draw_step_context_for_player(&mut self, player: PlayerId) -> (bool, u32) {
         self.sync_draw_step_tracking();
+        self.current_draw_step_context_for_player(player)
+    }
+
+    /// Read draw-step ordinals without changing tracking at a query boundary.
+    pub fn current_draw_step_context_for_player(&self, player: PlayerId) -> (bool, u32) {
         if self.turn.phase == Phase::Beginning
             && self.turn.step == Some(Step::Draw)
             && self.is_active_player(player)
@@ -10832,6 +10992,7 @@ impl GameState {
             if let Some(id) = card_id {
                 // Move from library to hand
                 if let Some(new_id) = self.move_object_by_game_rule(id, Zone::Hand) {
+                    self.retain_announcement_draw(new_id);
                     drawn.push(new_id);
                 }
             } else {
@@ -10867,6 +11028,7 @@ impl GameState {
             if let Some(new_id) = self.move_object_by_game_rule(id, final_zone)
                 && final_zone == Zone::Hand
             {
+                self.retain_announcement_draw(new_id);
                 drawn.push(new_id);
             }
         }
@@ -11026,10 +11188,7 @@ impl GameState {
         self.prime_linked_face_lookup(def.card.other_face_name.as_deref(), def.card.other_face);
     }
 
-    /// Whether a permanent's card carries a prepare spell it could copy.
-    ///
-    /// The prepare spell is the card's other face; a permanent that is not a
-    /// prepare card (a token copy of one, say) can never become prepared.
+    /// Whether the object's current copiable characteristics include a prepare spell.
     pub fn has_prepare_spell(&self, id: crate::ids::ObjectId) -> bool {
         self.prepare_spell_definition(id).is_some()
     }
@@ -11049,10 +11208,8 @@ impl GameState {
         {
             return Some(Some(face.name.clone()));
         }
-        // Without a copy effect the printed linked face is authoritative.
-        if values.name == object.name.as_ref() {
-            return None;
-        }
+        // Initial characteristics already contain printed linked values.
+        // A missing half is authoritative even when a copy keeps the name.
         Some(None)
     }
 

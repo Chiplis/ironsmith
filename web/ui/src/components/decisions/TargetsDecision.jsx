@@ -1,3 +1,4 @@
+import DecisionObjectLabel from "./DecisionObjectLabel";
 import { SymbolText } from "@/lib/mana-symbols";
 import useUiText from "@/i18n/useUiText";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
@@ -379,6 +380,7 @@ function ActiveRequirementTargets({
         }}
         aria-pressed={isSelected}
         data-keyboard-target="true"
+        data-decision-option-object={hoverObjectId != null ? String(hoverObjectId) : undefined}
         onFocus={(event) => onAimTarget(target, event.currentTarget)}
         ref={(node) => {
           if (node) {
@@ -390,7 +392,7 @@ function ActiveRequirementTargets({
         onMouseEnter={() => hoverObjectId && hoverCard?.(hoverObjectId)}
         onMouseLeave={() => hoverObjectId && clearHover?.()}
       >
-        {ui(label)}
+        <DecisionObjectLabel objectId={objectId} object={target} nameOnly>{ui(label)}</DecisionObjectLabel>
       </Button>
     );
   });
@@ -1005,7 +1007,7 @@ export default function TargetsDecision({
   if (requirements.length === 0) return null;
 
   return (
-    <div ref={targetControlsRef} className={cn(
+    <div data-decision-menu ref={targetControlsRef} className={cn(
       "flex w-full min-w-0 flex-col gap-1.5",
       stripLayout && !compactStripLayout && "gap-1"
     )}>

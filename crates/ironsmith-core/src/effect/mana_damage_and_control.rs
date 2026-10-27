@@ -1820,13 +1820,33 @@ impl RegisterDamagedBySourceZoneReplacementEffect {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
-pub struct LearnEffect;
+#[cfg_attr(feature = "serde", serde(from = "LearnWire"))]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+pub struct LearnEffect {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub outside_card_filter: Option<ObjectFilter>,
+}
+
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum LearnWire {
+    Legacy(()),
+    Definition { #[serde(default)] outside_card_filter: Option<ObjectFilter> },
+}
+#[cfg(feature = "serde")]
+impl From<LearnWire> for LearnEffect {
+    fn from(value: LearnWire) -> Self {
+        match value {
+            LearnWire::Legacy(()) => Self::new(),
+            LearnWire::Definition { outside_card_filter } => Self { outside_card_filter },
+        }
+    }
+}
 
 impl LearnEffect {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn new() -> Self { Self { outside_card_filter: None } }
+    pub fn retrieve_outside_or_rummage(filter: ObjectFilter) -> Self { Self { outside_card_filter: Some(filter) } }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1910,21 +1930,36 @@ impl ReduceSpeedEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
-pub struct CipherEffect;
+#[cfg_attr(feature = "serde", serde(from = "UnitOrDescriptiveEffectWire"))]
+pub struct CipherEffect { pub descriptive: bool }
 
 impl CipherEffect {
-    pub fn new() -> Self {
-        Self
+    pub fn new() -> Self { Self { descriptive: false } }
+}
+#[cfg(feature = "serde")]
+impl From<UnitOrDescriptiveEffectWire> for CipherEffect {
+    fn from(value: UnitOrDescriptiveEffectWire) -> Self {
+        match value { UnitOrDescriptiveEffectWire::Legacy(()) => Self::new(), UnitOrDescriptiveEffectWire::Definition { descriptive } => Self { descriptive } }
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
-pub struct UnearthEffect;
+#[cfg_attr(feature = "serde", serde(from = "UnitOrDescriptiveEffectWire"))]
+pub struct UnearthEffect { pub descriptive: bool }
 
 impl UnearthEffect {
-    pub fn new() -> Self {
-        Self
+    pub fn new() -> Self { Self { descriptive: false } }
+    pub fn return_with_haste_and_exile_deadline() -> Self { Self { descriptive: true } }
+}
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum UnitOrDescriptiveEffectWire { Legacy(()), Definition { #[serde(default)] descriptive: bool } }
+#[cfg(feature = "serde")]
+impl From<UnitOrDescriptiveEffectWire> for UnearthEffect {
+    fn from(value: UnitOrDescriptiveEffectWire) -> Self {
+        match value { UnitOrDescriptiveEffectWire::Legacy(()) => Self::new(), UnitOrDescriptiveEffectWire::Definition { descriptive } => Self { descriptive } }
     }
 }
 
@@ -1990,6 +2025,9 @@ pub struct RegenerateEffect<E = ()> {
     /// false so existing regeneration output is unchanged.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub remove_damage_only: bool,
+    /// Ordinary described replacement; it carries no regeneration identity.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub ordinary_destruction_replacement: bool,
 }
 
 impl<E: std::fmt::Debug> std::fmt::Debug for RegenerateEffect<E> {
@@ -2000,6 +2038,7 @@ impl<E: std::fmt::Debug> std::fmt::Debug for RegenerateEffect<E> {
             .field("duration", &self.duration)
             .field("follow_up_effects", &self.follow_up_effects)
             .field("follow_up_player", &self.follow_up_player);
+        if self.ordinary_destruction_replacement { debug.field("ordinary_destruction_replacement", &true); }
         if self.remove_damage_only {
             debug.field("remove_damage_only", &self.remove_damage_only);
         }
@@ -2021,6 +2060,7 @@ impl<E> RegenerateEffect<E> {
             follow_up_effects: Vec::new(),
             follow_up_player: None,
             remove_damage_only: false,
+            ordinary_destruction_replacement: false,
         }
     }
 
@@ -2039,6 +2079,11 @@ impl<E> RegenerateEffect<E> {
 
     pub fn with_follow_up_player(mut self, player: Option<PlayerFilter>) -> Self {
         self.follow_up_player = player;
+        self
+    }
+
+    pub fn with_ordinary_destruction_replacement(mut self, ordinary: bool) -> Self {
+        self.ordinary_destruction_replacement = ordinary;
         self
     }
 
@@ -2841,6 +2886,8 @@ impl RingTemptsYouEffect {
 pub struct VentureIntoDungeonEffect {
     pub player: PlayerFilter,
     pub undercity_if_no_active: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl VentureIntoDungeonEffect {
@@ -2848,6 +2895,7 @@ impl VentureIntoDungeonEffect {
         Self {
             player,
             undercity_if_no_active: false,
+            descriptive: false,
         }
     }
 
@@ -2855,6 +2903,7 @@ impl VentureIntoDungeonEffect {
         Self {
             player,
             undercity_if_no_active: true,
+            descriptive: false,
         }
     }
 }
@@ -3184,11 +3233,17 @@ impl ExchangeZonesEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
-pub struct AuraSwapEffect;
+#[cfg_attr(feature = "serde", serde(from = "UnitOrDescriptiveEffectWire"))]
+pub struct AuraSwapEffect { pub descriptive: bool }
 
 impl AuraSwapEffect {
-    pub fn new() -> Self {
-        Self
+    pub fn new() -> Self { Self { descriptive: false } }
+    pub fn exchange_source_with_hand_aura() -> Self { Self { descriptive: true } }
+}
+#[cfg(feature = "serde")]
+impl From<UnitOrDescriptiveEffectWire> for AuraSwapEffect {
+    fn from(value: UnitOrDescriptiveEffectWire) -> Self {
+        match value { UnitOrDescriptiveEffectWire::Legacy(()) => Self::new(), UnitOrDescriptiveEffectWire::Definition { descriptive } => Self { descriptive } }
     }
 }
 
@@ -3763,13 +3818,18 @@ impl MoveCountersEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ProliferateEffect {
     pub count: Value,
+    /// Execute the shared counter-placement procedure without a named action,
+    /// its replacement hooks, or its completion event.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub ordinary_counter_placement: bool,
 }
 
 impl ProliferateEffect {
     pub fn new(count: impl Into<Value>) -> Self {
-        Self {
-            count: count.into(),
-        }
+        Self { count: count.into(), ordinary_counter_placement: false }
+    }
+    pub fn grow_counters_on_chosen_holders() -> Self {
+        Self { count: Value::Fixed(1), ordinary_counter_placement: true }
     }
 }
 
@@ -5069,11 +5129,18 @@ pub struct ReturnFromGraveyardToBattlefieldEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ReturnFromGraveyardOrExileToBattlefieldEffect {
     pub tapped: bool,
+    #[serde(default)]
+    pub returning_player: Option<PlayerFilter>,
 }
 
 impl ReturnFromGraveyardOrExileToBattlefieldEffect {
     pub fn new(tapped: bool) -> Self {
-        Self { tapped }
+        Self { tapped, returning_player: None }
+    }
+
+    pub fn under_control_of(mut self, player: PlayerFilter) -> Self {
+        self.returning_player = Some(player);
+        self
     }
 }
 
@@ -5336,11 +5403,16 @@ impl ReorderTopPlanarDeckEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct MonstrosityEffect {
     pub n: Value,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
 }
 
 impl MonstrosityEffect {
+    pub fn counters_then_become_monstrous(n: impl Into<Value>) -> Self {
+        Self { n: n.into(), descriptive: true }
+    }
     pub fn new(n: impl Into<Value>) -> Self {
-        Self { n: n.into() }
+        Self { n: n.into(), descriptive: false }
     }
 }
 
@@ -5356,11 +5428,14 @@ impl EvolveEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
-pub struct SoulbondPairEffect;
+pub struct SoulbondPairEffect {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub descriptive: bool,
+}
 
 impl SoulbondPairEffect {
     pub const fn new() -> Self {
-        Self
+        Self { descriptive: false }
     }
 }
 
@@ -6349,6 +6424,8 @@ pub enum UpkeepPaymentKind {
     #[default]
     Cumulative,
     Echo,
+    /// An ordinary repeated payment with no named upkeep-cost identity.
+    PerSourceCounter(CounterType),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

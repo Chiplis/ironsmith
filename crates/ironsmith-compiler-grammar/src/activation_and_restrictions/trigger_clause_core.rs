@@ -85,9 +85,9 @@ const YOU_UNLOCK_THIS_DOOR_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!
 const THIS_CARD_BECOMES_PLOTTED_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
-            &["this", "card", "becomes", "plotted"],
-            &["this", "becomes", "plotted"],
-            &["becomes", "plotted"],
+            &["this", "card", "becomes", crate::keyword_forms::PLOTTED],
+            &["this", "becomes", crate::keyword_forms::PLOTTED],
+            &["becomes", crate::keyword_forms::PLOTTED],
         ]
 );
 const THE_RING_TEMPTS_YOU_TRIGGER_PATTERN: ClauseShape<'static> =
@@ -759,7 +759,7 @@ fn parse_attacks_player_who_controls_at_least_tail(words: &[&str]) -> Option<(u3
 }
 const ALONE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["alone"]);
 const WHILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["while"]);
-const SADDLED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["saddled"]);
+const SADDLED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & [crate::keyword_forms::SADDLED]);
 const OR_ANOTHER_WORDS: &[&str] = &["or", "another"];
 const OR_ANOTHER_PATTERN: ClauseShape<'static> = clause_shape!(exact & OR_ANOTHER_WORDS);
 const THIS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this"]);
@@ -2238,7 +2238,7 @@ fn try_parse_championed_with_this_trigger_lexed(
             cause_type: None,
             source_filter: Some(source),
             controller_filter: None,
-            ability_kind: None,
+            ability_kind: Some(ironsmith_core::CauseAbilityKindFilter::ChampionTrigger),
         }),
     }))
 }
@@ -2464,7 +2464,7 @@ fn try_parse_kicks_a_spell_trigger_lexed(
     }
     let mut rewritten = trimmed[..kick_idx].to_vec();
     rewritten.extend(crate::lexer::synthetic_word_tokens([
-        "casts", "a", "kicked", "spell",
+        "casts", "a", crate::keyword_forms::KICKED, "spell",
     ]));
     parse_trigger_clause_lexed(&rewritten).map(Some)
 }

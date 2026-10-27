@@ -1,0 +1,1 @@
+artifact19;relative-permission-boundaries;parent=0984265bff1100938a74190a0a43bb5042ef5f6589ffa7801f22ed30784c08f0;crates/ironsmith-core/src/effect.rs:4cdfdbad4b6da717b44669fb804983f0916f90d0360f48683ef638416f234315;your-boundaries=effect-controller;their-boundaries=permission-holder;grant-by-spec-and-exile-then-grant=effect-controller;source-control=effect-controller

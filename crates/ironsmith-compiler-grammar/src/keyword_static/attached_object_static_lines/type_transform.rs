@@ -114,7 +114,7 @@ pub fn parse_attached_type_transform_line(
                         && split
                             .keyword_tokens
                             .get(index + 2)
-                            .is_some_and(|next| next.is_word("goaded"))
+                            .is_some_and(|next| next.is_word(crate::keyword_forms::GOADED))
                         && trim_edge_punctuation(&split.keyword_tokens[index + 3..]).is_empty())
                     .then_some(index)
                 });

@@ -1086,6 +1086,9 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     let target = parse_counter_target_phrase(unless_shape.target_tokens)?;
     let payment_clause_tokens = &unless_shape.normalized_payment_tokens;
     let has_dynamic_payment_tail = unless_shape.has_dynamic_payment_tail;
+    if let Some(mana) = crate::grammar::activation_costs::parse_artifact_creature_tap_price(payment_clause_tokens)? {
+        return Ok(counter_with_payment_payer(target, ironsmith_core::TotalCost::mana(mana), unless_shape.payer));
+    }
     match crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
         payment_clause_tokens,
     ) {

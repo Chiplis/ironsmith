@@ -2083,3 +2083,7 @@ use bundle_rules_library_programs::{
     parse_discard_redraw_mana_value_ladder_bundle, parse_each_player_shuffle_then_consult_bundle,
     parse_look_hand_optional_exile_play_tax_bundle,
 };
+
+#[path = "effect_composition/entry_type_rider.rs"]
+mod entry_type_rider;
+pub(super) use entry_type_rider::parse_entry_type_rider;

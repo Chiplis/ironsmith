@@ -68,6 +68,43 @@ pub(super) const REGISTRY: RuleId = RuleId::new("alternative-cast-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("reveal-from-hand-to-add-spell-text"),
+        head: HeadDiscriminator::Words(&["as"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_reveal_to_add_spell_text(input)),
+    },
+
+    Reading {
+        id: RuleId::new("payment-for-each-extra-mode"),
+        head: HeadDiscriminator::Words(&["pay", "sacrifice", "discard", "exile", "return", "tap", "remove"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_payment_per_extra_mode(input)),
+    },
+
+    Reading {
+        id: RuleId::new("optional-payment-chooses-all-modes"),
+        head: HeadDiscriminator::Words(&["choose"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_optional_all_modes(input)),
+    },
+
+    Reading {
+        id: RuleId::new("alternative-price-entry-counter-countdown"),
+        head: HeadDiscriminator::Words(&["if"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_entry_counter_countdown(input)),
+    },
+
+    Reading {
+        id: RuleId::new("bound-reminder-alternative-price"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(
+            crate::grammar::shared_util::alternative_cost_lines::parse_self_bound_alternative_price(input.tokens)
+                .map(|method| method.and_then(|method| ast(LineAst::AlternativeCastingMethod(method))))
+        ),
+    },
+    Reading {
         id: RuleId::new("intrinsic-zone-alternative-cost"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -247,23 +284,28 @@ pub(super) fn read(input: &AlternativeCastLine<'_>) -> ParseOutcome<RuleMatch<Ke
 fn read_aftermath(
     input: &AlternativeCastLine<'_>,
 ) -> Result<Option<KeywordLinePayload>, CardTextError> {
-    let tokens = input.tokens;
-    if token_slice_first_is(tokens, "aftermath") {
-        let mut ability = crate::model::CompilerStaticAbilityCore::grants(
-            crate::model::CompilerGrantSpecCore::new(
-                crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
-                    Vec::<crate::model::CompilerCost>::new(),
-                    true,
-                ),
-                crate::target::ObjectFilter::source(),
-                crate::zone::Zone::Graveyard,
-            ),
-        );
-        ability.label = "Aftermath".to_string();
-        return Ok(ast(LineAst::StaticAbility(ability.into())));
-    }
-    Ok(None)
+    let words = crate::lexer::parser_token_word_refs(input.tokens);
+    let native = words == ["aftermath"];
+    let described = matches!(words.as_slice(), ["cast", "this", "spell" | "card", "only", "from", "your", "graveyard", "then", "exile", "it"]);
+    if !native && !described { return Ok(None); }
+    let restriction = crate::model::CompilerStaticAbilityCore::this_spell_cast_restriction(
+        crate::static_abilities::ThisSpellCastRestrictionKind::only_if(
+            ironsmith_core::Condition::SourceIsInZone(crate::zone::Zone::Graveyard),
+        ), "Cast this spell only from your graveyard",
+    );
+    let permission = crate::model::CompilerAlternativeCastingMethod::cast_from_zone_with_total_cost(
+        if native { "Aftermath" } else { "Parsed exclusive graveyard permission" },
+        crate::zone::Zone::Graveyard, ironsmith_core::TotalCost::free(), None, false,
+    ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+        add_printed_mana_cost: true, exile_on_stack_exit: true, ..Default::default()
+    });
+    Ok(ast(LineAst::Multiple(vec![
+        LineAst::StaticAbility(restriction.into()),
+        LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::keyword_marker("If this spell was cast from your graveyard, exile it instead of putting it anywhere else any time it would leave the stack.").into()),
+        LineAst::AlternativeCastingMethod(permission),
+    ])))
 }
+
 fn read_encore(
     input: &AlternativeCastLine<'_>,
 ) -> Result<Option<KeywordLinePayload>, CardTextError> {
@@ -553,47 +595,21 @@ fn read_sneak(
     input: &AlternativeCastLine<'_>,
 ) -> Result<Option<KeywordLinePayload>, CardTextError> {
     let tokens = input.tokens;
-    let line = input.line;
     let full_tokens = input.full_tokens;
     if let Some(keyword_tokens) =
         keyword_tokens_for_shape(tokens, full_tokens, KeywordPrefixShape::Sneak)
     {
-        let support_tokens = if full_tokens.is_empty() {
-            keyword_tokens
-        } else {
-            full_tokens
-        };
-        let (cost, used) =
-            leading_mana_cost_from_tokens(keyword_tokens.get(1..).unwrap_or_default())
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "sneak keyword missing cost '{}'",
-                        line.info.raw_line
-                    ))
-                })?;
-        // A bare "Sneak {cost}" line (reminder text omitted) carries the
-        // keyword's complete rules meaning for both spell and permanent
-        // cards (the permanent's tapped-and-attacking entry follows from the
-        // cast, not the reminder); only an unrecognized rewording is rejected.
-        let bare_keyword = support_tokens
-            .get(1 + used..)
-            .unwrap_or_default()
-            .iter()
-            .all(|token| token.is_period());
-        if !bare_keyword
-            && !line.info.semantic_facts.supported_sneak_form
-            && !is_supported_sneak_line(support_tokens)
-        {
-            return Err(CardTextError::ParseError(format!(
-                "sneak keyword form is not yet supported: '{}'",
-                line.info.raw_line
-            )));
-        }
+        let price = keyword_tokens.get(1..).unwrap_or_default();
+        let start = price.iter().position(|token| !matches!(token.kind, TokenKind::Dash | TokenKind::EmDash)).unwrap_or(price.len());
+        let total = crate::activation_and_restrictions::parse_compiler_activation_cost(&price[start..])?;
+        let cost = total.mana_cost().cloned().unwrap_or_default();
+        let mut non_mana = total.non_mana_costs().cloned().collect::<Vec<_>>();
+        non_mana.push(crate::model::CompilerCost::Sneak);
         return Ok(ast(LineAst::AlternativeCastingMethod(
             crate::model::CompilerAlternativeCastingMethod::alternative_cost(
                 "Sneak",
                 Some(cost),
-                vec![crate::model::CompilerCost::Sneak],
+                non_mana,
             ),
         )));
     }
@@ -710,4 +726,88 @@ fn read_if_this_spell_costs_less_to_cast_line(
         return Ok(ast(LineAst::StaticAbility(ability.into())));
     }
     Ok(None)
+}
+
+fn read_entry_counter_countdown(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    use crate::cards::builders::{ConditionalEffectAst, SourcePredicateAst};
+    let sentences = split_lexed_sentences(input.tokens);
+    let [first, second] = sentences.as_slice() else { return Ok(None); };
+    let view = TokenWordView::new(first);
+    let words = view.word_refs();
+    if words.get(..6) != Some(&["if", "you", "cast", "this", "spell", "for"]) { return Ok(None); }
+    let Some(enters) = words.windows(3).position(|w| w == ["it", "enters", "with"]) else { return Ok(None); };
+    let Some(counters) = words.iter().position(|w| *w == "counters") else { return Ok(None); };
+    if counters <= enters + 4 || !matches!(&words[counters + 1..], ["and", "isn't" | "isnt", "a", "creature", "until", "the", "last", "is", "removed"]) { return Ok(None); }
+    let Some(amount) = crate::util::parse_number_word_u32(words[enters + 3]) else { return Ok(None); };
+    let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(&words[enters + 4..=counters]) else { return Ok(None); };
+    let second_words = TokenWordView::new(second).word_refs();
+    if second_words.get(..9) != Some(&["at", "the", "beginning", "of", "your", "end", "step", "remove", "a"])
+        || !second_words.ends_with(&["counter", "from", "it"])
+        || crate::grammar::filters::parse_counter_type_words(&second_words[9..second_words.len() - 2]) != Some(counter_type) { return Ok(None); }
+    let cost_start = view.token_start_indices()[5] + 1;
+    let cost_end = view.token_start_indices()[enters];
+    let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(crate::util::trim_edge_punctuation_tokens(&first[cost_start..cost_end]))?;
+    let method = crate::model::CompilerAlternativeCastingMethod::Composed {
+        name: "Parsed entry countdown price".into(), total_cost, condition: None, prototype_power_toughness: None,
+    };
+    let paid_ref = ironsmith_core::OptionalCostRef::new(ironsmith_core::OptionalCostKind::AlternativeCast(
+        ironsmith_core::AlternativeCostReference::as_that_cost(method.name(), method.mana_cost()),
+    ));
+    let paid = PredicateAst::ThisSpellPaidLabel(paid_ref.clone());
+    let predicate = PredicateAst::And(Box::new(PredicateAst::ThisSpellPaidLabel(paid_ref)), Box::new(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast { counter_type, count: 1, surface: Default::default() })));
+    Ok(ast(LineAst::Multiple(vec![
+        LineAst::AlternativeCastingMethod(method),
+        LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::enters_with_counters_value(counter_type, amount.into()).with_condition(paid).into()),
+        LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::remove_card_types(ObjectFilter::source(), vec![crate::types::CardType::Creature], Some(predicate.clone())).into()),
+        LineAst::Triggered {
+            trigger: TriggerSpec::BeginningOfEndStep(PlayerFilter::You),
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate, if_true: vec![EffectAst::subject_verb_remove_counters_all(Value::Fixed(1), ObjectFilter::source(), Some(counter_type), false)], if_false: vec![],
+            })], max_triggers_per_turn: None,
+        },
+    ])))
+}
+
+fn read_optional_all_modes(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
+    let prefix = if tokens.iter().take(5).map(|t| t.as_word().unwrap_or("")).eq(["choose", "both", "if", "you", "pay"]) { 5 }
+        else if tokens.iter().take(6).map(|t| t.as_word().unwrap_or("")).eq(["choose", "all", "modes", "if", "you", "pay"]) { 6 }
+        else if tokens.iter().take(4).map(|t| t.as_word().unwrap_or("")).eq(["choose", "both", "if", "you"]) { 4 }
+        else { return Ok(None); };
+    let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&tokens[prefix..])?;
+    Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::choose_all_modes(cost))))
+}
+
+fn read_payment_per_extra_mode(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
+    if tokens.len() < 9 || !crate::lexer::parser_token_word_refs(tokens).ends_with(&["for", "each", "mode", "chosen", "beyond", "the", "first"]) { return Ok(None); }
+    let mut price = &tokens[..tokens.len() - 7];
+    if price.first().is_some_and(|t| t.is_word("pay")) && price.get(1).is_some_and(|t| t.slice.starts_with('{')) { price = &price[1..]; }
+    let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(price)?;
+    Ok(ast(LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::payment_per_extra_mode(
+        cost, crate::lexer::render_token_slice(price),
+    ).into())))
+}
+
+fn read_reveal_to_add_spell_text(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let sentences = crate::lexer::split_lexed_sentences(input.tokens);
+    if sentences.len() != 2 { return Ok(None); }
+    let first = crate::util::trim_edge_punctuation_tokens(&sentences[0]);
+    let words = crate::lexer::parser_token_word_refs(first);
+    if !words.starts_with(&["as", "you", "cast", "an"]) && !words.starts_with(&["as", "you", "cast", "a"]) { return Ok(None); }
+    let Some(spell) = first.iter().position(|t| t.is_word("spell")) else { return Ok(None); };
+    let quality = match crate::lexer::parser_token_word_refs(&first[4..spell]).as_slice() {
+        ["instant", "or", "sorcery"] => ironsmith_core::SpliceQuality::InstantOrSorcery,
+        ["arcane"] => ironsmith_core::SpliceQuality::Arcane,
+        _ => return Ok(None),
+    };
+    let tail = crate::util::trim_edge_punctuation_tokens(&first[spell + 1..]);
+    let intro = ["you", "may", "reveal", "this", "card", "from", "your", "hand", "and"];
+    if !crate::lexer::parser_token_word_refs(tail).starts_with(&intro) { return Ok(None); }
+    let last = crate::lexer::parser_token_word_refs(&sentences[1]);
+    if !matches!(last.as_slice(), ["if", "you", "do", "add", "this", "card's" | "cards", "effects", "to", "that", "spell"]) { return Ok(None); }
+    let mut price = &tail[intro.len()..];
+    if price.first().is_some_and(|t| t.is_word("pay")) && price.get(1).is_some_and(|t| t.slice.starts_with('{')) { price = &price[1..]; }
+    let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(price)?;
+    Ok(ast(LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::reveal_to_add_spell_text(quality, cost, crate::lexer::render_token_slice(price)).into())))
 }

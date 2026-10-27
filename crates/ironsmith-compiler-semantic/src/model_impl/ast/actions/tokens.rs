@@ -41,6 +41,7 @@ pub enum TokenActionAst {
         exile_at_next_end_step: bool,
         exile_at_next_end_step_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         next_end_step_player: PlayerFilter,
+        without_mana_cost: bool,
         set_colors: Option<ColorSet>,
         /// CR 707.9b: "in addition to its other colors and types".
         added_colors: ColorSet,
@@ -80,6 +81,7 @@ pub enum TokenActionAst {
         exile_at_next_end_step: bool,
         exile_at_next_end_step_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         next_end_step_player: PlayerFilter,
+        without_mana_cost: bool,
         set_colors: Option<ColorSet>,
         /// CR 707.9b: "in addition to its other colors and types".
         added_colors: ColorSet,

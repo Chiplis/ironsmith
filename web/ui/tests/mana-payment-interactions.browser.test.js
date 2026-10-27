@@ -62,6 +62,9 @@ test("mana sources stay active during payment, replace inspection, and yield to 
     await page.getByRole("button",{name:"Switch payer"}).click();
     await page.getByRole("button",{name:"Filter Prism to one ability"}).click();
     await prism.click();
+    await popover.waitFor();
+    assert.equal(await popover.locator("[data-action-row]").count(),1);
+    await popover.locator("[data-action-row]").click();
     await page.waitForFunction(() => document.querySelector("[data-decision]").textContent === "select_objects");
     assert.equal(await popover.count(),0);
     assert.deepEqual(JSON.parse(await page.locator("[data-command]").textContent()),{type:"mana_payment",response:{action:"activate",source_id:"2",ability_index:1}});

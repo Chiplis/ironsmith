@@ -330,6 +330,11 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return derive_triggered_ability_functional_zones_from_facts(trigger, facts);
     }
+    if !facts.excluded_zones.is_empty() {
+        return [Zone::Library, Zone::Hand, Zone::Battlefield, Zone::Graveyard,
+            Zone::Stack, Zone::Exile, Zone::Command, Zone::Ante, Zone::OutsideGame]
+            .into_iter().filter(|zone| !facts.excluded_zones.contains(zone)).collect();
+    }
     let mut zones = base_trigger_functional_zones(trigger);
     if let Some(explicit_zone) = &facts.explicit_zone
         && !ironsmith_compiler_semantic::model::trigger_zones::explicit_zone_belongs_to_branch(trigger, *explicit_zone)

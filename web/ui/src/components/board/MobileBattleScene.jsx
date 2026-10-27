@@ -652,11 +652,15 @@ export default function MobileBattleScene({
     if (typeof setMobileViewMode !== "function") return;
     setMobileViewMode((current) => (current === "hand" ? "battlefield" : "hand"));
   }, [setMobileViewMode]);
-  // The "." shortcut opens and closes the full-screen hand here.
+  // Ctrl always opens the full-screen hand; "." toggles it.
   useEffect(() => {
-    window.addEventListener(TOGGLE_HAND_EVENT, handleToggleView);
-    return () => window.removeEventListener(TOGGLE_HAND_EVENT, handleToggleView);
-  }, [handleToggleView]);
+    const onHandShortcut = event => {
+      if (event.detail?.showNumbers) setMobileViewMode?.("hand");
+      else handleToggleView();
+    };
+    window.addEventListener(TOGGLE_HAND_EVENT, onHandShortcut);
+    return () => window.removeEventListener(TOGGLE_HAND_EVENT, onHandShortcut);
+  }, [handleToggleView, setMobileViewMode]);
 
   // --- Zone open ----------------------------------------------------------
   const [openZone, setOpenZone] = useState(null);

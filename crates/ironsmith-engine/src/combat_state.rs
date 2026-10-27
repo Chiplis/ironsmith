@@ -1840,7 +1840,8 @@ fn creature_has_banding(game: &GameState, creature: ObjectId) -> bool {
     let all_effects = game.all_continuous_effects_arc();
     static_abilities_for_object(game, creature, &all_effects)
         .iter()
-        .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Banding)
+        .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Banding
+            || ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::CombatBandsAndDamageChoice))
 }
 
 fn bands_with_other_filter_matches_group(

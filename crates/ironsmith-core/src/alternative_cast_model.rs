@@ -35,6 +35,56 @@ pub struct AlternativeCastRequirements {
     pub discard_from_hand: u32,
 }
 
+/// A paid special action from hand which prepares a later exile cast.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub enum ExilePreparation {
+    FaceDown { price: ManaCost },
+    FaceUpSorcery { price: ManaCost },
+}
+
+/// Instructions belonging to a casting permission, independent of its name.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct ZoneCastInstructions {
+    /// Resolved against the source definition during lowering.
+    pub add_printed_mana_cost: bool,
+    /// Use the source's linked back face while casting.
+    pub transformed: bool,
+    /// Replace every move off the stack with exile, including a return to hand.
+    pub exile_on_stack_exit: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub haste_on_battlefield: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub draw_on_death: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub return_at_next_end_step: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub sacrifice_at_next_end_step: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub sacrifice_on_entry: bool,
+    /// A discard replacement exiles this card and grants a one-shot cast.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cast_when_discarded_into_exile: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tap_creature_reduces_generic: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub returns_attacker_enters_attacking: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub sacrifice_reduces_generic_by_mana_value: bool,
+    /// Reveal as the first card drawn, then cast only through that linked trigger.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub first_draw_reveal_cast: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exile_preparation: Option<ExilePreparation>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub aura_cast_with_unattached_fallback: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub merge_with_same_owner_nonhuman: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub timed_exile: Option<(crate::SuspendTime, ManaCost)>,
+}
+
 fn compose_total_cost<C: CostComponent>(
     mana_cost: Option<ManaCost>,
     additional_costs: Vec<C>,
@@ -59,6 +109,7 @@ fn serialize_from_zone_payload<S, C, Cond>(
     condition: &Option<Cond>,
     exiles_after_resolution: &bool,
     entry_counters: &Vec<(crate::CounterType, u32)>,
+    instructions: &ZoneCastInstructions,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
@@ -75,6 +126,7 @@ where
         exiles_after_resolution: &'a bool,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         entry_counters: &'a Vec<(crate::CounterType, u32)>,
+        instructions: &'a ZoneCastInstructions,
     }
     serde::Serialize::serialize(
         &Payload {
@@ -84,6 +136,7 @@ where
             condition,
             exiles_after_resolution,
             entry_counters,
+            instructions,
         },
         serializer,
     )
@@ -106,6 +159,8 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     },
     Warp {
         cost: ManaCost,
+        #[cfg_attr(feature = "serde", serde(default))]
+        descriptive: bool,
         #[cfg_attr(feature = "serde", serde(default = "TotalCost::free"))]
         additional_cost: TotalCost<C>,
     },
@@ -122,17 +177,29 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Overload {
         cost: ManaCost,
         effects: Vec<E>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        descriptive: bool,
+        #[cfg_attr(feature = "serde", serde(default = "TotalCost::free"))]
+        additional_cost: TotalCost<C>,
     },
     /// CR 702.148: an alternative cost whose stack text omits every
     /// square-bracketed segment before modes and targets are announced.
     Cleave {
         cost: ManaCost,
         effects: Vec<E>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        descriptive: bool,
+        #[cfg_attr(feature = "serde", serde(default = "TotalCost::free"))]
+        additional_cost: TotalCost<C>,
     },
     Awaken {
         amount: u32,
         cost: ManaCost,
         effects: Vec<E>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        descriptive: bool,
+        #[cfg_attr(feature = "serde", serde(default = "TotalCost::free"))]
+        additional_cost: TotalCost<C>,
     },
     Flashback {
         total_cost: TotalCost<C>,
@@ -192,6 +259,8 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         /// Spell copies retain the alternative-cost choice (CR 707.10).
         #[cfg_attr(feature = "serde", serde(default))]
         entry_counters: Vec<(crate::CounterType, u32)>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        instructions: ZoneCastInstructions,
     },
     Trap {
         name: crate::InternedStr,
@@ -220,6 +289,25 @@ where
 {
     /// Alternative casting instructions which use the linked back face.
     /// This casting method itself permits casting at instant timing.
+    pub fn battlefield_instructions(&self) -> ZoneCastInstructions {
+        match self {
+            Self::Dash { .. } => ZoneCastInstructions { haste_on_battlefield: true, return_at_next_end_step: true, ..Default::default() },
+            Self::Blitz { .. } => ZoneCastInstructions { haste_on_battlefield: true, draw_on_death: true, sacrifice_at_next_end_step: true, ..Default::default() },
+            Self::FromZone { instructions, .. } => instructions.clone(),
+            _ => ZoneCastInstructions::default(),
+        }
+    }
+
+    pub fn sacrifice_reduces_generic_by_mana_value(&self) -> bool {
+        matches!(self, Self::Composed { name, .. } if name.eq_ignore_ascii_case("Emerge"))
+            || matches!(self, Self::FromZone { instructions, .. } if instructions.sacrifice_reduces_generic_by_mana_value)
+    }
+
+    pub fn returns_attacker_enters_attacking(&self) -> bool {
+        matches!(self, Self::Composed { name, .. } if name.eq_ignore_ascii_case("Sneak"))
+            || matches!(self, Self::FromZone { instructions, .. } if instructions.returns_attacker_enters_attacking)
+    }
+
     pub fn grants_instant_timing(&self) -> bool {
         matches!(self, Self::Composed { name, .. }
             if name.eq_ignore_ascii_case(FREE_CAST_AS_THOUGH_FLASH_METHOD))
@@ -227,6 +315,7 @@ where
 
     pub fn casts_transformed(&self) -> bool {
         matches!(self, Self::Disturb { .. })
+            || matches!(self, Self::FromZone { instructions, .. } if instructions.transformed)
             || matches!(self, Self::Composed { name, .. } if name.eq_ignore_ascii_case("More than meets the eye"))
     }
 
@@ -267,7 +356,8 @@ where
         match self {
             Self::Bestow { .. } => Some(AlternativeCastKeyword::Bestow),
             Self::Blitz { .. } => Some(AlternativeCastKeyword::Blitz),
-            Self::Warp { .. } => Some(AlternativeCastKeyword::Warp),
+            Self::Warp { descriptive: false, .. } => Some(AlternativeCastKeyword::Warp),
+            Self::Warp { descriptive: true, .. } => None,
             Self::Mutate { .. } => Some(AlternativeCastKeyword::Mutate),
             // Sneak is a named composed alternative cost; its timing and
             // resolution are keyed to the same method name.
@@ -281,9 +371,9 @@ where
     pub fn exiles_after_resolution(&self) -> bool {
         match self {
             Self::FromZone {
-                exiles_after_resolution,
+                exiles_after_resolution, instructions,
                 ..
-            } => *exiles_after_resolution,
+            } => *exiles_after_resolution || instructions.exile_on_stack_exit,
             _ => matches!(
                 self,
                 Self::Flashback { .. } | Self::BeamMeUp { .. }
@@ -332,7 +422,8 @@ where
             }
             Self::Harmonize { total_cost } | Self::BeamMeUp { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
-            Self::JumpStart { additional_cost }
+            Self::Awaken { additional_cost, .. } | Self::Overload { additional_cost, .. } | Self::Cleave { additional_cost, .. }
+            | Self::JumpStart { additional_cost }
             | Self::Warp {
                 additional_cost, ..
             }
@@ -366,7 +457,8 @@ where
     /// alternative mana cost.
     pub fn additional_cost(&self) -> Option<&TotalCost<C>> {
         match self {
-            Self::JumpStart { additional_cost }
+            Self::Awaken { additional_cost, .. } | Self::Overload { additional_cost, .. } | Self::Cleave { additional_cost, .. }
+            | Self::JumpStart { additional_cost }
             | Self::Warp {
                 additional_cost, ..
             }
@@ -418,12 +510,16 @@ where
         match self {
             Self::Dash { .. } => "Dash",
             Self::Blitz { .. } => "Blitz",
-            Self::Warp { .. } => "Warp",
+            Self::Warp { descriptive: false, .. } => "Warp",
+            Self::Warp { descriptive: true, .. } => "Defined delayed exile",
             Self::Plot { .. } => "Plot",
             Self::Suspend { .. } => "Suspend",
             Self::Disturb { .. } => "Disturb",
+            Self::Overload { descriptive: true, .. } => "Defined text substitution",
             Self::Overload { .. } => "Overload",
+            Self::Cleave { descriptive: true, .. } => "Defined text substitution",
             Self::Cleave { .. } => "Cleave",
+            Self::Awaken { descriptive: true, .. } => "Defined land animation",
             Self::Awaken { .. } => "Awaken",
             Self::Flashback { .. } => "Flashback",
             Self::Harmonize { .. } => "Harmonize",
@@ -518,7 +614,18 @@ where
             condition,
             exiles_after_resolution,
             entry_counters: Vec::new(),
+            instructions: ZoneCastInstructions::default(),
         }
+    }
+
+    pub fn with_zone_cast_instructions(mut self, value: ZoneCastInstructions) -> Self {
+        if let Self::FromZone { instructions, .. } = &mut self { *instructions = value; }
+        self
+    }
+
+    pub fn exiles_on_stack_exit(&self) -> bool {
+        matches!(self, Self::Flashback { .. } | Self::JumpStart { .. } | Self::Harmonize { .. } | Self::BeamMeUp { .. })
+            || matches!(self, Self::FromZone { instructions, .. } if instructions.exile_on_stack_exit)
     }
 
     pub fn with_entry_counters(mut self, counters: Vec<(crate::CounterType, u32)>) -> Self {
@@ -564,16 +671,40 @@ where
         matches!(self, Self::Miracle { .. })
     }
 
+    pub fn uses_first_draw_reveal(&self) -> bool {
+        self.is_miracle() || matches!(self, Self::FromZone { instructions, .. } if instructions.first_draw_reveal_cast)
+    }
+
+    pub fn first_draw_total_cost(&self) -> Option<TotalCost<C>> {
+        match self {
+            Self::Miracle { cost } => Some(TotalCost::from_costs(vec![C::mana(cost.clone())])),
+            Self::FromZone { total_cost, instructions, .. } if instructions.first_draw_reveal_cast => Some(total_cost.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn exile_preparation(&self) -> Option<&ExilePreparation> {
+        match self { Self::FromZone { instructions, .. } => instructions.exile_preparation.as_ref(), _ => None }
+    }
+    pub fn prepares_face_down(&self) -> bool {
+        matches!(self, Self::Foretell { .. }) || matches!(self.exile_preparation(), Some(ExilePreparation::FaceDown { .. }))
+    }
+    pub fn prepares_face_up_sorcery(&self) -> bool {
+        matches!(self, Self::Plot { .. }) || matches!(self.exile_preparation(), Some(ExilePreparation::FaceUpSorcery { .. }))
+    }
     pub fn plot_cost(&self) -> Option<&ManaCost> {
         match self {
             Self::Plot { cost } => Some(cost),
-            _ => None,
+            _ => match self.exile_preparation() {
+                Some(ExilePreparation::FaceUpSorcery { price }) => Some(price), _ => None,
+            },
         }
     }
 
     pub fn suspend_spec(&self) -> Option<(crate::SuspendTime, &ManaCost)> {
         match self {
             Self::Suspend { cost, time } => Some((*time, cost)),
+            Self::FromZone { instructions, .. } => instructions.timed_exile.as_ref().map(|(time, cost)| (*time, cost)),
             _ => None,
         }
     }
@@ -613,8 +744,20 @@ where
         }
     }
 
+    pub fn can_tap_creature_for_power_reduction(&self) -> bool {
+        matches!(self, Self::Harmonize { .. }) || matches!(self, Self::FromZone { instructions, .. } if instructions.tap_creature_reduces_generic)
+    }
+
     pub fn is_madness(&self) -> bool {
         matches!(self, Self::Madness { .. })
+    }
+
+    pub fn discard_exile_cast_cost(&self) -> Option<&TotalCost<C>> {
+        match self {
+            Self::Madness { total_cost } => Some(total_cost),
+            Self::FromZone { total_cost, instructions, .. } if instructions.cast_when_discarded_into_exile => Some(total_cost),
+            _ => None,
+        }
     }
 
     pub fn madness_cost(&self) -> Option<&TotalCost<C>> {
@@ -625,16 +768,17 @@ where
     }
 
     pub fn is_bestow(&self) -> bool {
-        matches!(self, Self::Bestow { .. })
+        matches!(self, Self::Bestow { .. }) || matches!(self, Self::FromZone { instructions, .. } if instructions.aura_cast_with_unattached_fallback)
     }
 
     pub fn is_mutate(&self) -> bool {
-        matches!(self, Self::Mutate { .. })
+        matches!(self, Self::Mutate { .. }) || matches!(self, Self::FromZone { instructions, .. } if instructions.merge_with_same_owner_nonhuman)
     }
 
     pub fn mutate_cost(&self) -> Option<&ManaCost> {
         match self {
             Self::Mutate { cost } => Some(cost),
+            Self::FromZone { total_cost, instructions, .. } if instructions.merge_with_same_owner_nonhuman => total_cost.mana_cost(),
             _ => None,
         }
     }
@@ -676,15 +820,17 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Warp {
                 cost,
                 additional_cost,
+                descriptive,
             } => AlternativeCastingMethod::Warp {
                 cost,
+                descriptive,
                 additional_cost: map_total_cost(additional_cost)?,
             },
             Self::Plot { cost } => AlternativeCastingMethod::Plot { cost },
             Self::Suspend { cost, time } => AlternativeCastingMethod::Suspend { cost, time },
             Self::Disturb { cost } => AlternativeCastingMethod::Disturb { cost },
-            Self::Overload { cost, effects } => AlternativeCastingMethod::Overload {
-                cost,
+            Self::Overload { cost, effects, descriptive, additional_cost } => AlternativeCastingMethod::Overload {
+                cost, descriptive, additional_cost: map_total_cost(additional_cost)?,
                 effects: {
                     let mut mapped = Vec::with_capacity(effects.len());
                     for effect in effects {
@@ -693,8 +839,8 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                     mapped
                 },
             },
-            Self::Cleave { cost, effects } => AlternativeCastingMethod::Cleave {
-                cost,
+            Self::Cleave { cost, effects, descriptive, additional_cost } => AlternativeCastingMethod::Cleave {
+                cost, descriptive, additional_cost: map_total_cost(additional_cost)?,
                 effects: {
                     let mut mapped = Vec::with_capacity(effects.len());
                     for effect in effects {
@@ -706,10 +852,10 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Awaken {
                 amount,
                 cost,
-                effects,
+                effects, descriptive, additional_cost,
             } => AlternativeCastingMethod::Awaken {
                 amount,
-                cost,
+                cost, descriptive, additional_cost: map_total_cost(additional_cost)?,
                 effects: {
                     let mut mapped = Vec::with_capacity(effects.len());
                     for effect in effects {
@@ -776,6 +922,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 condition,
                 exiles_after_resolution,
                 entry_counters,
+                instructions,
             } => AlternativeCastingMethod::FromZone {
                 name,
                 zone,
@@ -783,6 +930,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 condition,
                 exiles_after_resolution,
                 entry_counters,
+                instructions,
             },
             Self::Trap {
                 name,

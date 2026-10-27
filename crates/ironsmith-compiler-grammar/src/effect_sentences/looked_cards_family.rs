@@ -12,10 +12,13 @@ fn parse_imperative_possessive_library_view(
         if !window[0].is_word("of") || !window[3].is_word("library") {
             return false;
         }
-        window[1].is_word("target")
-            && (window[2].is_word("player's") || window[2].is_word("opponent's"))
+        (window[1].is_word("target")
+            && (window[2].is_word("player's") || window[2].is_word("opponent's")))
+            || (window[1].is_word("an") && window[2].is_word("opponent's"))
     })?;
-    let player = if tokens[owner_start + 2].is_word("player's") {
+    let player = if tokens[owner_start + 1].is_word("an") {
+        PlayerAst::Opponent
+    } else if tokens[owner_start + 2].is_word("player's") {
         PlayerAst::Target
     } else {
         PlayerAst::TargetOpponent

@@ -169,6 +169,13 @@ export default function AttackersDecision({
     } else if (selectedAttackerRef.current === creatureId) {
       // Already selected for targeting — deselect
       setSelectedAttackerId(null);
+    } else if (opt.valid_targets?.length === 1) {
+      const target = decodeAttackTargetChoice(opt.valid_targets[0]);
+      setDeclarations((prev) => [...prev.filter((d) => d.creature !== creatureId), { creature: creatureId, target }]);
+      if (target.kind === "player") focusTargetPlayer(target.player);
+      setSelectedAttackerId(null);
+    } else if (!opt.valid_targets?.length) {
+      return;
     } else {
       // Select this creature — arrow will follow mouse via useEffect below
       setSelectedAttackerId(creatureId);

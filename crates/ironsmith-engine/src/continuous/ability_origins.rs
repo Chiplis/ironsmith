@@ -21,6 +21,8 @@ pub struct AbilityEffectOrigin {
     source: ObjectId,
     replaces_rules_text: bool,
     registration_id: Option<super::ContinuousEffectId>,
+    linked_exile_group: Option<super::ContinuousEffectGroupId>,
+    linked_exile_self_grant_owner: Option<Box<crate::linked_exile::LinkedExileOwner>>,
     timestamp: u64,
     static_ability: Option<StaticAbilityInstanceId>,
     generated_by: Option<Box<ContinuousAbilityOrigin>>,
@@ -80,6 +82,21 @@ impl AbilityEffectOrigin {
         (parent.host == host).then_some(&parent.ability)
     }
 
+    pub(crate) fn linked_exile_self_grant_owner(
+        &self, host: ObjectId, pair: ironsmith_core::LinkedExilePair,
+    ) -> Option<&crate::linked_exile::LinkedExileOwner> {
+        self.linked_exile_self_grant_owner.as_deref()
+            .filter(|owner| owner.host == host && owner.pair == pair)
+    }
+
+    pub(crate) fn defines_rules_text(&self) -> bool {
+        self.replaces_rules_text
+    }
+
+    pub(crate) fn linked_exile_group(&self) -> Option<super::ContinuousEffectGroupId> {
+        self.linked_exile_group
+    }
+
     pub(crate) fn linked_exile_class_level(&self) -> Option<u32> {
         self.linked_exile_root_pair.map(|(_, level)| level)
     }
@@ -107,6 +124,10 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
                 super::Modification::CopyOf { .. } | super::Modification::SetTextBox(_)),
             linked_exile_root_pair: class_linked_exile_root(effect),
             registration_id: effect.registration_id,
+            // Registered layer parts of one resolving grant share a linked
+            // acquisition, while ordinary ability occurrence identity stays distinct.
+            linked_exile_group: effect.registration_id.and(effect.group),
+            linked_exile_self_grant_owner: effect.linked_exile_self_grant_owner.clone(),
             generated_by: effect.originating_ability.clone(),
             timestamp: effect.timestamp,
             static_ability: effect
@@ -163,6 +184,19 @@ pub enum AbilityOrigin {
 }
 
 impl AbilityOrigin {
+    /// Acquisition identity shared by the abilities of one text box or
+    /// grant. Slots identify readers within that acquisition, not a new choice.
+    pub(crate) fn acquisition_origin(&self) -> Self {
+        match self {
+            Self::Printed(_) => Self::Printed(0),
+            Self::Effect { effect, .. } => Self::Effect { effect: effect.clone(), slot: 0 },
+            Self::Borrowed { effect, source, origin } => Self::Borrowed { effect: effect.clone(), source: *source, origin: Box::new(origin.acquisition_origin()) },
+            Self::Level { printed_face, parent, tier, .. } => Self::Level { printed_face: *printed_face, parent: Box::new(parent.acquisition_origin()), tier: *tier, slot: 0 },
+            Self::Counter { occurrence, .. } => Self::Counter { occurrence: occurrence.clone(), slot: 0 },
+            other => other.clone(),
+        }
+    }
+
     /// CR 613.7a: the timestamp of the effect that created this ability, when
     /// an effect (copy, grant, borrowing) rather than the object's own text
     /// supplied it.

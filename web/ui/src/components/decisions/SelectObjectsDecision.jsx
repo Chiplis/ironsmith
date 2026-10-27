@@ -1,3 +1,4 @@
+import DecisionObjectLabel from "./DecisionObjectLabel";
 import { isObjectSelectionValid } from "@/lib/object-selection-validation";
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -146,7 +147,7 @@ export default function SelectObjectsDecision({
   );
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-1.5">
+    <div data-decision-menu className="flex w-full min-w-0 flex-col gap-1.5">
       <div
         className={cn(
           stripLayout ? "transition-all duration-200" : "-mx-1.5 transition-all duration-200",
@@ -210,6 +211,7 @@ export default function SelectObjectsDecision({
               return (
                 <Button
                   key={c.id}
+                  data-decision-option-object={String(c.id)}
                   aria-pressed={isSelected}
                   variant="ghost"
                   size="sm"
@@ -246,11 +248,13 @@ export default function SelectObjectsDecision({
                   }}
                   onBlur={clearHover}
                 >
+                  <DecisionObjectLabel objectId={c.id} object={c} nameOnly>
                   <HighlightedDecisionText
                     className="decision-option-label"
                     text={localizeCardName(c.name)}
                     highlightText={localizeCardName(c.name)}
                   />
+                  </DecisionObjectLabel>
                 </Button>
               );
             })}

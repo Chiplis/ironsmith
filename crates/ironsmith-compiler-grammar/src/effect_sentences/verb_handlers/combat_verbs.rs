@@ -216,6 +216,12 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         })?;
 
     match shape {
+        combat_grammar::CombatAttachClauseShape::ImplicitSource { target_tokens } => {
+            Ok(EffectAst::subject_verb_attach(
+                TargetAst::Source(None),
+                parse_target_phrase(target_tokens)?,
+            ))
+        }
         combat_grammar::CombatAttachClauseShape::DestinationFirstTagged {
             tagged_tokens,
             object_tokens,

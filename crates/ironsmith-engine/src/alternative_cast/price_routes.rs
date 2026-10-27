@@ -221,7 +221,7 @@ pub(crate) fn resolve_announcement_with_effect_authority(
             if origin_permission.is_some()
                 || (!effect_authorized && !ordinary_origin(game, player, spell, origin))
                 || (matches!(origin.as_ref(), CastingMethod::Fuse)
-                    && (spell.zone != Zone::Hand || !spell.has_fuse))
+                    && (spell.zone != Zone::Hand || !spell.can_combine_split_halves()))
             {
                 return Ok(None);
             }
@@ -532,7 +532,7 @@ pub(crate) fn candidates(
     }
     if ordinary_origin(game, player, spell, &CastingMethod::Fuse)
         && spell.zone == Zone::Hand
-        && spell.has_fuse
+        && spell.can_combine_split_halves()
     {
         let origin = CastingMethod::Fuse;
         if let Some(query) = face_query(game, spell, &origin, None)? {

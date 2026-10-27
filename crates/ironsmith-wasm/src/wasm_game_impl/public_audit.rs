@@ -170,6 +170,7 @@ struct PublicAuditObject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chosen_subtype: Option<Subtype>,
     numeric_choices: ironsmith::source_numbers::NumberChoicePublicProof,
+    color_choice_acquisitions: (Vec<(u64, ironsmith::color::Color)>, Vec<(usize, Option<u64>)>),
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     chosen_subtypes: Vec<Subtype>,
     token: bool,
@@ -1692,6 +1693,8 @@ impl WasmGame {
                     zone: sync_zone_name(object.zone).to_string(),
                     identity: self.public_audit_object_identity(id, object),
                     chosen_subtype: self.game.chosen_subtype(id),
+                    color_choice_acquisitions: self.game.chosen_color_acquisition_proof(id, identity_public)
+                        .map_err(|error| runtime_execution_error(&format!("color choice proof unavailable: {error:?}")))?,
                     numeric_choices: ironsmith::source_numbers::public_proof(&self.game,id,identity_public)
                         .map_err(|error|runtime_execution_error(&format!("numeric choice proof unavailable: {error:?}")))?,
                     chosen_subtypes: {

@@ -8,7 +8,7 @@ import {cardArtCropUrl} from '@/lib/card-image-variants';
 const POINTS_TO_PIXELS=96/72;
 const faceOf=(card,faceIndex)=>{
   const faces=card?.card_faces;
-  return Array.isArray(faces)&&faces.length&&!['split','adventure'].includes(card.layout)?{...card,...(faces[faceIndex]??faces[0])}:card;
+  return Array.isArray(faces)&&faces.length&&!['split','aftermath','adventure','prepare','room','flip'].includes(card.layout)?{...card,...(faces[faceIndex]??faces[0])}:card;
 };
 
 // Shrink the rules text until it fits its box, as MSE scales text down.

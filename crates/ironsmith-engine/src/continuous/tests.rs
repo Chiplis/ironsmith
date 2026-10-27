@@ -32,7 +32,7 @@ fn batched_effect_filter_context_preserves_source_tags_and_refreshes_between_pas
         let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(selected).unwrap(), &game);
         game.object_mut(source).unwrap().cast_tagged_objects.insert("selected".into(), vec![snapshot]);
         let chars: HashMap<_, _> = order.iter().map(|id| (*id,
-            initial_characteristics(game.object(*id).unwrap(), game.turn.turn_number))).collect();
+            initial_characteristics(game.object(*id).unwrap(), game.turn.turn_number, Some(&game)))).collect();
         let result = affected_objects_for_effect(&effect, Layer::Type, &order, game.objects_map(),
             &chars, &HashSet::new(), true, false, true, &game, &mut Vec::new());
         assert_eq!(result, vec![(expected_index, selected)]);
@@ -1165,7 +1165,7 @@ fn prewarming_does_not_publish_an_enclosing_characteristic_snapshot() {
         source, PlayerId::from_index(0), EffectTarget::Specific(graveyard[0]),
         Modification::AddCardTypes(vec![CardType::Artifact])));
     game.update_static_ability_effects().unwrap();
-    let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number);
+    let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number, Some(&game));
     assert_eq!(initial.power, Some(1));
     let guard = CharacteristicCalculationGuard::begin(&game, source, &initial);
     game.prewarm_calculated_characteristics(&[source, graveyard[0]]);
@@ -1211,7 +1211,7 @@ fn derived_view_memos_retain_layer_context_without_publishing_intermediate_resul
                 };
                 if initially_warm { assert_eq!(read(), (Some(3), true, true, 1)); }
                 let complete = game.calculated_characteristics(source).unwrap();
-                let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number);
+                let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number, Some(&game));
                 let creature_filter = crate::filter::ObjectFilter::creature()
                     .in_zone(crate::zone::Zone::Battlefield);
                 let controlled_filter = creature_filter.clone().you_control();
@@ -1277,7 +1277,7 @@ fn recursive_characteristic_context_is_scoped_to_its_game_snapshot() {
                 other.calculated_characteristics_with_effects(source, &other_effects).unwrap().power,
                 view.calculated_characteristics(source).unwrap().power);
             if initially_warm { assert_eq!(read_other(), (Some(7), Some(7), Some(7))); }
-            let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number);
+            let initial = initial_characteristics(game.object(source).unwrap(), game.turn.turn_number, Some(&game));
             let guard = CharacteristicCalculationGuard::begin(&game, source, &initial);
             assert_eq!(game.calculated_characteristics(source).unwrap().power, Some(1),
                 "recursive reads in the owning snapshot must retain its current layer");
@@ -1428,13 +1428,13 @@ fn legacy_enchant_materialization_keeps_identity_across_reads_and_copy() {
     let filter = crate::object::AuraAttachmentFilter::from(ObjectFilter::creature());
     aura.aura_attach_filter = Some(filter.clone().into());
     let checkpoint = aura.clone();
-    let first = initial_text_box_characteristics(&aura);
-    let repeated = initial_text_box_characteristics(&aura);
-    let restored = initial_text_box_characteristics(&checkpoint);
+    let first = initial_text_box_characteristics(&aura, None);
+    let repeated = initial_text_box_characteristics(&aura, None);
+    let restored = initial_text_box_characteristics(&checkpoint, None);
 
     let values = CopiableValues::from_object(&aura);
-    let mut copy_first = initial_text_box_characteristics(&aura);
-    let mut copy_second = initial_text_box_characteristics(&aura);
+    let mut copy_first = initial_text_box_characteristics(&aura, None);
+    let mut copy_second = initial_text_box_characteristics(&aura, None);
     copy_characteristics_from_copiable_values(
         &values, &mut copy_first, false, &None, &None, &[], None);
     copy_characteristics_from_copiable_values(
@@ -1444,10 +1444,10 @@ fn legacy_enchant_materialization_keeps_identity_across_reads_and_copy() {
         .card_types(vec![CardType::Enchantment, CardType::Creature]).build();
     let mut bestow = Object::from_card(ObjectId::from_raw(9892), &creature_card, alice, Zone::Stack);
     bestow.apply_bestow_cast_overlay();
-    let bestow_first = initial_text_box_characteristics(&bestow);
-    let bestow_second = initial_text_box_characteristics(&bestow.clone());
+    let bestow_first = initial_text_box_characteristics(&bestow, None);
+    let bestow_second = initial_text_box_characteristics(&bestow.clone(), None);
     assert!(bestow.end_bestow_cast_overlay());
-    assert!(initial_text_box_characteristics(&bestow).static_abilities.iter()
+    assert!(initial_text_box_characteristics(&bestow, None).static_abilities.iter()
         .all(|ability| ability.enchant_filter().is_none()),
         "ending bestow removes the overlay enchant ability");
 
@@ -1536,19 +1536,19 @@ fn enchant_metadata_preserves_explicit_abilities_independent_occurrences_and_bes
     let mut second = Object::from_card(ObjectId::from_raw(9894), &card, alice, Zone::Hand);
     first.aura_attach_filter = Some(filter.clone().into());
     second.aura_attach_filter = Some(filter.clone().into());
-    assert_ne!(enchant_id(&initial_text_box_characteristics(&first)),
-        enchant_id(&initial_text_box_characteristics(&second)),
+    assert_ne!(enchant_id(&initial_text_box_characteristics(&first, None)),
+        enchant_id(&initial_text_box_characteristics(&second, None)),
         "independent metadata registrations remain distinct");
     let explicit = StaticAbility::enchant(filter);
     first.abilities = std::sync::Arc::new(vec![crate::ability::Ability::static_ability(explicit.clone())]);
-    assert_eq!(enchant_id(&initial_text_box_characteristics(&first)), explicit.instance_id(),
+    assert_eq!(enchant_id(&initial_text_box_characteristics(&first, None)), explicit.instance_id(),
         "metadata does not replace an existing printed enchant ability");
 
     let creature = CardBuilder::new(CardId::new(), "Bestow Copy Source")
         .card_types(vec![CardType::Creature, CardType::Enchantment]).build();
     let mut bestow = Object::from_card(ObjectId::from_raw(9895), &creature, alice, Zone::Stack);
     bestow.apply_bestow_cast_overlay();
-    assert_eq!(initial_text_box_characteristics(&bestow).static_abilities.iter()
+    assert_eq!(initial_text_box_characteristics(&bestow, None).static_abilities.iter()
         .filter(|a| a.enchant_filter().is_some()).count(), 1);
     let underlying = CopiableValues::from_object(&bestow);
     assert!(underlying.aura_attach_filter.is_none(), "temporary bestow filter is not copied");

@@ -830,6 +830,9 @@ pub struct PrototypeCastState {
 /// precomputed so accessors can hand out slices.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SplitCombinedCharacteristics {
+    /// The shown half before a fused stack/Room overlay combines both halves.
+    /// Unlocking designations change live Room characteristics, not this half.
+    pub unfused_half: Option<Box<CopiableValues>>,
     pub other_half_abilities: Arc<Vec<Ability>>,
     pub other_half_ability_labels: SharedVec<String>,
     pub other_half_compiled_text: Arc<str>,
@@ -855,6 +858,7 @@ impl SplitCombinedCharacteristics {
             combined
         }
         Self {
+            unfused_half: None,
             other_half_abilities: other.abilities.clone(),
             other_half_ability_labels: other.ability_labels.clone(),
             other_half_compiled_text: other.compiled_card_text.clone(),
@@ -1191,6 +1195,16 @@ fn scalar_temporary_ability_constructor(ability: StaticAbilityId) -> Option<fn()
     }
 }
 impl Object {
+    /// Permission and keyword identity are separate: a custom definition can
+    /// share split casting without acquiring the printed Fuse keyword.
+    pub fn can_combine_split_halves(&self) -> bool {
+        self.has_fuse || self.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(value) if matches!(value.keyword_marker_mechanic(),
+                Some(ironsmith_core::KeywordMarkerMechanic::CastBothSplitHalvesFromHand))
+        ))
+    }
+
     pub(crate) fn apply_embalm_copy_exception(&mut self) {
         if self.token_creation_method != Some(ironsmith_core::effect::TokenCreationMethod::Embalm) { return; }
         crate::static_abilities::exclude_cdas_from_copy(&mut self.abilities, &mut self.ability_labels, false, true, false);
@@ -1582,10 +1596,53 @@ impl Object {
         self.apply_definition_face_with_shared(def, &handles);
     }
 
+    pub(crate) fn apply_transforming_face(&mut self, def: &crate::cards::CardDefinition) {
+        let handles = CardSharedHandles::from_definition(def);
+        self.apply_transforming_face_with_shared(def, &handles);
+    }
+
+    pub(crate) fn apply_transforming_face_with_shared(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        handles: &CardSharedHandles,
+    ) {
+        // A transforming token copies both faces, including the exceptions
+        // applied when it was created (707.8a, 707.9b).
+        let frozen_faces = (self.kind == ObjectKind::Token)
+            .then(|| self.copied_face_values.as_deref())
+            .flatten()
+            .filter(|values| values.copy_face_layout == LinkedFaceLayout::TransformLike)
+            .and_then(|values| values.other_copy_face.as_ref().map(|other| {
+                let mut previous = values.clone();
+                previous.other_copy_face = None;
+                let mut next = (**other).clone();
+                next.copy_face_layout = LinkedFaceLayout::TransformLike;
+                next.other_copy_face = Some(Box::new(previous));
+                next
+            }));
+        self.apply_definition_face_with_shared(def, handles);
+        if let Some(values) = frozen_faces {
+            let linked_mana_cost = self.linked_face_mana_cost.clone();
+            self.copy_copiable_values_from_values(&values);
+            self.linked_face_mana_cost = linked_mana_cost;
+        }
+    }
+
     /// Turn a flip card to its flipped half. The flipped half's name, text,
     /// types and power/toughness apply, but the card's color and mana cost
     /// don't change (CR 710.1b-c).
     pub fn apply_flipped_face(&mut self, def: &crate::cards::CardDefinition) {
+        if let Some((disguise_ward, custom)) = self.face_down_cast_state.as_ref()
+            .map(|state| (state.disguise_ward, state.custom_copiable_values.clone()))
+        {
+            self.end_face_down_cast_overlay();
+            self.apply_flipped_face(def);
+            self.apply_face_down_cast_overlay_with_disguise_ward(disguise_ward);
+            if let Some(custom) = custom {
+                self.apply_custom_face_down_overlay(*custom);
+            }
+            return;
+        }
         let mana_cost = self.mana_cost.clone();
         let color_override = self.color_override;
         self.apply_definition_face(def);
@@ -1660,6 +1717,14 @@ impl Object {
 
     /// Apply the temporary stack characteristics of a fused split spell.
     pub fn apply_fused_split_spell_overlay(&mut self, other: &crate::cards::CardDefinition) {
+        let unfused = CopiableValues::from_object(self);
+        if self.split_combined.is_none() {
+            let other_object = Self::from_card_definition(ObjectId::from_raw(0), other, self.owner, self.zone);
+            self.split_combined = Some(SplitCombinedCharacteristics::from_halves(self, &other_object).into());
+        }
+        if let Some(combined) = &mut self.split_combined {
+            Arc::make_mut(&mut combined.0).unfused_half.get_or_insert_with(|| Box::new(unfused));
+        }
         let mut mana_pips = Vec::new();
         if let Some(cost) = &self.mana_cost {
             mana_pips.extend(cost.pips().iter().cloned());

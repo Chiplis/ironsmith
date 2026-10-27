@@ -27,9 +27,9 @@ pub(crate) fn parse_complete_permanent_or_suspended_card_filter(
     }).next();
     // A nested union belongs to its enclosing relation first, for example a
     // `spell that targets a permanent or suspended card`.
-    if !matches!(head, Some("permanent" | "permanents" | "suspended"))
+    if !matches!(head, Some("permanent" | "permanents" | crate::keyword_forms::SUSPENDED))
         || !noun_words.iter().any(|word| matches!(*word, "permanent" | "permanents"))
-        || !noun_words.contains(&"suspended")
+        || !noun_words.contains(&crate::keyword_forms::SUSPENDED)
         || !noun_words.iter().any(|word| matches!(*word, "or" | "and" | "and/or"))
     {
         return None;
@@ -170,7 +170,7 @@ pub(super) fn parse_permanent_or_suspended_card_arm(
             consume_permanent_or_suspended_card_tail(noun_words, 1, &mut filter, true, true)?;
             Some((PermanentOrSuspendedCardArm::Permanent, filter))
         }
-        Some("suspended") if !leading_nonland => {
+        Some(crate::keyword_forms::SUSPENDED) if !leading_nonland => {
             let card_word = noun_words.get(1).copied()?;
             if !matches!(card_word, "card" | "cards") {
                 return None;

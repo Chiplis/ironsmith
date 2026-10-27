@@ -3538,3 +3538,71 @@ pub(super) fn sophina_spearsage_deserter_attack_trigger_counts_nontoken_attacker
         "Sophina should investigate for Sophina and the other nontoken attacker, but not the token attacker"
     );
 }
+
+#[test]
+fn x_choice_is_not_capped_by_available_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Unbounded X Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut triggers = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game, &mut triggers, &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id, from_zone: Zone::Hand, casting_method: CastingMethod::Normal,
+        }),
+    ).expect("zero-mana X spell can begin casting");
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Number(ctx)) => {
+            assert!(ctx.is_x_value);
+            assert_eq!(ctx.min, 0);
+            assert_eq!(ctx.max, u32::MAX);
+            assert_eq!(ctx.authored_max, None);
+        }
+        other => panic!("expected X choice, got {other:?}"),
+    }
+    let _payment = apply_priority_response(
+        &mut game, &mut triggers, &mut state, &PriorityResponse::XValue(100),
+    );
+    // An announcement must not let an unpaid spell complete casting.
+    assert!(game.stack_is_empty());
+    state.rollback_action(&mut game);
+    assert_eq!(game.object(spell_id).unwrap().zone, Zone::Hand);
+    assert!(state.pending_cast.is_none());
+    apply_priority_response(
+        &mut game, &mut triggers, &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id, from_zone: Zone::Hand, casting_method: CastingMethod::Normal,
+        }),
+    ).expect("cancelled spell can be retried");
+    apply_priority_response(
+        &mut game, &mut triggers, &mut state, &PriorityResponse::XValue(0),
+    ).expect("X zero can be paid without mana");
+    assert_eq!(game.stack.len(), 1);
+    assert!(state.pending_cast.is_none());
+}
+
+#[test]
+fn x_choice_retains_card_authored_maximum_without_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Bounded X Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]]))
+        .card_types(vec![CardType::Sorcery])
+        .with_ability(crate::ability::Ability::static_ability(
+            StaticAbility::this_spell_x_maximum(Value::Fixed(3), "X can't be greater than 3"),
+        ).in_zones(vec![Zone::Stack]))
+        .build();
+    let id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let cost = game.object(id).unwrap().mana_cost_owned();
+    assert_eq!(compute_spell_cast_x_bounds(&game, alice, id, &CastingMethod::Normal, cost.as_ref()), (true, 0, 3));
+}

@@ -56,7 +56,7 @@ pub enum KeywordDispatchHint {
 impl KeywordDispatchHint {
     pub const fn head_words(self) -> &'static [&'static str] {
         match self {
-            Self::AdditionalCostFamily => &["as"],
+            Self::AdditionalCostFamily => &["as", "you"],
             Self::AlternativeOrExertFamily => &[
                 "as",
                 "you",
@@ -114,6 +114,14 @@ impl KeywordDispatchHint {
 }
 
 pub fn parse_keyword_dispatch_hint_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordDispatchHint> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.starts_with(&["you", "may"])
+        && matches!(words.get(2), Some(&"sacrifice" | &"discard" | &"exile" | &"return" | &"tap" | &"remove"))
+        && words.ends_with(&["as", "you", "cast", "this", "spell"])
+    {
+        return Some(KeywordDispatchHint::AdditionalCostFamily);
+    }
+
     if let Some((hint, _)) = primitives::parse_prefix(tokens, parse_keyword_dispatch_hint_lexed) {
         return Some(hint);
     }
@@ -182,7 +190,9 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
     alt((
         primitives::phrase(&["beam", "me", "up"]).value(KeywordDispatchHint::BeamMeUp),
         alt((
-            primitives::phrase(&[
+            alt((
+                primitives::phrase(&["you", "may", "pay", "an", "additional"]),
+                primitives::phrase(&[
                 "as",
                 "an",
                 "additional",
@@ -191,7 +201,8 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
                 "cast",
                 "this",
                 "spell",
-            ])
+                ]),
+            ))
             .value(KeywordDispatchHint::AdditionalCostFamily),
             alt((primitives::kw("you"), primitives::kw("more")))
                 .value(KeywordDispatchHint::AlternativeOrExertFamily),

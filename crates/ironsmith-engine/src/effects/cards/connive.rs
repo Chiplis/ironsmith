@@ -22,6 +22,7 @@ use crate::types::CardType;
 pub struct ConniveEffect {
     pub target: ChooseSpec,
     pub count: Value,
+    pub descriptive: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,7 @@ impl ConniveEffect {
         Self {
             target,
             count: count.into(),
+            descriptive: false,
         }
     }
 }
@@ -302,7 +304,12 @@ impl EffectExecutor for ConniveEffect {
                             .with_snapshot(Some(instruction.snapshot.clone())),
                             ctx.provenance,
                         );
-                        let iteration_outcome =
+                        let iteration_outcome = if self.descriptive {
+                            let body = connive_body(ChooseSpec::SpecificObject(target_id), PlayerFilter::Specific(controller), (count as i32).into());
+                            let result = body.0.execute_child_with_outputs(game, ctx)?;
+                            let child = result.outcome.clone();
+                            result.project_aggregate(EffectOutcome::aggregate_with_primary_result(EffectOutcome::with_objects(vec![target_id]), vec![child]))
+                        } else {
                             crate::effects::composition::execute_keyword_action_with_outputs(
                                 game,
                                 ctx,
@@ -362,7 +369,8 @@ impl EffectExecutor for ConniveEffect {
                                         ),
                                     ))
                                 },
-                            )?;
+                            )?
+                        };
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(CompletedEffectOutputs::aggregate_only(
                                 EffectOutcome::count(0),

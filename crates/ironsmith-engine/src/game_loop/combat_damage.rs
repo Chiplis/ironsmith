@@ -356,10 +356,7 @@ fn combatant_participates_in_damage_step(
     }
     if let Some(first_step_strikers) = first_step_strikers {
         return !first_step_strikers.contains(&creature.id)
-            || game.object_has_static_ability_id(
-                creature.id,
-                crate::static_abilities::StaticAbilityId::DoubleStrike,
-            );
+            || crate::rules::combat::deals_both_combat_damage_steps_with_game(creature, game);
     }
     deals_regular_combat_damage_with_game(creature, game)
 }
@@ -970,11 +967,11 @@ fn plan_unblocked_player_damage(
         let has_first_strike = characteristics
             .static_abilities
             .iter()
-            .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::FirstStrike);
+            .any(|ability| ability.deals_damage_in_first_step());
         let has_double_strike = characteristics
             .static_abilities
             .iter()
-            .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::DoubleStrike);
+            .any(|ability| ability.deals_damage_in_both_steps());
         let participates = if first_strike {
             has_first_strike || has_double_strike
         } else if let Some(first_step_strikers) = first_step_strikers {
@@ -1008,19 +1005,19 @@ fn plan_unblocked_player_damage(
         let has_deathtouch = view.object_has_static_ability_id(
             attacker_id,
             crate::static_abilities::StaticAbilityId::Deathtouch,
-        );
+        ) || view.object_has_keyword_marker_mechanic(attacker_id, ironsmith_core::KeywordMarkerMechanic::DamageIsLethalToCreatures);
         let has_infect = view.object_has_static_ability_id(
             attacker_id,
             crate::static_abilities::StaticAbilityId::Infect,
-        );
+        ) || view.object_has_keyword_marker_mechanic(attacker_id, ironsmith_core::KeywordMarkerMechanic::DamageAsCounters { poison_players: true });
         let has_wither = view.object_has_static_ability_id(
             attacker_id,
             crate::static_abilities::StaticAbilityId::Wither,
-        );
+        ) || view.object_has_keyword_marker_mechanic(attacker_id, ironsmith_core::KeywordMarkerMechanic::DamageAsCounters { poison_players: false });
         let has_lifelink = view.object_has_static_ability_id(
             attacker_id,
             crate::static_abilities::StaticAbilityId::Lifelink,
-        );
+        ) || view.object_has_keyword_marker_mechanic(attacker_id, ironsmith_core::KeywordMarkerMechanic::DamageGrantsControllerLife);
         let result = DamageResult {
             damage_dealt: if has_infect { 0 } else { amount },
             life_gained: if has_lifelink { amount } else { 0 },
@@ -1318,7 +1315,10 @@ fn prepare_combat_toxic(
         .iter()
         .filter_map(|ability| {
             if let AbilityKind::Static(ability) = &ability.kind {
-                ability.toxic_amount()
+                ability.toxic_amount().or_else(|| match ability.keyword_marker_mechanic() {
+                    Some(ironsmith_core::KeywordMarkerMechanic::CombatDamageAddsPoison { amount }) => Some(amount),
+                    _ => None,
+                })
             } else {
                 None
             }
@@ -1581,10 +1581,7 @@ fn validate_attacker_damage_assignment(
         attacker.id,
         crate::static_abilities::StaticAbilityId::Trample,
     );
-    let has_deathtouch = game.object_has_static_ability_id(
-        attacker.id,
-        crate::static_abilities::StaticAbilityId::Deathtouch,
-    );
+    let has_deathtouch = crate::rules::damage::source_damage_is_lethal(game, attacker.id);
     if !has_trample {
         return validate_nontrample_damage_assignment(
             attacker.id,
@@ -2074,11 +2071,13 @@ fn attacker_damage_division(
     let attacker_id = attacker_info.creature;
     // CR 702.19g: trample over planeswalkers includes trample's rules, so a
     // creature with both assigns damage as with trample over planeswalkers.
-    let over_planeswalkers =
-        game.object_has_static_ability_id(attacker_id, StaticAbilityId::TrampleOverPlaneswalkers);
+    let view = crate::derived_view::DerivedGameView::from_effects(game, game.all_continuous_effects());
+    let over_planeswalkers = view.object_has_static_ability_id(attacker_id, StaticAbilityId::TrampleOverPlaneswalkers)
+        || view.object_has_keyword_marker_mechanic(attacker_id, ironsmith_core::KeywordMarkerMechanic::OverflowCombatDamage { through_planeswalkers: true });
     let trample = over_planeswalkers
-        || game.object_has_static_ability_id(attacker_id, StaticAbilityId::Trample);
-    let deathtouch = game.object_has_static_ability_id(attacker_id, StaticAbilityId::Deathtouch);
+        || view.object_has_static_ability_id(attacker_id, StaticAbilityId::Trample)
+        || view.object_has_keyword_marker_mechanic(attacker_id, ironsmith_core::KeywordMarkerMechanic::OverflowCombatDamage { through_planeswalkers: false });
+    let deathtouch = crate::rules::damage::source_damage_is_lethal(game, attacker_id);
     // CR 510.1c: a creature that must assign its combat damage as though it
     // weren't blocked assigns it all to what it's attacking.
     let blocked = is_blocked(combat, attacker_id)
@@ -2326,10 +2325,7 @@ fn combat_damage_assigners(
                 creatures: attacker_ids,
                 planeswalker: None,
                 excess_target: None,
-                deathtouch: game.object_has_static_ability_id(
-                    blocker_id,
-                    crate::static_abilities::StaticAbilityId::Deathtouch,
-                ),
+                deathtouch: crate::rules::damage::source_damage_is_lethal(game, blocker_id),
                 unblocked_alternative: None,
                 unblocked_creature_alternatives: Vec::new(),
                 free_division_recipients: Vec::new(),
@@ -4420,6 +4416,41 @@ mod tests {
         assert_eq!(regular[0].source, gained_first_strike);
         assert_eq!(regular[0].amount, 2);
         assert_eq!(game.player(bob).expect("player exists").life, 17);
+    }
+
+    #[test]
+    fn reminder_identity_damage_step_snapshot_tracks_behavior_changes() {
+        for also_regular in [false, true] {
+            for loses_ability in [false, true] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let prose = if also_regular {
+                    "This creature deals both first-strike and regular combat damage."
+                } else {
+                    "This creature deals combat damage before creatures without first strike."
+                };
+                let attacker = create_creature(&mut game, "Custom striker", 2, 2, alice,
+                    vec![StaticAbility::keyword_marker(prose)]);
+                let combat = CombatState {
+                    attackers: vec![crate::combat_state::AttackerInfo {
+                        creature: attacker, target: AttackTarget::Player(bob),
+                    }],
+                    ..CombatState::default()
+                };
+                let snapshot = std::collections::HashSet::from([attacker]);
+                let first = execute_combat_damage_step(&mut game, &combat, true);
+                assert_eq!(first.iter().map(|event| event.amount).sum::<u32>(), 2);
+                if loses_ability {
+                    game.object_mut(attacker).unwrap().abilities_mut().clear();
+                    game.refresh_continuous_state().unwrap();
+                }
+                let regular = execute_combat_damage_step_with_first_step_snapshot(
+                    &mut game, &combat, false, &snapshot);
+                assert_eq!(regular.iter().map(|event| event.amount).sum::<u32>(),
+                    if also_regular && !loses_ability { 2 } else { 0 });
+            }
+        }
     }
 
     #[test]

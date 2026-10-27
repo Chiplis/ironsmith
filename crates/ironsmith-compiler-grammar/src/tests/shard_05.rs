@@ -1355,7 +1355,7 @@ pub(super) fn rewrite_activation_cost_parses_pay_mana_life_exert_and_bare_symbol
     ));
     assert!(matches!(
         exert.segments.as_slice(),
-        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExertSelf { display_text }]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExertSelf { display_text, descriptive: false }]
             if display_text == "Exert this creature"
     ));
 }
@@ -1521,7 +1521,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_pay_bare_symbol_an
         .expect("token activation-cost parser should parse exert costs");
     assert!(matches!(
         exert_cst.segments.as_slice(),
-        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExertSelf { display_text }]
+        [crate::grammar::activation_costs::ActivationCostSegmentCst::ExertSelf { display_text, descriptive: false }]
             if display_text == "Exert this creature"
     ));
 }

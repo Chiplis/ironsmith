@@ -79,14 +79,8 @@ impl EffectExecutor for ProliferateEffect {
                         ),
                         ctx.provenance,
                     );
-                    let iteration_outcome =
-                        crate::effects::composition::execute_keyword_action_with_outputs(
-                            game,
-                            ctx,
-                            would_event,
-                            crate::effects::composition::KeywordActionOutput::Body,
-                            crate::effects::composition::KeywordActionAmount::Repetitions,
-                            |game, ctx, action| {
+                    let mut apply = |game: &mut GameState, ctx: &mut ExecutionContext, action: &KeywordActionEvent| {
+
                                 let mut outcome = EffectOutcome::count(0);
                                 let mut body_outputs =
                                     CompletedEffectOutputs::aggregate_only(outcome.clone());
@@ -131,7 +125,8 @@ impl EffectExecutor for ProliferateEffect {
                                         ctx.source,
                                         eligible_permanents.clone(),
                                         eligible_players.clone(),
-                                    ),
+                                    ).with_context_text(self.ordinary_counter_placement.then(||
+                                        "Choose any number of permanents and players to give another counter of each kind already there".into())),
                                     FallbackStrategy::Maximum,
                                 );
                                 if ctx.decision_maker.awaiting_choice() {
@@ -289,6 +284,9 @@ impl EffectExecutor for ProliferateEffect {
                                 outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(
                                     proliferated_count,
                                 )));
+                                if self.ordinary_counter_placement {
+                                    return Ok(body_outputs.project_aggregate(outcome));
+                                }
                                 Ok(
                                 crate::effects::composition::complete_keyword_action_with_outputs(
                                     game,
@@ -302,8 +300,18 @@ impl EffectExecutor for ProliferateEffect {
                                     ),
                                 )?,
                             )
-                            },
-                        )?;
+                    };
+                    let iteration_outcome = if self.ordinary_counter_placement {
+                        let actor = KeywordActionEvent::new(KeywordActionKind::Proliferate, ctx.controller, ctx.source, 1);
+                        apply(game, ctx, &actor)?
+                    } else {
+                        crate::effects::composition::execute_keyword_action_with_outputs(
+                            game, ctx, would_event,
+                            crate::effects::composition::KeywordActionOutput::Body,
+                            crate::effects::composition::KeywordActionAmount::Repetitions,
+                            apply,
+                        )?
+                    };
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::count(0),

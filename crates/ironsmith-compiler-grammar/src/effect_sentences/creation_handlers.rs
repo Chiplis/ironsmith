@@ -1580,6 +1580,19 @@ pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    // A power/toughness prefix on a token copy is a copy exception,
+    // not a separate token definition.
+    if let Some(index) = tokens.iter().position(|token| token.is_word("token"))
+        && index > 0
+        && tokens.get(index + 1).is_some_and(|token| token.is_word("copy"))
+        && tokens[index - 1].slice.split_once('/').is_some_and(|(p, t)| p.parse::<i32>().is_ok() && t.parse::<i32>().is_ok())
+    {
+        let pt = tokens[index - 1].slice.clone();
+        let mut rewritten = tokens[..index - 1].to_vec();
+        rewritten.extend_from_slice(crate::util::trim_edge_punctuation_tokens(&tokens[index..]));
+        rewritten.extend(crate::lexer::lex_line(&format!(", except it's {pt}"), 0)?);
+        return parse_create(&rewritten, subject);
+    }
     if let Some((prefix, counter_type, amount)) = split_token_copy_entry_counter_exception(tokens) {
         let create = parse_create(&prefix, subject)?;
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
@@ -2061,6 +2074,7 @@ pub fn parse_create(
                         SubjectVerbRoleAst::Actor,
                         player,
                         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+            without_mana_cost: copy_identity.without_mana_cost,
                             source,
                             count: resolve_create_count(references_iterated_object),
                             player,
@@ -2113,6 +2127,7 @@ pub fn parse_create(
                 SubjectVerbRoleAst::Actor,
                 player,
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+            without_mana_cost: copy_identity.without_mana_cost,
                     object: ObjectRefAst::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
                     count: resolve_create_count(references_iterated_object),
                     player,

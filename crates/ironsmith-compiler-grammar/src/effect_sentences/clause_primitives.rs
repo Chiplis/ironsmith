@@ -457,6 +457,8 @@ pub fn parse_change_target_clause_inner(
         RetargetModeAst::OneToFixed {
             target: TargetAst::Source(span_from_tokens(tokens)),
         }
+    } else if tokens.get(1).is_some_and(|token| token.is_word("a")) {
+        RetargetModeAst::One
     } else {
         RetargetModeAst::All
     };
@@ -591,7 +593,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "retain-mana-through-steps-clause",
-            &["you", "mana"],
+            &["you", "mana", "this"],
             parse_dont_lose_this_mana_as_steps_and_phases_end_clause,
         ),
         specific_primitive!(
@@ -966,6 +968,15 @@ pub fn parse_repeat_this_process_clause(
 pub fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if matches!(words.as_slice(), ["this", "mana", "lasts", "until", "end", "of", "combat" | "turn"]) {
+        return Ok(Some(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn {
+                color: None, until_end_of_combat: words.last() == Some(&"combat"),
+            }),
+        )));
+    }
     if clause_shapes::is_dont_lose_mana_between_steps_shape(tokens) {
         return Ok(Some(
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),

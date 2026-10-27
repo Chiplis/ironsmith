@@ -1,3 +1,6 @@
+import { normalizeDraftForApi } from "@/lib/custom-card-draft";
+import SandboxPanel from "./SandboxPanel";
+import CustomCardArtEditor from "./CustomCardArtEditor";
 import BuildCardSearch from "./BuildCardSearch";
 import CardPrintingStage from "./CardPrintingStage";
 import {
@@ -8,7 +11,7 @@ import {
 } from "@/lib/card-glint/printing-choices.mjs";
 import CustomCardsButton from "./CustomCardsButton";
 import { customCardImageUrl } from "@/lib/custom-card-assets";
-import { saveCustomCard } from "@/lib/custom-card-library";
+import { saveCustomCard, previewCustomDraft, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, Copy, Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
@@ -233,7 +236,9 @@ function counterShowcaseDraft(preset) {
 
 function cloneDraft(draft) {
   return {
+    customMechanics: structuredClone(draft?.customMechanics || []),
     layout: draft?.layout || "single",
+    frameLayout: draft?.frameLayout,
     hasFuse: draft?.hasFuse === true,
     presentation: normalizeCardPresentation(draft?.presentation),
     faces: Array.isArray(draft?.faces)
@@ -246,6 +251,8 @@ function cloneDraft(draft) {
         subtypes: Array.isArray(face?.subtypes) ? [...face.subtypes] : [],
         oracleText: face?.oracleText || "",
         artUrl: face?.artUrl || customCardArtUrl(face?.name),
+        artSourceUrl: face?.artSourceUrl || "",
+        artCrop: face?.artCrop ? { ...face.artCrop } : null,
         power: face?.power || "",
         toughness: face?.toughness || "",
         loyalty: face?.loyalty != null ? String(face.loyalty) : "",
@@ -255,25 +262,6 @@ function cloneDraft(draft) {
   };
 }
 
-function normalizeDraftForApi(draft) {
-  return {
-    layout: draft.layout,
-    hasFuse: draft.hasFuse,
-    faces: draft.faces.map((face) => ({
-      name: String(face.name || "").trim(),
-      manaCost: String(face.manaCost || "").trim() || null,
-      colorIndicator: face.colorIndicator,
-      supertypes: face.supertypes,
-      cardTypes: face.cardTypes,
-      subtypes: face.subtypes,
-      oracleText: String(face.oracleText || ""),
-      power: String(face.power || "").trim() || null,
-      toughness: String(face.toughness || "").trim() || null,
-      loyalty: face.loyalty === "" ? null : Number(face.loyalty),
-      defense: face.defense === "" ? null : Number(face.defense),
-    })),
-  };
-}
 
 function faceTabLabel(layout, index) {
   if (layout === "meld") return ["First Card", "Second Card", "Meld Result"][index];
@@ -387,6 +375,12 @@ function CompilePanel({ face, previewError, busy }) {
       <div className="card-forge-panel-title">{ui("Compile Status")}</div>
       <div className="card-forge-status card-forge-status--good">{ui("Ready")}{busy ? ui(" • refreshing") : ""}
       </div>
+      {(face?.customMechanics || []).map(mechanic => (
+        <div key={mechanic.keyword} className="card-forge-codeblock" role="note">
+          <strong>{mechanic.keyword}</strong>: {mechanic.reminder}
+          <div className="text-xs opacity-70">Compiled meaning: {mechanic.expansion}</div>
+        </div>
+      ))}
       <div className="card-forge-compile-grid">
         <div className="grid gap-1.5">
           <div className="card-forge-section-label">{ui("Compiled Text")}</div>
@@ -481,16 +475,7 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
 
         <div className="card-forge-layout-art-row">
           {layoutControls}
-            <label className="card-forge-inline-art-field">
-              <span className="card-forge-section-label">{ui("Art URL")}</span>
-              <input
-                className="card-forge-input card-forge-input--compact"
-                aria-label={ui("Art URL")}
-                placeholder="https://..."
-                value={face.artUrl}
-                onChange={(event) => updateFace({ artUrl: event.target.value })}
-              />
-            </label>
+          <CustomCardArtEditor key={face.name} face={face} updateFace={updateFace} />
         </div>
 
         <div className="card-forge-inline-type">
@@ -595,6 +580,8 @@ export default function CreateCardForgeSheet({
   const ui = useUiText();
   const { game, state, refresh, runWasmInteraction, setStatus, semanticThreshold, setSemanticThreshold, cardsMeetingThreshold } = useGame();
   const [open, setOpen] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState("card");
+  const [sandboxBusy, setSandboxBusy] = useState(false);
   const [catalogCard, setCatalogCard] = useState(null);
   const [seedLoading, setSeedLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -656,7 +643,7 @@ export default function CreateCardForgeSheet({
     const timeoutId = window.setTimeout(async () => {
       setPreviewLoading(true);
       try {
-        const nextPreview = await game.previewCustomCard(JSON.parse(previewInput));
+        const { preview: nextPreview } = await previewCustomDraft(JSON.parse(previewInput), input => game.previewCustomCard(input));
         if (!active) return;
         setPreview(nextPreview);
         setPreviewError("");
@@ -709,13 +696,14 @@ export default function CreateCardForgeSheet({
   }, [game, seedDraft, setStatus]);
 
   const handleOpenChange = useCallback((nextOpen) => {
+    if (sandboxBusy) return;
     cancelSelection();
     setOpen(nextOpen);
     if (nextOpen) {
       setSaveMessage("");
 
     }
-  }, [cancelSelection]);
+  }, [cancelSelection, sandboxBusy]);
 
   const updateFace = useCallback((index, patch) => {
     cancelSelection();
@@ -777,13 +765,15 @@ export default function CreateCardForgeSheet({
     setSaveMessage("");
     try {
       const savedDraft = normalizeDraftForApi(draft);
-      savedDraft.faces.forEach((face, index) => { face.artUrl = draft.faces[index].artUrl || ""; });
+      savedDraft.faces.forEach((face, index) => {
+        face.artUrl = draft.faces[index].artUrl || "";
+        face.artSourceUrl = draft.faces[index].artSourceUrl || "";
+        face.artCrop = draft.faces[index].artCrop || null;
+      });
       // Validate this exact snapshot, even if the debounced preview is stale.
-      const validation = await game.previewCustomCard(savedDraft);
-      if (!validation.canCreate) throw new Error("This card must compile before it can be saved");
       // Printing choices are saved with the card but never sent to the engine.
       savedDraft.presentation = draft.presentation;
-      await saveCustomCard(savedDraft);
+      await saveCustomCard(savedDraft, { compile: input => game.previewCustomCard(input) });
       setSaveMessage(`Saved ${savedDraft.faces[0].name}. Find it with Include custom cards in Build. Saved on this browser; saving the same name updates it.`);
     } catch (error) {
       setSaveMessage(`Save failed: ${String(error?.message || error)}`);
@@ -811,14 +801,15 @@ export default function CreateCardForgeSheet({
           await refresh(`Added ${catalogCard.name}`);
           return;
         }
+        const prepared = await prepareCustomDraftForCreation(normalizeDraftForApi(draft), input => game.previewCustomCard(input));
         const objectId = await game.createCustomCard({
-          draft: normalizeDraftForApi(draft),
+          draft: prepared.input,
           playerIndex: selectedPlayer,
           zoneName: zone,
           skipTriggers,
         });
         setCardPresentation(objectId, [draft.faces.map((face) => face.name).join(" // "), ...draft.faces.map((face) => face.name)],
-          draft.presentation, { existing });
+          draft.presentation, { existing, builderCreated: true });
         setCustomCardArtUrls(draft.faces.map((face) => ({
           name: face.name,
           artUrl: face.artUrl,
@@ -995,6 +986,15 @@ export default function CreateCardForgeSheet({
             <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Find an existing card, edit its details, or start a new card. Preview the result and add it to your game.")}</SheetDescription>
           </SheetHeader>
 
+          <Tabs value={workspaceTab} onValueChange={setWorkspaceTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <TabsList variant="line" className="shrink-0 px-4">
+              <TabsTrigger value="card" disabled={sandboxBusy}>{ui("Card")}</TabsTrigger>
+              <TabsTrigger value="sandbox" disabled={submitting}>{ui("Sandbox")}</TabsTrigger>
+            </TabsList>
+            <TabsContent forceMount value="sandbox" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
+              <SandboxPanel currentDraft={draft} onBusyChange={setSandboxBusy} onStarted={() => setOpen(false)} />
+            </TabsContent>
+            <TabsContent value="card" className="min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <BuildCardSearch
             actions={<div className="build-card-toolbar-actions">
@@ -1225,6 +1225,8 @@ export default function CreateCardForgeSheet({
 
 
           </div>
+            </TabsContent>
+          </Tabs>
         </SheetContent>
       </Sheet>
     </>

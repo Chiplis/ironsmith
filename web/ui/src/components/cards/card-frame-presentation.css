@@ -101,3 +101,34 @@
   .card-glint-live[data-card-glint-rendering=true] .card-glint-live__tilt::after{animation:none}
 }
 .card-glint-surface>canvas.card-glint-surface__live{position:absolute;inset:0;pointer-events:none}
+
+/* Fade only the outgoing stock frame; the finished canvas is already opaque. */
+.card-frame-fallback{position:absolute;inset:0;display:grid;place-items:center;z-index:1}
+.card-frame-fallback[data-leaving=true]{pointer-events:none;animation:card-frame-fallback-out 140ms ease-out forwards}
+@keyframes card-frame-fallback-out{to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.card-frame-fallback[data-leaving=true]{animation:none;visibility:hidden}}
+/* Ability ink is painted with the same glyph metrics as the rendered card. */
+.ability-text-ink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+.mse-card-hit-target{z-index:2}
+.mse-card-hit-target[data-available=true]{border-left:2px solid #9a713c66}
+.mse-card-hit-target[data-ability-state=available]{background:#2984c512;border:1px solid #1763a680}
+.mse-card-hit-target[data-ability-state=selected]{background:#659b5014;border:1px solid #39804899}
+.mse-card-hit-target[data-ability-state=unavailable]{background:#c64b3712;border:1px solid #b52c2888;cursor:not-allowed}
+.card-frame-rules button[data-available=true]:is(:hover,:focus-visible){color:#1763a6}
+.card-frame-rules button[data-available=false]:is(:hover,:focus-visible){color:#b52c28}
+.card-frame-rules [data-stack-highlighted=true] button{color:#236a32}
+.card-frame-rules button[data-ability-state=pending]:is(:hover,:focus-visible){color:inherit}
+.card-frame-rules button[data-ability-state=selected]{color:#236a32!important;background:#659b5014}
+.card-frame-rules button[data-ability-state=unavailable]{cursor:not-allowed}
+.ability-tap-symbol{display:none}
+.card-frame-rules button:is(:hover,:focus-visible,[data-ability-state=selected]):not([data-ability-state=pending]) .ability-tap-symbol{display:block}
+.card-frame-rules .inspector-oracle-line-action{display:block;width:100%;padding:3px 4px;margin:-3px -4px}
+.mse-card-hit-target[data-ability-state=available]:focus-visible{outline-color:#1763a6}
+.mse-card-hit-target[data-ability-state=unavailable]:focus-visible{outline-color:#b52c28}
+/* Interactive rules remain readable regardless of inherited ability count. */
+.simple-card-frame[data-interactive-rules=true] .simple-card-frame__rules{font-size:max(14px,4cqw);line-height:1.25;overflow-y:auto;scrollbar-gutter:stable;overscroll-behavior:contain}
+.simple-card-frame[data-interactive-rules=true] .inspector-ability-section{margin:0 0 .25em;padding-block:0;min-height:0}
+.simple-card-frame[data-interactive-rules=true] .inspector-oracle-line-action{padding-block:2px;margin-block:-2px}
+.card-frame-rules .scrollable-loyalty-ability{display:grid;grid-template-columns:2.35em minmax(0,1fr);align-items:start;gap:.35em;min-height:2em;line-height:1.25}
+.card-frame-rules .scrollable-loyalty-badge{display:block;width:2.35em;height:2em;overflow:visible;flex:none;filter:drop-shadow(0 1px 1px #0006)}
+.card-frame-rules .scrollable-loyalty-ability>span{padding-top:.2em;min-width:0}

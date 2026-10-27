@@ -3326,7 +3326,7 @@ pub(super) fn test_parse_overload_keyword_line_compiles_to_alternative_cast_and_
     );
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Overload { cost, effects } => {
+        AlternativeCastingMethod::Overload { cost, effects, .. } => {
             assert_eq!(cost.to_oracle(), "{1}{R}");
             assert!(
                 !effects.is_empty(),

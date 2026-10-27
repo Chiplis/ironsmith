@@ -9,7 +9,7 @@ pub(super) fn describe_looked_cloak_selected_rest_bottom(effects: &[Effect]) -> 
     let choose = unwrap_basic_tag_wrappers(choose_effect)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let cloak = unwrap_basic_tag_wrappers(cloak_effect)
-        .downcast_ref::<crate::effects::ManifestObjectsEffect>()?;
+        .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)?;
     let remainder = unwrap_basic_tag_wrappers(remainder_effect)
         .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
 

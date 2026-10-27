@@ -1378,25 +1378,27 @@ fn subject_has_name_originally_printed_in_set<S: TailMatchSubject>(
 fn object_matches_subtype(object: &Object, subtype: Subtype, game: &GameState) -> bool {
     object.zone_subtypes().contains(&subtype)
         || (subtype == Subtype::Adventure
-            && linked_face_has_adventure(
-                game,
-                object.other_face_name.as_deref(),
-                object.other_face,
+            && !game.is_face_down(object.id)
+            && object.copied_face_values.as_ref().map_or_else(
+                || linked_face_has_adventure(game, object.other_face_name.as_deref(), object.other_face),
+                |values| copied_values_have_adventure(values),
             ))
+}
+
+fn copied_values_have_adventure(values: &crate::snapshot::CopiableValues) -> bool {
+    values.other_copy_face.as_ref()
+        .is_some_and(|other| other.subtypes.contains(&Subtype::Adventure))
 }
 
 fn layered_subject_matches_subtype(
     subject: &LayeredSubject<'_>,
     subtype: Subtype,
-    game: &GameState,
+    _game: &GameState,
 ) -> bool {
     subject.chars.subtypes.contains(&subtype)
         || (subtype == Subtype::Adventure
-            && linked_face_has_adventure(
-                game,
-                subject.object.other_face_name.as_deref(),
-                subject.object.other_face,
-            ))
+            && subject.chars.copy_values.as_ref()
+                .is_some_and(|values| copied_values_have_adventure(values)))
 }
 
 fn filter_card_types<'a>(
@@ -1457,24 +1459,17 @@ fn filter_object_has_subtype_with_view(
         if let Some(chars) = chars {
             return chars.subtypes.contains(&subtype)
                 || (subtype == Subtype::Adventure
-                    && linked_face_has_adventure(
-                        game,
-                        object.other_face_name.as_deref(),
-                        object.other_face,
-                    ));
+                    && chars.copy_values.as_ref()
+                        .is_some_and(|values| copied_values_have_adventure(values)));
         }
     }
     object_matches_subtype(object, subtype, game)
 }
 
-fn snapshot_matches_subtype(snapshot: &ObjectSnapshot, subtype: Subtype, game: &GameState) -> bool {
+fn snapshot_matches_subtype(snapshot: &ObjectSnapshot, subtype: Subtype, _game: &GameState) -> bool {
     snapshot.subtypes.contains(&subtype)
         || (subtype == Subtype::Adventure
-            && linked_face_has_adventure(
-                game,
-                snapshot.other_face_name.as_deref(),
-                snapshot.other_face,
-            ))
+            && copied_values_have_adventure(&snapshot.copiable_values))
 }
 
 fn subject_creature_subtypes(
@@ -1577,8 +1572,8 @@ pub(crate) fn object_current_mana_cost(
     id: ObjectId,
 ) -> Option<crate::mana::ManaCost> {
     game.current_characteristics(id)
-        .and_then(|characteristics| characteristics.mana_cost.clone())
-        .or_else(|| {
+        .map(|characteristics| characteristics.mana_cost.clone())
+        .unwrap_or_else(|| {
             game.object(id)
                 .and_then(|object| object.mana_cost.as_deref().cloned())
         })

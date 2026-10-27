@@ -17,6 +17,21 @@ fn subject(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
 }
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
+    if let Some(prefix) = words.strip_suffix(&["attacks", "with", "another", "creature", "with", "greater", "power"])
+        && is_source_reference_words(prefix)
+    {
+        let mut other = ObjectFilter::creature();
+        other.power = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
+            crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
+        )));
+        return Ok(Some(TriggerSpec::ThisAttacksWithNOthers {
+            other_count: 1,
+            display_subject: Some(prefix.join(" ")),
+            other_filter: Some(other),
+            other_surface: true,
+            subject_filter: None,
+        }));
+    }
     if let Some(prefix) = words.strip_suffix(&["attacks", "a", "player", "alone"]) {
         if prefix.is_empty() {
             return Ok(None);

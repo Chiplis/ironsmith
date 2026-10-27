@@ -16,7 +16,7 @@ pub(super) fn damage_regeneration_exile_gate<'a>(
         )
             .value(DamageRegenerationExileGate::DamagedObjectIsCreature),
         (
-            primitives::phrase(&["if", "this", "spell", "was", "kicked"]),
+            primitives::phrase(&["if", "this", "spell", "was", crate::keyword_forms::KICKED]),
             primitives::comma(),
         )
             .value(DamageRegenerationExileGate::ThisSpellWasKicked),

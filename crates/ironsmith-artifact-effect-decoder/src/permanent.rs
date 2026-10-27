@@ -67,6 +67,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "IncubateEffect" => decode_as::<ironsmith_core::IncubateEffect>(payload).map(Some),
         "InvestigateEffect" => decode_as::<ironsmith_core::InvestigateEffect>(payload).map(Some),
         "MeldEffect" => decode_as::<ironsmith_core::MeldEffect>(payload).map(Some),
+        "SetPermanentDesignationEffect" => decode_as::<ironsmith_core::SetPermanentDesignationEffect>(payload).map(Some),
         "MonstrosityEffect" => decode_as::<ironsmith_core::MonstrosityEffect>(payload).map(Some),
         "NinjutsuCostEffect" => decode_as::<ironsmith_core::NinjutsuCostEffect>(payload).map(Some),
         "NinjutsuEffect" => decode_as::<ironsmith_core::NinjutsuEffect>(payload).map(Some),
@@ -220,6 +221,7 @@ pub(super) fn map_card_ids(
             super::card_graph::map_payload_as::<ironsmith_core::MeldEffect>(payload, context)
                 .map(Some)
         }
+        "SetPermanentDesignationEffect" => super::card_graph::map_payload_as::<ironsmith_core::SetPermanentDesignationEffect>(payload, context).map(Some),
         "MonstrosityEffect" => {
             super::card_graph::map_payload_as::<ironsmith_core::MonstrosityEffect>(payload, context)
                 .map(Some)

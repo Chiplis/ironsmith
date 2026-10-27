@@ -2222,6 +2222,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                entry_grants: Vec::new(),
                 entry_type_changes: None,
                 entry_counters: Vec::new(),
             retained_reference_tags: Vec::new(),
@@ -2264,6 +2265,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                entry_grants: Vec::new(),
                 entry_type_changes: None,
                 entry_counters: Vec::new(),
             retained_reference_tags: Vec::new(),
@@ -4590,7 +4592,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, descriptive: false }),
         )
     }
 
@@ -4635,7 +4637,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { subtype, amount }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { subtype, amount, descriptive: false }),
         )
     }
 
@@ -4711,7 +4713,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target, descriptive_cost: None }),
         )
     }
 
@@ -4719,7 +4721,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, descriptive: false }),
         )
     }
 
@@ -4743,7 +4745,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, count }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, count, descriptive: false }),
         )
     }
 
@@ -4846,6 +4848,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
                 counters: counters.into(),
+                descriptive: false,
             }),
         )
     }
@@ -4854,7 +4857,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { subtype, count }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { subtype, count, descriptive: false }),
         )
     }
 
@@ -4894,7 +4897,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { opponent }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { opponent, descriptive: false }),
         )
     }
 
@@ -5137,6 +5140,7 @@ impl EffectAst {
             SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
                 target,
                 include_source: true,
+                duration: Until::Forever,
             }),
         )
     }
@@ -5148,6 +5152,7 @@ impl EffectAst {
             SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
                 target,
                 include_source: false,
+                duration: Until::ThisLeavesTheBattlefield,
             }),
         )
     }
@@ -5450,6 +5455,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                described_face_down: false,
                 target,
                 tapped,
                 controller,
@@ -5471,6 +5477,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                described_face_down: false,
                 target,
                 tapped,
                 controller,
@@ -5494,6 +5501,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                described_face_down: false,
                 target,
                 tapped,
                 controller,
@@ -7158,6 +7166,7 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon {
+                descriptive: false,
                 undercity_if_no_active,
             }),
         )
@@ -7404,6 +7413,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_destruction_recovery(target: TargetAst) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
+                target, follow_up_effects: Vec::new(), remove_damage_only: false,
+                ordinary_destruction_replacement: true,
+            }))
+    }
+
     pub fn subject_verb_regenerate(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -7412,6 +7429,7 @@ impl EffectAst {
                 target,
                 follow_up_effects: Vec::new(),
                 remove_damage_only: false,
+                ordinary_destruction_replacement: false,
             }),
         )
     }
@@ -7426,6 +7444,7 @@ impl EffectAst {
                 target,
                 follow_up_effects: Vec::new(),
                 remove_damage_only: true,
+                ordinary_destruction_replacement: false,
             }),
         )
     }
@@ -7441,6 +7460,7 @@ impl EffectAst {
                 target,
                 follow_up_effects,
                 remove_damage_only: false,
+                ordinary_destruction_replacement: false,
             }),
         )
     }

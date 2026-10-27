@@ -178,6 +178,21 @@ fn triggered_grant_effects_and_condition(
     Ok((effects.to_vec(), None))
 }
 
+/// CR 113.12: an external blocking restriction states a quality; it does
+/// not grant a new ability to the affected objects.
+fn filtered_unblockable_quality(
+    filter: ObjectFilter,
+    subject_tokens: &[OwnedLexToken],
+    condition: Option<PredicateAst>,
+) -> StaticAbilityAst {
+    let mut ability = StaticAbility::restriction(
+        crate::effect::Restriction::be_blocked(filter),
+        format!("{} can't be blocked", render_token_slice(subject_tokens)),
+    );
+    if let Some(condition) = condition { ability = ability.with_condition(condition); }
+    StaticAbilityAst::Static(ability)
+}
+
 pub fn parse_subject_cant_be_blocked_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -209,11 +224,9 @@ pub fn parse_subject_cant_be_blocked_line(
         .unwrap_or_else(|| parse_anthem_subject(subject_tokens))?;
     let ability = match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::KeywordAction(KeywordAction::Unblockable),
-        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
-            filter,
-            action: KeywordAction::Unblockable,
-            condition: None,
-        },
+        AnthemSubjectAst::Filter(filter) => {
+            return Ok(Some(filtered_unblockable_quality(filter, subject_tokens, None)));
+        }
     };
     Ok(Some(with_leading_set_quantifier_surface(
         ability,
@@ -283,6 +296,9 @@ pub fn parse_subject_has_keywords_and_cant_be_blocked_line(
                 },
                 None => StaticAbilityAst::KeywordAction(action),
             },
+            AnthemSubjectAst::Filter(filter) if matches!(action, KeywordAction::Unblockable) => {
+                filtered_unblockable_quality(filter.clone(), &subject_tokens, condition.clone())
+            }
             AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
                 filter: filter.clone(),
                 action,
@@ -464,6 +480,9 @@ pub fn parse_subject_cant_be_blocked_and_has_keywords_line(
     for action in std::iter::once(KeywordAction::Unblockable).chain(keyword_actions) {
         granted.push(match &subject {
             AnthemSubjectAst::Source => StaticAbilityAst::KeywordAction(action),
+            AnthemSubjectAst::Filter(filter) if matches!(action, KeywordAction::Unblockable) => {
+                filtered_unblockable_quality(filter.clone(), parsed.subject_tokens, None)
+            }
             AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
                 filter: filter.clone(),
                 action,
@@ -592,11 +611,9 @@ pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
                 "This permanent can't be blocked".to_string(),
             ).with_condition(condition),
         ),
-        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
-            filter,
-            action: KeywordAction::Unblockable,
-            condition: Some(condition),
-        },
+        AnthemSubjectAst::Filter(filter) => {
+            return Ok(Some(filtered_unblockable_quality(filter, subject_tokens, Some(condition))));
+        }
     };
     Ok(Some(with_leading_set_quantifier_surface(
         granted,
@@ -1437,6 +1454,15 @@ fn parse_complete_plot_cost_grant_line(
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // The complete compound reader separates granted keywords from a stated
+    // blocking quality (CR 113.12). A broad grant must not consume both.
+    if matches!(parse_subject_has_keywords_and_cant_be_blocked_line(tokens), Ok(Some(_)))
+        || matches!(parse_subject_cant_be_blocked_and_has_keywords_line(tokens), Ok(Some(_)))
+        || matches!(parse_conditional_source_spell_keyword_line(tokens), Ok(Some(_)))
+    {
+        return Ok(None);
+    }
+
     // A spell subject's cast-time keyword ("The first spell you cast from
     // anywhere other than your hand each turn has demonstrate.") is owned by
     // the typed spell-keyword reader, whose subject filter keeps the stack
@@ -5300,6 +5326,25 @@ fn promote_attached_to_affected(value: &mut AnthemValue) {
 }
 
 fn promote_counters_on_affected(value: &mut AnthemValue) {
+    fn bind_recipient(value: &mut Value) {
+        match value {
+            Value::SurfaceHinted { value, .. } | Value::Scaled(value, _) => {
+                bind_recipient(value);
+            }
+            Value::CountersOn(spec, _)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag)
+                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()) =>
+            {
+                **spec = ChooseSpec::Iterated
+                    .with_surface_hints(spec.surface_hints().iter().cloned());
+            }
+            _ => {}
+        }
+    }
+    if let AnthemValue::Dynamic(value) = value {
+        bind_recipient(value);
+        return;
+    }
     // "Creatures you don't control get -1/-1 for each slime counter on
     // them": the pronoun names each affected creature, not a tagged
     // antecedent the static ability never binds.

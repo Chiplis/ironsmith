@@ -174,6 +174,90 @@ pub(super) fn parse_additional_cost(
     tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
+    let prose = crate::lexer::render_token_slice(full_tokens).to_ascii_lowercase();
+    if let Some(rest) = prose.strip_prefix("as an additional cost to cast this spell, you may choose an opponent. if this is a permanent, when it enters, if you paid that cost, ")
+        && let Some((entry, spell)) = rest.split_once(". if this is an instant or sorcery spell, if you paid that cost, ")
+        && let Some(spell) = spell.trim_end_matches('.').strip_suffix(" before its other effects")
+        && entry == spell {
+        let effect_tokens = crate::lexer::lex_line(entry, 0)?;
+        let effects = parse_effect_sentences_lexed(&effect_tokens)?;
+        let cost = crate::model::CompilerOptionalCost::custom(
+            format!("Chosen opponent benefit: {entry}"),
+            ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Effect(Box::new(
+                EffectAst::subject_verb_choose_player(PlayerAst::You, PlayerFilter::Opponent,
+                    crate::tag::CompilerReferenceTag::GiftedPlayer.bind(), false, 0),
+            ))),
+        );
+        return Ok(ast(LineAst::GiftKeyword { cost, effects, timing: crate::cards::builders::GiftTimingAst::SourceCardType }));
+    }
+    // A payment and its following trigger form one definition. Bind the
+    // trigger's payment count/condition to this exact optional price.
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    if sentences.len() >= 2 {
+        let tail_start = tokens.iter().position(|token| std::ptr::eq(token, &sentences[1][0])).unwrap();
+        let tail = crate::util::trim_edge_punctuation_tokens(&tokens[tail_start..]);
+        let tail_words = crate::lexer::parser_token_word_refs(tail);
+        let gated = tail_words.starts_with(&["if", "you", "do", "when"]);
+        let starts_trigger = tail_words.first().is_some_and(|word| matches!(*word, "when" | "whenever" | "at"));
+        if starts_trigger || gated {
+            if let Some(KeywordLinePayload::Ast(parsed)) = parse_additional_cost(line, sentences[0], full_tokens)?
+                && let LineAst::OptionalCost(cost) = *parsed {
+                let trigger_tokens = if gated {
+                    &tail[tail.iter().position(|token| token.is_word("when")).unwrap()..]
+                } else { tail };
+                let mut trigger = crate::clause_support::parse_triggered_line_lexed(trigger_tokens)?;
+                if let LineAst::Triggered { effects, .. } = &mut trigger {
+                    bind_optional_payment_copy_count(effects, &cost.reference);
+                    if gated {
+                        *effects = vec![EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional {
+                            predicate: crate::cards::builders::PredicateAst::ThisSpellPaidLabel(cost.reference.clone()),
+                            if_true: std::mem::take(effects), if_false: Vec::new(),
+                        })];
+                    }
+                    return Ok(ast(LineAst::Multiple(vec![LineAst::OptionalCost(cost), trigger])));
+                }
+            }
+        }
+    }
+    // A payment defined in prose is an optional additional cost. Its
+    // behavior does not imply the Kicker identity or the "was kicked" flag.
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::parser_token_word_refs(clean);
+    if words.starts_with(&["you", "may"])
+        && matches!(words.get(2), Some(&"sacrifice" | &"discard" | &"exile" | &"return" | &"tap" | &"remove"))
+        && words.ends_with(&["as", "you", "cast", "this", "spell"])
+    {
+        let payment = &clean[2..clean.len() - 5];
+        let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(payment)?;
+        return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
+    }
+    if let Some(body) = crate::grammar::primitives::match_word_prefix(clean, &["you", "may", "pay", "an", "additional"])
+        && body.len() > 5
+    {
+        let suffix = ["as", "you", "cast", "this", "spell"];
+        let split = body.len() - suffix.len();
+        if body[split..].iter().zip(suffix).all(|(token, word)| token.is_word(word)) {
+            let mut cost_tokens = &body[..split];
+            let repeatable = cost_tokens.len() > 4
+                && cost_tokens[cost_tokens.len() - 4..].iter()
+                    .zip(["any", "number", "of", "times"]).all(|(token, word)| token.is_word(word));
+            if repeatable { cost_tokens = &cost_tokens[..cost_tokens.len() - 4]; }
+            let mut costs = Vec::new();
+            for branch in cost_tokens.split(|token| token.is_word("and/or")) {
+                if branch.is_empty() {
+                    return Err(CardTextError::ParseError("optional additional payment is missing a cost".into()));
+                }
+                let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(branch)?;
+                let mut optional = crate::model::CompilerOptionalCost::custom("Additional", cost);
+                optional.repeatable = repeatable;
+                if let Some(mana) = optional.cost.mana_cost() {
+                    optional.reference = crate::util::additional_mana_payment_reference(mana);
+                }
+                costs.push(LineAst::OptionalCost(optional));
+            }
+            return Ok(ast(if costs.len() == 1 { costs.remove(0) } else { LineAst::Multiple(costs) }));
+        }
+    }
     // "As an additional cost to cast this spell, blight X. X can't be greater
     // than the greatest toughness among creatures you control." (Soul
     // Immolation): the trailing X bound is a rule of the spell (CR 601.2b),
@@ -213,6 +297,9 @@ pub(super) fn parse_additional_cost(
     let Some(effect_tokens) = additional_cost_tail_tokens_lexed(tokens) else {
         return Ok(None);
     };
+    if let Some(price) = crate::grammar::activation_costs::parse_artifact_creature_tap_price(effect_tokens)? {
+        return Ok(ast(LineAst::AdditionalCost { effects: vec![EffectAst::subject_verb_pay_mana(PlayerAst::You, price)] }));
+    }
     let words = crate::lexer::parser_token_word_refs(effect_tokens);
     // "As an additional cost to cast this spell, choose a number between 0
     // and 5." (Liquid Fire): the number is announced while the spell is cast
@@ -289,16 +376,19 @@ pub(super) fn parse_additional_cost(
         }
     }
     if trimmed.len() >= 8
-        && trimmed[0].is_word("you") && trimmed[1].is_word("may") && trimmed[2].is_word("pay")
+        && trimmed[0].is_word("you") && trimmed[1].is_word("may")
         && crate::lexer::parser_token_word_refs(&trimmed[trimmed.len() - 4..]) == ["any", "number", "of", "times"]
     {
-        let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&trimmed[2..trimmed.len() - 4])?;
-        if !cost.has_non_mana_costs() && let Some(mana) = cost.mana_cost() {
-            let reference = crate::util::additional_mana_payment_reference(mana);
-            let mut optional = crate::model::CompilerOptionalCost::custom("Additional", cost).repeatable();
-            optional.reference = reference;
-            return Ok(ast(LineAst::OptionalCost(optional)));
-        }
+        let mut price = &trimmed[2..trimmed.len() - 4];
+        if price.first().is_some_and(|token| token.is_word("pay"))
+            && price.get(1).is_some_and(|token| matches!(token.as_word(), Some("exile" | "discard" | "sacrifice" | "return" | "tap" | "remove" | "pay"))) { price = &price[1..]; }
+        let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(price)?;
+        let reference = if !cost.has_non_mana_costs() {
+            cost.mana_cost().map(crate::util::additional_mana_payment_reference)
+        } else { None };
+        let mut optional = crate::model::CompilerOptionalCost::custom("Additional", cost).repeatable();
+        if let Some(reference) = reference { optional.reference = reference; }
+        return Ok(ast(LineAst::OptionalCost(optional)));
     }
     // "you may sacrifice any number of Spirits" (Devouring Greed): sacrificing
     // zero is already a legal payment of the ordinary additional cost, whose
@@ -759,3 +849,26 @@ pub(super) use condition_programs::parse_gift;
 #[path = "keyword_payloads/permission.rs"]
 mod permission_programs;
 pub(super) use permission_programs::parse_cast_this_spell_only;
+
+/// "That many" in a following copy instruction counts this declared payment,
+/// not the number of objects discarded/exiled to pay it.
+fn bind_optional_payment_copy_count(effects: &mut [EffectAst], reference: &ironsmith_core::OptionalCostRef) {
+    fn bind(value: &mut Value, reference: &ironsmith_core::OptionalCostRef) {
+        match value {
+            Value::SurfaceHinted { value, .. } => bind(value, reference),
+            Value::EventValue(crate::effect::EventValueSpec::Amount) => *value = Value::TimesPaidLabel(reference.clone()),
+            Value::TimesPaidLabel(label) if *label == ironsmith_core::OptionalCostRef::from("Additional") => *label = reference.clone(),
+            _ => {},
+        }
+    }
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject) = effect {
+            match &mut subject.action {
+                crate::cards::builders::SubjectVerbActionAst::Stack(crate::cards::builders::StackActionAst::CopySpell { count, .. }) => bind(count, reference),
+                crate::cards::builders::SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { count, .. } | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { count, .. }) => bind(count, reference),
+                _ => {},
+            }
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| bind_optional_payment_copy_count(nested, reference));
+    }
+}

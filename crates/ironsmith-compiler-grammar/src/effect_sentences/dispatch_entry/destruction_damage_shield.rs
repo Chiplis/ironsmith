@@ -7,6 +7,18 @@ use super::*;
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::token_word_refs(tokens);
+    let full_recovery = [
+        &["would", "be", "destroyed", "this", "turn", "instead", "tap", "it", "remove", "it", "from", "combat", "and", "heal", "all", "damage", "on", "it"][..],
+        &["would", "be", "destroyed", "this", "turn", "instead", "tap", "it", "remove", "it", "from", "combat", "and", "remove", "all", "damage", "marked", "on", "it"][..],
+    ].iter().any(|tail| words.ends_with(tail));
+    if words.starts_with(&["the", "next", "time"]) && full_recovery {
+        let time = tokens.iter().position(|token| token.is_word("time")).unwrap();
+        let would = tokens.iter().position(|token| token.is_word("would")).unwrap();
+        if would > time + 1 {
+            let target = crate::util::parse_target_phrase(&tokens[time + 1..would])?;
+            return Ok(Some(EffectAst::subject_verb_destruction_recovery(target)));
+        }
+    }
     if !words.starts_with(&["the", "next", "time"])
         || !words.ends_with(&[
             "would", "be", "destroyed", "this", "turn", "remove", "all", "damage", "marked", "on",

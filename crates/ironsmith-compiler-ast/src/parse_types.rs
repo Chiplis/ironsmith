@@ -193,6 +193,7 @@ pub enum RetargetModeAst<
     /// "reselect the targets at random": every target slot is refilled
     /// at random from its legal targets.
     AllAtRandom,
+    One,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]

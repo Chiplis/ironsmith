@@ -1753,10 +1753,13 @@ fn count_distinct_card_types_in_graveyard(game: &GameState, player_id: PlayerId)
         let Some(obj) = game.object(card_id) else {
             continue;
         };
-        // CR 709.4: a split card has both halves' card types.
-        for card_type in obj.zone_card_types() {
-            if !types.contains(card_type) {
-                types.push(*card_type);
+        // CR 613.1d / 709.4: include current type-changing effects and the
+        // combined types of a split card outside the stack and battlefield.
+        for card_type in game.current_card_types(card_id)
+            .unwrap_or_else(|| obj.zone_card_types().to_vec())
+        {
+            if !types.contains(&card_type) {
+                types.push(card_type);
             }
         }
     }
@@ -2484,8 +2487,8 @@ impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
 }
 
 /// "If you would draw one or more cards, you draw that many cards plus one
-/// instead." (Quantum Riddler). The extra cards attach to the first card of
-/// each draw instruction; a leading "as long as" condition gates it.
+/// instead." (Quantum Riddler). Modify the enclosing draw instruction before
+/// its individual draws; a leading "as long as" condition gates it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawExtraCardsReplacement {
     pub condition: Option<Condition>,
@@ -2560,9 +2563,17 @@ impl StaticAbilityKind for DrawExtraCardsReplacement {
             // replacement or restriction can apply to (Dredge, Jace, Narset,
             // a second doubler), while CR 614.5 keeps this one from
             // reapplying to them (the Replaced arm suppresses it).
-            ReplacementAction::Instead(vec![crate::effect::Effect::draw(
-                self.extra.saturating_add(1),
-            )]),
+            if self.per_instruction {
+                // CR 121.2a: change the enclosing instruction before any
+                // individual draw can be replaced.
+                ReplacementAction::Modify(crate::replacement::EventModification::Add(
+                    i32::try_from(self.extra).unwrap_or(i32::MAX),
+                ))
+            } else {
+                ReplacementAction::Instead(vec![crate::effect::Effect::draw(
+                    self.extra.saturating_add(1),
+                )])
+            },
         ))
     }
 }
@@ -2580,20 +2591,33 @@ struct WouldDrawInstructionMatcher {
 impl ReplacementMatcher for WouldDrawInstructionMatcher {
 
     fn may_match_event_kind(&self, kind: EventKind) -> bool {
-        kind == EventKind::Draw
+        kind == if self.per_instruction { EventKind::KeywordAction } else { EventKind::Draw }
     }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
-        if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
-            return false;
-        }
-        let Some(draw) = crate::events::downcast_event::<crate::events::DrawEvent>(event) else {
-            return false;
-        };
-        if (self.per_instruction && !draw.first_of_instruction)
-            || (self.except_first_of_draw_step && draw.first_of_draw_step)
-        {
-            return false;
+        if self.per_instruction {
+            let Some(instruction) = crate::events::downcast_event::<crate::events::KeywordActionEvent>(event) else {
+                return false;
+            };
+            if instruction.action != crate::events::KeywordActionKind::DrawCards
+                || instruction.player != ctx.controller || instruction.amount == 0
+            {
+                return false;
+            }
+            let (during_draw_step, drawn_this_step) = ctx.game.current_draw_step_context_for_player(instruction.player);
+            if self.except_first_of_draw_step && during_draw_step && drawn_this_step == 0 {
+                return false;
+            }
+        } else {
+            if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
+                return false;
+            }
+            let Some(draw) = crate::events::downcast_event::<crate::events::DrawEvent>(event) else {
+                return false;
+            };
+            if self.except_first_of_draw_step && draw.first_of_draw_step {
+                return false;
+            }
         }
         let Some(condition) = &self.condition else {
             return true;
@@ -4662,7 +4686,7 @@ impl SpliceAbility {
 
 impl StaticAbilityKind for SpliceAbility {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::Splice
+        if self.spec.descriptive { StaticAbilityId::KeywordMarker } else { StaticAbilityId::Splice }
     }
 
     fn display(&self) -> String {
@@ -4676,11 +4700,9 @@ impl StaticAbilityKind for SpliceAbility {
             .cost_surface
             .clone()
             .unwrap_or_else(|| self.spec.cost.display());
-        format!(
-            "Splice onto {}{separator}{}",
-            self.spec.quality.oracle_surface(),
-            rendered_cost
-        )
+        if self.spec.descriptive {
+            format!("As you cast an {} spell, you may reveal this card from your hand and pay {rendered_cost}. If you do, add this card's effects to that spell.", self.spec.quality.oracle_surface())
+        } else { format!("Splice onto {}{separator}{rendered_cost}", self.spec.quality.oracle_surface()) }
     }
 
     fn splice_spec(&self) -> Option<&crate::static_abilities::SpliceSpec<crate::costs::Cost>> {
@@ -4702,7 +4724,7 @@ impl EscalateAbility {
 
 impl StaticAbilityKind for EscalateAbility {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::Escalate
+        if self.spec.descriptive { StaticAbilityId::KeywordMarker } else { StaticAbilityId::Escalate }
     }
 
     fn display(&self) -> String {
@@ -4716,7 +4738,8 @@ impl StaticAbilityKind for EscalateAbility {
             .cost_surface
             .clone()
             .unwrap_or_else(|| self.spec.cost.display());
-        format!("Escalate{separator}{rendered_cost}")
+        if self.spec.descriptive { format!("Pay {rendered_cost} for each mode chosen beyond the first.") }
+        else { format!("Escalate{separator}{rendered_cost}") }
     }
 
     fn escalate_spec(&self) -> Option<&crate::static_abilities::EscalateSpec<crate::costs::Cost>> {
@@ -4747,6 +4770,26 @@ impl KeywordMarker {
 }
 
 impl StaticAbilityKind for KeywordMarker {
+    fn generate_replacement_effect(
+        &self, source: ObjectId, controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        if self.mechanic != Some(ironsmith_core::KeywordMarkerMechanic::DestroyAttachmentInstead) {
+            return None;
+        }
+        // Share the transaction and matcher, not the native keyword identity.
+        UmbraArmor.generate_replacement_effect(source, controller)
+    }
+
+    fn has_delve(&self) -> bool {
+        self.mechanic == Some(ironsmith_core::KeywordMarkerMechanic::ExileGraveyardCardsForGenericMana)
+    }
+    fn has_convoke(&self) -> bool {
+        self.mechanic == Some(ironsmith_core::KeywordMarkerMechanic::TapCreaturesForMana)
+    }
+    fn has_improvise(&self) -> bool {
+        self.mechanic == Some(ironsmith_core::KeywordMarkerMechanic::TapArtifactsForGenericMana)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::KeywordMarker
     }

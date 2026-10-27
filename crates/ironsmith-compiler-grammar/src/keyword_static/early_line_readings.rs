@@ -630,8 +630,12 @@ pub(crate) fn read_defined_x(
         _ => (value.clone(), value.clone()),
     };
     let display = format!("{}.", crate::lexer::render_token_slice(tokens).trim_end_matches('.'));
+    let mut upper = StaticAbility::this_spell_x_maximum(maximum, display.clone());
+    if let ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { definition, .. } = &mut upper.payload {
+        *definition = Some(value);
+    }
     Some(vec![
-        StaticAbility::this_spell_x_maximum(maximum, display.clone()).into(),
+        upper.into(),
         StaticAbility::this_spell_x_minimum(minimum, display).into(),
     ])
 }

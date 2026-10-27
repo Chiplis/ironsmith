@@ -8,70 +8,85 @@
   },
   "phases": [
     {
-      "id": "document",
+      "id": "syntax",
+      "crates": [
+        "ironsmith-compiler-api",
+        "ironsmith-compiler-syntax"
+      ],
       "roots": [
-        "crates/ironsmith-compiler/src/front_end/document",
-        "crates/ironsmith-compiler/src/front_end/canonical_pipeline.rs",
-        "crates/ironsmith-compiler/src/front_end/preprocess.rs",
-        "crates/ironsmith-compiler/src/front_end/source_model.rs"
+        "crates/ironsmith-compiler-api/src",
+        "crates/ironsmith-compiler-syntax/src"
+      ]
+    },
+    {
+      "id": "document",
+      "crates": [
+        "ironsmith-compiler-source"
+      ],
+      "roots": [
+        "crates/ironsmith-compiler-source/src"
       ]
     },
     {
       "id": "grammar",
+      "crates": [
+        "ironsmith-grammar-common",
+        "ironsmith-compiler-grammar"
+      ],
       "roots": [
-        "crates/ironsmith-compiler/src/front_end/grammar"
+        "crates/ironsmith-grammar-common/src",
+        "crates/ironsmith-compiler-grammar/src"
       ]
     },
     {
       "id": "semantic_facts",
+      "crates": [
+        "ironsmith-compiler-semantic"
+      ],
       "roots": [
-        "crates/ironsmith-compiler/src/model/facts.rs",
-        "crates/ironsmith-compiler/src/model/provenance.rs"
+        "crates/ironsmith-compiler-semantic/src"
       ]
     },
     {
       "id": "reference_resolution",
+      "crates": [
+        "ironsmith-compiler-resolve"
+      ],
       "roots": [
-        "crates/ironsmith-compiler/src/model/reference_helpers.rs",
-        "crates/ironsmith-compiler/src/model/reference_resolution.rs",
-        "crates/ironsmith-compiler/src/model/reference_state.rs",
-        "crates/ironsmith-compiler/src/model/canonical_references.rs",
-        "crates/ironsmith-compiler/src/model/symbols.rs"
+        "crates/ironsmith-compiler-resolve/src"
       ]
     },
     {
       "id": "compiler_ast",
+      "crates": [
+        "ironsmith-compiler-ast"
+      ],
       "roots": [
-        "crates/ironsmith-compiler/src/model/ast",
-        "crates/ironsmith-compiler/src/model/clauses.rs",
-        "crates/ironsmith-compiler/src/model/card_document.rs",
-        "crates/ironsmith-compiler/src/model/document_program.rs",
-        "crates/ironsmith-compiler/src/model/activated_abilities.rs",
-        "crates/ironsmith-compiler/src/model/costs.rs",
-        "crates/ironsmith-compiler/src/model/legality.rs",
-        "crates/ironsmith-compiler/src/model/interaction_clauses.rs",
-        "crates/ironsmith-compiler/src/model/library_clauses.rs",
-        "crates/ironsmith-compiler/src/model/object_action_clauses.rs",
-        "crates/ironsmith-compiler/src/model/permission_clauses.rs",
-        "crates/ironsmith-compiler/src/model/resource_choice_clauses.rs",
-        "crates/ironsmith-compiler/src/model/selections.rs",
-        "crates/ironsmith-compiler/src/model/static_abilities.rs",
-        "crates/ironsmith-compiler/src/model/structured_abilities.rs",
-        "crates/ironsmith-compiler/src/model/triggered_abilities.rs",
-        "crates/ironsmith-compiler/src/model/visit.rs"
+        "crates/ironsmith-compiler-ast/src"
       ]
     },
     {
       "id": "lowering",
+      "crates": [
+        "ironsmith-compiler-lowering"
+      ],
       "roots": [
-        "crates/ironsmith-compiler/src/lowering"
+        "crates/ironsmith-compiler-lowering/src"
       ]
     },
     {
       "id": "runtime",
+      "crates": [
+        "ironsmith-core",
+        "ironsmith-engine",
+        "ironsmith-compiled-artifact",
+        "ironsmith-artifact-effect-decoder"
+      ],
       "roots": [
         "crates/ironsmith-core/src",
-        "crates/ironsmith-runtime/src"
+        "crates/ironsmith-engine/src",
+        "crates/ironsmith-compiled-artifact/src",
+        "crates/ironsmith-artifact-effect-decoder/src"
       ]
     }
   ],
@@ -114,7 +129,7 @@
       {
         "id": "front-end-does-not-import-lowering",
         "source_prefixes": [
-          "crates/ironsmith-compiler/src/front_end"
+          "crates/ironsmith-compiler-grammar/src"
         ],
         "fragments": [
           "crate::lowering"
@@ -123,7 +138,7 @@
       {
         "id": "front-end-does-not-construct-runtime",
         "source_prefixes": [
-          "crates/ironsmith-compiler/src/front_end"
+          "crates/ironsmith-compiler-grammar/src"
         ],
         "fragments": [
           "crate::ability::Ability",
@@ -141,7 +156,7 @@
       {
         "id": "lowering-does-not-import-recognition",
         "source_prefixes": [
-          "crates/ironsmith-compiler/src/lowering"
+          "crates/ironsmith-compiler-lowering/src/lowering_impl/lower"
         ],
         "fragments": [
           "crate::front_end",
@@ -154,7 +169,7 @@
         "id": "lowering-source-recognition",
         "kind": "raw_text_lowering",
         "roots": [
-          "crates/ironsmith-compiler/src/lowering"
+          "crates/ironsmith-compiler-lowering/src/lowering_impl/lower"
         ],
         "patterns": [
           "OwnedLexToken",
@@ -181,8 +196,8 @@
         "id": "discarded-recognizer-errors",
         "kind": "discarded_error",
         "roots": [
-          "crates/ironsmith-compiler/src/front_end",
-          "crates/ironsmith-compiler/src/registry.rs"
+          "crates/ironsmith-compiler-grammar/src",
+          "crates/ironsmith-compiler-grammar/src/registry.rs"
         ],
         "patterns": [
           ".ok()"
@@ -192,7 +207,7 @@
         "id": "registration-order-semantics",
         "kind": "first_match_registry",
         "roots": [
-          "crates/ironsmith-compiler/src/front_end"
+          "crates/ironsmith-compiler-grammar/src"
         ],
         "patterns": [
           "run_first",
@@ -228,7 +243,7 @@
         "kind": "legacy_path",
         "roots": [
           "crates/ironsmith-compiler/src",
-          "crates/ironsmith-runtime/src/cards/builders.rs"
+          "crates/ironsmith-engine/src/cards/builders.rs"
         ],
         "patterns": [
           "PARSE_RESULT_CACHE",
@@ -241,7 +256,7 @@
         "kind": "legacy_path",
         "roots": [
           "crates/ironsmith-compiler/src",
-          "crates/ironsmith-runtime/src/cards/builders.rs"
+          "crates/ironsmith-engine/src/cards/builders.rs"
         ],
         "patterns": [
           "stacker::maybe_grow",
@@ -250,5 +265,123 @@
       }
     ],
     "legacy_paths": []
-  }
+  },
+  "allowed_dependencies": [
+    {
+      "from": "syntax",
+      "to": "runtime"
+    },
+    {
+      "from": "document",
+      "to": "syntax"
+    },
+    {
+      "from": "document",
+      "to": "runtime"
+    },
+    {
+      "from": "grammar",
+      "to": "syntax"
+    },
+    {
+      "from": "grammar",
+      "to": "document"
+    },
+    {
+      "from": "grammar",
+      "to": "semantic_facts"
+    },
+    {
+      "from": "grammar",
+      "to": "compiler_ast"
+    },
+    {
+      "from": "grammar",
+      "to": "runtime"
+    },
+    {
+      "from": "semantic_facts",
+      "to": "syntax"
+    },
+    {
+      "from": "semantic_facts",
+      "to": "compiler_ast"
+    },
+    {
+      "from": "semantic_facts",
+      "to": "runtime"
+    },
+    {
+      "from": "reference_resolution",
+      "to": "syntax"
+    },
+    {
+      "from": "reference_resolution",
+      "to": "document"
+    },
+    {
+      "from": "reference_resolution",
+      "to": "semantic_facts"
+    },
+    {
+      "from": "reference_resolution",
+      "to": "compiler_ast"
+    },
+    {
+      "from": "reference_resolution",
+      "to": "runtime"
+    },
+    {
+      "from": "compiler_ast",
+      "to": "syntax"
+    },
+    {
+      "from": "compiler_ast",
+      "to": "document"
+    },
+    {
+      "from": "compiler_ast",
+      "to": "runtime"
+    },
+    {
+      "from": "lowering",
+      "to": "syntax"
+    },
+    {
+      "from": "lowering",
+      "to": "document"
+    },
+    {
+      "from": "lowering",
+      "to": "semantic_facts"
+    },
+    {
+      "from": "lowering",
+      "to": "reference_resolution"
+    },
+    {
+      "from": "lowering",
+      "to": "compiler_ast"
+    },
+    {
+      "from": "lowering",
+      "to": "runtime"
+    },
+    {
+      "from": "runtime",
+      "to": "runtime"
+    },
+    {
+      "from": "syntax",
+      "to": "syntax"
+    },
+    {
+      "from": "grammar",
+      "to": "grammar"
+    }
+  ],
+  "orchestrators": [
+    "ironsmith-compiler",
+    "ironsmith-compiler-runtime"
+  ]
 }

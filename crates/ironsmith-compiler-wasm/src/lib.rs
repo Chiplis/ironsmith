@@ -13,6 +13,8 @@ struct CompileCardInput {
     name: String,
     text: String,
     #[serde(default)]
+    custom_keyword_identities: Vec<String>,
+    #[serde(default)]
     allow_unsupported: bool,
     #[serde(default = "default_local_id")]
     local_id: u32,
@@ -32,7 +34,10 @@ fn default_local_id() -> u32 {
 
 fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, String> {
     let local_id = input.local_id.max(1);
-    let builder = CardDefinitionBuilder::new(CardId::from_raw(local_id), input.name.clone());
+    let mut builder = CardDefinitionBuilder::new(CardId::from_raw(local_id), input.name.clone());
+    for identity in &input.custom_keyword_identities {
+        builder = builder.with_custom_keyword(identity.clone());
+    }
     let mut compiled = CompilerFacade::new()
         .compile_definition(
             builder,

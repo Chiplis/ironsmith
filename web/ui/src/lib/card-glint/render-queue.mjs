@@ -9,14 +9,15 @@ export class CardGlintRenderQueue {
   key(face){return JSON.stringify(face);}
   peek(face){return this.entries.get(this.key(face))?.result;}
   has(face){return this.entries.has(this.key(face));}
-  render(face,{background=false}={}){
+  render(face,{background=false,signal}={}){
     const key=this.key(face), existing=this.entries.get(key);
     if(existing){
+      existing.consumers?.add(signal);
       this.entries.delete(key); this.entries.set(key,existing);
       if(!background && existing.background){existing.background=false; this.pump();}
       return existing.promise;
     }
-    const entry={key,face,background,bytes:0};
+    const entry={key,face,background,bytes:0,consumers:new Set([signal])};
     entry.promise=new Promise((resolve,reject)=>Object.assign(entry,{resolve,reject}));
     this.entries.set(key,entry); this.pending.push(entry);
     this.pump(); return entry.promise;
@@ -28,10 +29,20 @@ export class CardGlintRenderQueue {
       if(index<0)return;
       const [entry]=this.pending.splice(index,1), wasBackground=entry.background;
       this.running++; if(wasBackground)this.backgroundRunning++;
-      Promise.resolve().then(()=>this.paint(entry.face)).then(result=>{
+      // A shared render remains useful while any consumer still wants it.
+      // Check again after library loading, before costly composition begins.
+      const throwIfObsolete=()=>{
+        if([...entry.consumers].every(signal=>signal?.aborted))
+          throw new DOMException('Card frame superseded','AbortError');
+      };
+      Promise.resolve().then(()=>{
+        throwIfObsolete();
+        return this.paint(entry.face,{throwIfObsolete});
+      }).then(result=>{
         entry.bytes=result.canvas.width*result.canvas.height*4;
         this.bytes+=entry.bytes; entry.complete=true; entry.result=result; this.trim(); entry.resolve(result);
       },error=>{this.entries.delete(entry.key); entry.reject(error);}).finally(()=>{
+        entry.consumers=null;
         this.running--; if(wasBackground)this.backgroundRunning--; this.pump();
       });
     }

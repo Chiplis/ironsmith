@@ -269,7 +269,7 @@ impl NumberContext {
             source: Some(source),
             min,
             max,
-            authored_max: Some(max),
+            authored_max: (max != u32::MAX).then_some(max),
             description: "Choose value for X".to_string(),
             is_x_value: true,
             ui_hints: DecisionUiHints::default(),

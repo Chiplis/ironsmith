@@ -64,6 +64,9 @@ pub enum CombatAttachClauseError {
 
 #[derive(Debug, Clone, Copy)]
 pub enum CombatAttachClauseShape<'a> {
+    ImplicitSource {
+        target_tokens: &'a [OwnedLexToken],
+    },
     DestinationFirstTagged {
         tagged_tokens: &'a [OwnedLexToken],
         object_tokens: &'a [OwnedLexToken],
@@ -213,6 +216,9 @@ pub fn parse_combat_attach_clause_shape_lexed(
 
     if let Some(((), after_to)) = primitives::parse_prefix(tokens, primitives::kw("to").void()) {
         let rest = trim_lexed_commas(after_to);
+        if rest.first().is_some_and(|token| token.is_word("target")) {
+            return Ok(CombatAttachClauseShape::ImplicitSource { target_tokens: rest });
+        }
         if let Some(first) = rest.first()
             && exact_phrase(std::slice::from_ref(first), &[&["it"], &["them"]])
         {

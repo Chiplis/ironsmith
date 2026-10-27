@@ -36,7 +36,8 @@ export function cardBuildDraft(card) {
   const faces = card?.card_faces?.length ? card.card_faces : [card];
   const supertypes = new Set(['Legendary', 'Basic', 'Snow', 'World', 'Ongoing']);
   return {
-    layout: faces.length === 1 ? 'single' : card.layout === 'split' ? 'split' : 'transform_like',
+    layout: faces.length === 1 ? 'single' : ['split', 'aftermath', 'room'].includes(card.layout) ? 'split' : card.layout === 'prepare' ? 'prepare' : 'transform_like',
+    frameLayout: card.layout,
     hasFuse: (card.keywords || []).includes('Fuse'),
     faces: faces.map(face => {
       if (!face?.name || !face?.type_line) throw new Error('Card source is missing its name or type');

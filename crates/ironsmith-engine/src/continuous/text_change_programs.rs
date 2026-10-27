@@ -411,6 +411,7 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
             .map(|player| rewrite_player_filter_words(player, change)).transpose()?;
     });
     visit!(MoveToZoneEffect, model, {
+        model.entry_modifications = model.entry_modifications.iter().map(|modification| super::text_change_modifications::rewrite_modification_words(modification, change)).collect::<Result<_, _>>()?;
         model.target = rewrite_choose_spec_words(&model.target, change)?;
         model.actor_surface = model.actor_surface.as_ref().map(|player| rewrite_player_filter_words(player, change)).transpose()?;
         model.destination_player_surface = model.destination_player_surface.as_ref()
@@ -422,6 +423,15 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
             *player = rewrite_player_filter_words(player, change)?;
         }
         if let Some(types) = &mut model.entry_type_changes {
+            for entry_color in &mut types.color_changes {
+                let (ironsmith_core::effect::BattlefieldEntryColorChange::Add(colors)
+                    | ironsmith_core::effect::BattlefieldEntryColorChange::Set(colors)) = entry_color;
+                let mut filter = crate::target::ObjectFilter::default();
+                filter.colors = Some(*colors);
+                if let Some(rewritten) = rewrite_filter_words(&filter, change)?.colors {
+                    *colors = rewritten;
+                }
+            }
             let mut filter = crate::target::ObjectFilter::default();
             filter.subtypes = types.added_subtypes.clone();
             types.added_subtypes = rewrite_filter_words(&filter, change)?.subtypes;

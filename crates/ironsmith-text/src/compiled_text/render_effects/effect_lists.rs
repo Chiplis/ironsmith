@@ -12703,7 +12703,7 @@ fn describe_look_two_manifest_one_other_top_or_bottom(effects: &[Effect]) -> Opt
     let choose = structural_unwrap_render_wrappers(choose_effect)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let manifest = structural_unwrap_render_wrappers(manifest_effect)
-        .downcast_ref::<crate::effects::ManifestObjectsEffect>()?;
+        .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)?;
     let rest = structural_unwrap_render_wrappers(rest_effect)
         .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     let for_each = structural_unwrap_render_wrappers(for_each_effect)
@@ -16086,9 +16086,9 @@ fn describe_repeated_explore_pair(effects: &[Effect]) -> Option<String> {
         return None;
     };
     let first = structural_unwrap_render_wrappers(first_effect)
-        .downcast_ref::<crate::effects::ExploreEffect>()?;
+        .downcast_ref::<crate::effects::ExploreEffect>().filter(|effect| !effect.descriptive)?;
     let second = structural_unwrap_render_wrappers(second_effect)
-        .downcast_ref::<crate::effects::ExploreEffect>()?;
+        .downcast_ref::<crate::effects::ExploreEffect>().filter(|effect| !effect.descriptive)?;
     let repeats_first_result = effect_outer_tag(first_effect).is_some_and(|first_result_tag| {
         matches!(
             second.target.base(),
@@ -22991,7 +22991,7 @@ pub(in crate::compiled_text) fn refer_to_manifested_arrivals(
                 return manifests(&for_players.effects);
             }
             effect
-                .downcast_ref::<crate::effects::ManifestObjectsEffect>()
+                .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)
                 .is_some()
         })
     }

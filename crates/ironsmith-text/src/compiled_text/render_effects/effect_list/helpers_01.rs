@@ -802,6 +802,40 @@ pub(crate) fn describe_exiled_collection_opponent_split_you_choose_pile_bundle(
     ))
 }
 
+/// The frozen two-pile program (one player separates, another chooses a
+/// pile): "Choose pile 1" / "Choose pile 2" modes after the separation.
+pub(crate) fn describe_fixed_binary_pile_bundle(filtered: &[&Effect]) -> Option<String> {
+    fn inner(effect: &Effect) -> &Effect {
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map_or(effect, |tagged| inner(&tagged.effect))
+    }
+    let filtered = without_pile_grouping_record(filtered);
+    let (last, rest) = filtered.split_last()?;
+    let choose = last.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    let labels = choose.modes.iter().map(|mode| mode.source_text.as_str()).collect::<Vec<_>>();
+    if labels != ["Choose pile 1", "Choose pile 2"] {
+        return None;
+    }
+    let destroys = choose.modes.iter().all(|mode| matches!(mode.effects.as_slice(), [effect]
+        if inner(effect).downcast_ref::<crate::effects::DestroyNoRegenerationEffect>().is_some()));
+    if destroys {
+        return Some("Separate all creatures target player controls into two piles. Destroy all creatures in the pile of that player's choice. They can't be regenerated.".to_string());
+    }
+    let [exile_effect, ..] = rest else { return None; };
+    let exile = downcast_exile(exile_effect)?;
+    let opponent_chooses = rest.iter().any(|effect| effect
+        .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+        .is_some_and(|choice| choice.chooser == PlayerFilter::You && choice.filter == PlayerFilter::Opponent));
+    if exile.face_down || !opponent_chooses {
+        return None;
+    }
+    let exile_text = describe_effect(exile_effect).trim().trim_end_matches('.').to_string();
+    Some(format!(
+        "{exile_text}. An opponent separates those cards into two piles. Put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards."
+    ))
+}
+
 pub(crate) fn filter_has_not_tagged_constraint(filter: &ObjectFilter, tag: &str) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject

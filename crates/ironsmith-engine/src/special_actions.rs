@@ -46,16 +46,19 @@ pub enum TurnFaceUpMethod {
     DisguiseAbility,
     MegamorphAbility,
     PrintedManaCost,
+    DefinedAbility,
 }
 
 impl TurnFaceUpMethod {
     pub(crate) fn payment_reason(self) -> crate::costs::PaymentReason {
         use ironsmith_core::ManaTurnFaceUpMethod as Method;
+        if self == Self::DefinedAbility { return crate::costs::PaymentReason::TurnFaceUp; }
         crate::costs::PaymentReason::TurnFaceUpWithMethod(match self {
             Self::TurnFaceUpAbility => Method::Morph,
             Self::MegamorphAbility => Method::Megamorph,
             Self::DisguiseAbility => Method::Disguise,
             Self::PrintedManaCost => Method::PrintedManaCost,
+            Self::DefinedAbility => unreachable!(),
         })
     }
 
@@ -65,6 +68,7 @@ impl TurnFaceUpMethod {
             Self::DisguiseAbility => "disguise cost",
             Self::MegamorphAbility => "megamorph cost",
             Self::PrintedManaCost => "mana cost",
+            Self::DefinedAbility => "defined turn-face-up cost",
         }
     }
 }
@@ -84,7 +88,7 @@ fn turn_face_up_specs(
         append_turn_face_up_specs_from_abilities(&mut specs, &characteristics.abilities);
     }
 
-    if (game.is_manifested(object.id) || game.is_cloaked(object.id))
+    if game.has_printed_cost_turn_face_up_permission(object.id)
         && let Some(restore) = object.face_down_cast_state.as_ref()
         && restore.card_types.contains(&CardType::Creature)
         && let Some(cost) = restore.mana_cost.as_ref().map(|cost| cost.to_owned_value())
@@ -115,7 +119,9 @@ fn append_turn_face_up_specs_from_abilities(
             continue;
         };
         let candidate = TurnFaceUpSpec {
-            method: if static_ability.is_disguise() {
+            method: if static_ability.defined_face_down_ward().is_some() {
+                TurnFaceUpMethod::DefinedAbility
+            } else if static_ability.is_disguise() {
                 TurnFaceUpMethod::DisguiseAbility
             } else if static_ability.is_megamorph() {
                 TurnFaceUpMethod::MegamorphAbility
@@ -123,14 +129,16 @@ fn append_turn_face_up_specs_from_abilities(
                 TurnFaceUpMethod::TurnFaceUpAbility
             },
             cost: cost.clone(),
-            description: if static_ability.is_disguise() {
+            description: if static_ability.defined_face_down_ward().is_some() {
+                TurnFaceUpMethod::DefinedAbility.description()
+            } else if static_ability.is_disguise() {
                 TurnFaceUpMethod::DisguiseAbility.description()
             } else if static_ability.is_megamorph() {
                 TurnFaceUpMethod::MegamorphAbility.description()
             } else {
                 TurnFaceUpMethod::TurnFaceUpAbility.description()
             },
-            megamorph: static_ability.is_megamorph(),
+            megamorph: static_ability.turn_face_up_adds_counter(),
         };
         specs.push(candidate);
     }
@@ -417,6 +425,7 @@ fn foretell_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost
             crate::alternative_cast::AlternativeCastingMethod::Foretell { cost } => {
                 Some(cost.clone())
             }
+            method if method.prepares_face_down() => method.mana_cost().cloned(),
             _ => None,
         })
 }
@@ -491,7 +500,7 @@ fn plot_special_action_cost(
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
     let cost = plot_cost_for(game, player, object).ok_or(ActionError::NoSuchAbility)?;
     // "Plotting cards from your hand costs {N} less" reads only hand plots.
-    if object.zone != Zone::Hand {
+    if object.zone != Zone::Hand || object.alternative_casts.iter().any(|method| method.exile_preparation().is_some()) {
         return Ok(cost);
     }
     let checked =
@@ -2619,6 +2628,9 @@ fn foretell_special_action_quote(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(crate::mana::ManaCost, bool), ActionError> {
+    if let Some(price) = game.object(card_id).and_then(|object| object.alternative_casts.iter().find_map(|method| match method.exile_preparation() {
+        Some(ironsmith_core::alternative_cast_model::ExilePreparation::FaceDown { price }) => Some(price.clone()), _ => None,
+    })) { return Ok((price, false)); }
     let checked =
         game.continuous_query_snapshot()
             .map_err(|error| ActionError::ExecutionFailure {
@@ -2716,6 +2728,7 @@ fn perform_foretell(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
+    let descriptive = game.object(card_id).is_some_and(|object| object.alternative_casts.iter().any(|method| method.exile_preparation().is_some()));
     // A granted foretell cost is fixed as the card is foretold: the card
     // keeps it in exile even if the granting permanent leaves (CR 702.143).
     let granted_cost = match game.object(card_id) {
@@ -2737,7 +2750,8 @@ fn perform_foretell(
     game.set_face_down(new_id);
     game.grant_face_down_exile_view(new_id, player);
     game.set_foretold(new_id);
-    game.record_foretell_action(player);
+    if descriptive { game.mark_descriptive_exile_preparation(new_id); }
+    if !descriptive { game.record_foretell_action(player); }
     if let Some(cost) = granted_cost
         && let Some(object) = game.object_mut(new_id)
     {
@@ -2746,6 +2760,7 @@ fn perform_foretell(
             .push(crate::alternative_cast::AlternativeCastingMethod::Foretell { cost });
     }
 
+    if descriptive { return Ok(()); }
     // "Whenever you foretell a card" (CR 702.143a): the special action is the
     // keyword action that triggers.
     let action_provenance = game.provenance_graph_mut().alloc_root(
@@ -2795,6 +2810,7 @@ fn perform_plot(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
+    let descriptive = game.object(card_id).is_some_and(|object| object.alternative_casts.iter().any(|method| method.exile_preparation().is_some()));
     let action_provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source: card_id,
@@ -2810,6 +2826,8 @@ fn perform_plot(
         )
         .ok_or(ActionError::ObjectNotFound)?;
     game.set_plotted(new_id, player);
+    if descriptive { game.mark_descriptive_exile_preparation(new_id); }
+    if descriptive { return Ok(()); }
     let event_provenance = game
         .alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
     game.queue_trigger_event(
@@ -3097,6 +3115,13 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
     let object = game
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
+
+    if game.has_active_mana_ability_on(permanent_id) {
+        let locked = view.calculated_characteristics_arc(permanent_id)
+            .and_then(|chars| chars.abilities.origin(ability_index).cloned())
+            .is_none_or(|origin| game.mana_ability_occurrence_is_active(permanent_id, &origin));
+        if locked { return Err(ActionError::CantPayCost); }
+    }
 
     let precheck_started_at = crate::perf::PerfTimer::start();
     if !game.can_activate_abilities_of(permanent_id) || !game.can_activate_abilities(player) {
@@ -3485,7 +3510,8 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
 ) -> Result<CompletedManaActivation, ActionError> {
     let mut transaction_ctx =
         crate::effects::ExecutionContext::new(permanent_id, player, decision_maker);
-    crate::effects::composition::execute_transaction(
+    let mut active_guard = None;
+    let result = crate::effects::composition::execute_transaction(
         game,
         &mut transaction_ctx,
         CompletedManaActivation::default,
@@ -3509,6 +3535,17 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
             if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_runtime_mana_ability(game, permanent_id, player)
             {
+                let announced_origin = source_snapshot.ability_origins.as_ref()
+                    .and_then(|origins| origins.get(ability_index).cloned())
+                    .ok_or_else(|| ActionError::ExecutionFailure { source: permanent_id,
+                        error: crate::effects::ExecutionError::IncompleteEvidence("mana activation has no acquired ability identity".into()) })?;
+                let visibility_provenance = game.provenance_graph_mut().alloc_root(
+                    crate::provenance::ProvenanceNodeKind::EffectExecution { source: permanent_id, controller: player },
+                );
+                if !game.begin_mana_activation_guard(visibility_provenance, permanent_id, announced_origin) {
+                    return Err(ActionError::CantPayCost);
+                }
+                active_guard = Some(visibility_provenance);
                 let Some((total_cost, announced_x)) = prepare_mana_activation_cost(
                     game,
                     player,
@@ -3574,12 +3611,6 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                 }
                 game.begin_exhaust_activation(permanent_id, ability_index);
 
-                let visibility_provenance = game.provenance_graph_mut().alloc_root(
-                    crate::provenance::ProvenanceNodeKind::EffectExecution {
-                        source: permanent_id,
-                        controller: player,
-                    },
-                );
                 game.begin_library_top_announcement(
                     crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance),
                 );
@@ -3746,7 +3777,9 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                 Err(ActionError::NoSuchAbility)
             }
         },
-    )
+    );
+    if let Some(announcement) = active_guard { game.end_mana_activation_guard(announcement); }
+    result
 }
 
 fn mana_choice_costs_first(total_cost: crate::cost::TotalCost) -> crate::cost::TotalCost {

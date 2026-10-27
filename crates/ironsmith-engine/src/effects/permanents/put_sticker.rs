@@ -95,20 +95,27 @@ fn place_sheet_ability_sticker(
         .find(|entry| entry.id == sticker_id)
         .map_or(0, |entry| entry.ticket_cost);
     if !effect.without_paying_ticket_cost && cost > 0 {
-        let payment = crate::effects::RemoveCountersEffect::new(
-            ticket,
-            cost as i32,
-            ChooseSpec::SpecificPlayer(ctx.controller),
-        )
-        .execute_child(game, ctx)?;
-        if payment.count_or_zero() < i64::from(cost) {
-            return Ok(Some(EffectOutcome::impossible()));
-        }
+        if !pay_ticket_cost(game, ctx, cost)? { return Ok(Some(EffectOutcome::impossible())); }
+        if ctx.decision_maker.awaiting_choice() { return Ok(Some(EffectOutcome::count(0))); }
     }
     if game.apply_ability_sticker(object_id, sticker_id).is_none() {
         return Ok(Some(EffectOutcome::impossible()));
     }
     Ok(Some(EffectOutcome::with_objects(vec![object_id])))
+}
+
+/// A selected, affordable sticker starts one counter-payment instruction.
+/// CR 118.11: its nominal quantity acknowledges payment even when a
+/// replacement changes the number removed or replaces removal altogether.
+fn pay_ticket_cost(game: &mut GameState, ctx: &mut ExecutionContext, cost: u32) -> Result<bool, ExecutionError> {
+    let amount = i32::try_from(cost).map_err(|_| ExecutionError::UnresolvableValue("sticker ticket cost exceeds supported range".into()))?;
+    let payment = crate::effects::RemoveCountersEffect::new(
+        crate::object::CounterType::Named("ticket".into()), amount,
+        ChooseSpec::SpecificPlayer(ctx.controller),
+    ).execute_child(game, ctx)?;
+    if ctx.decision_maker.awaiting_choice() { return Ok(true); }
+    Ok(payment.status != crate::effect::OutcomeStatus::Impossible
+        && payment.requested_amount() == Some(u64::from(cost)))
 }
 
 fn place_sheet_pt_sticker(effect: &PutStickerEffect, game: &mut GameState,
@@ -127,10 +134,8 @@ fn place_sheet_pt_sticker(effect: &PutStickerEffect, game: &mut GameState,
     if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
     let cost = sheets.iter().find(|entry| entry.0 == id).map_or(0, |entry| entry.1);
     if !effect.without_paying_ticket_cost && cost > 0 {
-        let payment = crate::effects::RemoveCountersEffect::new(crate::object::CounterType::Named("ticket".into()),
-            i32::try_from(cost).map_err(|_| ExecutionError::UnresolvableValue("sticker ticket cost exceeds supported range".into()))?,
-            ChooseSpec::SpecificPlayer(ctx.controller)).execute_child(game, ctx)?;
-        if payment.count_or_zero() < i64::from(cost) { return Ok(EffectOutcome::impossible()); }
+        if !pay_ticket_cost(game, ctx, cost)? { return Ok(EffectOutcome::impossible()); }
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
     }
     Ok(if game.apply_pt_sticker(object_id, id).is_some() { EffectOutcome::with_objects(vec![object_id]) }
         else { EffectOutcome::impossible() })

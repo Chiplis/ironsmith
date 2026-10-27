@@ -3239,9 +3239,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Vanishing".to_string();
     }
-    if lower_compact.contains_lit("have cascade and cascade") {
-        return normalized.replace_lit("Cascade and Cascade", "Cascade, cascade");
-    }
     if let Some((cost, effect)) = normalized.split_once_lit(": ")
         && effect.eq_ignore_ascii_case("Each player draws a card. Each player discards a card.")
     {

@@ -2723,6 +2723,10 @@ fn creature_subtype_setting_fold<'a>(
 }
 
 pub(super) fn join_granted_ability_list(parts: &[String]) -> String {
+    if parts.first().is_some_and(|part| super::super::merge_passes::is_keyword_style_line(part))
+        && let Some(list) = render_repeated_keyword_list(parts) {
+        return format!("\"{list}.\"");
+    }
     // Oracle puts a list separator inside the closing quotation mark and
     // replaces a nonfinal quoted ability's terminal period with that comma.
     // Start with the ordinary list join so keyword and unquoted ability
@@ -2904,7 +2908,7 @@ pub(crate) fn describe_copy_exception_tail(
         granted_abilities.push("this ability".to_string());
     }
     if !granted_abilities.is_empty() {
-        parts.push(format!("it has {}", join_with_and(&granted_abilities)));
+        parts.push(format!("it has {}", join_granted_ability_list(&granted_abilities)));
     }
 
     match parts.len() {
@@ -3891,7 +3895,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 _ => text.clone(),
             })
             .collect::<Vec<_>>();
-        text.push_str(&join_with_and(&ability_text));
+        text.push_str(&join_granted_ability_list(&ability_text));
     }
     let adds_artifact_type = card_types.contains(&CardType::Artifact);
     let target_is_guaranteed_artifact = effect
@@ -6307,6 +6311,7 @@ fn describe_ability_kind_cause_protection(
     action: &str,
 ) -> String {
     let abilities = match cause.ability_kind {
+        Some(ironsmith_core::CauseAbilityKindFilter::ChampionTrigger) => "Champion triggered abilities",
         Some(ironsmith_core::CauseAbilityKindFilter::Activated) => "Activated abilities",
         Some(ironsmith_core::CauseAbilityKindFilter::ActivatedKeywordCost(_)) => "Activated keyword ability costs",
         Some(ironsmith_core::CauseAbilityKindFilter::ModularTrigger) => {
@@ -6450,6 +6455,8 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
                 ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
                 ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
+                ironsmith_core::ActivatedAbilityKeyword::Encore => "encore",
+                ironsmith_core::ActivatedAbilityKeyword::Fortify => "fortify",
             };
             if *filter == crate::target::ObjectFilter::default() {
                 format!("{keyword} abilities can't be activated")

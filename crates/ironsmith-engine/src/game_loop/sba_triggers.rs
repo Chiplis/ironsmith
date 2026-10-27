@@ -490,6 +490,27 @@ fn resolve_pending_hidden_draw_reveals(
 
     while let Some(pending) = game.next_pending_hidden_draw_reveal() {
         let (player, card) = (pending.player, pending.card);
+        if pending.announcement_deferred {
+            let mut drawn = pending.event.downcast::<crate::events::CardsDrawnEvent>()
+                .expect("pending draw reveal retains its draw event").clone();
+            let captured = match &drawn.miracle {
+                Some(crate::events::other::MiracleDrawDecision::Deferred(captured)) => captured.as_deref(),
+                _ => None,
+            };
+            let Some(decision) = crate::effects::cards::choose_deferred_miracle_as_drawn(game, card, player, captured, decision_maker)? else {
+                return Ok(true);
+            };
+            drawn.miracle = Some(decision);
+            game.finish_pending_hidden_draw_reveal(card);
+            for reveal in crate::effects::cards::miracle_reveal_event(game, &drawn, pending.event.provenance()) {
+                queue_triggers_from_event(game, trigger_queue, reveal, true);
+            }
+            let event = TriggerEvent::new_with_provenance(drawn, pending.event.provenance());
+            for trigger in crate::triggers::check_triggers(game, &event) {
+                if trigger.source == card { trigger_queue.add(trigger); }
+            }
+            continue;
+        }
         // Already opened publicly by another owner-answered reveal of this
         // draw: re-check its draw triggers without asking again.
         let revealed = if game.hidden_identity_is_private(card) {
@@ -1643,6 +1664,8 @@ fn target_requirements_from_explicit_choices(
 
             TargetRequirement {
                 spec: resolved_target_spec,
+                source_attachment: false,
+                announcement_tags: Vec::new(),
                 chooser: None,
                 legal_targets,
                 legal_target_sets,
@@ -2298,6 +2321,7 @@ pub(crate) fn announce_trigger_target_distributions(
         controller,
         x_value,
         None,
+        &entry.tagged_objects,
         &entry.targets,
         &entry.target_assignments,
         requirements,

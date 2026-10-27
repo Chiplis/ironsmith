@@ -331,7 +331,7 @@ fn qarsi_uses_exact_origin_and_announced_turn_up_method() {
             activate(&mut g, source);
             object(&mut g, "Mana cost: {1}\nType: Creature — Human\nPower/Toughness: 2/2\nMorph {1}\nMegamorph {1}\nDisguise {1}", Zone::Library, alice);
             let effect = ironsmith::effect::Effect::new(ironsmith::effects::ManifestTopCardOfLibraryEffect {
-                player: ironsmith_core::PlayerFilter::You, cloak,
+                player: ironsmith_core::PlayerFilter::You, cloak, descriptive: false,
             });
             let mut context = ironsmith::effects::EffectContext::new_default(source, alice);
             let outcome = ironsmith::effects::execute_effect(&mut g, &effect, &mut context).unwrap();

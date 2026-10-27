@@ -209,7 +209,7 @@ const CONVOKED_THIS_SPELL_TAG_PHRASES: &[&[&str]] = &[
     &["that", "convoked", "it"],
 ];
 const CREWED_IT_THIS_TURN_TAG_PHRASE: &[&str] = &["that", "crewed", "it", "this", "turn"];
-const SADDLED_IT_THIS_TURN_TAG_PHRASE: &[&str] = &["that", "saddled", "it", "this", "turn"];
+const SADDLED_IT_THIS_TURN_TAG_PHRASE: &[&str] = &["that", crate::keyword_forms::SADDLED, "it", "this", "turn"];
 const AMASSED_ARMY_TAG_PHRASES: &[&[&str]] = &[
     &["army", "you", "amassed"],
     &["amassed", "army"],
@@ -1212,8 +1212,8 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
     {
         filter.has_x_in_cost = true;
     }
-    if words.iter().any(|word| matches!(*word, "kicked" | "kick")) {
-        filter.ability_markers.push("kicked".to_string());
+    if words.iter().any(|word| matches!(*word, crate::keyword_forms::KICKED | "kick")) {
+        filter.ability_markers.push(crate::keyword_forms::KICKED.to_string());
     }
     let mut idx = 0usize;
     while idx < words.len() {

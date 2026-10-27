@@ -2650,6 +2650,7 @@ pub(super) fn compile_subject_verb_middle(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+            entry_grants,
             entry_type_changes,
             entry_counters,
             retained_reference_tags,
@@ -2765,7 +2766,9 @@ pub(super) fn compile_subject_verb_middle(
             let retained_reference_tags = retained_reference_tags.iter()
                 .map(|tag| resolve_it_tag_key(tag, &current_reference_env(ctx)))
                 .collect::<Result<Vec<_>, _>>()?;
+            let entry_modifications = lower_granted_ability_grant_modifications(entry_grants)?;
             let with_move_surfaces = |mut move_effect: crate::effects::MoveToZoneEffect| {
+                move_effect.entry_modifications = entry_modifications.clone();
                 move_effect.entry_type_changes = entry_type_changes.clone();
                 move_effect.enters_with_counters = entry_counters.clone();
                 move_effect.retained_reference_tags = retained_reference_tags.clone();
@@ -4294,6 +4297,7 @@ pub(super) fn compile_subject_verb_middle(
             Ok((compiled, choices))
         }
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+            without_mana_cost,
             object,
             count,
             player: action_player,
@@ -4338,7 +4342,7 @@ pub(super) fn compile_subject_verb_middle(
                 .map(|(_, source)| source.clone())
                 .unwrap_or(tag);
             let copy_source_tag = tag.clone();
-            let unmodified_copy = !*half_power_toughness_round_up
+            let unmodified_copy = !*without_mana_cost && !*half_power_toughness_round_up
                 && !*has_haste
                 && set_colors.is_none()
                 && added_colors.is_empty()
@@ -4361,6 +4365,7 @@ pub(super) fn compile_subject_verb_middle(
                 count,
                 player_filter,
             );
+            if *without_mana_cost { effect = effect.without_mana_cost(); }
             effect.entry_tapped_attacking_followup = *entry_tapped_attacking_followup;
             if *enters_tapped {
                 effect = effect.enters_tapped(true);
@@ -4486,6 +4491,7 @@ pub(super) fn compile_subject_verb_middle(
             Ok((compiled, choices))
         }
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+            without_mana_cost,
             source,
             count,
             player: action_player,
@@ -4569,7 +4575,7 @@ pub(super) fn compile_subject_verb_middle(
                 ChooseSpec::Tagged(tag) => Some(tag.clone()),
                 _ => None,
             };
-            let unmodified_copy = !*half_power_toughness_round_up
+            let unmodified_copy = !*without_mana_cost && !*half_power_toughness_round_up
                 && !*has_haste
                 && set_colors.is_none()
                 && added_colors.is_empty()
@@ -4599,6 +4605,7 @@ pub(super) fn compile_subject_verb_middle(
             };
             let mut effect =
                 crate::effects::CreateTokenCopyEffect::new(source_spec, count, player_filter);
+            if *without_mana_cost { effect = effect.without_mana_cost(); }
             effect.entry_tapped_attacking_followup = *entry_tapped_attacking_followup;
             if *enters_tapped {
                 effect = effect.enters_tapped(true);
@@ -4839,6 +4846,7 @@ pub(super) fn compile_subject_verb_middle(
 
             let compiled_mode = match mode {
                 RetargetModeAst::All => crate::effects::RetargetMode::All,
+                RetargetModeAst::One => crate::effects::RetargetMode::One,
                 RetargetModeAst::AllAtRandom => {
                     effect = effect.at_random();
                     crate::effects::RetargetMode::All

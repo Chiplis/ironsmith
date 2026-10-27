@@ -53,7 +53,7 @@ export default function HighlightedDecisionText({
         <SymbolText text={segments.before} style={{ whiteSpace: "inherit" }} />
       )}
       <span
-        className={onHighlightClick ? "decision-card-name-trigger" : undefined}
+        className={onHighlightClick ? "decision-object-name decision-card-name-trigger" : "decision-object-name"}
         style={highlightColor ? { color: highlightColor } : undefined}
         role={onHighlightClick ? "button" : undefined}
         tabIndex={onHighlightClick ? 0 : undefined}

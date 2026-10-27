@@ -1073,7 +1073,7 @@ pub fn fuse_program(program: &mut ResolutionProgram) {
         }
     }
     fuse_across_segment_boundaries(&mut segments);
-    *program = ResolutionProgram::new(segments);
+    program.replace_segments(segments);
 }
 
 #[cfg(test)]

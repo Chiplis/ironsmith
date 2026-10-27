@@ -75,11 +75,15 @@ fn conditional_draw_fallback_uses_actual_draw_result() {
                     crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
                 }
                 let eligible = matches!(counter_location, 1 | 4);
-                let drew = eligible && available && matches!(replacement_kind, 0 | 3);
-                assert_eq!(game.player(alice).unwrap().hand.len(), usize::from(drew));
+                // A "draw two instead" replacement still puts the card into
+                // the hand, but those draws aren't the replaced instruction's
+                // own draw (CR 121.6c), so the fallback still applies.
+                let in_hand = eligible && available && matches!(replacement_kind, 0 | 3);
+                let drew_this_way = eligible && available && replacement_kind == 0;
+                assert_eq!(game.player(alice).unwrap().hand.len(), usize::from(in_hand));
                 assert_eq!(
                     game.counter_count(source, CounterType::PlusOnePlusOne),
-                    u32::from(!drew),
+                    u32::from(!drew_this_way),
                     "counter={counter_location}, available={available}, replacement_kind={replacement_kind}"
                 );
                 assert_eq!(

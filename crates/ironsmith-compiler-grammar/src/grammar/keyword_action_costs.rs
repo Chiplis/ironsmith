@@ -671,12 +671,20 @@ enum CostBoundaryKind {
 fn parse_cost_boundary(tokens: &[OwnedLexToken], kind: CostBoundaryKind) -> usize {
     primitives::parse_prefix(tokens, move |input: &mut LexStream<'_>| {
         let initial_len = input.len();
+        let mut quoted = false;
+        let mut single_quoted = false;
         while let Some(token) = input.peek_token() {
-            let boundary = token.kind == TokenKind::Period
-                || (kind == CostBoundaryKind::EchoReminder
-                    && (token.kind == TokenKind::LParen || token.is_word("at")));
+            let boundary = !quoted && !single_quoted
+                && (token.kind == TokenKind::Period
+                    || (kind == CostBoundaryKind::EchoReminder
+                        && (token.kind == TokenKind::LParen || token.is_word("at"))));
             if boundary {
                 break;
+            }
+            match token.kind {
+                TokenKind::Quote if !single_quoted => quoted = !quoted,
+                TokenKind::Apostrophe if !quoted => single_quoted = !single_quoted,
+                _ => {}
             }
             any.parse_next(input)?;
         }

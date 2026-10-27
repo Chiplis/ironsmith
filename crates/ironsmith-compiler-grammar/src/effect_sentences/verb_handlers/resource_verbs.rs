@@ -1465,6 +1465,7 @@ fn parse_assimilate(tokens: &[OwnedLexToken], subject: Option<SubjectAst>) -> Re
             && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { entry_type_changes, entry_counters, .. }) = &mut effect.action
         {
             *entry_type_changes = Some(ironsmith_core::effect::BattlefieldEntryTypeChanges {
+                color_changes: Vec::new(),
                 added_card_types: vec![CardType::Artifact, CardType::Creature],
                 removed_subtype_families: vec![crate::types::SubtypeFamily::Creature],
                 added_subtypes: vec![Subtype::Borg],

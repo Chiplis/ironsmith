@@ -32,6 +32,8 @@ pub struct DrawnMiracleInstance {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DrawnMiraclePrice {
     Fixed(crate::mana::ManaCost),
+    /// Complete descriptive price, without acquiring Miracle identity.
+    Descriptive(crate::cost::TotalCost),
     ReducedManaCost {
         mana_cost: Option<crate::mana::ManaCost>,
         other_face_mana_cost: Option<crate::mana::ManaCost>,
@@ -41,8 +43,8 @@ pub enum DrawnMiraclePrice {
 
 /// The first draw's reveal entitlement is separate from the later permission
 /// to cast. The reveal owner independently chooses which linked instances to use.
-#[derive(Debug, Clone)]
-pub(crate) struct MiracleDrawOpportunity {
+#[derive(Debug, Clone, PartialEq)]
+pub struct MiracleDrawOpportunity {
     pub card: ObjectId,
     pub stable_id: StableId,
     pub player: PlayerId,
@@ -63,6 +65,8 @@ pub struct RevealedMiracle {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MiracleDrawDecision {
+    /// CR 121.8: the reveal window belongs after an enclosing announcement.
+    Deferred(Option<Box<MiracleDrawOpportunity>>),
     Declined,
     Revealed(RevealedMiracle),
     /// Independent accepted instances of the same first draw. The original
@@ -73,7 +77,7 @@ pub enum MiracleDrawDecision {
 impl MiracleDrawDecision {
     pub fn revealed_instances(&self) -> &[RevealedMiracle] {
         match self {
-            Self::Declined => &[],
+            Self::Deferred(_) | Self::Declined => &[],
             Self::Revealed(proof) => std::slice::from_ref(proof),
             Self::RevealedMany(proofs) => proofs,
         }

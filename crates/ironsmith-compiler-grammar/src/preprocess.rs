@@ -15,6 +15,9 @@ use crate::model::provenance::{
 };
 use crate::types::CardType;
 
+#[path = "preprocess/reminder_actions.rs"]
+mod reminder_actions;
+
 #[derive(Debug, Clone)]
 pub struct PreprocessedDocument {
     pub card: CardBuilder,
@@ -356,6 +359,23 @@ fn split_escapes_with_enters_this_way_line(line: &str) -> Option<Vec<String>> {
 }
 
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    let prose = line.to_ascii_lowercase();
+    if (prose.starts_with("as an additional cost to cast this spell, you may ")
+        && prose.contains("any number of times."))
+        || (prose.starts_with("you may pay an additional ") && prose.contains("as you cast this spell. if you do, when ")) {
+        return vec![line.to_owned()];
+    }
+    // Keep recognized complete programs intact; their later sentences define
+    // the same action, rather than independent abilities.
+    if crate::effect_sentences::parse_described_effect_bundle(line_tokens).ok().flatten().is_some()
+        || crate::grammar::shared_util::alternative_cost_lines::described_spell_text_substitution(line_tokens).is_some() {
+        return vec![line.to_owned()];
+    }
+    if prose.starts_with("as an additional cost to cast this spell, you may choose an opponent.")
+        && prose.contains("if this is a permanent,")
+        && prose.contains("if this is an instant or sorcery spell,") {
+        return vec![line.to_owned()];
+    }
     if let Some(rewritten) = rewrite_escapes_with_quoted_ability_line(line) {
         return vec![rewritten];
     }
@@ -2563,6 +2583,7 @@ pub fn preprocess_document_with_provenance(
             return Ok(None);
         }
 
+        let stripped = reminder_actions::strip_definition_header(&stripped);
         let Some(normalized) = normalize_line_for_parse(
             stripped.as_str(),
             full_name,
@@ -2582,6 +2603,11 @@ pub fn preprocess_document_with_provenance(
             rewrite_entry_instead_then_put_line(normalized.normalized.as_str());
         let expanded_normalized = expand_borrow_ability_line(entry_rewritten.as_str());
         let expanded_normalized = expand_recruit_keyword_line(expanded_normalized.as_str());
+        let expanded_normalized = reminder_actions::strip_global_payment_explanation(expanded_normalized.as_str());
+        let expanded_normalized = reminder_actions::expand_vehicle_payment(expanded_normalized.as_str());
+        let expanded_normalized = reminder_actions::strip_definition_header(expanded_normalized.as_str());
+        let expanded_normalized = reminder_actions::front_postposed_entry_trigger(expanded_normalized.as_str());
+        let expanded_normalized = reminder_actions::bind_last_counter_reference(expanded_normalized.as_str());
         let expanded_normalized = rewrite_any_type_cast_rider_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_commander_cost_subject_line(expanded_normalized.as_str());
         let expanded_normalized =
@@ -2787,7 +2813,9 @@ pub fn preprocess_document_with_provenance(
         }
 
         let line_tokens = stage_tokens(line).unwrap_or_default();
-        let variants = expand_do_all_of_the_above_line(line, text.lines().take(line_index))
+        let variants = reminder_actions::expand_attachment_pair(line)
+            .or_else(|| reminder_actions::expand_counter_threshold_activation(line))
+            .or_else(|| expand_do_all_of_the_above_line(line, text.lines().take(line_index)))
             .or_else(|| {
                 expand_gains_this_cards_other_abilities_line(line, line_index, text.lines())
                     .map(|expanded| vec![expanded])
@@ -3339,4 +3367,12 @@ fn authored_pronoun_retry_keeps_original_spans_and_literal_names() {
     assert!(!rewritten.iter().any(|token| token.is_word("she")));
     let tokens = lex_line("Create a token named \"He\".", 0).unwrap();
     assert_eq!(rewrite_personal_pronouns_tokens(&tokens), tokens);
+}
+
+/// Reuse the action grammar for a complete described face-down operation.
+/// The caller must retain its descriptive provenance after recognition.
+pub(crate) fn described_face_down_action(text: &str) -> Option<String> {
+    if text.split(|c: char| !c.is_alphabetic()).any(|word| word.eq_ignore_ascii_case("manifest") || word.eq_ignore_ascii_case("cloak")) { return None; }
+    let expanded = reminder_actions::canonicalize(text);
+    (expanded != text).then_some(expanded)
 }

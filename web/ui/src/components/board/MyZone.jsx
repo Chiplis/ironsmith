@@ -281,6 +281,7 @@ export default function MyZone({
   zoneActionRailOffset = 0,
   dockStackRail = false,
   stackAdjacentControls = null,
+  zonePriorityControls = null,
   hidePriorityHold = false,
   hideHeader = false,
   mobileBattleScene = false,
@@ -936,6 +937,7 @@ export default function MyZone({
             player={player}
             onCardClick={handleCardClick}
             legalTargetObjectIds={legalTargetObjectIds}
+            priorityControls={zonePriorityControls}
             leadingRail={(
               // Same vertical mana rail the opponents use, at the height of
               // Graveyard/Exile on the left edge. Only the focused desktop HUD

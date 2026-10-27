@@ -354,7 +354,7 @@ pub(super) fn select_mode_program(
         .unwrap_or(ctx.controller);
     let mut max_modes = resolve_value(game, &effect.choose_count, ctx)?.max(0) as usize;
     let mut min_modes = resolve_value(game, &effect.min_choose_count, ctx)?.max(0) as usize;
-    if ctx.optional_costs_paid.was_entwined() {
+    if ctx.optional_costs_paid.paid_to_choose_all_modes() {
         max_modes = effect.modes.len();
         min_modes = effect.modes.len();
     } else if let Some(range) = effect.conditional_mode_range.as_ref()
@@ -383,7 +383,7 @@ pub(super) fn select_mode_program(
     // Modes announced as the ability was activated or put on the stack
     // (CR 602.2b, 603.3c) were checked and recorded then; they stay chosen
     // even though that choice now counts as "previously chosen".
-    let modes_were_announced = effect.chooser.is_none() && ctx.chosen_modes.is_some();
+    let modes_were_announced = effect.chooser.is_none() && (effect.announced_modes.is_some() || ctx.chosen_modes.is_some());
     let mut payable_modes = vec![true; effect.modes.len()];
     if matches!(purpose, crate::effects::EffectExecutionPurpose::Payment) {
         let reason = ctx.mana.payment_reason.unwrap_or(crate::costs::PaymentReason::Effect);
@@ -420,7 +420,7 @@ pub(super) fn select_mode_program(
     // Per MTG rule 601.2b, modes are chosen during casting (before targets).
     // Check if modes were pre-chosen during the casting process.
     let chosen_indices: Vec<usize> = if effect.chooser.is_none()
-        && let Some(ref pre_chosen) = ctx.chosen_modes
+        && let Some(pre_chosen) = effect.announced_modes.as_ref().or(ctx.chosen_modes.as_ref())
     {
         pre_chosen.clone()
     } else if effect.random {

@@ -207,3 +207,20 @@ impl EffectExecutor for DesignationProgram {
         result
     }
 }
+
+impl EffectExecutor for ironsmith_core::SetPermanentDesignationEffect {
+    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            let targets = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
+            let mut changed = Vec::new();
+            for id in targets {
+                if game.is_phased_out(id) { continue; }
+                match self.designation {
+                    ironsmith_core::PermanentDesignation::Harnessed => if game.harness(id) { changed.push(id); },
+                }
+            }
+            Ok(EffectOutcome::with_objects(changed))
+        })
+    }
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> { Some(&self.target) }
+}

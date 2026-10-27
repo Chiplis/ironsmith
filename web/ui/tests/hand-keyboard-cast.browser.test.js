@@ -56,6 +56,90 @@ async function harness(fixtureState = state) {
   };
 }
 
+test("number shortcuts inspect multi-digit hand positions without casting", { timeout: 120000 }, async () => {
+  const large = structuredClone(state);
+  large.players[0].hand_cards = Array.from({ length: 12 }, (_, i) => ({ ...bears, id: 100 + i }));
+  large.decision.actions = [];
+  const { page, casts, errors, close } = await harness(large);
+  const selected = () => page.evaluate(() => document.activeElement?.getAttribute('data-object-id'));
+  try {
+    await page.keyboard.press('1');
+    assert.equal(await selected(), '100');
+    await page.keyboard.press('1');
+    assert.equal(await selected(), '110');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('1');
+    await page.keyboard.press('0');
+    assert.equal(await selected(), '109');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('1');
+    await page.waitForTimeout(750);
+    await page.keyboard.press('1');
+    assert.equal(await selected(), '100', 'expired prefix starts a new number');
+    await page.keyboard.press('9');
+    assert.equal(await selected(), '108', 'out-of-range 19 starts a new number');
+    await page.keyboard.press('Control+2');
+    assert.equal(await selected(), '108');
+    await page.evaluate(() => {
+      const input = document.createElement('input');
+      input.id = 'typing-test';
+      document.body.append(input);
+      input.focus();
+    });
+    await page.keyboard.type('11');
+    assert.equal(await page.locator('#typing-test').inputValue(), '11');
+    assert.equal(await selected(), null);
+    await page.evaluate(() => {
+      document.activeElement.blur();
+      const dialog = document.createElement('dialog');
+      document.body.append(dialog);
+      dialog.showModal();
+    });
+    await page.keyboard.press('1');
+    assert.equal(await selected(), null, 'dialogs keep number keys');
+    assert.deepEqual(await casts(), []);
+    assert.deepEqual(errors, []);
+  } finally { await close(); }
+});
+
+test("small hands select single digits immediately", { timeout: 120000 }, async () => {
+  const { page, casts, close } = await harness();
+  try {
+    await page.keyboard.press('1');
+    await page.keyboard.press('2');
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-object-id')), '8');
+    assert.deepEqual(await casts(), []);
+  } finally { await close(); }
+});
+
+test("Ctrl raises the numbered hand until period closes it", { timeout: 120000 }, async () => {
+  const large = structuredClone(state);
+  large.players[0].hand_cards = Array.from({ length: 12 }, (_, i) => ({ ...bears, id: 100 + i }));
+  const { page, casts, errors, close } = await harness(large);
+  try {
+    assert.equal(await page.locator('.hand-card-number').count(), 0);
+    await page.keyboard.press('Control');
+    assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'true');
+    assert.deepEqual(await page.locator('.hand-card-number').allTextContents(), Array.from({ length: 12 }, (_, i) => String(i + 1)));
+    assert.equal(await page.locator('.hand-card-number').first().isVisible(), true);
+    await page.keyboard.press('1');
+    await page.keyboard.press('1');
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-object-id')), '110');
+    await page.keyboard.press('.');
+    assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'false');
+    assert.equal(await page.locator('.hand-card-number').count(), 0);
+    await page.evaluate(() => {
+      const input = document.createElement('input');
+      document.body.append(input);
+      input.focus();
+    });
+    await page.keyboard.press('Control');
+    assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'false');
+    assert.deepEqual(await casts(), []);
+    assert.deepEqual(errors, []);
+  } finally { await close(); }
+});
+
 test("timing-legal hand cards are white and clickable until payment is proven", async () => {
   const pending = structuredClone(state);
   pending.decision.actions[0].payment_proven = false;

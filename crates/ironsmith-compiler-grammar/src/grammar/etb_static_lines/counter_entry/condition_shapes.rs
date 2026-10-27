@@ -42,10 +42,10 @@ fn parse_fixed_counter_condition_shape<'a>(
             .value(EntersWithCounterConditionShape::SourceWasCast),
         (
             alt((
-                primitives::phrase(&["this", "spell", "was", "kicked"]),
-                primitives::phrase(&["this", "creature", "was", "kicked"]),
-                primitives::phrase(&["this", "permanent", "was", "kicked"]),
-                primitives::phrase(&["it", "was", "kicked"]),
+                primitives::phrase(&["this", "spell", "was", crate::keyword_forms::KICKED]),
+                primitives::phrase(&["this", "creature", "was", crate::keyword_forms::KICKED]),
+                primitives::phrase(&["this", "permanent", "was", crate::keyword_forms::KICKED]),
+                primitives::phrase(&["it", "was", crate::keyword_forms::KICKED]),
             )),
             primitives::sentence_end(),
         )

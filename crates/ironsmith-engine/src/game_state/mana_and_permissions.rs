@@ -175,7 +175,7 @@ impl GameState {
             return Ok(false);
         }
         self.update_replacement_effects()?;
-        let pins = self
+        let pins: Vec<_> = self
             .effect_store
             .replacement_effects
             .static_ability_effects()
@@ -185,9 +185,12 @@ impl GameState {
             })
             .cloned()
             .collect();
+        let attachments = pins.iter().filter_map(|effect| {
+            self.object(effect.source).map(|object| (effect.source, object.attached_to))
+        }).collect();
         self.effect_store
             .replacement_effects
-            .set_simultaneous_static_pins(Some(pins));
+            .set_simultaneous_static_pins(Some(pins), attachments);
         Ok(true)
     }
 
@@ -200,7 +203,7 @@ impl GameState {
         }
         self.effect_store
             .replacement_effects
-            .set_simultaneous_static_pins(None);
+            .set_simultaneous_static_pins(None, Default::default());
         self.update_replacement_effects()
     }
 
@@ -288,6 +291,16 @@ impl GameState {
             if self.grant_citys_blessings_from_permanent_ascend()
                 | self.grant_enduring_stories_from_permanent_storied()
             {
+                self.update_static_ability_effects()?;
+                self.update_cant_effects();
+                self.reconcile_continuous_control_changes();
+                self.update_replacement_effects()?;
+                self.update_cant_effects();
+            }
+
+            while self.reconcile_soulbond_pairs() | self.reconcile_library_top_identity() {
+                // Pair-dependent grants must disappear in this same immutable
+                // world, before a following instruction can restore a type.
                 self.update_static_ability_effects()?;
                 self.update_cant_effects();
                 self.reconcile_continuous_control_changes();
@@ -573,92 +586,56 @@ impl GameState {
         }
     }
 
-    /// Storied: a controller of a Storied permanent who controls three or more
-    /// artifacts, legendaries, and/or Sagas gets an enduring story.
-    fn grant_enduring_stories_from_permanent_storied(&mut self) -> bool {
-        let storied_controllers = self
-            .battlefield
-            .iter()
-            .copied()
-            .filter(|&object_id| !self.is_phased_out(object_id))
-            .filter(|&object_id| {
-                self.current_has_static_ability_id(
-                    object_id,
-                    crate::static_abilities::StaticAbilityId::Storied,
-                )
-            })
-            .filter_map(|object_id| self.controller_of_id(object_id))
-            .collect::<HashSet<_>>();
+    /// Whether this spell allows another player to help pay generic mana.
+    /// Kept separate from the Assist identity used by keyword selectors.
+    pub fn spell_allows_other_player_generic_payment(&self, spell: crate::ids::ObjectId) -> bool {
+        self.current_has_static_ability_id(spell, crate::static_abilities::StaticAbilityId::Assist)
+            || self.current_characteristics(spell).is_some_and(|current| current.static_abilities.iter().any(|ability|
+                ability.is_active(self, spell) && ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::AnotherPlayerPaysGeneric)
+            ))
+    }
 
-        let newly_storied = storied_controllers
-            .into_iter()
-            .filter(|&player| {
-                !self.has_enduring_story(player)
-                    && self
-                        .battlefield
-                        .iter()
-                        .copied()
-                        .filter(|&object_id| !self.is_phased_out(object_id))
-                        .filter(|&object_id| self.controller_of_id(object_id) == Some(player))
-                        .filter(|&object_id| {
-                            self.current_card_types(object_id).is_some_and(|types| {
-                                types.contains(&crate::types::CardType::Artifact)
-                            }) || self.current_has_supertype(
-                                object_id,
-                                crate::types::Supertype::Legendary,
-                            ) || self.current_subtypes(object_id).is_some_and(|subtypes| {
-                                subtypes.contains(&crate::types::Subtype::Saga)
-                            })
-                        })
-                        .count()
-                        >= 3
-            })
-            .collect::<Vec<_>>();
-
-        for player in &newly_storied {
-            self.grant_enduring_story(*player);
+    /// Continuous designation grants share the count operation, while their
+    /// source ability identity remains independent from the designation.
+    fn grant_count_designations(&mut self, enduring_story: bool) -> bool {
+        let grants = self.battlefield.iter().copied()
+            .filter(|id| !self.is_phased_out(*id))
+            .flat_map(|id| {
+                let Some(controller) = self.controller_of_id(id) else { return Vec::new(); };
+                let Some(characteristics) = self.current_characteristics(id) else { return Vec::new(); };
+                characteristics.static_abilities.iter().filter_map(|ability| {
+                    if !ability.is_active(self, id) { return None; }
+                    let (minimum, historic_only, story) = match ability.keyword_marker_mechanic() {
+                        Some(ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story }) => (minimum, historic_only, enduring_story),
+                        _ if ability.id() == crate::static_abilities::StaticAbilityId::Ascend => (10, false, false),
+                        _ if ability.id() == crate::static_abilities::StaticAbilityId::Storied => (3, true, true),
+                        _ => return None,
+                    };
+                    (story == enduring_story).then_some((controller, minimum, historic_only))
+                }).collect::<Vec<_>>()
+            }).collect::<Vec<_>>();
+        let recipients = grants.into_iter().filter_map(|(player, minimum, historic_only)| {
+            if if enduring_story { self.has_enduring_story(player) } else { self.has_citys_blessing(player) } { return None; }
+            let count = self.battlefield.iter().copied().filter(|id| {
+                !self.is_phased_out(*id) && self.controller_of_id(*id) == Some(player)
+                    && (!historic_only || self.current_card_types(*id).is_some_and(|t| t.contains(&crate::types::CardType::Artifact))
+                        || self.current_has_supertype(*id, crate::types::Supertype::Legendary)
+                        || self.current_subtypes(*id).is_some_and(|t| t.contains(&crate::types::Subtype::Saga)))
+            }).count();
+            (count >= minimum as usize).then_some(player)
+        }).collect::<HashSet<_>>();
+        for player in &recipients {
+            if enduring_story { self.grant_enduring_story(*player); } else { self.grant_citys_blessing(*player); }
         }
-        !newly_storied.is_empty()
+        !recipients.is_empty()
+    }
+
+    fn grant_enduring_stories_from_permanent_storied(&mut self) -> bool {
+        self.grant_count_designations(true)
     }
 
     fn grant_citys_blessings_from_permanent_ascend(&mut self) -> bool {
-        let ascend_controllers = self
-            .battlefield
-            .iter()
-            .copied()
-            // CR 702.26b: a phased-out permanent's Ascend doesn't function,
-            // and phased-out permanents aren't counted.
-            .filter(|&object_id| {
-                !self.is_phased_out(object_id)
-                    && self.current_has_static_ability_id(
-                        object_id,
-                        crate::static_abilities::StaticAbilityId::Ascend,
-                    )
-            })
-            .filter_map(|object_id| self.controller_of_id(object_id))
-            .collect::<HashSet<_>>();
-
-        let newly_blessed = ascend_controllers
-            .into_iter()
-            .filter(|&player| {
-                !self.has_citys_blessing(player)
-                    && self
-                        .battlefield
-                        .iter()
-                        .copied()
-                        .filter(|&object_id| {
-                            !self.is_phased_out(object_id)
-                                && self.controller_of_id(object_id) == Some(player)
-                        })
-                        .count()
-                        >= 10
-            })
-            .collect::<Vec<_>>();
-
-        for player in &newly_blessed {
-            self.grant_citys_blessing(*player);
-        }
-        !newly_blessed.is_empty()
+        self.grant_count_designations(false)
     }
 
     pub fn library_top_revision(&self, player: PlayerId) -> u64 {
@@ -1157,7 +1134,7 @@ impl GameState {
     fn modification_may_introduce_payment_restriction(modification: &Modification) -> bool {
         match modification {
             Modification::Restriction(_) => true,
-            Modification::CopyOf { .. }
+            Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
             | Modification::SetTextBox(_) => true,
@@ -1268,7 +1245,7 @@ impl GameState {
 
     fn modification_may_change_enter_as_copy_presence(modification: &Modification) -> bool {
         match modification {
-            Modification::CopyOf { .. }
+            Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
@@ -1476,7 +1453,7 @@ impl GameState {
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
         match modification {
-            Modification::CopyOf { .. }
+            Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
             | Modification::SetTextBox(_) => true,
@@ -4721,7 +4698,7 @@ impl GameState {
             // Rewrites the whole ability list or text box, so triggered
             // abilities can appear or disappear. SetAbilities replaces the
             // existing list even when it only sets static abilities.
-            Modification::CopyOf { .. }
+            Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
             | Modification::SetTextBox(_)

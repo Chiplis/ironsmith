@@ -65,15 +65,41 @@ pub(super) fn face_down_selection(group: &mut ViewedGroup, sentence: &SentenceIn
         )
     });
     match shape.remainder {
-        LookedFaceDownRemainder::Bottom(order) => {
+        LookedFaceDownRemainder::Graveyard => {
+            // Re-query the viewed group in the library after moving the
+            // selection, so the chosen card is never also sent to the graveyard.
+            let rest_tag = helper_tag_for_tokens(sentence.lowered(), "face_down_rest");
+            let mut rest_filter = ObjectFilter::tagged(group.tag.clone());
+            rest_filter.zone = Some(Zone::Library);
+            rest_filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                tag: selected_tag.key.clone(),
+                relation: crate::target::TaggedOpbjectRelation::IsNotTaggedObject,
+            });
             group
                 .effects
-                .push(EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                .push(EffectAst::subject_verb_tag_matching_objects(
+                    rest_filter,
+                    vec![Zone::Library],
+                    crate::tag::TagRef::of(rest_tag.clone()),
+                ));
+            group.effects.push(EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(crate::tag::TagRef::of(rest_tag), None),
+                Zone::Graveyard,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            ));
+        }
+        LookedFaceDownRemainder::Bottom(order) => {
+            group.effects.push(
+                EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                     crate::tag::TagRef::of(group.tag.clone()),
                     Some(crate::tag::TagRef::of(selected_tag.clone())),
                     order,
                     group.remainder_player,
-                ));
+                ),
+            );
         }
         LookedFaceDownRemainder::TopOrBottom => {
             // The looked-at cards still in the library after the face-down
@@ -81,15 +107,21 @@ pub(super) fn face_down_selection(group: &mut ViewedGroup, sentence: &SentenceIn
             let rest_tag = helper_tag_for_tokens(sentence.lowered(), "face_down_rest");
             let mut rest_filter = ObjectFilter::tagged(group.tag.clone());
             rest_filter.zone = Some(Zone::Library);
-            group.effects.push(EffectAst::subject_verb_tag_matching_objects(
-                rest_filter,
-                vec![Zone::Library],
-                crate::tag::TagRef::of(rest_tag.clone()),
-            ));
-            group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                tag: crate::tag::TagRef::of(rest_tag),
-                effects: vec![EffectAst::subject_verb_move_to_library_top_or_bottom_choice(it())],
-            }));
+            group
+                .effects
+                .push(EffectAst::subject_verb_tag_matching_objects(
+                    rest_filter,
+                    vec![Zone::Library],
+                    crate::tag::TagRef::of(rest_tag.clone()),
+                ));
+            group
+                .effects
+                .push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                    tag: crate::tag::TagRef::of(rest_tag),
+                    effects: vec![
+                        EffectAst::subject_verb_move_to_library_top_or_bottom_choice(it()),
+                    ],
+                }));
         }
     }
     group.selected = Some(selected_tag.key.clone());

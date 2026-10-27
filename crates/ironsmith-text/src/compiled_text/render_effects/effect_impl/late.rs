@@ -500,7 +500,7 @@
             Some(choose_mode.modes.len()),
         );
         if choose_mode.spree {
-            header = "Spree (Choose one or more additional costs.)".to_string();
+            header = if choose_mode.descriptive_mode_costs { "Choose one or more additional costs" } else { "Spree (Choose one or more additional costs.)" }.to_string();
         }
         if let Some(chooser) = &choose_mode.cast_chooser
             && let Some(rest) = header.strip_prefix("Choose ")
@@ -517,7 +517,7 @@
             header = format!("You may choose {rest}");
         }
         if choose_mode.tiered {
-            header = "Tiered (Choose one additional cost.)".to_string();
+            header = if choose_mode.descriptive_mode_costs { "Choose one additional cost" } else { "Tiered (Choose one additional cost.)" }.to_string();
             // "Until end of turn, target creature you control gains ... and
             // has the chosen base power and toughness. • Galian Beast — {0} —
             // 3/2." (Vincent's Limit Break): every tier runs the same program
@@ -1662,9 +1662,16 @@
         } else {
             (describe_value(&earthbend.counters), String::new())
         };
+        if earthbend.descriptive {
+            return format!("{} becomes a 0/0 creature with haste that's still a land. Put {amount} +1/+1 counters on it{where_x}. When it dies or is exiled, return it to the battlefield tapped under your control", describe_choose_spec(&earthbend.target));
+        }
         return format!("Earthbend {amount}{where_x}");
     }
     if let Some(explore) = effect.downcast_ref::<crate::effects::ExploreEffect>() {
+        if explore.descriptive {
+            let subject = if matches!(explore.target.base(), ChooseSpec::Source) { "this creature".to_owned() } else { describe_choose_spec(&explore.target) };
+            return format!("Reveal the top card of your library. Put that card into your hand if it's a land. Otherwise, put a +1/+1 counter on {subject}, then put the card back or put it into your graveyard");
+        }
         if let Some(surface) = explore.target.source_reference_surface() {
             return format!(
                 "{} explores",
@@ -1679,6 +1686,9 @@
     }
     if let Some(behold) = effect.downcast_ref::<crate::effects::BeholdEffect>() {
         let subtype_name = behold.subtype.to_string();
+        if behold.descriptive {
+            return format!("Choose {} you control or reveal {} card from your hand", with_indefinite_article(&subtype_name), with_indefinite_article(&subtype_name));
+        }
         if behold.count == 1 {
             return format!("Behold {}", with_indefinite_article(&subtype_name));
         }
@@ -1716,6 +1726,10 @@
         };
     }
     if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestObjectsEffect>() {
+        if manifest.descriptive {
+            return format!("Put {} onto the battlefield face down{} as a 2/2 creature{}. Turn it face up any time for its mana cost if it's a creature card.", describe_choose_spec(&manifest.target), if manifest.tapped { " tapped" } else { "" }, if manifest.cloak { " with ward {2}" } else { "" });
+        }
+
         let action = if manifest.cloak { "cloak" } else { "manifest" };
         let target = describe_choose_spec(&manifest.target);
         let mut text = if manifest.controller == PlayerFilter::You {
@@ -1733,6 +1747,10 @@
     }
     if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
     {
+        if manifest.descriptive {
+            return format!("Put the top card of your library onto the battlefield face down as a 2/2 creature{}. Turn it face up any time for its mana cost if it's a creature card.", if manifest.cloak { " with ward {2}" } else { "" });
+        }
+
         let owner = match manifest.player {
             crate::filter::PlayerFilter::TargetPlayerOrControllerOfTarget => {
                 "that player's".to_string()
@@ -1776,11 +1794,10 @@
         };
         return text;
     }
-    if effect
-        .downcast_ref::<crate::effects::CipherEffect>()
-        .is_some()
-    {
-        return "Cipher".to_string();
+    if let Some(effect) = effect.downcast_ref::<crate::effects::CipherEffect>() {
+        return if effect.descriptive {
+            "You may exile this spell card encoded on a creature you control. Whenever that creature deals combat damage to a player, its controller may cast a copy of the encoded card without paying its mana cost".into()
+        } else { "Cipher".into() };
     }
     if effect
         .downcast_ref::<crate::effects::CastEncodedCardCopyEffect>()
@@ -1790,6 +1807,7 @@
             .to_string();
     }
     if let Some(backup) = effect.downcast_ref::<crate::effects::BackupEffect>() {
+        if backup.descriptive { return format!("Put {} +1/+1 counters on target creature. If that's another creature, it gains the following abilities until end of turn", backup.amount); }
         return format!("Backup {}", backup.amount);
     }
     if let Some(bolster) = effect.downcast_ref::<crate::effects::BolsterEffect>() {
@@ -1818,11 +1836,8 @@
     if let Some(adapt) = effect.downcast_ref::<crate::effects::AdaptEffect>() {
         return format!("Adapt {}", adapt.amount);
     }
-    if effect
-        .downcast_ref::<crate::effects::AuraSwapEffect>()
-        .is_some()
-    {
-        return "Aura swap".to_string();
+    if let Some(exchange) = effect.downcast_ref::<crate::effects::AuraSwapEffect>() {
+        return if exchange.descriptive { "You may exchange this permanent with an Aura card in your hand".to_string() } else { "Aura swap".to_string() };
     }
     if effect
         .downcast_ref::<crate::effects::CounterAbilityEffect>()
@@ -1832,6 +1847,9 @@
     }
     if let Some(regenerate) = effect.downcast_ref::<crate::effects::RegenerateEffect>() {
         let mut target = describe_choose_spec(&regenerate.target);
+        if regenerate.ordinary_destruction_replacement {
+            return format!("The next time {target} would be destroyed this turn, instead tap it, remove it from combat, and remove all damage marked on it");
+        }
         if regenerate.remove_damage_only {
             return format!(
                 "The next time {target} would be destroyed this turn, remove all damage marked on it instead"
@@ -2760,6 +2778,10 @@
         };
     }
     if let Some(incubate) = effect.downcast_ref::<crate::effects::IncubateEffect>() {
+        if incubate.descriptive {
+            return format!("Create {} Incubator token(s), each with {} +1/+1 counters on it and \"{{2}}: Transform this token.\" It transforms into a 0/0 Phyrexian artifact creature.", describe_value(&incubate.count), describe_value(&incubate.amount));
+        }
+
         let player = describe_player_filter(&incubate.controller);
         let amount_uses_where = value_prefers_where_x(&incubate.amount);
         let count_uses_where = value_prefers_where_x(&incubate.count);
@@ -2816,6 +2838,7 @@
         } else {
             (describe_value(&collect.amount), String::new())
         };
+        if collect.ordinary_exile { return format!("Exile cards with total mana value {amount} or greater from your graveyard{where_x}"); }
         return format!("Collect evidence {amount}{where_x}");
     }
     if let Some(empower) = effect.downcast_ref::<crate::effects::EmpowerJaceEffect>() {
@@ -2838,6 +2861,10 @@
         } else {
             (describe_value(&amass.amount), String::new())
         };
+        if amass.descriptive {
+            let subtype = amass.subtype.unwrap_or(crate::types::Subtype::Zombie);
+            return format!("Put {amount} +1/+1 counters on an Army creature you control{where_x}. It's also a {subtype}. If you don't control an Army creature, create a 0/0 black {subtype} Army creature token first");
+        }
         if let Some(player) = amass.player.as_ref() {
             let subject = describe_player_filter(player);
             let subtype = amass
@@ -2950,6 +2977,9 @@
         };
     }
     if let Some(connive) = effect.downcast_ref::<crate::effects::ConniveEffect>() {
+        if connive.descriptive {
+            return format!("The controller of {} draws {}, then discards that many cards. Put a +1/+1 counter on that permanent for each nonland card discarded this way", describe_choose_spec(&connive.target), describe_value(&connive.count));
+        }
         let target = describe_choose_spec(&connive.target);
         let subject = if connive.target.count().is_single() {
             target
@@ -3372,6 +3402,9 @@
         };
     }
     if let Some(monstrosity) = effect.downcast_ref::<crate::effects::MonstrosityEffect>() {
+        if monstrosity.descriptive {
+            return format!("If this creature isn't monstrous, put {} +1/+1 counters on it and it becomes monstrous", describe_value(&monstrosity.n));
+        }
         if value_prefers_where_x(&monstrosity.n)
             && let Some(basis) = describe_where_x_basis(&monstrosity.n)
         {
@@ -3690,6 +3723,7 @@
                 let fixed_text = describe_choose_spec(spec);
                 format!("Change a target of {target_text} to {fixed_text}")
             }
+            crate::effects::RetargetMode::One => format!("Change a target of {target_text}"),
             // "The copy targets that creature": every target becomes it.
             crate::effects::RetargetMode::AllToFixed(spec) => {
                 let fixed_text = describe_choose_spec(spec);
@@ -5207,6 +5241,7 @@
         );
     }
     if let Some(venture) = effect.downcast_ref::<crate::effects::VentureIntoDungeonEffect>() {
+        if venture.descriptive { return "If you don't own a dungeon in the command zone, choose a dungeon from outside the game, put it into the command zone, and put your marker on its first room. Otherwise, move your marker to an adjacent room following an arrow. If your marker is in the final room, first remove that dungeon from the game and complete it, then start a new dungeon".to_string(); }
         if venture.player == crate::target::PlayerFilter::You {
             return "Venture into the dungeon".to_string();
         }
@@ -7596,6 +7631,10 @@
         return parts.join(" ");
     }
     if let Some(clash) = effect.downcast_ref::<crate::effects::ClashEffect>() {
+        if clash.descriptive {
+            let opponent = match clash.opponent_mode { crate::effects::ClashOpponentMode::AnyOpponent => "an opponent", crate::effects::ClashOpponentMode::TargetOpponent => "target opponent", crate::effects::ClashOpponentMode::DefendingPlayer => "defending player" };
+            return format!("You and {opponent} each reveal the top card of your library, then each puts that card on their choice of the top or bottom. A player wins if their card had a greater mana value");
+        }
         return match &clash.opponent_mode {
             crate::effects::ClashOpponentMode::AnyOpponent => "Clash with an opponent".to_string(),
             crate::effects::ClashOpponentMode::TargetOpponent => {
@@ -7656,6 +7695,7 @@
         return "Evolve".to_string();
     }
     if let Some(amplify) = effect.downcast_ref::<crate::effects::AmplifyEffect>() {
+        if amplify.descriptive { return format!("Reveal any number of cards from your hand that share a creature type with this creature. It enters with {} +1/+1 counters on it for each card revealed this way.", amplify.amount); }
         return format!("Amplify {}", amplify.amount);
     }
     if let Some(devour) = effect.downcast_ref::<crate::effects::DevourEffect>() {
@@ -9430,11 +9470,10 @@
             crate::effects::DayNightDesignation::Night => "It becomes night".to_string(),
         };
     }
-    if effect
-        .downcast_ref::<crate::effects::UnearthEffect>()
-        .is_some()
-    {
-        return "Unearth".to_string();
+    if let Some(reanimation) = effect.downcast_ref::<crate::effects::UnearthEffect>() {
+        return if reanimation.descriptive {
+            "Return this card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield".to_string()
+        } else { "Unearth".to_string() };
     }
     if let Some(may_move) = effect.downcast_ref::<crate::effects::MayMoveToZoneEffect>() {
         let destination = match may_move.zone {
@@ -9782,6 +9821,7 @@
             && let [only] = repeat.effects.as_slice()
             && let Some(manifest) = unwrap_tag_wrapped_effect(only)
                 .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+            && !manifest.descriptive
             && manifest.player == PlayerFilter::You
         {
             let verb = if manifest.cloak { "Cloak" } else { "Manifest" };
@@ -10064,6 +10104,9 @@
             Value::Fixed(2) => format!("{repeated} twice"),
             _ => format!("{repeated} {} times", describe_value(&repeat.count)),
         };
+    }
+    if let Some(designation) = effect.downcast_ref::<crate::effects::SetPermanentDesignationEffect>() {
+        return match designation.designation { ironsmith_core::PermanentDesignation::Harnessed => format!("If {} isn't harnessed, it becomes harnessed", describe_choose_spec(&designation.target)) };
     }
     if let Some(keyword) = effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>() {
         if keyword.action == crate::events::KeywordActionKind::Harness && keyword.amount == 1 {

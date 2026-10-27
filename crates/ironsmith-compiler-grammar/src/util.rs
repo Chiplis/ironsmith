@@ -1024,6 +1024,15 @@ pub fn trim_commas(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     tokens[start..end].to_vec()
 }
 
+/// Trim statement separators without discarding a closing quote belonging to
+/// text inside the statement (for example a text-changing instruction).
+pub fn trim_statement_separators(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let separator = |token: &OwnedLexToken| matches!(token.kind, TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon);
+    let start = tokens.iter().position(|token| !separator(token)).unwrap_or(tokens.len());
+    let end = tokens.iter().rposition(|token| !separator(token)).map_or(start, |i| i + 1);
+    &tokens[start..end]
+}
+
 pub fn trim_edge_punctuation_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut start = 0usize;
     let mut end = tokens.len();
@@ -3212,6 +3221,7 @@ pub fn parse_warp_line(
         parse_activation_cost(&tail[..end])?
     };
     Ok(Some(AlternativeCastingMethod::Warp {
+        descriptive: false,
         cost,
         additional_cost,
     }))

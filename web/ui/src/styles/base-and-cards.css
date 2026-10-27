@@ -3990,3 +3990,8 @@
   .card-forge-layout-art-row { grid-column: 1 / -1; }
   .card-forge-side { grid-template-rows: minmax(0, auto) minmax(180px, 1fr); }
 }
+
+/* Give the crop preview room while editing inside the Build workbench. */
+.card-forge-layout-art-row:has(.custom-card-art-crop) {
+  grid-template-columns: minmax(0, 1fr);
+}

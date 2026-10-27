@@ -397,13 +397,13 @@ fn parse_kicked_targets_lexed<'a>(
         1..,
         any.void(),
         peek(primitives::phrase(&[
-            "for", "each", "time", "this", "spell", "was", "kicked",
+            "for", "each", "time", "this", "spell", "was", crate::keyword_forms::KICKED,
         ])),
     )
     .map(|((), _)| ())
     .take()
     .parse_next(input)?;
-    primitives::phrase(&["for", "each", "time", "this", "spell", "was", "kicked"])
+    primitives::phrase(&["for", "each", "time", "this", "spell", "was", crate::keyword_forms::KICKED])
         .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     if canonical_target_words(first_target_tokens)

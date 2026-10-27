@@ -336,7 +336,7 @@ fn describe_proliferate_choose_phase_out_this_way(effects: &[Effect]) -> Option<
     let proliferate = tagged
         .effect
         .downcast_ref::<crate::effects::ProliferateEffect>()?;
-    if proliferate.count != Value::Fixed(1) {
+    if proliferate.ordinary_counter_placement || proliferate.count != Value::Fixed(1) {
         return None;
     }
 

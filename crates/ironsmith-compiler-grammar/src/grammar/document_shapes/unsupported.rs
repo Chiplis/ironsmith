@@ -152,7 +152,7 @@ const RULES: &[UnsupportedRule] = &[
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &["if", "this", "creature", "isnt", "saddled", "this", "turn"],
+        phrase: &["if", "this", "creature", "isnt", crate::keyword_forms::SADDLED, "this", "turn"],
         kind: UnsupportedRewriteLineKind::SaddledConditional,
     },
     UnsupportedRule {

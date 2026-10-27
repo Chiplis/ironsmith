@@ -161,6 +161,20 @@ pub(super) fn parse_activated_line_impl(
     line: &RewriteActivatedLine,
     original_effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<ParsedActivatedLine, CardTextError> {
+    let mut body_without_cost_modifier = Vec::new();
+    let mut reduce_by_source_mana_cost_on_entry_turn = false;
+    for sentence in split_lexed_sentences(original_effect_parse_tokens) {
+        let prose = crate::lexer::render_token_slice(sentence).to_ascii_lowercase();
+        if prose.trim_end_matches('.').trim() == "if this permanent entered this turn, this ability's cost is reduced by this permanent's mana cost" {
+            reduce_by_source_mana_cost_on_entry_turn = true;
+        } else {
+            body_without_cost_modifier.extend_from_slice(sentence);
+            body_without_cost_modifier.extend(crate::lexer::lex_line(".", 0)?);
+        }
+    }
+    let original_effect_parse_tokens = if reduce_by_source_mana_cost_on_entry_turn {
+        body_without_cost_modifier.as_slice()
+    } else { original_effect_parse_tokens };
     let linked_copy_effects = crate::effect_sentences::parse_linked_card_copy_with_announced_x(original_effect_parse_tokens)?;
     let x_definition_value = if linked_copy_effects.is_some() { None } else {
         activated_x_definition_value(original_effect_parse_tokens)
@@ -193,7 +207,7 @@ pub(super) fn parse_activated_line_impl(
     } else {
         normalized_cost
     };
-    let normalized_cost = if line.presentation_kind
+    let normalized_cost = if reduce_by_source_mana_cost_on_entry_turn || line.presentation_kind
         == Some(crate::ir::ActivatedPresentationKind::PowerUp)
     {
         normalized_cost
@@ -241,7 +255,9 @@ pub(super) fn parse_activated_line_impl(
                 .is_some_and(|timing| timing != ActivationTiming::AnyTime)
         })
         .and_then(|idx| restrictions.activation[idx].timing);
-    let activation_timing = if is_forecast {
+    let activation_timing = if line.info.raw_line.to_ascii_lowercase().contains("return an unblocked attacker you control") {
+        ActivationTiming::DuringCombat
+    } else if is_forecast {
         ActivationTiming::DuringSourceOwnersUpkeep
     } else if line.timing_hint != ActivationTiming::AnyTime {
         line.timing_hint
@@ -480,5 +496,14 @@ pub(super) fn activated_presentation_display(line: &RewriteActivatedLine) -> Opt
 pub(super) fn infer_rewrite_activated_functional_zones(
     line: &RewriteActivatedLine,
 ) -> Result<Vec<Zone>, CardTextError> {
+    let text = line.info.raw_line.to_ascii_lowercase();
+    if text.contains("return an unblocked attacker you control") {
+        if text.contains("put this card onto the battlefield from your hand or the command zone tapped and attacking") {
+            return Ok(vec![Zone::Hand, Zone::Command]);
+        }
+        if text.contains("put this card onto the battlefield from your hand tapped and attacking") {
+            return Ok(vec![Zone::Hand]);
+        }
+    }
     Ok(line.functional_zones.clone())
 }

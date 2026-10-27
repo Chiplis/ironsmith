@@ -2,7 +2,7 @@
 
 use crate::effect::{EffectOutcome, OutcomeValue};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+use crate::events::processing::{TraitEventResult, TraitEventProcessingState, process_trait_event_with_execution_context_and_state};
 use crate::events::{Event, KeywordActionEvent};
 use crate::game_state::GameState;
 
@@ -92,7 +92,8 @@ pub(crate) fn execute_keyword_action_with_outputs<'a>(
                     )
                 })?
                 .action;
-            let processed = process_trait_event_with_execution_context(game, event, ctx)?;
+            let mut application_history = TraitEventProcessingState::default();
+            let processed = process_trait_event_with_execution_context_and_state(game, event, ctx, &mut application_history)?;
             crate::effects::replacement::execute_event_expansion_with_outputs(
                 game,
                 ctx,
@@ -169,9 +170,18 @@ pub(crate) fn execute_keyword_action_with_outputs<'a>(
                                 unit.amount = 1;
                             }
                             let controller = ctx.controller;
+                            let replacement_scope = ctx.replacement.clone();
+                            // A replacement of a whole draw instruction has
+                            // already applied to each draw contained in it.
+                            // Nested replacement draws must not apply it again.
+                            if kind == crate::events::KeywordActionKind::DrawCards {
+                                ctx.replacement.suppressed_replacement_effects.extend(application_history.applied_effects.iter().copied());
+                                ctx.replacement.suppressed_replacement_effect_keys.extend(application_history.applied_effect_keys.iter().cloned());
+                            }
                             ctx.controller = action.player;
                             let result = body(game, ctx, &unit);
                             ctx.controller = controller;
+                            ctx.replacement = replacement_scope;
                             let child = result?;
                             children.push(child.outcome.clone());
                             outputs.retain_owned_child(child);

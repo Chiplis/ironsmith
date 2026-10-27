@@ -819,3 +819,83 @@ mod additional_contract_tests {
         check_additional_mill(3);
     }
 }
+
+#[cfg(test)]
+mod replacement_subject_contract_tests {
+    use super::*;
+
+    #[test]
+    fn a_replacement_mill_supplies_every_tagged_card_to_the_following_action() {
+        use crate::cards::builders::CardDefinitionBuilder;
+        use crate::events::zones::matchers::WouldChangeZoneMatcher;
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        use crate::{CardId, CardType, Effect, ObjectFilter, ChooseSpec};
+        for player in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let card = CardDefinitionBuilder::new(CardId::new(), "Replacement mill subject")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_definition(&card, player, Zone::Battlefield);
+            for _ in 0..3 { game.create_object_from_definition(&card, player, Zone::Library); }
+            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+                source, player,
+                WouldChangeZoneMatcher::new(ObjectFilter::default(), Some(Zone::Library), Some(Zone::Graveyard)),
+                ReplacementAction::Instead(vec![Effect::new(MillEffect::new(2, PlayerFilter::Specific(player)))]),
+            ));
+            let mut ctx = ExecutionContext::new_default(source, player);
+            let outcome = crate::effects::execute_effect(&mut game, &Effect::mill(1).tag("milled"), &mut ctx).unwrap();
+            assert_eq!(outcome.output_objects().len(), 2);
+            let cards = ctx.get_tagged_all(&crate::tag::TagKey::from("milled")).unwrap();
+            assert_eq!(cards.len(), 2);
+            assert!(cards.iter().all(|card| card.zone == Zone::Graveyard));
+            crate::effects::execute_effect(&mut game, &Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::tagged("milled"), Zone::Exile, false,
+            )), &mut ctx).unwrap();
+            assert!(game.player(player).unwrap().graveyard.is_empty());
+            assert_eq!(game.exile.len(), 2);
+            assert_eq!(game.player(player).unwrap().library.len(), 1);
+            game.validate_zone_consistency().unwrap();
+        }
+    }
+
+    #[test]
+    fn simultaneous_replacement_mills_keep_each_players_followup_local() {
+        use crate::cards::builders::CardDefinitionBuilder;
+        use crate::events::zones::matchers::WouldChangeZoneMatcher;
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        use crate::{CardId, CardType, Effect, ObjectFilter, ChooseSpec};
+        for sequential in [false, true] {
+            let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+            let card = CardDefinitionBuilder::new(CardId::new(), "Mill participant")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_definition(&card, PlayerId::from_index(0), Zone::Battlefield);
+            for index in 0..3 {
+                let player = PlayerId::from_index(index);
+                for _ in 0..5 { game.create_object_from_definition(&card, player, Zone::Library); }
+                game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+                    source, player,
+                    WouldChangeZoneMatcher::new(ObjectFilter::default().owned_by(PlayerFilter::Specific(player)), Some(Zone::Library), Some(Zone::Graveyard)),
+                    ReplacementAction::Instead(vec![Effect::new(MillEffect::new(i32::from(index) + 1, PlayerFilter::Specific(player)))]),
+                ));
+            }
+            let mut each = crate::effects::ForPlayersEffect::new(PlayerFilter::Any, vec![
+                Effect::new(MillEffect::new(1, PlayerFilter::IteratedPlayer)).tag("milled"),
+                Effect::gain_life_player(Value::TaggedSnapshotCount {
+                    tag: "milled".into(), filter: ObjectFilter::default(),
+                }, ChooseSpec::Player(PlayerFilter::IteratedPlayer)),
+                Effect::new(crate::effects::MoveToZoneEffect::new(ChooseSpec::tagged("milled"), Zone::Exile, false)),
+            ]);
+            each.sequential = sequential;
+            let mut ctx = ExecutionContext::new_default(source, PlayerId::from_index(0));
+            crate::effects::execute_effect(&mut game, &Effect::new(each), &mut ctx).unwrap();
+            for index in 0..3 {
+                let player = PlayerId::from_index(index);
+                assert_eq!(game.player(player).unwrap().life, 21 + i32::from(index), "participant={index}, sequential={sequential}");
+                assert_eq!(game.player(player).unwrap().library.len(), 4 - usize::from(index));
+                assert!(game.player(player).unwrap().graveyard.is_empty());
+                assert_eq!(game.exile.iter().filter(|id| game.object(**id).unwrap().owner == player).count(), usize::from(index) + 1);
+            }
+            game.validate_zone_consistency().unwrap();
+        }
+    }
+
+}

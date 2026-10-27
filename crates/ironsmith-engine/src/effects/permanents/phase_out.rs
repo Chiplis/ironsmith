@@ -96,6 +96,17 @@ impl EffectExecutor for PhaseOutEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let duration_event_already_occurred = match self.duration {
+            PhaseOutDuration::UntilSourceUntapsOrLeaves => game.duration_event_occurred(ctx.duration_window_start, |event| {
+                event.downcast::<crate::events::PermanentUntappedEvent>().is_some_and(|event| event.permanent == ctx.source)
+                    || event.downcast::<crate::events::ZoneChangeEvent>().is_some_and(|event| event.from == Zone::Battlefield && event.to != Zone::Battlefield && event.objects.contains(&ctx.source))
+            })?,
+            PhaseOutDuration::UntilVisitRollAtMost(maximum) => game.duration_event_occurred(ctx.duration_window_start, |event| {
+                event.downcast::<crate::events::other::DieRolledEvent>().is_some_and(|event| event.is_attraction_visit && event.player == ctx.controller && event.result <= maximum)
+            })?,
+            _ => false,
+        };
+        if duration_event_already_occurred { return Ok(EffectOutcome::count(0)); }
         if self.duration.is_until_source_leaves()
             && source_not_on_battlefield(game, ctx.source)
         {

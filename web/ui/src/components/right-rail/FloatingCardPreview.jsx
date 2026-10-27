@@ -84,7 +84,7 @@ function objectFamilyIds(state, objectId) {
 
 // Include every expanded pile, not just the hovered card's source zone.
 function previewObstacleBounds() {
-  return [...document.querySelectorAll(".zone-pile-menu, .battlefield-human-action-dock, .desktop-mana-payment, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions, .decision-main-button, .decision-submit-button, .decision-cancel-button, .combat-decision-actions, .mana-payment-editor, .mana-payment-warning-details")]
+  return [...document.querySelectorAll("[data-decision-menu], .priority-inline-panel, .zone-pile-menu, .battlefield-human-action-dock, .desktop-mana-payment, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions, .decision-main-button, .decision-submit-button, .decision-cancel-button, .combat-decision-actions, .mana-payment-editor, .mana-payment-warning-details")]
     .filter(element => getComputedStyle(element).visibility !== "hidden")
     .map(element => element.getBoundingClientRect())
     .filter(rect => rect.width > 0 && rect.height > 0);
@@ -115,8 +115,16 @@ function zoneAnchoredPreviewPosition(anchorRect, objectId, size) {
     : zonePreviewLayout(anchorRect, size);
 }
 
+function decisionPreviewSource(objectId) {
+  if (objectId == null || typeof document === "undefined") return null;
+  return [...document.querySelectorAll("[data-decision-option-object]:hover, [data-decision-option-object]:focus-visible")]
+    .find(element => element.dataset.decisionOptionObject === String(objectId));
+}
+
 function previewPosition(objectId, size, frames = 1) {
   if (objectId == null || typeof document === "undefined" || typeof window === "undefined") return null;
+  const decisionSource = decisionPreviewSource(objectId);
+  if (decisionSource) return battlefieldPreviewLayout(decisionSource.getBoundingClientRect(), size, frames);
   const candidates = Array.from(document.querySelectorAll(".game-card[data-object-id], [data-zone-card][data-object-id], .opponent-hand-card[data-object-id]"))
     .filter((element) => element.getAttribute("data-object-id") === String(objectId));
   const source = candidates.find((element) => element.classList.contains("battlefield-row-card"))
@@ -352,7 +360,8 @@ function CardPreviewSurface({
     && !(cardStackMode && typeof document !== "undefined" && document.querySelector(".stack-card:hover"))
     && hoveredObjectId != null
     && !manaPaymentActions.has(Number(hoveredObjectId))
-    && canHoverInspectorObject(state, hoveredObjectId)
+    && (canHoverInspectorObject(state, hoveredObjectId)
+      || (decisionPreviewSource(hoveredObjectId) && objectExistsInState(state, hoveredObjectId)))
     && (isFieldObject(hoveredObjectId) || !excludedIds.has(String(hoveredObjectId)))
   ) ? String(hoveredObjectId) : null;
   const directHandHover = useMemo(() => {
@@ -616,6 +625,8 @@ function CardPreviewSurface({
     return () => cancelAnimationFrame(frame);
   }, [renderedObjectId, stackPreview]);
   const positionStyle = (() => {
+      const decisionSource = decisionPreviewSource(renderedObjectId);
+      if (decisionSource) return battlefieldPreviewLayout(decisionSource.getBoundingClientRect(), size, previewFrames);
       if (anchoredObjectId != null && renderedObjectId === anchoredObjectId) {
         if (anchoredCardPreview?.placement === "zone") {
           return zoneAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, size);

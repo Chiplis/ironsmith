@@ -47,7 +47,7 @@ fn execute_token_instruction_with_outputs(
             game,
             ctx,
             counters.clone(),
-            Some((KeywordActionKind::Incubate, amount)),
+            (!effect.descriptive).then_some((KeywordActionKind::Incubate, amount)),
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(

@@ -4,6 +4,7 @@
 //! such as tapping, untapping, monstrosity, regeneration, and transformation.
 
 use crate::filter::ObjectFilterExt;
+use crate::effects::ExecutionContext;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::object::{AttachmentTarget, AuraAttachmentFilterRuntimeExt};
@@ -162,10 +163,39 @@ fn player_has_composed_protection_from_object(
         })
 }
 
+pub(crate) fn aura_enchant_restrictions_allow_target(
+    game: &GameState,
+    aura: ObjectId,
+    target: AttachmentTarget,
+) -> bool {
+    let Some(object) = game.object(aura) else { return false; };
+    if !game.calculated_subtypes(aura).contains(&Subtype::Aura) {
+        return true;
+    }
+    let context = game.filter_context_for(game.controller_of(object), Some(aura));
+    if let Some(chars) = game.current_characteristics(aura) {
+        let filters = chars.static_abilities.iter()
+            .filter_map(|ability| ability.enchant_filter()).collect::<Vec<_>>();
+        return !filters.is_empty()
+            && filters.iter().all(|filter| filter.matches_target(target, &context, game));
+    }
+    object.aura_attach_filter_owned()
+        .is_some_and(|filter| filter.matches_target(target, &context, game))
+}
+
 pub(crate) fn attachment_can_attach_to_target(
     game: &GameState,
     attachment_id: ObjectId,
     target: AttachmentTarget,
+) -> bool {
+    attachment_can_attach_to_target_with_permission(game, attachment_id, target, false)
+}
+
+fn attachment_can_attach_to_target_with_permission(
+    game: &GameState,
+    attachment_id: ObjectId,
+    target: AttachmentTarget,
+    equip_planeswalker: bool,
 ) -> bool {
     if matches!(target, AttachmentTarget::Object(target_id) if attachment_id == target_id) {
         return false;
@@ -215,21 +245,7 @@ pub(crate) fn attachment_can_attach_to_target(
         {
             return false;
         }
-        let filter_ctx = game.filter_context_for(attachment_controller, Some(attachment_id));
-        if let Some(chars) = game.current_characteristics(attachment_id) {
-            let filters = chars
-                .static_abilities
-                .iter()
-                .filter_map(|ability| ability.enchant_filter())
-                .collect::<Vec<_>>();
-            return !filters.is_empty()
-                && filters
-                    .iter()
-                    .all(|filter| filter.matches_target(target, &filter_ctx, game));
-        }
-        return attachment
-            .aura_attach_filter_owned()
-            .is_some_and(|filter| filter.matches_target(target, &filter_ctx, game));
+        return aura_enchant_restrictions_allow_target(game, attachment_id, target);
     }
 
     if !game.attachment_target_exists_on_battlefield(target) {
@@ -253,12 +269,11 @@ pub(crate) fn attachment_can_attach_to_target(
                 .object(target_id)
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game)));
         }
-        // "Equip planeswalker {1}" (Luxior, Giada's Gift): an Equipment whose
-        // own equip ability targets planeswalkers can attach to one; its
-        // static then makes the equipped permanent a creature.
+        // CR 702.6e/609.4: this exception belongs to the resolving equip
+        // instruction. Ordinary ongoing attachment checks receive no exception.
         if let AttachmentTarget::Object(target_id) = target
             && game.object_has_card_type(target_id, CardType::Planeswalker)
-            && equipment_equips_planeswalkers(game, attachment_id)
+            && equip_planeswalker
         {
             return true;
         }
@@ -275,29 +290,53 @@ pub(crate) fn attachment_can_attach_to_target(
     false
 }
 
-fn equipment_equips_planeswalkers(game: &GameState, attachment_id: ObjectId) -> bool {
+fn resolving_equip_planeswalker(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    attachment_id: ObjectId,
+) -> bool {
+    if attachment_id != ctx.source { return false; }
+    let selected = match ctx.source_snapshot.as_ref() {
+        Some(snapshot) => {
+            let index = match &ctx.activation_origin {
+                Some(origin) => snapshot.ability_origins.as_ref()
+                    .and_then(|origins| origins.iter().position(|member| member == origin)),
+                None => ctx.ability_index,
+            };
+            index.and_then(|index| snapshot.abilities.get(index).cloned())
+        }
+        None => ctx.ability_index.and_then(|index| game.current_ability(attachment_id, index)),
+    };
+    let Some(crate::ability::Ability { kind: crate::ability::AbilityKind::Activated(activated), .. }) = selected else { return false; };
+    if activated.keyword != Some(ironsmith_core::ActivatedAbilityKeyword::Equip) { return false; }
     let targets_planeswalkers = |spec: &crate::target::ChooseSpec| {
         matches!(spec.base(), crate::target::ChooseSpec::Object(filter)
             if filter.card_types.contains(&CardType::Planeswalker))
     };
-    game.calculated_characteristics(attachment_id)
-        .is_some_and(|chars| {
-            chars.abilities.iter().any(|ability| {
-                matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
-                if activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Equip)
-                    && activated.effects.iter().any(|effect| {
-                        effect
-                            .downcast_ref::<crate::effects::AttachToEffect>()
-                            .is_some_and(|attach| targets_planeswalkers(&attach.target))
-                            || effect
-                                .downcast_ref::<crate::effects::AttachObjectsEffect>()
-                                .is_some_and(|attach| targets_planeswalkers(&attach.target))
-                    }))
-            })
-        })
+    activated.effects.iter().any(|effect| {
+        effect.downcast_ref::<crate::effects::AttachToEffect>().is_some_and(|attach| targets_planeswalkers(&attach.target))
+            || effect.downcast_ref::<crate::effects::AttachObjectsEffect>().is_some_and(|attach| targets_planeswalkers(&attach.target))
+    })
+}
+
+pub(super) fn attachment_can_attach_during_effect(
+    game: &GameState, ctx: &ExecutionContext, attachment: ObjectId, target: AttachmentTarget,
+) -> bool {
+    attachment_can_attach_to_target_with_permission(game, attachment, target,
+        resolving_equip_planeswalker(game, ctx, attachment))
+}
+
+pub(super) fn attach_battlefield_object_during_effect(
+    game: &mut GameState, ctx: &ExecutionContext, attachment: ObjectId, target: AttachmentTarget,
+) -> bool {
+    let permission = resolving_equip_planeswalker(game, ctx, attachment);
+    attach_battlefield_object_with_permission(game, attachment, target, permission)
 }
 
 fn attachment_has_reconfigure_ability(game: &GameState, attachment_id: ObjectId) -> bool {
+    if crate::derived_view::DerivedGameView::new(game).object_has_keyword_marker_mechanic(
+        attachment_id, ironsmith_core::KeywordMarkerMechanic::AttachWhileCreature,
+    ) { return true; }
     game.calculated_characteristics(attachment_id)
         .is_some_and(|chars| {
             chars.abilities.iter().any(|ability| {
@@ -314,7 +353,13 @@ pub(crate) fn attach_battlefield_object_to_target(
     attachment_id: ObjectId,
     target: AttachmentTarget,
 ) -> bool {
-    if !attachment_can_attach_to_target(game, attachment_id, target) {
+    attach_battlefield_object_with_permission(game, attachment_id, target, false)
+}
+
+fn attach_battlefield_object_with_permission(
+    game: &mut GameState, attachment_id: ObjectId, target: AttachmentTarget, equip_planeswalker: bool,
+) -> bool {
+    if !attachment_can_attach_to_target_with_permission(game, attachment_id, target, equip_planeswalker) {
         return false;
     }
     if let AttachmentTarget::Object(target_id) = target
@@ -623,3 +668,6 @@ pub(crate) mod face_down_entry;
 
 mod contributor_selection;
 pub(crate) use contributor_selection::stations_using_toughness;
+
+#[cfg(test)]
+mod equip_permission_tests;

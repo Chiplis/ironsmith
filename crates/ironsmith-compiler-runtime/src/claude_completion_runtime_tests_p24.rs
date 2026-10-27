@@ -241,3 +241,128 @@ fn word_of_command_play_uses_only_the_players_land_mana() {
         assert_eq!(game.controlling_player_for(bob), bob);
     }
 }
+
+/// Unlike the default decision maker (which silently cancels an unfunded
+/// plan), a browser suspends on every payment prompt. That distinction is
+/// essential to reproduce the Word of Command softlock.
+#[derive(Default)]
+struct P24PaymentPrompt {
+    suspend: bool,
+    awaiting: bool,
+    payments: Vec<(PlayerId, PlayerId, bool)>,
+}
+
+impl ironsmith::decision::DecisionMaker for P24PaymentPrompt {
+    fn awaiting_choice(&self) -> bool {
+        self.awaiting
+    }
+
+    fn decide_mana_payment(
+        &mut self,
+        game: &GameState,
+        ctx: &ironsmith::decisions::context::ManaPaymentContext,
+    ) -> ironsmith::mana_payment::ManaPaymentResponse {
+        self.payments.push((ctx.player, game.controlling_player_for(ctx.player), ctx.plan.payable));
+        self.awaiting = self.suspend;
+        ironsmith::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: ctx.plan.id,
+            request_hash: ctx.plan.request_hash,
+        }
+    }
+}
+
+fn p24_interactive_payment_case(land_count: usize, floating: bool, payable: bool) {
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::mana::{ManaCost, ManaSymbol};
+    use ironsmith::types::CardType;
+
+    // Exercise both native and browser/deferred planning. Restore the thread's
+    // setting even when an assertion unwinds.
+    struct RestorePlanning(bool);
+    impl Drop for RestorePlanning {
+        fn drop(&mut self) {
+            ironsmith::game_loop::set_priority_analysis_deferred(self.0);
+        }
+    }
+    let _restore = RestorePlanning(ironsmith::game_loop::priority_analysis_deferred());
+    for deferred in [false, true] {
+        ironsmith::game_loop::set_priority_analysis_deferred(deferred);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let spell = CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Chosen creature")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1), ManaSymbol::Green]))
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
+            .build();
+        let chosen = game.create_object_from_definition(&spell, bob, Zone::Hand);
+        let land = CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Forest witness")
+            .card_types(vec![CardType::Land])
+            .with_ability(ironsmith::ability::Ability::mana(
+                ironsmith::TotalCost::from_cost(ironsmith::costs::Cost::tap()),
+                vec![ManaSymbol::Green],
+            ))
+            .build();
+        let lands: Vec<_> = (0..land_count)
+            .map(|_| game.create_object_from_definition(&land, bob, Zone::Battlefield))
+            .collect();
+        // Without the instruction's land-only lock this would fund the spell.
+        let rock = CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Mana rock witness")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::mana(
+                ironsmith::TotalCost::from_cost(ironsmith::costs::Cost::tap()),
+                vec![ManaSymbol::Green; 2],
+            ))
+            .build();
+        let rock_id = game.create_object_from_definition(&rock, bob, Zone::Battlefield);
+        if floating {
+            game.player_mut(bob).unwrap().mana_pool.add(ManaSymbol::Green, 2);
+        }
+        let word = compile_to_runtime_definition("Word of Command", WORD_OF_COMMAND, false).unwrap();
+        let source = game.create_object_from_definition(&word, alice, Zone::Stack);
+        game.push_to_stack(ironsmith::game_state::StackEntry::new(source, alice)
+            .with_targets(vec![ironsmith::game_state::Target::Player(bob)]));
+        let mut prompt = P24PaymentPrompt { suspend: true, ..Default::default() };
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut prompt).unwrap();
+        if payable {
+            assert_eq!(prompt.payments, vec![(bob, alice, true)], "deferred={deferred}");
+            assert!(prompt.awaiting, "a payable cast must still ask for payment");
+            // The suspended resolution rolls back; replay with confirmation.
+            let mut confirm = P24PaymentPrompt::default();
+            ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut confirm).unwrap();
+            assert_eq!(confirm.payments, vec![(bob, alice, true)]);
+            assert_eq!(game.stack.len(), 1);
+            let cast = game.object(game.stack[0].object_id).unwrap();
+            assert_eq!(cast.name.as_ref(), "Chosen creature");
+            assert_eq!(game.controller_of(cast), bob);
+            assert!(lands.iter().all(|id| game.is_tapped(*id)));
+            assert_eq!(game.player(bob).unwrap().mana_pool.total(), 0);
+        } else {
+            assert!(prompt.payments.is_empty(), "an impossible cast must not suspend on payment: {:?}, deferred={deferred}", prompt.payments);
+            assert!(!prompt.awaiting);
+            assert!(game.stack.is_empty(), "Word of Command must finish resolving");
+            assert_eq!(game.object(chosen).unwrap().zone, Zone::Hand);
+            assert!(lands.iter().all(|id| !game.is_tapped(*id)));
+        }
+        assert!(!game.is_tapped(rock_id));
+        assert_eq!(game.controlling_player_for(bob), bob, "temporary control must end");
+        assert!(game.player(alice).unwrap().graveyard.iter().any(|id|
+            game.object(*id).is_some_and(|object| object.name.as_ref() == "Word of Command")));
+    }
+}
+
+#[test]
+fn word_of_command_unaffordable_card_never_opens_payment_prompt() {
+    p24_interactive_payment_case(0, false, false);
+    p24_interactive_payment_case(1, false, false);
+}
+
+#[test]
+fn word_of_command_payable_card_prompts_and_completes_payment() {
+    p24_interactive_payment_case(2, false, true);
+}
+
+#[test]
+fn word_of_command_can_spend_existing_floating_mana() {
+    p24_interactive_payment_case(0, true, true);
+}

@@ -1,8 +1,9 @@
+import {printedManaCost,printedTypeLine} from '../card-print-order.mjs';
 import {cardFlavorSource} from '../card-flavor-source.js';
 import {cardDisplayTypeLine} from '../card-display-type-line.js';
 import {cardArtCropUrl} from '../card-image-variants.js';
 import {cardIntrinsicManaColors} from '../land-mana-choices.js';
-import {cardPresentation,cardPrintingChoice} from './printing-choices.mjs';
+import {cardPresentation,cardPrintingChoice,isBuilderCreatedCard} from './printing-choices.mjs';
 
 const rules = card => {
   const value = card.oracle_text ?? card.effect_text ?? card.ability_text ?? card.compiled_text ?? card.abilities ?? '';
@@ -26,7 +27,7 @@ export const CARD_GLINT_DEFAULT_FRAME = Object.freeze({
 // full printed line (supertypes such as Legendary, subtypes such as a
 // planeswalker's name). It stands in only while it agrees with the engine's
 // current types, so a card whose types an effect changed keeps the live line.
-function printedTypeLine(face, card, print) {
+function matchingPrintingTypeLine(face, card, print) {
   if (face.characteristic_signature ?? card.characteristic_signature) return null;
   if ((face.supertypes ?? card.supertypes)?.length || (face.subtypes ?? card.subtypes)?.length) return null;
   const printed = String(print?.type_line ?? '').trim();
@@ -38,14 +39,24 @@ function printedTypeLine(face, card, print) {
 
 function cardTypeLine(face, card, print) {
   if (face.type_line ?? card.type_line) return face.type_line ?? card.type_line;
-  return printedTypeLine(face, card, print) ?? cardDisplayTypeLine({...card,...face,type_line_display:undefined});
+  return matchingPrintingTypeLine(face, card, print) ?? cardDisplayTypeLine({...card,...face,type_line_display:undefined});
 }
 
 // Live engine fields take precedence over printing metadata. Printing only supplies decoration.
 // Cards added from Build carry their own printing choices.
-export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presentation} = {}) {
+export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presentation, builderCreated = isBuilderCreatedCard(card)} = {}) {
   const print = printing ?? card.printing ?? card;
-  const face = card.card_faces?.[faceIndex] ?? card;
+  const parts = card.card_faces;
+  // Both panels share one physical face. Selecting the spell panel must not
+  // turn an Adventure's outer frame into an instant/sorcery frame.
+  let cardLayout = card.layout;
+  if (parts?.length === 2) {
+    if (parts.some(part => /\bAdventure\b/.test(part.type_line ?? ''))) cardLayout = 'adventure';
+    else if (['split', 'aftermath'].includes(cardLayout) &&
+      (card.keywords?.includes('Aftermath') || parts.some(part => /^\s*Aftermath\b/m.test(rules(part))))) cardLayout = 'aftermath';
+  }
+  const composite = ['split', 'aftermath', 'adventure', 'prepare', 'room', 'flip'].includes(cardLayout);
+  const face = parts?.[composite ? 0 : faceIndex] ?? card;
   const type = cardTypeLine(face, card, print === card ? null : print);
   const signature = String(face.characteristic_signature ?? '').match(/^colors:([^\n]*)/m);
   const cost = face.mana_cost ?? card.mana_cost ?? '';
@@ -55,7 +66,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   // Becoming a creature does not remove loyalty abilities. Keep their roomy,
   // badged layout even when the live type line no longer says Planeswalker.
   // Do not replace explicit multi-face or other special layouts.
-  const layout = face.layout ?? card.layout ?? 'normal';
+  const layout = composite ? cardLayout : face.layout ?? cardLayout ?? 'normal';
   const hasLoyaltyAbility = /^\s*\[?[+−-]?(?:\d+|X)\]?\s*:/im.test(text);
   // Imported custom-card catalogs may store a source URL as flavor text.
   // Attribution links are shown below the inspector and can overflow the painter's
@@ -66,11 +77,12 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   const result = {
     ...CARD_GLINT_DEFAULT_FRAME,
     name: face.name ?? card.name ?? '',
-    typeLine: face.type_line_display ?? type,
+    canonicalTypeLine: type,
+    typeLine: builderCreated ? printedTypeLine(face.type_line_display ?? type) : face.type_line_display ?? type,
     artifact: /\bArtifact\b/.test(type), land: /\bLand\b/.test(type),
     creature: /\bCreature\b/.test(type), legendary: /\bLegendary\b/.test(type),
     colors: palette,
-    manaSymbols: [...displayedCost.matchAll(/\{([^{}]+)\}/g)].map(m => m[1]),
+    manaSymbols: [...(builderCreated ? printedManaCost(displayedCost) : displayedCost).matchAll(/\{([^{}]+)\}/g)].map(m => m[1]),
     rulesText: text,
     rulesParagraphs: [
       ...text.split('\n').filter(Boolean).map(text => ({role:'rules',runs:[{text}]})),
@@ -84,7 +96,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
     borderColor: ['black','white','silver'].includes(print.border_color) ? print.border_color : CARD_GLINT_DEFAULT_FRAME.borderColor,
     securityStamp: print.security_stamp ?? 'none',
     frameStyle: print.frame ? (Number(print.frame) < 2003 ? 'retro' : 'modern') : CARD_GLINT_DEFAULT_FRAME.frameStyle,
-    layout: layout === 'normal' && hasLoyaltyAbility ? 'planeswalker' : layout,
+    layout: layout === 'room' ? 'split' : layout === 'normal' && hasLoyaltyAbility ? 'planeswalker' : layout,
   };
   const chosen = presentation === undefined ? cardPresentation(card) : presentation;
   if (chosen?.rarity) result.rarity = chosen.rarity;
@@ -96,13 +108,34 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
     const identity = card.color_identity ?? card.colorIdentity ?? print.color_identity ?? print.colorIdentity ?? [];
     result.frameColors = colors([...colors(identity), ...intrinsic]);
   }
+  const reverse = parts?.[1];
+  if (faceIndex === 0 && reverse && (/\bBattle\b/.test(type) || (layout === 'transform' && /\bSaga\b/.test(type))) &&
+    /\bCreature\b/.test(cardTypeLine(reverse, {}, null))) {
+    const [power, toughness] = String(reverse.power_toughness ?? '').split('/');
+    const stats = {power: reverse.power ?? power, toughness: reverse.toughness ?? toughness};
+    if (stats.power != null && stats.power !== '' && stats.toughness != null && stats.toughness !== '') result.reverseStats = stats;
+  }
   if (result.layout === 'flip') result.frameTemplate = 'flip';
   else if (/\bBattle\b/.test(type)) result.frameTemplate = 'battle';
   else if (print.frame === 'future') result.frameTemplate = 'future';
-  if (['split','adventure','flip'].includes(result.layout) && card.card_faces?.length > 1) {
+  if (['split','aftermath','adventure','prepare','flip'].includes(result.layout) && card.card_faces?.length > 1) {
     result.faces = card.card_faces.map((part, index) => cardGlintFace({...part, printing:print}, {
-      imageUrl:part.image_uris?.art_crop ?? imageUrl, printing:print, faceIndex:index, presentation:chosen && {rarity:chosen.rarity},
+      imageUrl:part.image_uris?.art_crop ?? imageUrl, printing:print, faceIndex:index, builderCreated, presentation:chosen && {rarity:chosen.rarity},
     }));
+  }
+  // Printing treatments are decoration; keep current rules and characteristics.
+  const special = /\b(Saga|Class|Planeswalker|Battle)\b/.test(type) ||
+    ['saga','class','leveler','planeswalker','adventure','prepare'].includes(result.layout) || /^Level up\b/m.test(text);
+  if (!special && !result.frameTemplate && ['normal','token','split','aftermath'].includes(result.layout) && (print.frame === '2003' || print.frame_effects?.includes('colorshifted'))) {
+    result.frameAssetFamily = 'eighth';
+    if (print.frame_effects?.includes('colorshifted')) result.frameTreatment = 'colorshifted';
+  }
+  if (faceIndex > 0 && ['transform','modal_dfc','battle','double_faced_token'].includes(layout)) result.securityStamp = 'none';
+  // Fuse can be stored as a card-level keyword rather than repeated on a half.
+  if (result.layout === 'split' && card.keywords?.includes('Fuse') &&
+    ![result, ...(result.faces ?? [])].some(part => /^Fuse\b/m.test(part.rulesText))) {
+    result.rulesText += (result.rulesText ? '\n' : '') + 'Fuse';
+    result.rulesParagraphs.push({role:'rules',runs:[{text:'Fuse'}]});
   }
   // The painter resolves this with card-glint's style catalog.
   const printingChoice = cardPrintingChoice(chosen);

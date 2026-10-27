@@ -163,6 +163,8 @@ struct Dm {
     booleans: usize,
     color: Option<ironsmith::color::Color>,
     optional_times: usize,
+    optional_reduction: Option<u32>,
+    reduction_prompts: Vec<(u32, u32)>,
     first: SelectFirstDecisionMaker,
 }
 
@@ -177,6 +179,8 @@ impl Dm {
             booleans: 0,
             color: None,
             optional_times: 1,
+            optional_reduction: None,
+            reduction_prompts: Vec::new(),
             first: SelectFirstDecisionMaker,
         }
     }
@@ -210,6 +214,10 @@ impl DecisionMaker for Dm {
         self.yes
     }
     fn decide_number(&mut self, game: &GameState, ctx: &NumberContext) -> u32 {
+        if ctx.description == "Choose how much to reduce the activation's generic mana cost" {
+            self.reduction_prompts.push((ctx.min, ctx.max));
+            return self.optional_reduction.unwrap_or(ctx.min).clamp(ctx.min, ctx.max);
+        }
         if ctx.is_x_value {
             self.x.clamp(ctx.min, ctx.max)
         } else {
@@ -2064,6 +2072,12 @@ fn cr_702_33h_sticker_kicker_is_kicker_plus_ticket_counter_as_a_cost() {
     add_mana(&mut game, ALICE, ManaSymbol::Green, 2);
     let mut dm = Dm::new().pick("Sticker kicker").pick("Additional").no();
     cast_with(&mut game, ALICE, spell, any_method, &mut dm);
+    let entry = game.stack.last().expect("the sticker-kicked creature was cast");
+    assert!(entry.optional_costs_paid.was_kicked(),
+        "CR 702.33h: the stack entry records sticker kicker as kicker: {:?}",
+        entry.optional_costs_paid);
+    assert!(game.object(entry.object_id).unwrap().optional_costs_paid.was_kicked(),
+        "CR 702.33h: the spell object retains the same kicker payment");
     assert_eq!(game.player(ALICE).unwrap().mana_pool.total(), 0, "fixture: sticker kicker {{1}} was paid ({:?})", dm.seen_options);
     assert_eq!(
         game.player(ALICE).unwrap().counter_count(CounterType::Named("ticket".into())),
@@ -2554,6 +2568,48 @@ fn cr_702_29f_cycling_cost_reduction_reduces_typecycling() {
         find_activation(&game, ALICE, abom).is_some(),
         "CR 702.29f: a cycling cost reduction reduces a typecycling cost ({{2}} payable with no mana)"
     );
+}
+
+#[test]
+fn optional_cycling_reduction_is_announced_and_paid_for_cycling_and_typecycling() {
+    let reducer = card("Fluctuator", "Mana cost: {2}\nType: Artifact\nCycling abilities you activate cost up to {2} less to activate.");
+    for typecycling in [false, true] {
+        for reducers in [1, 2] {
+            for amount in 0..=reducers * 2 {
+                let keyword = if typecycling { "Swampcycling {4}" } else { "Cycling {4}" };
+                let cycler = card("Wandering Scholar", &format!("Mana cost: {{5}}{{B}}\nType: Creature — Zombie\nPower/Toughness: 2/2\n{keyword}"));
+                let mut game = main_game();
+                library_cards(&mut game, ALICE, 3);
+                let swamp = card("Swamp", "Type: Basic Land — Swamp");
+                game.create_object_from_definition(&swamp, ALICE, Zone::Library);
+                for _ in 0..reducers { put(&mut game, &reducer, ALICE); }
+                let source = game.create_object_from_definition(&cycler, ALICE, Zone::Hand);
+                let source_stable = game.object(source).unwrap().stable_id;
+                add_mana(&mut game, ALICE, ManaSymbol::Colorless, 4);
+                let mut dm = Dm::new();
+                dm.optional_reduction = Some(amount);
+                let mut queue = activate_from_hand(&mut game, source, &mut dm);
+                assert_eq!(dm.reduction_prompts, vec![(0, reducers * 2)]);
+                assert_eq!(game.player(ALICE).unwrap().mana_pool.colorless, amount, "pay exactly the chosen discount: typecycling={typecycling}, reducers={reducers}, amount={amount}");
+                let moved = game.find_object_by_stable_id(source_stable).unwrap();
+                assert_eq!(game.object(moved).unwrap().zone, Zone::Graveyard, "discard remains mandatory");
+                assert_eq!(game.stack.len(), 1);
+                resolve_queue(&mut game, &mut queue, &mut dm);
+                resolve_all(&mut game, &mut dm);
+                assert_eq!(game.player(ALICE).unwrap().hand.len(), 1);
+                if typecycling {
+                    assert_eq!(game.object(game.player(ALICE).unwrap().hand[0]).unwrap().name.as_ref(), "Swamp");
+                }
+            }
+        }
+    }
+    // The controller's optional reduction never prices another player's cycling.
+    let cycler = card("Wandering Scholar", "Mana cost: {3}\nType: Creature — Bear\nPower/Toughness: 2/2\nCycling {2}");
+    let mut game = main_game();
+    put(&mut game, &reducer, BOB);
+    let source = game.create_object_from_definition(&cycler, ALICE, Zone::Hand);
+    game.refresh_continuous_state().unwrap();
+    assert!(find_activation(&game, ALICE, source).is_none());
 }
 
 #[test]

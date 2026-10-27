@@ -371,3 +371,5 @@ mod semantic_loss_wave_ma;
 mod semantic_loss_wave_mb;
 mod semantic_loss_wave_mc;
 mod semantic_loss_wave_md;
+
+mod cumulative_upkeep_effect_programs;

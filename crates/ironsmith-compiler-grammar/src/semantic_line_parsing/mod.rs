@@ -119,3 +119,5 @@ use reference_programs::{
 #[path = "core.rs"]
 mod core_programs;
 use core_programs::preserve_flat_leading_then_for_each_surface;
+
+pub(crate) use lines::parse_descriptive_static_program;

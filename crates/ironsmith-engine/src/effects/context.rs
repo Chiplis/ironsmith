@@ -514,6 +514,7 @@ pub struct ExecutionContext<'a> {
     pub cause: EventCause,
     /// Provenance parent node for events emitted during this execution.
     pub provenance: ProvNodeId,
+    pub(crate) duration_window_start: Option<crate::game_state::DurationWindowStart>,
     /// Mana-choice restrictions scoped to this execution.
     pub mana: ManaExecutionContext,
     /// Ephemeral replacement effects scoped to this execution.
@@ -666,6 +667,7 @@ execution_context_checkpoint! {
     chosen_modes: Option<Vec<usize>>,
     cause: EventCause,
     provenance: ProvNodeId,
+    duration_window_start: Option<crate::game_state::DurationWindowStart>,
     mana: ManaExecutionContext,
     replacement: ReplacementExecutionContext,
     executing_effect: Option<usize>,
@@ -734,6 +736,7 @@ payment_execution_inputs! {
         ability_index: Option<usize>,
         mana: ManaExecutionContext,
         resolution_object_id_floor: Option<ObjectId>,
+        duration_window_start: Option<crate::game_state::DurationWindowStart>,
     }
     local {
         source, controller, targets, announced_targets, targets_are_cost_choices,
@@ -883,6 +886,7 @@ impl<'a> ExecutionContext<'a> {
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
+            duration_window_start: None,
             mana: ManaExecutionContext::default(),
             replacement: ReplacementExecutionContext::default(),
             executing_effect: None,
@@ -957,6 +961,7 @@ impl<'a> ExecutionContext<'a> {
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
+            duration_window_start: None,
             mana: ManaExecutionContext::default(),
             replacement: ReplacementExecutionContext::default(),
             executing_effect: None,
@@ -1021,6 +1026,7 @@ impl<'a> ExecutionContext<'a> {
             chosen_modes: self.chosen_modes,
             cause: self.cause,
             provenance: self.provenance,
+            duration_window_start: self.duration_window_start,
             mana: self.mana,
             replacement: self.replacement,
             executing_effect: self.executing_effect,

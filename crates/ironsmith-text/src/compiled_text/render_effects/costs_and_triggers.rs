@@ -178,6 +178,9 @@ pub(super) fn apply_triggered_presentation_label(
         }
         PresentationLabel::Keyword(PresentationKeyword::Melee) => "Melee".to_string(),
         PresentationLabel::Keyword(PresentationKeyword::Provoke) => "Provoke".to_string(),
+        PresentationLabel::Keyword(PresentationKeyword::Storm) => "Storm".to_string(),
+        PresentationLabel::Keyword(PresentationKeyword::Riot) => "Riot".to_string(),
+        PresentationLabel::Keyword(PresentationKeyword::Increment) => "Increment".to_string(),
         PresentationLabel::AbilityWord(label)
             if label
                 .trim()

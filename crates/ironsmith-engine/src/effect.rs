@@ -6810,7 +6810,7 @@ impl ironsmith_core::library_movement::LibraryMovement for Effect {
         }
 
         if let Some(moves) =
-            payload_library_movement::<Effect, crate::costs::Cost>(self.0.as_ref(), context)
+            payload_library_movement::<Effect, crate::costs::Cost, crate::continuous::Modification>(self.0.as_ref(), context)
         {
             return moves;
         }

@@ -3,14 +3,16 @@ import { useLayoutEffect } from "react";
 const GAP = 12;
 const FOOTPRINTS = ".game-card, .battlefield-row-card, .battlefield-counter-rail, .battlefield-group-badge, .battlefield-token-side-badge";
 
-// Keep the resting fan below occupied battlefield space. Hover, keyboard
+// Keep resting fans outside occupied battlefield space: ours below, opponents above. Hover, keyboard
 // inspection, and explicitly opening the hand retain their floating behavior.
-export default function useHandBattlefieldClearance(handRef, layoutKey, suspended) {
+export default function useHandBattlefieldClearance(handRef, layoutKey, suspended, placement = "below") {
   useLayoutEffect(() => {
-    const shell = handRef.current?.closest(".hand-reveal-shell");
+    const above = placement === "above";
+    const shell = above ? handRef.current : handRef.current?.closest(".hand-reveal-shell");
     if (!shell || suspended) return undefined;
     const doc = shell.ownerDocument;
     const view = doc.defaultView;
+    const scope = above ? shell.closest("[data-opponent-zone]") || doc : doc;
     let offset = 0;
     let frame = 0;
     let trackUntil = 0;
@@ -24,7 +26,7 @@ export default function useHandBattlefieldClearance(handRef, layoutKey, suspende
     const measure = () => {
       frame = 0;
       const obstacles = [];
-      for (const field of doc.querySelectorAll(".battlefield-row")) {
+      for (const field of scope.querySelectorAll(".battlefield-row")) {
         const rect = rectOf(field);
         if (!rect) continue;
         if (field.battlefieldScene) {
@@ -44,13 +46,13 @@ export default function useHandBattlefieldClearance(handRef, layoutKey, suspende
           }
         }
       }
-      for (const element of doc.querySelectorAll(".zone-pile-slot, .battlefield-overlay-zone")) {
+      for (const element of scope.querySelectorAll(".zone-pile-slot, .battlefield-overlay-zone")) {
         if (shell.contains(element)) continue;
         const bounds = rectOf(element);
         if (bounds) obstacles.push(bounds);
       }
       let next = 0;
-      for (const card of shell.querySelectorAll(".game-card.hand-card")) {
+      for (const card of shell.querySelectorAll(above ? ".opponent-hand-card" : ".game-card.hand-card")) {
         const rect = rectOf(card);
         if (!rect) continue;
         // Remove our own translation before solving, avoiding feedback that
@@ -58,13 +60,16 @@ export default function useHandBattlefieldClearance(handRef, layoutKey, suspende
         const top = rect.top - offset;
         const bottom = rect.bottom - offset;
         for (const obstacle of obstacles) {
-          if (rect.left < obstacle.right + GAP && rect.right > obstacle.left - GAP
-              && bottom > obstacle.top - GAP) {
-            next = Math.max(next, obstacle.bottom + GAP - top);
+          if (rect.left < obstacle.right + GAP && rect.right > obstacle.left - GAP) {
+            if (above && top < obstacle.bottom + GAP) {
+              next = Math.min(next, obstacle.top - GAP - bottom);
+            } else if (!above && bottom > obstacle.top - GAP) {
+              next = Math.max(next, obstacle.bottom + GAP - top);
+            }
           }
         }
       }
-      next = Math.max(0, Math.ceil(next));
+      next = above ? Math.min(0, Math.floor(next)) : Math.max(0, Math.ceil(next));
       if (next !== offset) {
         offset = next;
         shell.style.translate = offset ? `0 ${offset}px` : previousTranslate;
@@ -96,5 +101,5 @@ export default function useHandBattlefieldClearance(handRef, layoutKey, suspende
       view.removeEventListener("ironsmith:battlefield-layout-fitted", schedule);
       shell.style.translate = previousTranslate;
     };
-  }, [handRef, layoutKey, suspended]);
+  }, [handRef, layoutKey, suspended, placement]);
 }

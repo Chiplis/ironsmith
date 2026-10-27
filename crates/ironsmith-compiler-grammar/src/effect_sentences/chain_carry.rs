@@ -658,7 +658,7 @@ pub(super) fn parse_atomic_permanent_and_suspended_counter_sentence(
     if !matches!(verb, "remove" | "put")
         || !matches!(
             words.as_slice(),
-            [.., "and", "each", "suspended", "card" | "cards"]
+            [.., "and", "each", crate::keyword_forms::SUSPENDED, "card" | "cards"]
         )
         || !words.iter().any(|word| matches!(*word, "counter" | "counters"))
         || !words.iter().any(|word| matches!(*word, "permanent" | "permanents"))
@@ -790,7 +790,8 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
             battlefield_face_down: false,
             battlefield_transformed: false,
             attached_to: None,
-            entry_type_changes: None,
+            entry_grants: Vec::new(),
+                entry_type_changes: None,
             entry_counters: Vec::new(),
             all: false,
         }),
@@ -4585,7 +4586,7 @@ pub(crate) fn parse_duration_goaded_and_restricted_sentence(
         return Ok(None);
     };
     let Some((_, after_goaded)) =
-        grammar::parse_prefix(shape.rest, grammar::phrase(&["it", "is", "goaded"]))
+        grammar::parse_prefix(shape.rest, grammar::phrase(&["it", "is", crate::keyword_forms::GOADED]))
     else {
         return Ok(None);
     };

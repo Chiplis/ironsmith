@@ -85,6 +85,9 @@ impl EffectExecutor for CreateEmblemEffect {
 
         // add_object handles adding to command_zone for Zone::Command
         game.add_object(emblem_obj);
+        if let Some(creator) = ctx.linked_exile_owner.clone() {
+            game.bind_created_emblem_linked_pair(id, creator);
+        }
         if reads_creator_exile_pool {
             game.alias_exiled_with_source_links(id, ctx.source);
         }
@@ -210,3 +213,6 @@ mod tests {
         assert!(format!("{:?}", cloned).contains("CreateEmblemEffect"));
     }
 }
+
+#[cfg(test)]
+mod linked_pair_tests;

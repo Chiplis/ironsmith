@@ -26,6 +26,9 @@ pub(crate) fn activation_reference_context(
 }
 
 fn target_reference_tags(effect: &Effect, tags: &mut HashSet<TagKey>) {
+    if let Some(value) = effect.0.get_target_distribution_value() {
+        value.for_each_tag_key(&mut |tag| { tags.insert(tag.clone()); });
+    }
     if let Some(spec) = effect.0.get_target_spec().filter(|spec| spec.is_target()) {
         spec.for_each_tag_key(&mut |tag| {
             tags.insert(tag.clone());

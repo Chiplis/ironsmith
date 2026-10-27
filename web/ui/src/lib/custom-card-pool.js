@@ -1,3 +1,4 @@
+import { prepareCustomCard } from "./custom-mechanics.js";
 // A persistent shuffled bag deals every card once per cycle. At a cycle
 // boundary, recently seen cards go last so adjacent hands remain disjoint.
 export function createCustomCardSampler({storage = null, random = Math.random} = {}) {
@@ -63,13 +64,16 @@ export async function replaceHandWithCustomCards(game, playerIndex, drafts) {
   }
   const saved = game.createRuntimeSavepoint();
   try {
+    const inputs = [];
     for (const draft of drafts) {
-      const preview = await game.previewCustomCard(draft);
+      const prepared = await prepareCustomCard(draft, input => game.previewCustomCard(input));
+      inputs.push(prepared.input);
+      const preview = prepared.preview;
       if (!preview?.canCreate) throw new Error("Custom card did not compile completely");
     }
     game.clearPlayerZoneForSetup(playerIndex, "hand");
     const ids = [];
-    for (const draft of drafts) {
+    for (const draft of inputs) {
       ids.push(await game.createCustomCard({
         draft, playerIndex, zoneName: "hand", skipTriggers: true,
       }));

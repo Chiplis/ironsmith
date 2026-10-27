@@ -306,6 +306,7 @@ test('Kaito keeps a painted frame and loyalty actions while he is a creature', {
     });
     await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:60000});
     await page.getByRole('img',{name:/Kaito, Bane of Nightmares: Legendary Creature — Ninja/}).waitFor();
+    await page.locator('.card-frame-fallback').waitFor({state:'detached'});
     assert.equal(await page.locator('[data-frame-mode="baked"]').count(),0);
     for(const [prefix,id] of [['+1:','plus'],['0:','zero'],['−2:','minus']]){
       await page.getByRole('button',{name:`Kaito, Bane of Nightmares: ${prefix}`,exact:false}).first().click();
@@ -313,5 +314,109 @@ test('Kaito keeps a painted frame and loyalty actions while he is a creature', {
     }
     await page.screenshot({path:'/tmp/kaito-card-glint-fixed.png'});
     assert.deepEqual(errors,[]);
+  }finally{await browser.close();await vite.close();}
+});
+
+test('Adventure and Aftermath paint dedicated frames', {timeout:90000}, async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});await vite.listen();
+  const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage();
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    const results=await page.evaluate(async()=>{
+      const {cardGlintFace}=await import('/src/lib/card-glint/card.mjs');
+      const {renderCardGlint,loadCardGlint}=await import('/src/lib/card-glint/session.mjs');
+      const api=await loadCardGlint(),results=[];
+      document.body.replaceChildren();
+      for(const layout of ['adventure','aftermath','split']){
+        const face=cardGlintFace({layout,card_faces:[
+          {name:'Guardian',type_line:layout==='adventure'?'Creature — Human':'Sorcery',mana_cost:'{2}{G}',oracle_text:'Draw a card.',power:'3',toughness:'3'},
+          {name:'Journey',type_line:layout==='adventure'?'Instant — Adventure':'Sorcery',mana_cost:'{U}',oracle_text:layout==='adventure'?'Draw a card.':'Aftermath\nDraw a card.'},
+        ]});
+        const {canvas}=await renderCardGlint(face);
+        const copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
+        copy.getContext('2d').drawImage(canvas,0,0);copy.style.width='244px';document.body.append(copy);
+        results.push({layout:face.layout,assets:api.canvasAssetUrls(face),width:canvas.width});
+      }
+      return results;
+    });
+    assert.deepEqual(results.map(r=>r.layout),['adventure','aftermath','aftermath']);
+    for(const result of results){
+      assert.ok(result.width>0);
+      assert.ok(result.assets.some(url=>url?.includes(result.layout==='adventure'?'/adventure/':'/aftermath/')));
+    }
+    await page.screenshot({path:'/tmp/card-glint-adventure-aftermath.png'});
+  }finally{await browser.close();await vite.close();}
+});
+
+test('imported Prepare Room Flip modal DFC Aftermath and Battle frames paint', {timeout:120000}, async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});await vite.listen();
+  const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage({viewport:{width:1500,height:1100}});
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    const results=await page.evaluate(async()=>{
+      const {cardBuildDraft}=await import('/src/lib/card-build-draft.js');
+      const {cardGlintDraftFace}=await import('/src/lib/card-glint/draft.mjs');
+      const {specialLayoutCard}=await import('/tests/card-glint-special-layouts-fixture.mjs');
+      const {renderCardGlint}=await import('/src/lib/card-glint/session.mjs');
+      document.body.replaceChildren();document.body.style.cssText='display:flex;flex-wrap:wrap;align-content:flex-start;gap:10px;background:#222';
+      const results=[];
+      for(const layout of ['prepare','room','flip','modal_dfc','aftermath','battle']) {
+        const draft=cardBuildDraft(specialLayoutCard(layout));
+        for(const index of ['modal_dfc','battle'].includes(layout)?[0,1]:[0]) {
+          const input=cardGlintDraftFace(draft,index);
+          const {canvas,face,api}=await renderCardGlint(input);
+          const wrapper=document.createElement('div');wrapper.style.color='white';
+          const label=document.createElement('div');label.textContent=`${layout} / ${index}`;wrapper.append(label);
+          const copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
+          copy.getContext('2d').drawImage(canvas,0,0);copy.style.width='244px';wrapper.append(copy);document.body.append(wrapper);
+          results.push({layout,index,name:face.name,panels:face.faces?.length??0,template:face.frameTemplate,reverseStats:face.reverseStats,assets:api.canvasAssetUrls(face),width:canvas.width});
+        }
+      }
+      return results;
+    });
+    assert.equal(results.length,8);
+    for(const r of results){
+      assert.ok(r.width>0);
+      if(['prepare','room','flip','aftermath'].includes(r.layout))assert.equal(r.panels,2);
+      if(r.layout==='prepare')assert.ok(r.assets.some(url=>url?.includes('/prepare/')));
+      if(r.layout==='aftermath')assert.ok(r.assets.some(url=>url?.includes('/aftermath/')));
+      if(r.layout==='flip')assert.equal(r.template,'flip');
+      if(r.index===1)assert.equal(r.name,'Journey');
+      if(r.layout==='battle'&&r.index===0){assert.equal(r.template,'battle');assert.deepEqual(r.reverseStats,{power:'5',toughness:'6'});}
+    }
+    await page.screenshot({path:'/tmp/card-glint-special-layouts.png',fullPage:true});
+  }finally{await browser.close();await vite.close();}
+});
+
+test('remaining frame families render through the host adapter', {timeout:120000},async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});await vite.listen();
+  const browser=await chromium.launch();
+  try{
+    const page=await browser.newPage({viewport:{width:1500,height:1100}});
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    const results=await page.evaluate(async()=>{
+      const {frameAuditCases}=await import('/tests/card-glint-frame-audit-fixture.mjs');
+      const {cardGlintFace}=await import('/src/lib/card-glint/card.mjs');
+      const {renderCardGlint}=await import('/src/lib/card-glint/session.mjs');
+      document.body.replaceChildren();document.body.style.cssText='display:flex;flex-wrap:wrap;align-content:flex-start;gap:10px;background:#222';
+      const results=[];
+      for(const {id,card,kind} of frameAuditCases()){
+        const {canvas,face,api}=await renderCardGlint(cardGlintFace(card));
+        const box=document.createElement('div');box.style.color='white';
+        const label=document.createElement('div');label.textContent=id;box.append(label);
+        const copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
+        copy.getContext('2d').drawImage(canvas,0,0);copy.style.width='244px';box.append(copy);document.body.append(box);
+        results.push({id,expected:kind,kind:api.faceFrame(face),assets:api.canvasAssetUrls(face),family:face.frameAssetFamily,treatment:face.frameTreatment,stats:face.reverseStats});
+      }
+      return results;
+    });
+    for(const r of results)assert.equal(r.kind,r.expected,r.id);
+    assert.equal(results.find(r=>r.id==='eighth').family,'eighth');
+    assert.equal(results.find(r=>r.id==='colorshifted').treatment,'colorshifted');
+    assert.deepEqual(results.find(r=>r.id==='transforming-saga').stats,{power:'4',toughness:'5'});
+    assert.ok(results.find(r=>r.id==='fuse').assets.some(url=>url?.includes('/fuse/')));
+    await page.screenshot({path:'/tmp/card-glint-frame-audit.png',fullPage:true});
   }finally{await browser.close();await vite.close();}
 });

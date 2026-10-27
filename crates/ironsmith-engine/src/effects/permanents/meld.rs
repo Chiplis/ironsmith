@@ -394,14 +394,9 @@ fn execute_meld_inner(
         let original = match &receipt.outcome {
             BattlefieldEntryOutcome::Moved(new_id) => {
                 let new_id = *new_id;
-                // CR 123.5a: stickers on either meld card apply to the
-                // melded permanent, keeping their relative timestamps.
-                let component_stables: Vec<_> =
-                    meld_components.iter().map(|component| component.stable_id).collect();
+                // The native composite-entry owner already transferred the
+                // physical stickers before retiring either component object.
                 game.set_melded_permanent(new_id, meld_components);
-                for stable in component_stables {
-                    game.absorb_component_stickers(stable, new_id);
-                }
                 if let Some(target) = source_attack_target
                     && let Some(combat) = game.combat.as_mut()
                 {

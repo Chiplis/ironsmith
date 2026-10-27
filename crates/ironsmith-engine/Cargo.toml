@@ -30,6 +30,7 @@ criterion = "0.7"
 serde_json = "1.0.149"
 ironsmith-core = { path = "../ironsmith-core", default-features = false, features = ["serde"] }
 ironsmith-compiler-runtime = { path = "../ironsmith-compiler-runtime", default-features = false }
+ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 
 [[bench]]
 name = "scale"

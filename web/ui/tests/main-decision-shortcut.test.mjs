@@ -39,3 +39,70 @@ test('Enter activates only an available main decision and respects editing and d
     assert.equal(await clicks(), 2);
   } finally { await browser.close(); }
 });
+
+test('Escape cancels focused casting choices and respects unavailable controls and dialogs', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<button class="decision-main-button">Confirm</button><button class="decision-cancel-button">Cancel</button><input type="number" /><button id="target">Target</button>');
+    const source = await readFile(new URL('../src/lib/main-decision-shortcut.js', import.meta.url), 'utf8');
+    await page.addScriptTag({ content: source.replace('export function', 'function') + ';window.disposeShortcut = installMainDecisionShortcut(document);window.cancels=0;window.confirms=0;document.querySelector(".decision-cancel-button").onclick=()=>window.cancels++;document.querySelector(".decision-main-button").onclick=()=>window.confirms++;' });
+    const cancels = () => page.evaluate(() => window.cancels);
+    await page.locator('#target').focus();
+    await page.keyboard.press('Escape');
+    assert.equal(await cancels(), 1);
+    await page.locator('input').focus();
+    await page.keyboard.press('Escape');
+    assert.equal(await cancels(), 2);
+    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', repeat: true, bubbles: true })));
+    await page.keyboard.press('Control+Escape');
+    assert.equal(await cancels(), 2);
+    for (const attribute of ['disabled', 'aria-disabled', 'hidden']) {
+      await page.locator('.decision-cancel-button').evaluate((b, name) => b.setAttribute(name, 'true'), attribute);
+      await page.keyboard.press('Escape');
+      assert.equal(await cancels(), 2);
+      await page.locator('.decision-cancel-button').evaluate((b, name) => b.removeAttribute(name), attribute);
+    }
+    await page.evaluate(() => {
+      const dialog = document.createElement('div'); dialog.role = 'dialog'; dialog.textContent = 'Settings'; document.body.append(dialog);
+    });
+    await page.keyboard.press('Escape');
+    assert.equal(await cancels(), 2);
+    await page.evaluate(() => document.querySelector('[role="dialog"]').remove());
+    await page.evaluate(() => document.addEventListener('keydown', event => event.preventDefault(), { capture: true, once: true }));
+    await page.keyboard.press('Escape');
+    assert.equal(await cancels(), 2);
+    await page.evaluate(() => window.disposeShortcut());
+    await page.keyboard.press('Escape');
+    assert.equal(await cancels(), 2);
+    assert.equal(await page.evaluate(() => window.confirms), 0);
+  } finally { await browser.close(); }
+});
+
+test('Space confirms attackers from focused cards and options, including no attackers', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<button class="decision-main-button">1 Attacker</button><button id="option">Attacker</button><div role="button" tabindex="0" id="card">Creature</div><textarea></textarea>');
+    const source = await readFile(new URL('../src/lib/main-decision-shortcut.js', import.meta.url), 'utf8');
+    await page.addScriptTag({ content: source.replace('export function', 'function') + `;
+      installMainDecisionShortcut(document); window.confirms=0; window.toggles=0;
+      document.querySelector('.decision-main-button').onclick=()=>window.confirms++;
+      document.querySelector('#option').onclick=()=>window.toggles++;
+      document.querySelector('#card').onkeydown=event=>{if(event.key===' '){event.preventDefault();window.toggles++;}};
+    ` });
+    for (const label of ['1 Attacker', 'No attackers']) {
+      await page.locator('.decision-main-button').evaluate((button,text)=>button.textContent=text,label);
+      for (const selector of ['#card', '#option', '.decision-main-button']) {
+        await page.locator(selector).focus();
+        await page.keyboard.press('Space');
+      }
+    }
+    assert.equal(await page.evaluate(()=>window.confirms),6);
+    assert.equal(await page.evaluate(()=>window.toggles),0);
+    await page.locator('textarea').focus();
+    await page.keyboard.press('Space');
+    assert.equal(await page.locator('textarea').inputValue(),' ');
+    assert.equal(await page.evaluate(()=>window.confirms),6);
+  } finally { await browser.close(); }
+});

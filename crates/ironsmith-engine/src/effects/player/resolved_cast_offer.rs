@@ -32,12 +32,6 @@ impl ResolvedCastOffer {
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let neutral = || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
-        if let Some(prompt) = self.prompt {
-            let accepted = ctx.decision_maker.decide_boolean(game, &prompt);
-            if ctx.decision_maker.awaiting_choice() || !accepted {
-                return Ok(neutral());
-            }
-        }
         let options = match self.candidates {
             CastOfferCandidates::Exact {
                 object,
@@ -60,6 +54,13 @@ impl ResolvedCastOffer {
             }
             CastOfferCandidates::Resolved(options) => options,
         };
+        if let Some(mut prompt) = self.prompt {
+            prompt.can_accept &= !options.is_empty();
+            let accepted = ctx.decision_maker.decide_boolean(game, &prompt);
+            if ctx.decision_maker.awaiting_choice() || !accepted {
+                return Ok(neutral());
+            }
+        }
         let option = choose_effect_driven_cast_option(game, ctx, self.player, options);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(neutral());

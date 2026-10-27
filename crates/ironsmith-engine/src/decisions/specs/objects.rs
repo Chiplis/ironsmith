@@ -769,6 +769,7 @@ impl DecisionSpec for LegendRuleSpec {
 /// Specification for proliferate - choose any number of permanents and players with counters.
 #[derive(Debug, Clone)]
 pub struct ProliferateSpec {
+    pub context_text: Option<String>,
     /// The source of the effect.
     pub source: ObjectId,
     /// Permanents with counters that can be proliferated.
@@ -778,6 +779,11 @@ pub struct ProliferateSpec {
 }
 
 impl ProliferateSpec {
+    pub fn with_context_text(mut self, text: Option<String>) -> Self {
+        self.context_text = text;
+        self
+    }
+
     /// Create a new ProliferateSpec.
     pub fn new(
         source: ObjectId,
@@ -785,6 +791,7 @@ impl ProliferateSpec {
         eligible_players: Vec<PlayerId>,
     ) -> Self {
         Self {
+            context_text: None,
             source,
             eligible_permanents,
             eligible_players,
@@ -803,7 +810,7 @@ impl DecisionSpec for ProliferateSpec {
     type Response = ProliferateResponse;
 
     fn description(&self) -> String {
-        "Choose permanents and players to proliferate".to_string()
+        self.context_text.clone().unwrap_or_else(|| "Choose permanents and players to proliferate".to_string())
     }
 
     fn primitive(&self) -> DecisionPrimitive {
@@ -850,12 +857,14 @@ impl DecisionSpec for ProliferateSpec {
             })
             .collect();
 
-        DecisionContext::Proliferate(ProliferateContext::new(
+        let mut context = ProliferateContext::new(
             player,
             Some(self.source),
             eligible_permanents,
             eligible_players,
-        ))
+        );
+        context.context_text = self.context_text.clone();
+        DecisionContext::Proliferate(context)
     }
 }
 

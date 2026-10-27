@@ -33,6 +33,13 @@ pub(super) fn is_standalone_where_x_binding_segment(tokens: &[OwnedLexToken]) ->
 pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Exchanges(
+                crate::cards::builders::ExchangeActionAst::ExchangeTextBoxes {
+                    duration: effect_duration, ..
+                },
+            ), ..
+        }) => *effect_duration = duration.clone(),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                     duration: effect_duration,

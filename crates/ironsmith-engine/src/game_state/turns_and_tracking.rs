@@ -482,8 +482,9 @@ impl GameState {
             }
             let has_power_play = object.abilities_vec().iter().any(|ability| {
                 matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
-                    if static_ability.id()
-                        == crate::static_abilities::StaticAbilityId::YouAreTheStartingPlayer)
+                    if matches!(static_ability.id(),
+                        crate::static_abilities::StaticAbilityId::YouAreTheStartingPlayer
+                            | crate::static_abilities::StaticAbilityId::StartingPlayer))
             });
             if has_power_play
                 && self.turn_store.turn_order.contains(&object.owner)
@@ -1177,6 +1178,7 @@ impl GameState {
 
         {
             let choices = self.choice_store_mut();
+            choices.chosen_color_acquisitions.retain(|source, _| !removed_ids.contains(source));
             choices
                 .chosen_modes_by_ability
                 .retain(|(source, _), _| !removed_ids.contains(source));
@@ -1905,6 +1907,7 @@ impl GameState {
         // CR 502.2 / 731.2: the check itself happens in the untap step, which
         // may be skipped; record the previous turn's count for it.
         self.turn_store.pending_day_night_check = Some(max_spells_cast_by_completed_teammate);
+        self.auxiliary_tracking_mut().simultaneous_library_placements.clear();
         self.turn_store.grant_cast_uses_this_turn.clear();
         self.turn_store.cast_spell_lki.clear();
         self.battlefield_flags_mut()

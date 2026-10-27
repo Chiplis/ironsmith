@@ -687,6 +687,7 @@ export default function GameCard({
   className = "",
   centerOverlay = null,
   handCircuitMode = "full",
+  handNumber = null,
   hideDebugBadge = false,
   suppressTooltip = false,
   battlefieldVisualMode = "classic",
@@ -1513,6 +1514,11 @@ export default function GameCard({
         ...(isBumped ? { "--bump-x": `${bumpDirection * 4}px` } : undefined),
       }}
     >
+      {variant === "hand" && handNumber != null && (
+        <span className="hand-card-number pointer-events-none absolute left-1 top-1 z-50 flex min-w-6 h-6 items-center justify-center rounded-md border border-amber-200 bg-slate-950 px-1 text-sm font-bold text-amber-100 shadow-md" aria-hidden="true">
+          {handNumber}
+        </span>
+      )}
       {variant === "battlefield" && battlefieldStackDepth > 0 && (
         <div className="battlefield-group-stack" aria-hidden="true">
           {Array.from({ length: battlefieldStackDepth }, (_, index) => (
@@ -1554,7 +1560,7 @@ export default function GameCard({
           </span>
         )}
         {(usePortraitBattlefield || useHandFrame) && (
-          <MiniatureCardFrame card={presentationCard} imageUrl={artUrl} />
+          <MiniatureCardFrame card={presentationCard} imageUrl={artUrl} deferUpgrade={isHovered || isCastTargetHovered || isDragging} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
           <span className="card-action-border" aria-hidden="true" />

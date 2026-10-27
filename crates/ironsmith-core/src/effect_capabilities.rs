@@ -280,6 +280,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ModifyPowerToughnessAllEffect"
         | "ModifyPowerToughnessEffect"
         | "ModifyPowerToughnessForEachEffect"
+        | "SetPermanentDesignationEffect"
         | "MonstrosityEffect"
         | "MoveAllCountersEffect"
         | "MoveCountersEffect"

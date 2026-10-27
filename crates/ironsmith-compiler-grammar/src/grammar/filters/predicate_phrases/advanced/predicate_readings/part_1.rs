@@ -96,7 +96,7 @@ pub(super) fn read_saddled(input: &Predicate<'_>) -> Result<Option<PredicateAst>
     // pass only the typed state tail to the predicate grammar.  The omitted
     // subject is therefore the source object, just as in the complete
     // "this creature is saddled" spelling handled below.
-    if surface::exact(LexedClause::new(predicate_tokens), &["saddled"]) {
+    if surface::exact(LexedClause::new(predicate_tokens), &[crate::keyword_forms::SADDLED]) {
         return Ok(Some(PredicateAst::Source(
             SourcePredicateAst::SourceIsSaddled,
         )));
@@ -289,15 +289,15 @@ pub(super) fn read_source_suspected(
     {
         let simple_words = non_article_token_word_refs(predicate_tokens);
         if [
-            &["it", "is", "suspected"][..], &["its", "suspected"],
-            &["any", "of", "them", "are", "suspected"],
-            &["they", "are", "suspected"], &["theyre", "suspected"],
+            &["it", "is", crate::keyword_forms::SUSPECTED][..], &["its", crate::keyword_forms::SUSPECTED],
+            &["any", "of", "them", "are", crate::keyword_forms::SUSPECTED],
+            &["they", "are", crate::keyword_forms::SUSPECTED], &["theyre", crate::keyword_forms::SUSPECTED],
         ].iter().any(|expected| surface::exact_words(&simple_words, expected)) {
             return Ok(Some(PredicateAst::ItMatches(ObjectFilter::default().suspected())));
         }
         if [
-            &["this", "creature", "is", "suspected"][..],
-            &["this", "permanent", "is", "suspected"][..],
+            &["this", "creature", "is", crate::keyword_forms::SUSPECTED][..],
+            &["this", "permanent", "is", crate::keyword_forms::SUSPECTED][..],
 
         ]
         .iter()
@@ -482,7 +482,7 @@ pub(super) const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_stack_object_would_destroy_predicate(input)),
     },
     Reading {
-        id: RuleId::new("saddled"),
+        id: RuleId::new(crate::keyword_forms::SADDLED),
         head: HeadDiscriminator::Any,
         admits: |_| true,
         read: |input| input.outcome(read_saddled(input)),

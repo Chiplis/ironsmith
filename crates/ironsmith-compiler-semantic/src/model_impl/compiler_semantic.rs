@@ -44,6 +44,7 @@ pub type CompilerManaUsageRestriction = ironsmith_core::ManaUsageRestriction<Eff
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GiftTimingAst {
+    SourceCardType,
     SpellResolution,
     PermanentEtb,
 }
@@ -187,6 +188,7 @@ pub struct ParsedModalHeader {
     pub max: Option<Value>,
     pub spree: bool,
     pub tiered: bool,
+    pub descriptive_mode_costs: bool,
     pub weighted_mode_points: bool,
     pub random: bool,
     pub same_mode_more_than_once: bool,

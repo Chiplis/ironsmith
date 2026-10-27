@@ -69,6 +69,8 @@ pub enum CastStage {
     PayingMana,
     /// Ready to finalize (mana has been paid and spell becomes cast).
     ReadyToFinalize,
+    /// A public cost identity needed to announce targets or a division.
+    ChoosingCostReferences,
 }
 
 impl CastStage {
@@ -79,6 +81,7 @@ impl CastStage {
             CastStage::ChoosingModeChooser => "choosing mode chooser",
             CastStage::ChoosingSplices => "choosing splices",
             CastStage::ChoosingX => "choosing X",
+            CastStage::ChoosingCostReferences => "choosing cost references",
             CastStage::ChoosingCostResource => "choosing cost resource",
             CastStage::ChoosingOptionalCosts => "choosing optional costs",
             CastStage::AnnouncingCost => "announcing costs",
@@ -200,6 +203,7 @@ pub struct PendingCast {
     /// announced, before adding mandatory/optional costs and ordinary taxes.
     pub effect_alternative_base_generic_reduction: u32,
     pub effect_miracle_cast: bool,
+    pub effect_descriptive_first_draw: bool,
     /// Simple additional-cost alternatives announced before targets and total-cost locking.
     /// Each entry replaces one occurrence of an effect-backed cost at payment time.
     pub announced_cost_replacements: Option<Vec<(crate::costs::Cost, Vec<crate::costs::Cost>)>>,
@@ -222,6 +226,8 @@ pub struct PendingCast {
     /// receives timing permission from that effect and must not grant priority
     /// until the parent spell or ability finishes resolving.
     pub effect_driven: bool,
+    pub effect_spell_requirement: Option<(crate::target::ObjectFilter, crate::filter::FilterContext)>,
+    pub(crate) cost_references: super::spell_cost_references::SpellCostReferences,
     /// Which optional costs will be paid (kicker, buyback, etc.).
     pub optional_costs_paid: OptionalCostsPaid,
     /// Later optional-cost choices required by an earlier CR 601.4 mode choice.
@@ -327,6 +333,7 @@ impl PendingCast {
             effect_alternative_cost: None,
             effect_alternative_base_generic_reduction: 0,
             effect_miracle_cast: false,
+            effect_descriptive_first_draw: false,
             announced_cost_replacements: None,
             x_announced_before_modes: false,
             cost_resource_announced: false,
@@ -337,6 +344,8 @@ impl PendingCast {
             effect_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
             effect_land_mana_abilities_only: false,
             effect_driven: false,
+            effect_spell_requirement: None,
+            cost_references: Default::default(),
             optional_costs_paid,
             required_optional_cost_indices: Vec::new(),
             payment_trace: Vec::new(),
@@ -394,6 +403,7 @@ pub struct PendingTargetDistribution {
 pub enum ActivationStage {
     /// Need to choose modes for modal activated abilities.
     ChoosingModes,
+    ChoosingCostReduction,
     /// Need to choose one complete branch of an alternative activation cost.
     ChoosingAlternativeCost,
     /// Need to choose X value for abilities with X in cost.
@@ -426,6 +436,7 @@ pub enum ActivationStage {
 impl ActivationStage {
     pub fn name(&self) -> &'static str {
         match self {
+            ActivationStage::ChoosingCostReduction => "choosing optional cost reduction",
             ActivationStage::ChoosingModes => "choosing modes",
             ActivationStage::ChoosingAlternativeCost => "choosing alternative cost",
             ActivationStage::ChoosingX => "choosing X",
@@ -938,6 +949,8 @@ pub struct PendingActivation {
     /// branch flags remain separate native inputs to notification completion.
     pub(crate) activation_declaration: crate::events::spells::ActivationDeclaration,
     pub announced_cost: Option<AnnouncedActivationCost>,
+    pub optional_reduction_ready: bool,
+    pub optional_reduction_max: Option<u32>,
     /// Identity reserved before target matching; the finalized ability keeps
     /// this exact ID even if its physical source leaves while paying costs.
     pub announced_stack_ability: Option<ObjectId>,
@@ -1096,6 +1109,8 @@ impl PendingActivation {
         Self {
             activation_declaration,
             announced_cost: None,
+            optional_reduction_ready: false,
+            optional_reduction_max: None,
             announced_stack_ability: None,
             cost_reference_base: None,
             cost_reference_choices: Vec::new(),

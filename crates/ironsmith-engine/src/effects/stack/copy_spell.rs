@@ -341,6 +341,7 @@ pub(crate) fn create_stack_copy_from_object(
     let added = crate::events::spells::StackObjectAddedEvent::from_entry(&copy_entry);
     let provenance = copy_entry.provenance;
     game.stack.push(copy_entry);
+    game.retain_stack_duration_window(copy_id, game.duration_window_now());
     game.queue_trigger_event(provenance,
         crate::triggers::TriggerEvent::new_with_provenance(added, provenance));
     // CR 722.3d: a copy of a prepared spell is also a prepared spell.

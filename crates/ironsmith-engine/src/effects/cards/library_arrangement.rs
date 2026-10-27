@@ -70,6 +70,8 @@ pub(crate) fn arrange_library_cards(
         .copied()
         .filter(|id| player.library.contains(id) && selected.insert(*id))
         .collect::<Vec<_>>();
+    let placement_top = top.clone();
+    let placement_bottom = bottom.clone();
     let mut order = bottom.into_iter().rev().collect::<Vec<_>>();
     order.extend(
         player
@@ -80,6 +82,8 @@ pub(crate) fn arrange_library_cards(
     );
     order.extend(top.into_iter().rev());
     game.set_player_library_order_with_audit(owner, order, reason);
+    for card in placement_bottom { game.record_simultaneous_library_placement(card, LibraryCardPosition::Bottom); }
+    for card in placement_top.into_iter().rev() { game.record_simultaneous_library_placement(card, LibraryCardPosition::Top); }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -103,6 +107,7 @@ pub(crate) fn position_library_card(
         LibraryCardPosition::Bottom => arrange_library_cards(game, owner, &[], &[card], reason),
         LibraryCardPosition::NthFromTop(position) => {
             game.move_library_card_to_nth_from_top(owner, card, position, reason);
+            game.record_simultaneous_library_placement(card, LibraryCardPosition::NthFromTop(position));
         }
     }
 }

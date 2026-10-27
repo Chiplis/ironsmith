@@ -1,4 +1,5 @@
 import useUiText from '@/i18n/useUiText';
+import { cardSimpleTapManaColors } from '@/lib/land-mana-choices';
 import { landManaColors } from '@/lib/land-mana-colors';
 import LandManaStrip from './LandManaStrip';
 import LoadingCardArt from './LoadingCardArt';
@@ -11,7 +12,9 @@ export default function MobileArenaCardFace({ card, name, artUrl, pending, prima
   const ui = useUiText();
   const kind = arenaPermanentKind(card);
   const sagaArt = kind === 'saga' || card.layout === 'saga' || /\bSaga\b/i.test(card.type_line || '');
-  const manaColors = landManaColors(card);
+  const passiveManaColors = landManaColors(card);
+  const manaColors = manaStripOpen && manaChoices?.length
+    ? manaChoices.map(choice => choice.color) : passiveManaColors.length ? passiveManaColors : cardSimpleTapManaColors(card);
   const statKind = kind === 'planeswalker' ? 'loyalty' : kind === 'battle' ? 'defense' : null;
   const liveCounter = statKind && (card.counters || []).find?.(counter => String(counter.kind).toLowerCase() === statKind);
   const statistic = statKind ? { label: card[statKind] ?? liveCounter?.amount ?? 0, title: statKind } : primary;

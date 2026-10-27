@@ -40,6 +40,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::TurnStructure(
                 TurnStructureActionAst::AdditionalSteps { .. }
             )
+            | SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
@@ -76,6 +77,13 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl { .. })
@@ -105,6 +113,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Learn)
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
@@ -113,6 +122,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { .. })
@@ -159,6 +169,9 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::PreventNextTimeDamage { .. }
             )
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::GrowCountersOnChosenHolders)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Proliferate { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
@@ -222,7 +235,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::ReplaceNextDamageToTarget { .. }
             )
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile)
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile | ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline | ZoneMoveActionAst::ExchangeSourceWithHandAura)
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
@@ -419,11 +432,12 @@ pub(super) fn compile_clash(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
-    let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { opponent }) =
+    let SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { opponent, descriptive }) =
         &subject_verb.action
     else {
         unreachable!("typed clash route requires a Clash action")
     };
+    let behavior = |mut effect: crate::effects::ClashEffect| { effect.descriptive = *descriptive; effect };
     Ok(match opponent {
         ClashOpponentAst::Opponent => {
             // "Clash with an opponent. ... Otherwise, that player ...": the
@@ -436,7 +450,7 @@ pub(super) fn compile_clash(
             ));
             (
                 vec![Effect::new(
-                    crate::effects::ClashEffect::against_any_opponent(),
+                    behavior(crate::effects::ClashEffect::against_any_opponent()),
                 )],
                 Vec::new(),
             )
@@ -445,14 +459,14 @@ pub(super) fn compile_clash(
             let choice = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Opponent));
             (
                 vec![Effect::new(
-                    crate::effects::ClashEffect::against_target_opponent(),
+                    behavior(crate::effects::ClashEffect::against_target_opponent()),
                 )],
                 vec![choice],
             )
         }
         ClashOpponentAst::DefendingPlayer => (
             vec![Effect::new(
-                crate::effects::ClashEffect::against_defending_player(),
+                behavior(crate::effects::ClashEffect::against_defending_player()),
             )],
             Vec::new(),
         ),
@@ -654,6 +668,21 @@ pub(super) fn compile_subject_verb_early(
                 Effect::surveil_player,
             )
         }
+        SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount }) => {
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            Ok((vec![Effect::new(ironsmith_core::MonstrosityEffect::counters_then_become_monstrous(amount))], Vec::new()))
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeRenowned { amount }) => {
+            Ok((vec![Effect::renown_source(*amount)], Vec::new()))
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { counter_type, cost }) => {
+            let payment = crate::lowering::cost_materialization::lower_cumulative_upkeep_payment(cost)?;
+            Ok((vec![Effect::new(crate::effects::CumulativeUpkeepEffect::new(PlayerFilter::You, payment, vec![Effect::sacrifice_source()])
+                .with_kind(ironsmith_core::effect::UpkeepPaymentKind::PerSourceCounter(*counter_type)))], Vec::new()))
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::GrowCountersOnChosenHolders) => {
+            Ok((vec![Effect::new(ironsmith_core::ProliferateEffect::grow_counters_on_chosen_holders())], Vec::new()))
+        }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Proliferate { count }) => {
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let mut effect = Effect::proliferate(count);
@@ -678,7 +707,7 @@ pub(super) fn compile_subject_verb_early(
                 Effect::investigate_player,
             )
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, descriptive }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let amount = subject.resolve_object_refs_and_bind_player_refs_in_value(amount, ctx)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
@@ -692,13 +721,56 @@ pub(super) fn compile_subject_verb_early(
             compile_player_effect_from_resolved_filter(
                 player_filter,
                 choices,
-                || Effect::incubate(you_amount, you_count),
-                |filter| Effect::incubate_player(amount, count, filter),
+                || Effect::new(ironsmith_core::IncubateEffect::you(you_amount, you_count).as_described(*descriptive)),
+                |filter| Effect::new(ironsmith_core::IncubateEffect::new(amount, count, filter).as_described(*descriptive)),
             )
+        }
+        SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { filter }) => {
+            Ok((vec![Effect::new(ironsmith_core::LearnEffect::retrieve_outside_or_rummage(filter.clone()))], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Learn) => {
             Ok((vec![Effect::learn()], Vec::new()))
         }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost) => {
+            Ok((vec![Effect::new(crate::effects::NinjutsuCostEffect::new())], Vec::new()))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies) => {
+            Ok((vec![Effect::new(crate::effects::CipherEffect { descriptive: true })], Vec::new()))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents) => {
+            let tag = ctx.next_tag("opponent_copies");
+            let mut copy = crate::effects::CreateTokenCopyEffect::new(ChooseSpec::Source, 1, PlayerFilter::You)
+                .sacrifice_at_next_end_step(true);
+            copy.must_attack_player_this_turn = Some(PlayerFilter::IteratedPlayer);
+            Ok((vec![Effect::for_each_opponent(vec![Effect::new(copy).tag(tag.clone())]),
+                Effect::new(crate::effects::ApplyContinuousEffect::new(
+                    crate::continuous::EffectTarget::Filter(ObjectFilter::tagged(tag)),
+                    crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
+                    crate::effect::Until::Forever,
+                ))], Vec::new()))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures) => {
+            Ok((vec![Effect::new(crate::effects::SoulbondPairEffect { descriptive: true })], Vec::new()))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender) => {
+            Ok((vec![Effect::ninjutsu()], Vec::new()))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent) => {
+            let own_copy = ctx.next_effect_id();
+            let other_copy = ctx.next_effect_id();
+            let tag = ctx.next_tag("copy_recipient");
+            let opponent = PlayerFilter::TaggedPlayer(tag.clone().into());
+            Ok((vec![Effect::may(vec![
+                Effect::with_id(own_copy.0, Effect::new(crate::effects::CopySpellEffect::single(ChooseSpec::Source))),
+                Effect::if_then(own_copy, crate::effect::EffectPredicate::Happened, vec![
+                Effect::may_choose_new_targets_player(own_copy, PlayerFilter::You),
+                Effect::new(crate::effects::ChoosePlayerEffect::new(PlayerFilter::You, PlayerFilter::Opponent, tag)),
+                Effect::with_id(other_copy.0, Effect::new(crate::effects::CopySpellEffect::new_for_player(ChooseSpec::Source, 1, opponent.clone()))),
+                Effect::may_choose_new_targets_player(other_copy, opponent),
+                ]),
+            ])], Vec::new()))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { designation }) => Ok((vec![Effect::new(ironsmith_core::SetPermanentDesignationEffect { target: ChooseSpec::Source, designation: *designation })], Vec::new())),
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
             action,
             amount,
@@ -712,6 +784,8 @@ pub(super) fn compile_subject_verb_early(
             )],
             Vec::new(),
         )),
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExchangeSourceWithHandAura) => Ok((vec![Effect::new(ironsmith_core::AuraSwapEffect::exchange_source_with_hand_aura())], Vec::new())),
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline) => Ok((vec![Effect::new(ironsmith_core::UnearthEffect::return_with_haste_and_exile_deadline())], Vec::new())),
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile) => {
             // CR 702.167a / 712.14a: craft returns the card with its back face
             // up. Entering transformed isn't transforming (CR 701.27), so the
@@ -742,9 +816,8 @@ pub(super) fn compile_subject_verb_early(
             })
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { cost }) => {
-            let total_cost =
-                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
-            let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+            let payment_effects =
+                crate::lowering::cost_materialization::lower_cumulative_upkeep_payment(cost)?;
             Ok((
                 vec![Effect::cumulative_upkeep(
                     payment_effects,
@@ -772,6 +845,10 @@ pub(super) fn compile_subject_verb_early(
                 Vec::new(),
             ))
         }
+        SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount }) => {
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            Ok((vec![Effect::new(ironsmith_core::CollectEvidenceEffect::exile_graveyard_cards_with_total_mana_value(amount))], Vec::new()))
+        }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount }) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let mut effect = Effect::new(crate::effects::CollectEvidenceEffect::new(amount));
@@ -792,13 +869,14 @@ pub(super) fn compile_subject_verb_early(
             }
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { subtype, amount }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { subtype, amount, descriptive }) => {
             // "Its controller amasses Goblins X" (Azog, Moria's Ruin): a
             // named player amasses under their own control.
             let subtype = *subtype;
+            let make = |amount| { let mut effect = crate::effects::AmassEffect::new(subtype, amount); effect.descriptive = *descriptive; effect };
             let (mut effects, choices) = if matches!(player, PlayerAst::Implicit | PlayerAst::You) {
                 let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-                (vec![Effect::amass(subtype, amount)], Vec::new())
+                (vec![Effect::new(make(amount))], Vec::new())
             } else {
                 compile_subject_verb_player_value_effect(
                     role,
@@ -809,9 +887,9 @@ pub(super) fn compile_subject_verb_early(
                     true,
                     true,
                     true,
-                    |amount| Effect::amass(subtype, amount),
+                    |amount| Effect::new(make(amount)),
                     |amount, player| {
-                        Effect::new(crate::effects::AmassEffect::new(subtype, amount).with_player(player))
+                        Effect::new(make(amount).with_player(player))
                     },
                 )?
             };
@@ -897,7 +975,7 @@ pub(super) fn compile_subject_verb_early(
             }
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target, descriptive_cost }) => {
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             // "airbend all other creatures" names every matching object, not
@@ -913,20 +991,22 @@ pub(super) fn compile_subject_verb_early(
             {
                 spec = ChooseSpec::All(filter.clone());
             }
-            let tag = ctx.next_tag("airbent");
+            let tag = ctx.next_tag(if descriptive_cost.is_some() { "exiled_cast_permission" } else { "airbent" });
             // The follow-up permission names the new exiled objects, rather
             // than the affected permanents' pre-move characteristics.
             let move_effect = Effect::move_to_zone(spec, Zone::Exile, true).tag(tag.clone());
+            let method = if let Some(cost) = descriptive_cost {
+                crate::alternative_cast::AlternativeCastingMethod::Composed {
+                    name: "Parsed exile casting price".into(),
+                    total_cost: crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?,
+                    condition: None, prototype_power_toughness: None,
+                }
+            } else {
+                crate::alternative_cast::AlternativeCastingMethod::alternative_cost("Airbend",
+                    Some(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(2)]])), vec![])
+            };
             let grant = Effect::grant(
-                crate::grant::Grantable::AlternativeCast(
-                    crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
-                        "Airbend",
-                        Some(crate::mana::ManaCost::from_pips(vec![vec![
-                            crate::mana::ManaSymbol::Generic(2),
-                        ]])),
-                        vec![],
-                    ),
-                ),
+                crate::grant::Grantable::AlternativeCast(method),
                 ChooseSpec::Iterated,
                 crate::grant::GrantDuration::Forever,
             );
@@ -958,20 +1038,21 @@ pub(super) fn compile_subject_verb_early(
                     (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     exiled,
                 ),
-                vec![play, grant, event],
+                if descriptive_cost.is_some() { vec![play, grant] } else { vec![play, grant, event] },
                 Vec::new(),
             );
             Ok((vec![move_effect, Effect::for_each_tagged(tag, vec![grant])], choices))
         }
 
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target, descriptive }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             // "each Merfolk creature you control explores": every matching
             // object explores, not one chosen object.
             let spec = quantified_object_spec_as_all(spec);
-            let effect =
-                tag_object_target_effect(Effect::explore(spec.clone()), &spec, ctx, "explored");
+            let mut payload = crate::effects::ExploreEffect::new(spec.clone());
+            payload.descriptive = *descriptive;
+            let effect = tag_object_target_effect(Effect::new(payload), &spec, ctx, "explored");
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, amount }) => {
@@ -1061,12 +1142,14 @@ pub(super) fn compile_subject_verb_early(
                 Vec::new(),
             ))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, count }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, count, descriptive }) => {
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut behavior = crate::effects::ConniveEffect::new_with_count(spec.clone(), count);
+            behavior.descriptive = *descriptive;
             let effect = tag_object_target_effect(
-                Effect::connive_with_count(spec.clone(), count),
+                Effect::new(behavior),
                 &spec,
                 ctx,
                 "connived",
@@ -1163,19 +1246,18 @@ pub(super) fn compile_subject_verb_early(
             ))
         }
         SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary) => {
-            let cloak = matches!(
-                &subject_verb.action,
-                SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
-            );
+            let descriptive = matches!(&subject_verb.action, SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. }));
+            let cloak = matches!(&subject_verb.action,
+                SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary | LibraryActionAst::DescribedTopCardFaceDown { cloak: true }));
             let (mut effects, choices) =
                 compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                     let player = subject.into_player_filter();
-                    if cloak {
-                        Effect::cloak_top_card_of_library(player)
-                    } else {
-                        Effect::manifest_top_card_of_library(player)
-                    }
+                    let mut effect = if cloak { ironsmith_core::ManifestTopCardOfLibraryEffect::cloak(player) }
+                        else { ironsmith_core::ManifestTopCardOfLibraryEffect::new(player) };
+                    effect.descriptive = descriptive;
+                    Effect::new(effect)
                 })?;
             if ctx.auto_tag_object_targets {
                 let tag =
@@ -1211,24 +1293,25 @@ pub(super) fn compile_subject_verb_early(
             }
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { counters }) => {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { counters, descriptive }) => {
             // "earthbend X, where X is that creature's power" binds the
             // trigger's object reference exactly as other keyword amounts do.
             let counters = resolve_value_it_tag(counters, &current_reference_env(ctx))?;
             let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
+            let mut behavior = crate::effects::EarthbendEffect::new(spec.clone(), counters);
+            behavior.descriptive = *descriptive;
             let effect = tag_object_target_effect(
-                Effect::new(crate::effects::EarthbendEffect::new(
-                    spec.clone(),
-                    counters,
-                )),
+                Effect::new(behavior),
                 &spec,
                 ctx,
                 "earthbend",
             );
             Ok((vec![effect], vec![spec]))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { subtype, count }) => {
-            Ok((vec![Effect::behold(*subtype, *count)], Vec::new()))
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { subtype, count, descriptive }) => {
+            let mut effect = ironsmith_core::BeholdEffect::you(*subtype, *count);
+            effect.descriptive = *descriptive;
+            Ok((vec![Effect::new(effect)], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight {
             creature1,
@@ -1880,7 +1963,8 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes {
             target,
             include_source,
-        }) => compile_exchange_text_boxes_effect(target, *include_source, ctx),
+            duration,
+        }) => compile_exchange_text_boxes_effect(target, *include_source, duration, ctx),
         SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { zone1, zone2 }) => {
             compile_exchange_zones_effect(player, *zone1, *zone2, ctx)
         }
@@ -2638,6 +2722,7 @@ pub(super) fn compile_subject_verb_early(
             cloak,
             manifest,
             shuffle_before,
+            described_face_down,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
@@ -2685,6 +2770,7 @@ pub(super) fn compile_subject_verb_early(
                 // entry, with ward {2} only for cloak.
                 let mut face_down =
                     crate::effects::ManifestObjectsEffect::new(spec.clone(), controller_filter);
+                face_down.descriptive = *described_face_down;
                 if *cloak {
                     face_down = face_down.cloak();
                 }

@@ -646,7 +646,7 @@ fn parse_bargained_face_down_cast_mana_value_gate_inner<'a>(
 ) -> Result<(crate::effect::ValueComparisonOperator, Value), ErrMode<ContextError>> {
     dispatch! {peek(grammar::word_parser_text);
         "if" => (
-            grammar::phrase(&["if", "this", "spell", "was", "bargained"]),
+            grammar::phrase(&["if", "this", "spell", "was", crate::keyword_forms::BARGAINED]),
             opt(grammar::comma()),
             cut_err(parse_face_down_search_cast_mana_value_gate_inner),
         )

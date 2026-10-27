@@ -88,7 +88,7 @@ const chosen = new Map();
 // first new copy with a matching name.
 let pending = null;
 const normalizeName = name => String(name || '').trim().toLowerCase();
-const entry = (names,presentation) => ({names:new Set(names.map(normalizeName).filter(Boolean)),
+const entry = (names,presentation,builderCreated = false) => ({builderCreated,names:new Set(names.map(normalizeName).filter(Boolean)),
   presentation:normalizeCardPresentation(presentation)});
 const cardNames = card => [card.name,...(card.card_faces ?? []).map(face => face?.name)].map(normalizeName);
 
@@ -102,21 +102,24 @@ export function snapshotStableIds(value,ids = new Set()) {
   return ids;
 }
 
-export function setCardPresentation(stableId, names, presentation, {existing} = {}) {
+export function setCardPresentation(stableId, names, presentation, {existing,builderCreated = false} = {}) {
   pending = null;
   if (!presentation) return;
-  if (stableId == null || String(stableId) === '0') pending = {...entry(names,presentation),existing:existing ?? new Set()};
-  else chosen.set(String(stableId),entry(names,presentation));
+  if (stableId == null || String(stableId) === '0') pending = {...entry(names,presentation,builderCreated),existing:existing ?? new Set()};
+  else chosen.set(String(stableId),entry(names,presentation,builderCreated));
 }
 
-export function cardPresentation(card) {
+function cardPresentationEntry(card) {
   if (card?.stable_id == null) return null;
   const id = String(card.stable_id), names = cardNames(card);
   if (!chosen.has(id) && pending && !pending.existing.has(id) && names.some(name => pending.names.has(name))) {
-    chosen.set(id,{names:pending.names,presentation:pending.presentation}); pending = null;
+    chosen.set(id,{names:pending.names,presentation:pending.presentation,builderCreated:pending.builderCreated}); pending = null;
   }
   const found = chosen.get(id);
-  return found && names.some(name => found.names.has(name)) ? found.presentation : null;
+  return found && names.some(name => found.names.has(name)) ? found : null;
 }
+
+export const cardPresentation = card => cardPresentationEntry(card)?.presentation ?? null;
+export const isBuilderCreatedCard = card => cardPresentationEntry(card)?.builderCreated === true;
 
 export const clearCardPresentations = () => {chosen.clear(); pending = null;};

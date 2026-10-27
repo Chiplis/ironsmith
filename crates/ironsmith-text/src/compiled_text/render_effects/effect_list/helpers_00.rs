@@ -2467,7 +2467,7 @@ pub(crate) fn describe_become_aura_manifest_then_attach(effects: &[&Effect]) -> 
     let tagged_manifest = manifest_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
     if tagged_manifest
         .effect
-        .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+        .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>().filter(|effect| !effect.descriptive)
         .is_none()
         && tagged_manifest
             .effect
@@ -2616,7 +2616,7 @@ pub(crate) fn describe_exile_then_incubate_count(effects: &[&Effect]) -> Option<
         unwrap_wrapped_effect(&with_id.effect).downcast_ref::<crate::effects::ExileEffect>()?;
     let incubate =
         unwrap_wrapped_effect(incubate_effect).downcast_ref::<crate::effects::IncubateEffect>()?;
-    if incubate.controller != PlayerFilter::You || incubate.count != Value::Fixed(1) {
+    if incubate.descriptive || incubate.controller != PlayerFilter::You || incubate.count != Value::Fixed(1) {
         return None;
     }
     let Value::EffectMetric {
@@ -2652,9 +2652,7 @@ pub(crate) fn describe_clash_win_optional_top_replacement(effects: &[&Effect]) -
         return None;
     };
     let clash_with_id = wrapped_with_id(clash_effect)?;
-    clash_with_id
-        .effect
-        .downcast_ref::<crate::effects::ClashEffect>()?;
+    if clash_with_id.effect.downcast_ref::<crate::effects::ClashEffect>()?.descriptive { return None; }
     let conditional = conditional_effect.downcast_ref::<crate::effects::IfEffect>()?;
     if conditional.condition != clash_with_id.id
         || conditional.predicate
@@ -4438,7 +4436,7 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
                 .downcast_ref::<crate::effects::ChooseObjectsEffect>()
                 && let Some(next) = members.get(member_idx + 1)
                 && let Some(manifest) = structural_unwrap_render_wrappers(next)
-                    .downcast_ref::<crate::effects::ManifestObjectsEffect>()
+                    .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)
                 && matches!(&manifest.target, ChooseSpec::Tagged(tag) if *tag == choose.tag)
                 && manifest.controller == PlayerFilter::IteratedPlayer
                 && !manifest.cloak

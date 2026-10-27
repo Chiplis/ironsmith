@@ -261,3 +261,5 @@ pub(crate) fn parse_linked_card_copy_with_announced_x(
     let sentences = parts.iter().map(|part| dispatch_entry::SentenceInput::from_lexed(part)).collect::<Vec<_>>();
     sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_token_copy_of_chosen_card_with_x_mana_value(&sentences, 0)
 }
+
+pub(crate) use dispatch_entry::parse_described_effect_bundle;

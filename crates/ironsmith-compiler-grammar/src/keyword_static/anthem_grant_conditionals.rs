@@ -848,7 +848,7 @@ pub fn parse_matching_are_goaded_line(
     let Some(are) = tokens.iter().position(|token| token.is_word("are")) else {
         return Ok(None);
     };
-    if crate::lexer::token_word_refs(&tokens[are..]) != ["are", "goaded"] {
+    if crate::lexer::token_word_refs(&tokens[are..]) != ["are", crate::keyword_forms::GOADED] {
         return Ok(None);
     }
     let subject = &tokens[..are];
@@ -4235,6 +4235,15 @@ fn parse_per_item_conditional_grant_list_line(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // The complete compound reader separates granted keywords from a stated
+    // blocking quality (CR 113.12). A broad grant must not consume both.
+    if matches!(parse_subject_has_keywords_and_cant_be_blocked_line(tokens), Ok(Some(_)))
+        || matches!(parse_subject_cant_be_blocked_and_has_keywords_line(tokens), Ok(Some(_)))
+        || matches!(parse_conditional_source_spell_keyword_line(tokens), Ok(Some(_)))
+    {
+        return Ok(None);
+    }
+
     if let Some(abilities) = parse_per_item_conditional_grant_list_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -5797,19 +5806,16 @@ fn unblockable_and_keyword_tail_keeps_the_reverse_authored_order() {
         .expect("parser should not error")
         .expect("line should parse");
 
-    assert!(matches!(
-        parsed.as_slice(),
-        [
-            StaticAbilityAst::GrantKeywordAction {
-                action: KeywordAction::Unblockable,
-                ..
-            },
-            StaticAbilityAst::GrantKeywordAction {
-                action: KeywordAction::Shroud,
-                ..
-            },
-        ]
-    ));
+    let [StaticAbilityAst::Static(rule), StaticAbilityAst::GrantKeywordAction {
+        action: KeywordAction::Shroud, filter: granted_filter, ..
+    }] = parsed.as_slice() else {
+        panic!("source restriction followed by the shroud grant: {parsed:#?}");
+    };
+    let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+        restriction: crate::effect::Restriction::BeBlocked(filter), ..
+    } = &rule.payload else { panic!("typed blocking restriction: {rule:#?}"); };
+    assert_eq!(filter, granted_filter, "the restriction and grant share the attached subject");
+
 }
 
 #[test]

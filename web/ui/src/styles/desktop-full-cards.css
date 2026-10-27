@@ -840,12 +840,12 @@
   /* While the clock is enabled (white "safe" or gold "all" glow), tiny motes of
      that glow drift up from it and fade, like an aura. Two layers of uneven
      dots on different, unsynced cycles keep the rise from looking regular. */
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"]) {
+  .table-shell[data-focused-hud="true"] :is(.battlefield-human-action-dock, .zone-priority-controls) button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"]) {
     overflow: visible !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::before,
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::after {
+  .table-shell[data-focused-hud="true"] :is(.battlefield-human-action-dock, .zone-priority-controls) button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::before,
+  .table-shell[data-focused-hud="true"] :is(.battlefield-human-action-dock, .zone-priority-controls) button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::after {
     content: "";
     position: absolute;
     left: -7px;
@@ -858,7 +858,7 @@
     filter: drop-shadow(0 0 2px var(--resolve-glow));
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::before {
+  .table-shell[data-focused-hud="true"] :is(.battlefield-human-action-dock, .zone-priority-controls) button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::before {
     background-image:
       radial-gradient(circle, var(--resolve-glow) 0 1.2px, transparent 2px),
       radial-gradient(circle, var(--resolve-glow) 0 0.9px, transparent 1.6px),
@@ -869,7 +869,7 @@
     animation: fc-aura-rise 2.9s ease-out infinite;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::after {
+  .table-shell[data-focused-hud="true"] :is(.battlefield-human-action-dock, .zone-priority-controls) button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::after {
     background-image:
       radial-gradient(circle, var(--resolve-glow) 0 0.9px, transparent 1.6px),
       radial-gradient(circle, var(--resolve-glow) 0 1.3px, transparent 2.1px),
@@ -887,8 +887,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle::before,
-    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle::after {
+    .table-shell[data-focused-hud="true"] :is(.battlefield-human-action-dock, .zone-priority-controls) button.battlefield-auto-pass-toggle::before,
+    .table-shell[data-focused-hud="true"] :is(.battlefield-human-action-dock, .zone-priority-controls) button.battlefield-auto-pass-toggle::after {
       animation: none !important;
       opacity: 0 !important;
     }

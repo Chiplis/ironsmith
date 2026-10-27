@@ -2003,14 +2003,32 @@ fn cr_602_1e_activation_cost_payment_modification_applies_to_the_total_cost() {
         p06_main_phase(&mut game, alice, alice);
         let source = game.create_object_from_definition(&epic, alice, Zone::Battlefield);
         game.create_object_from_definition(&field, bob, Zone::Battlefield);
-        for i in 0..creatures {
-            p06_bear(&mut game, alice, &format!("Helper {i}"));
-        }
+        let helpers: Vec<_> = (0..creatures).map(|i|
+            p06_bear(&mut game, alice, &format!("Helper {i}"))
+        ).collect();
         let mut library_card = p06_compile("Filler", "Type: Basic Land — Plains");
         let _ = &mut library_card;
         game.create_object_from_definition(&library_card, alice, Zone::Library);
         game.refresh_continuous_state().unwrap();
-        results.push((creatures, p06_can_activate(&game, alice, source)));
+        let can_activate = p06_can_activate(&game, alice, source);
+        results.push((creatures, can_activate));
+        if can_activate {
+            let action = p06_activate_actions(&game, alice, source).into_iter().next().unwrap();
+            let mut dm = P06Dm::default();
+            let mut queue = ironsmith::triggers::TriggerQueue::new();
+            p06_complete_action(&mut game, alice, action, &mut dm, &mut queue).unwrap();
+            assert!(game.is_tapped(source));
+            assert_eq!(helpers.iter().filter(|id| game.is_tapped(**id)).count(), 6);
+            assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+            assert_eq!(game.stack.len(), 1);
+            assert!(game.stack[0].is_ability);
+            assert!(game.player(alice).unwrap().hand.is_empty());
+            ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+            assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+            assert!(game.player(alice).unwrap().library.is_empty());
+            assert!(game.stack.is_empty());
+            game.validate_zone_consistency().unwrap();
+        }
     }
     assert_eq!(
         (supported, results),

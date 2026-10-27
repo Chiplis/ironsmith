@@ -569,7 +569,7 @@ pub fn parse_chosen_counter_bundle_shape<'a>(
 
     let target = if complete(
         target_words,
-        sequence(&["target", "permanent", "or", "suspended", "card"]),
+        sequence(&["target", "permanent", "or", crate::keyword_forms::SUSPENDED, "card"]),
     )
     .is_some()
     {
@@ -1100,7 +1100,7 @@ pub fn parse_kicked_targeted_search_count_shape(
         "this",
         "spell",
         "was",
-        "kicked",
+        crate::keyword_forms::KICKED,
         "instead",
         "search",
         "that",
@@ -1153,7 +1153,7 @@ pub fn parse_kicked_search_library_slots_shape(
     let replacement_words = consume_head(
         &second_words,
         &[
-            "if", "this", "spell", "was", "kicked", "instead", "search", "your", "library", "for",
+            "if", "this", "spell", "was", crate::keyword_forms::KICKED, "instead", "search", "your", "library", "for",
         ],
     )?;
     if replacement_words.is_empty() {

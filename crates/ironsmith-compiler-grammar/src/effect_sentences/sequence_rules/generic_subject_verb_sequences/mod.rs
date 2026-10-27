@@ -383,6 +383,7 @@ pub(crate) fn rat_token_definition() -> crate::model::token_definition::TokenDef
         subtypes: vec![crate::types::Subtype::Rat],
         power_toughness: (1, 1),
         legendary: false,
+        snow: false,
         colors: crate::color::ColorSet::BLACK,
         use_source_chosen_color: false,
         use_source_chosen_creature_type: false,

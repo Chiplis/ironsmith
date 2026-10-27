@@ -37,15 +37,15 @@ const STANDARD_MSE_STYLE = "magic-m15-altered.mse-style";
 const CARD_MIN_HEIGHT = 150;
 const CARD_MAX_HEIGHT = 290;
 const CARD_TABLE_SHARE = 0.32;
-// How far each older entry rises behind the one in front: at least its title
-// line, and further when the pointer fans the pile out.
-const STEP_SHARE = 0.22;
-const MIN_STEP_SHARE = 0.09;
+// Older entries peek above the front card within a fixed depth band.
+// The pager keeps every entry accessible when the stack is very deep.
+const STEP_SHARE = 0.045;
 // Older cards rise at most this share of a card above the front one.
-const MAX_HEADROOM_SHARE = 0.75;
+const MAX_HEADROOM_SHARE = 0.24;
+const MAX_VISIBLE_DEPTH = 5;
 // Below the front card: the viewed entry's position and the chevrons.
 const PAGER_HEIGHT = 32;
-const FANNED_STEP_SHARE = 0.34;
+const FANNED_STEP_SHARE = 0.06;
 // Older entries drift this share of a card width towards the board.
 const DRIFT_SHARE = 0.04;
 const ABILITY_SCALE = 1;
@@ -53,8 +53,7 @@ const ABILITY_SCALE = 1;
 // share of a card width away, so the arrow between them has room.
 const PULL_GAP_SHARE = 0.34;
 const PULL_SCALE = 0.94;
-// Stack frames render this much larger than the dock/hover-frame size,
-// growing upward into the board.
+// Scale used only by layouts without a local board dock.
 const FRAME_SCALE = 1.33;
 
 // The pile sits where the Stack rail used to: the board's stack dock
@@ -128,10 +127,9 @@ function pileGeometry(frame, count, fanned) {
   let left;
   let bottom;
   if (dock) {
-    // The bottom strip of the dock holds the position pager.
-    height = Math.min(hoverFrameHeight(), Math.max(0, dock.height - PAGER_HEIGHT));
-    // Grow upward from the dock's floor, as far as the table allows.
-    height = Math.min(height * FRAME_SCALE, Math.max(0, dock.bottom - PAGER_HEIGHT - (Math.max(table.top, 0) + 8)));
+    // Reserve a fixed band for older cards and hover motion. Even a very
+    // deep stack stays inside the local board, below the phase tracker.
+    height = Math.min(hoverFrameHeight(), Math.max(0, (dock.height - PAGER_HEIGHT - 32) / (1 + MAX_HEADROOM_SHARE)));
     // A gutter keeps the card off the window edge the dock starts at.
     left = Math.max(dock.left, 0) + 12;
     bottom = dock.bottom - PAGER_HEIGHT;
@@ -142,13 +140,13 @@ function pileGeometry(frame, count, fanned) {
   }
   height = Math.round(height);
   const width = Math.round(height * CARD_ASPECT);
-  // Older entries rise behind the front card, above the dock into the board.
-  const tableRoom = Math.max(0, bottom - height - (table.top + 8));
+  // Older entries stay inside the dock, including when the pile fans out.
+  const tableRoom = Math.max(0, bottom - height - ((dock?.top ?? table.top) + 32));
   const headroom = Math.min(tableRoom, height * MAX_HEADROOM_SHARE);
-  const gaps = Math.max(1, count - 1);
+  const gaps = Math.max(1, Math.min(MAX_VISIBLE_DEPTH, count - 1));
   const step = fanned
-    ? Math.min(height * FANNED_STEP_SHARE, tableRoom / gaps)
-    : Math.min(height * STEP_SHARE, Math.max(height * MIN_STEP_SHARE, headroom / gaps), tableRoom / gaps);
+    ? Math.min(height * FANNED_STEP_SHARE, headroom / gaps)
+    : Math.min(height * STEP_SHARE, headroom / gaps);
   return {
     width,
     height,
@@ -422,6 +420,9 @@ function CardStackPileEntry({
   const slotStyle = {
     width: `${width}px`,
     height: `${height}px`,
+    // Deep entries remain mounted for continuity, but only the browsed one
+    // needs a visible face beyond the pile's five background layers.
+    visibility: depth > MAX_VISIBLE_DEPTH && !isViewed ? "hidden" : undefined,
     // The viewed entry comes forward over the cards in front of it.
     zIndex: pulled ? 120 : isViewed ? 110 : 100 - depth,
     transform: `translate3d(${x}px, ${y + landscapeShift}px, 0) scale(${scale})`,
@@ -558,8 +559,8 @@ export default function CardStackPile({
       result.set(entry.__timeline_key, {
         pulled: false,
         depth,
-        x: depth * geometry.width * DRIFT_SHARE,
-        y: -depth * geometry.step,
+        x: Math.min(depth, MAX_VISIBLE_DEPTH) * geometry.width * DRIFT_SHARE,
+        y: -Math.min(depth, MAX_VISIBLE_DEPTH) * geometry.step,
       });
       depth += 1;
     }
@@ -579,7 +580,7 @@ export default function CardStackPile({
   // that box to everything the pile covers, pulled-out cards included.
   const extent = geometry && frame?.dock
     ? Math.ceil(geometry.left - frame.dock.left + Math.max(
-      geometry.width * (1 + Math.max(0, pileCount - 1) * DRIFT_SHARE),
+      geometry.width * (1 + Math.min(MAX_VISIBLE_DEPTH, Math.max(0, pileCount - 1)) * DRIFT_SHARE),
       pulledKeys.length > 0 ? geometry.width * (1 + PULL_GAP_SHARE + (1 + PULL_SCALE) / 2) : 0,
     ) + 12)
     : null;
@@ -595,7 +596,7 @@ export default function CardStackPile({
   // expand over the board without making the battlefield chase the pointer.
   const laneWidth = active && geometry && frame?.dock
     ? Math.ceil(geometry.left - frame.dock.left
-      + geometry.width * (1 + Math.max(0, entries.length - 1) * DRIFT_SHARE) + 12)
+      + geometry.width * (1 + Math.min(MAX_VISIBLE_DEPTH, Math.max(0, entries.length - 1)) * DRIFT_SHARE) + 12)
     : 0;
   useLayoutEffect(() => {
     const dock = document.querySelector("[data-card-stack-anchor]");

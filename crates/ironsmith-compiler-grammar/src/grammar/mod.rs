@@ -1,3 +1,4 @@
+pub mod ability_stack_rules;
 pub mod abilities;
 pub mod activated_lines;
 pub mod activated_lowering;

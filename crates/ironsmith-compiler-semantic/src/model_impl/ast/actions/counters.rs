@@ -4,6 +4,12 @@ use super::*;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum CounterActionAst {
+    PayForEachSourceCounter { counter_type: CounterType, cost: ironsmith_core::TotalCost<crate::model::CompilerCost> },
+    /// Choose any number of counter holders and add one of each existing kind.
+    GrowCountersOnChosenHolders,
+    /// Counter placement and a persistent state designation, without a keyword identity.
+    PutCountersThenBecomeMonstrous { amount: Value },
+    PutCountersThenBecomeRenowned { amount: u32 },
     /// "The next time target creature adapts this turn, it adapts as though
     /// it had no +1/+1 counters on it." (Biomancer's Familiar)
     NextAdaptIgnoresCounters {

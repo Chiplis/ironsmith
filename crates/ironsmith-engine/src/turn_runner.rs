@@ -860,10 +860,11 @@ pub struct TurnRunner {
     defending_player: Option<PlayerId>,
     /// Defending players who still need to declare blockers, in APNAP order.
     remaining_defending_players: Vec<PlayerId>,
-    /// (blocker, attacker) pairs declared so far this declare-blockers step.
-    /// Their trigger events are queued once, after the last defending player
-    /// declares (CR 509.1 is a single turn-based action).
+    /// (blocker, attacker) pairs in the current defender's declaration.
+    /// Capture their triggers before the next defender's costs (CR 802.4).
     declared_block_pairs: Vec<(ObjectId, ObjectId)>,
+    /// Frozen triggers remain private until every defender finishes announcing.
+    captured_block_triggers: TriggerQueue,
     /// Attackers already blocked (by an effect) when this declare-blockers
     /// step's declarations began (CR 509.3c: they don't become blocked again).
     blocked_before_declarations: Vec<ObjectId>,
@@ -919,6 +920,7 @@ impl TurnRunner {
             defending_player: None,
             remaining_defending_players: Vec::new(),
             declared_block_pairs: Vec::new(),
+            captured_block_triggers: TriggerQueue::new(),
             blocked_before_declarations: Vec::new(),
         }
     }
@@ -1754,6 +1756,7 @@ impl TurnRunner {
                     self.remaining_defending_players =
                         attacked_defending_players_in_apnap_order(game, &self.combat);
                     self.declared_block_pairs.clear();
+                    self.captured_block_triggers = TriggerQueue::new();
                     self.blocked_before_declarations = self
                         .combat
                         .attackers
@@ -1955,11 +1958,12 @@ impl TurnRunner {
                     self.remaining_defending_players.remove(0);
                 }
                 self.defending_player = None;
+                self.queue_declared_block_events(game, tq, defending_player, false);
                 if !self.remaining_defending_players.is_empty() {
                     self.state = TurnState::DeclareBlockersDecision;
                     return Ok(TurnAction::Continue);
                 }
-                self.queue_declared_block_events(game, tq, defending_player);
+                self.queue_declared_block_events(game, tq, defending_player, true);
                 // The priority loop announces trigger modes, targets, and order.
                 game.combat = Some(self.combat.clone());
                 game.reset_priority_for_new_window();
@@ -3597,20 +3601,37 @@ impl TurnRunner {
         Ok(RunnerProgress::Complete(draw_events))
     }
 
-    /// CR 509.1: queue every defending player's block events as the one
-    /// declare-blockers batch, against the completed blocking configuration.
+    /// Each defender's declaration has its own completed event world. Only
+    /// unblocked-attacker checks wait for every defender (509.5, 802.4).
     fn queue_declared_block_events(
         &mut self,
         game: &mut GameState,
         tq: &mut TriggerQueue,
-        _last_defender: PlayerId,
+        defender: PlayerId,
+        complete: bool,
     ) {
-        self.combat.block_declaration_complete = true;
+        self.combat.block_declaration_complete = complete;
         game.combat = Some(self.combat.clone());
         game.mark_continuous_state_dirty();
         let pairs = std::mem::take(&mut self.declared_block_pairs);
-        let blocked_before = std::mem::take(&mut self.blocked_before_declarations);
-        queue_block_declaration_events_after(game, &self.combat, tq, &pairs, None, &blocked_before);
+        let blocked_before = if complete {
+            self.combat.attackers.iter().map(|info| info.creature)
+                .filter(|attacker| crate::combat_state::is_blocked(&self.combat, *attacker))
+                .collect()
+        } else {
+            self.blocked_before_declarations.clone()
+        };
+        let mut captured = TriggerQueue::new();
+        queue_block_declaration_events_after(
+            game, &self.combat, &mut captured, &pairs, (!complete).then_some(defender),
+            &blocked_before, complete,
+        );
+        if complete {
+            tq.append_captured(std::mem::take(&mut self.captured_block_triggers));
+            tq.append_captured(captured);
+        } else {
+            self.captured_block_triggers.append_captured(captured);
+        }
     }
 
     fn apply_sbas_until_commander_choice(

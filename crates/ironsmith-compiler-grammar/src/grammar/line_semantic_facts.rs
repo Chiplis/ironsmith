@@ -302,6 +302,7 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
     let trigger_frequency = trigger_surface::parse_trigger_frequency_tokens(tokens);
 
     LineSemanticFacts {
+        ability_cant_be_countered: super::ability_stack_rules::remove_cant_be_countered_instruction(tokens).is_some(),
         intrinsic_basic_land_mana_reminder: None,
         station_creature_threshold: None,
         supported_sneak_form: false,
@@ -324,10 +325,12 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
         },
         statement: parse_statement_semantic_facts(context, tokens),
         triggered_ability: TriggeredLineSemanticFacts {
+            champion: None,
             compiler_ability: None,
             intro_surface: trigger_surface::parse_trigger_intro_surface_tokens(tokens),
             presentation_label: None,
             functional_zones: TriggerFunctionalZoneFacts {
+                excluded_zones: trigger_zones.excluded_zones,
                 explicit_zone: trigger_zones.explicit_zone,
                 explicit_zone_or_battlefield: trigger_zones.explicit_zone_or_battlefield,
                 returns_self_from_graveyard: trigger_zones.returns_self_from_graveyard,

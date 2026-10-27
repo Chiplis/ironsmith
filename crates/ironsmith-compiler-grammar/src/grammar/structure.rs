@@ -1025,7 +1025,7 @@ pub fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFlags {
         if_kicked_choose_any_number: word_phrase_occurs(
             tokens,
             &[
-                "if", "this", "spell", "was", "kicked", "choose", "any", "number", "instead",
+                "if", "this", "spell", "was", crate::keyword_forms::KICKED, "choose", "any", "number", "instead",
             ],
         ),
     }

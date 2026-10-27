@@ -54,6 +54,7 @@ pub fn resolve_condition_from_predicate(
                 Condition::TargetMatches(filter)
             }
         }
+        PredicateAst::UnpairedCreaturesCanPair => Condition::SoulbondPairingPossible,
         PredicateAst::ItIsSoulbondPaired => {
             if let Some(tag) = saved_last_tag.clone() {
                 Condition::TaggedObjectIsSoulbondPaired(tag.into())
@@ -768,6 +769,9 @@ pub fn resolve_condition_from_predicate(
             Condition::SourceAttackedThisTurn
         }
         PredicateAst::Source(SourcePredicateAst::SourceSuspected) => Condition::SourceSuspected,
+        PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlSinceYourLastUpkeep) => {
+            Condition::SourceCameUnderYourControlSinceYourLastUpkeep
+        }
         PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn) => {
             Condition::SourceCameUnderYourControlThisTurn
         }

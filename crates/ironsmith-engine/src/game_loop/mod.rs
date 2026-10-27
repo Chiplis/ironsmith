@@ -79,6 +79,7 @@ mod priority_cast;
 mod priority_core;
 mod priority_mana;
 mod priority_state;
+mod spell_cost_references;
 mod saga;
 pub(crate) use sba_triggers::announce_trigger_target_distributions;
 pub(crate) use targeting::{

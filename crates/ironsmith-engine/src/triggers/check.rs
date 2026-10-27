@@ -360,7 +360,7 @@ fn queued_triggered_ability(
         effects,
         choices,
         intervening_if: trigger_ability.intervening_if.clone(),
-        presentation_label: None,
+        presentation_label: trigger_ability.presentation_label.clone(),
     }
 }
 
@@ -2067,6 +2067,9 @@ fn for_each_public_nonbattlefield_trigger_object_id(
     for &obj_id in &game.command_zone {
         visit(obj_id);
     }
+    for &obj_id in &game.ante {
+        visit(obj_id);
+    }
     for entry in &game.stack {
         if game
             .object(entry.object_id)
@@ -2077,7 +2080,7 @@ fn for_each_public_nonbattlefield_trigger_object_id(
     }
 }
 
-/// Visit hand objects whose hand-functioning triggered abilities may be checked.
+/// Visit objects in hidden zones whose explicitly eligible triggers may be checked.
 ///
 /// In a hidden-information (mental-poker) match each peer runs its own engine:
 /// the owner holds the real card while every other peer holds an ability-less
@@ -2095,7 +2098,7 @@ fn for_each_public_nonbattlefield_trigger_object_id(
 /// (`note_hidden_draw_for_reveal_window`), and revealing re-checks the draw.
 fn for_each_hidden_trigger_object_id(game: &GameState, mut visit: impl FnMut(ObjectId)) {
     for player in &game.players {
-        for &obj_id in &player.hand {
+        for &obj_id in player.hand.iter().chain(player.library.iter()).chain(player.sideboard.iter()) {
             if game.hidden_card_info(obj_id).is_some()
                 && !game.is_publicly_revealed_hidden_card(obj_id)
             {
@@ -2671,7 +2674,7 @@ fn check_battlefield_trigger_subscriber(
                 effects: trigger_ability.effects.clone(),
                 choices: trigger_ability.choices.clone(),
                 intervening_if: trigger_ability.intervening_if.clone(),
-                presentation_label: None,
+                presentation_label: trigger_ability.presentation_label.clone(),
             },
             triggering_event: trigger_event.clone(),
             source_stable_id: obj.stable_id,
@@ -3302,7 +3305,7 @@ fn check_triggers_with_view_and_registry(
                         effects: trigger_ability.effects.clone(),
                         choices: trigger_ability.choices.clone(),
                         intervening_if: trigger_ability.intervening_if.clone(),
-                        presentation_label: None,
+                        presentation_label: trigger_ability.presentation_label.clone(),
                     },
                     triggering_event: trigger_event.clone(),
                     source_stable_id: snapshot.stable_id,
@@ -3329,7 +3332,8 @@ fn check_triggers_with_view_and_registry(
         check_triggers_in_zone(game, obj_id, trigger_event, view, &mut triggered);
     });
 
-    // Hand is hidden, but some mechanics (for example Miracle) legitimately trigger there.
+    // Explicit functional zones can include hand, library or outside the game.
+    // Hand mechanics such as Miracle are the common case.
     // Cards backed by a cryptographic hidden slot are skipped on every peer so
     // the owner (real card) and other peers (placeholder) emit the same list.
     for_each_hidden_trigger_object_id(game, |obj_id| {
@@ -3760,7 +3764,7 @@ fn collect_state_triggers_for_object(
                 effects: trigger_ability.effects.clone(),
                 choices: trigger_ability.choices.clone(),
                 intervening_if: trigger_ability.intervening_if.clone(),
-                presentation_label: None,
+                presentation_label: trigger_ability.presentation_label.clone(),
             },
             triggering_event: trigger_event,
             source_stable_id: obj.stable_id,
@@ -4465,7 +4469,7 @@ fn check_triggers_in_zone(
                         effects: trigger_ability.effects.clone(),
                         choices: trigger_ability.choices.clone(),
                         intervening_if: trigger_ability.intervening_if.clone(),
-                        presentation_label: None,
+                        presentation_label: trigger_ability.presentation_label.clone(),
                     },
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,

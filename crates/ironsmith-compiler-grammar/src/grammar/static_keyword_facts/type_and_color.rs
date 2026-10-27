@@ -229,6 +229,15 @@ pub fn parse_subjects_are_basic_tokens(
 }
 
 pub fn parse_subject_color_tokens(tokens: &[OwnedLexToken]) -> Option<SubjectColorFact<'_>> {
+    let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+    if clean.len() > 3 {
+        let split = clean.len() - 3;
+        if clean[split].is_any_word(&["has", "have"]) && clean[split + 1].is_word("no")
+            && clean[split + 2].is_word("color") {
+            return Some(SubjectColorFact { subject_tokens: &clean[..split], color: ColorSet::COLORLESS,
+                exclude_from_color_identity: false });
+        }
+    }
     let fact =
         crate::grammar::primitives::probe_all(tokens, parse_subject_color, "static subject color")?;
     let trailing_subject_word = fact

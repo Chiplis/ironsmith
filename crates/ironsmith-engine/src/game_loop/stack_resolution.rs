@@ -210,17 +210,17 @@ fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
     }
 }
 
-fn stack_entry_cast_with_named_alternative(
+fn stack_entry_cast_alternative_matches(
     game: &GameState,
     entry: &StackEntry,
     obj: &crate::object::Object,
-    name: &str,
+    predicate: impl Fn(&crate::alternative_cast::AlternativeCastingMethod) -> bool,
 ) -> bool {
     match &entry.casting_method {
         CastingMethod::Alternative(idx) => obj
             .alternative_casts
             .get(*idx)
-            .is_some_and(|method| method.name().eq_ignore_ascii_case(name)),
+            .is_some_and(|method| predicate(method)),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
             zone,
@@ -238,9 +238,13 @@ fn stack_entry_cast_with_named_alternative(
             *idx,
         )
         .or_else(|| obj.cast_alternative_method_owned())
-        .is_some_and(|method| method.name().eq_ignore_ascii_case(name)),
+        .is_some_and(|method| predicate(&method)),
         _ => false,
     }
+}
+
+fn stack_entry_cast_with_named_alternative(game: &GameState, entry: &StackEntry, obj: &crate::object::Object, name: &str) -> bool {
+    stack_entry_cast_alternative_matches(game, entry, obj, |method| method.name().eq_ignore_ascii_case(name))
 }
 
 fn choose_spec_references_target_player(spec: &crate::target::ChooseSpec) -> bool {
@@ -1198,6 +1202,9 @@ pub(crate) fn stack_entry_ability_kind(
         return None;
     }
     if entry.trigger_identity.is_some() || entry.triggering_event.is_some() {
+        if entry.ability_effects.as_ref().is_some_and(|program| matches!(program.champion, Some(ironsmith_core::resolution_model::ChampionRole::Exile(_)))) {
+            return Some(CauseAbilityKind::ChampionTrigger);
+        }
         let modular = entry.ability_effects.as_ref().is_some_and(|program| {
             program.segments.first().is_some_and(|segment| {
                 segment.default_effects.first().is_some_and(|effect| {
@@ -1302,6 +1309,7 @@ pub(super) fn stack_entry_execution_context<'a>(
         // ability, whose stack object is only a stand-in for the copy.
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
+    ctx.duration_window_start = game.duration_window_for_stack_entry(entry);
     ctx.mana.activation_mana_budget = entry.activation_mana_budget.clone();
     // CR 115.1: events this resolution causes remember what it targets
     // ("a spell or ability that targets that creature would cause ...").
@@ -1590,7 +1598,7 @@ fn resolve_stack_entry_full_inner(
     let mutating_creature_spell = !entry.is_ability
         && obj.as_ref().is_some_and(|obj| {
             obj.zone == Zone::Stack
-                && stack_entry_cast_with_named_alternative(game, &entry, obj, "Mutate")
+                && stack_entry_cast_alternative_matches(game, &entry, obj, |method| method.is_mutate())
         });
     let mutate_target = mutating_creature_spell.then(|| {
         valid_targets.iter().find_map(|target| match target {
@@ -1840,7 +1848,8 @@ fn resolve_stack_entry_full_inner(
             .turn_store
             .resolved_spell_names
             .insert((entry.controller, obj.name.to_string()));
-        if spell_has_keyword_marker(obj, ironsmith_core::KeywordMarkerMechanic::Paradigm) {
+        if spell_has_keyword_marker(obj, ironsmith_core::KeywordMarkerMechanic::Paradigm)
+            || spell_has_keyword_marker(obj, ironsmith_core::KeywordMarkerMechanic::RecurringCopyOnFirstNameResolution) {
             if first_with_name {
                 let delayed = crate::effects::delayed::DelayedTriggerConfig::new(
                     Trigger::beginning_of_precombat_main_phase(
@@ -1954,7 +1963,7 @@ fn resolve_stack_entry_full_inner(
                 .chosen_player
                 .or_else(|| game.chosen_player(entry.object_id));
             let cast_with_sneak =
-                stack_entry_cast_with_named_alternative(game, &entry, obj, "Sneak");
+                stack_entry_cast_alternative_matches(game, &entry, obj, |method| method.returns_attacker_enters_attacking());
             let mut sneak_attack_target = if cast_with_sneak {
                 pop_sneak_attack_target(game, entry.object_id)
             } else {
@@ -2132,32 +2141,16 @@ fn resolve_stack_entry_full_inner(
                     _ => false,
                 } || entry.optional_costs_paid.was_paid_label("Blitz")
                     || obj.optional_costs_paid.was_paid_label("Blitz");
-                let cast_with_warp = match &entry.casting_method {
-                    CastingMethod::Alternative(idx) => matches!(
-                        obj.alternative_casts.get(*idx),
-                        Some(crate::alternative_cast::AlternativeCastingMethod::Warp { .. })
-                    ),
-                    CastingMethod::PlayFrom {
-                        use_alternative: Some(idx),
-                        zone,
-                        ..
-                    }
-                    | CastingMethod::SplitOtherHalfPlayFrom {
-                        use_alternative: Some(idx),
-                        zone,
-                        ..
-                    } => matches!(
-                        crate::decision::resolve_play_from_alternative_method(
-                            game,
-                            entry.controller,
-                            obj,
-                            *zone,
-                            *idx,
-                        ),
-                        Some(crate::alternative_cast::AlternativeCastingMethod::Warp { .. })
-                    ),
-                    _ => false,
-                };
+                let warp_method = match &entry.casting_method {
+                    CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
+                    CastingMethod::PlayFrom { use_alternative: Some(idx), zone, .. }
+                    | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: Some(idx), zone, .. } =>
+                        crate::decision::resolve_play_from_alternative_method(game, entry.controller, obj, *zone, *idx),
+                    _ => None,
+                }.filter(|method| matches!(method, crate::alternative_cast::AlternativeCastingMethod::Warp { .. }));
+                let cast_with_warp = warp_method.is_some();
+                let marks_warped = warp_method.as_ref().is_some_and(|method|
+                    matches!(method, crate::alternative_cast::AlternativeCastingMethod::Warp { descriptive: false, .. }));
                 let cast_with_suspend = match &entry.casting_method {
                     CastingMethod::PlayFrom {
                         use_alternative: Some(idx),
@@ -2168,19 +2161,17 @@ fn resolve_stack_entry_full_inner(
                         use_alternative: Some(idx),
                         zone,
                         ..
-                    } if *zone == Zone::Exile => matches!(
-                        crate::decision::resolve_play_from_alternative_method(
+                    } if *zone == Zone::Exile => crate::decision::resolve_play_from_alternative_method(
                             game,
                             entry.controller,
                             obj,
                             *zone,
                             *idx,
-                        ),
-                        Some(crate::alternative_cast::AlternativeCastingMethod::Suspend { .. })
-                    ),
+                        ).is_some_and(|method| method.suspend_spec().is_some()),
                     _ => false,
                 };
-                if cast_with_dash {
+                let instructions = battlefield_method.as_ref().map(|method| method.battlefield_instructions()).unwrap_or_default();
+                if cast_with_dash || instructions.return_at_next_end_step {
                     let return_to_hand = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
                         vec![crate::effect::Effect::new(
@@ -2204,7 +2195,7 @@ fn resolve_stack_entry_full_inner(
                         return Ok(root_outputs);
                     }
                 }
-                if cast_with_blitz {
+                if cast_with_blitz || instructions.sacrifice_at_next_end_step {
                     let sacrifice_at_end_step = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
                         vec![crate::effect::Effect::new(
@@ -2252,13 +2243,15 @@ fn resolve_stack_entry_full_inner(
                     let exile_then_grant = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
                         vec![crate::effect::Effect::new(
-                            crate::effects::ExileThenGrantPlayEffect::new(
-                                crate::target::ChooseSpec::SpecificObject(new_id),
-                                crate::target::PlayerFilter::Specific(obj.owner),
-                                crate::grant::GrantDuration::Forever,
-                            )
-                            .starting_next_turn()
-                            .warped(),
+                            {
+                                let mut effect = crate::effects::ExileThenGrantPlayEffect::new(
+                                    crate::target::ChooseSpec::SpecificObject(new_id),
+                                    crate::target::PlayerFilter::Specific(obj.owner),
+                                    crate::grant::GrantDuration::Forever,
+                                ).starting_next_turn();
+                                effect.marks_warped = marks_warped;
+                                effect
+                            },
                         )],
                         true,
                         vec![new_id],

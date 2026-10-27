@@ -349,7 +349,7 @@ fn resolve_cost_reduction_amount_for_caster(
 fn alternative_method_is_emerge(
     method: &crate::alternative_cast::AlternativeCastingMethod,
 ) -> bool {
-    method.name().eq_ignore_ascii_case("Emerge")
+    method.sacrifice_reduces_generic_by_mana_value()
 }
 
 fn emerge_sacrifice_filter(
@@ -373,7 +373,6 @@ fn maximum_emerge_reduction(
     let Some(filter) = emerge_sacrifice_filter(method) else {
         return 0;
     };
-
     let ctx = game.filter_context_for(player, Some(source));
     game.battlefield
         .iter()
@@ -400,6 +399,9 @@ fn maximum_emerge_reduction(
 /// loyalty abilities, or activations performed by a particular player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ActivationCostAbility {
+    /// None prices the maximum optional reduction for legality previews;
+    /// an announced activation retains the player's exact chosen amount.
+    pub optional_generic_reduction_limit: Option<u32>,
     pub mana_ability: bool,
     pub equip: bool,
     pub keyword: Option<ironsmith_core::ActivatedAbilityKeyword>,
@@ -449,6 +451,7 @@ impl ActivationCostAbility {
             loyalty_ability: activated.is_loyalty_ability(),
             activator: Some(activator),
             ability_index,
+            optional_generic_reduction_limit: None,
         }
     }
 }
@@ -930,6 +933,7 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view_and_budget(
 
     let mut adjusted = base_cost.clone();
     let mut reductions = Vec::new();
+    let mut optional_remaining = ability.and_then(|facts| facts.optional_generic_reduction_limit).unwrap_or(u32::MAX);
     let Some(ability_source_object) = game.object(ability_source) else {
         return (adjusted, 0);
     };
@@ -1030,10 +1034,16 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view_and_budget(
                 if let Some(replacement) = &reduction.replacement_mana_cost {
                     adjusted = replacement.clone();
                     reductions.clear();
+                    optional_remaining = ability.and_then(|facts| facts.optional_generic_reduction_limit).unwrap_or(u32::MAX);
                     continue;
                 }
 
-                reductions.push((reduction.reduction.saturating_mul(multiplier), reduction.minimum_total_mana));
+                let mut amount = reduction.reduction.saturating_mul(multiplier);
+                if reduction.optional {
+                    amount = amount.min(optional_remaining);
+                    optional_remaining -= amount;
+                }
+                reductions.push((amount, reduction.minimum_total_mana));
             }
         }
     }
@@ -1051,13 +1061,37 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view_and_budget(
             && before.mana_value() > 0 && adjusted.mana_value() < minimum
         { adjusted = add_generic_mana_cost(&adjusted, minimum - adjusted.mana_value()); }
     }
-    (apply_payment_reason_mana_adjustments(
+    let adjusted = apply_payment_reason_mana_adjustments(
         game,
         activator,
         Some(ability_source),
         &adjusted,
         crate::costs::PaymentReason::ActivateAbility,
-    ), budget)
+    );
+    // CR 602.1e: an ability's "for each mana in this ability's activation
+    // cost" payment method applies after taxes and reductions establish the
+    // total. Waterbend itself remains scoped to its authored component.
+    let adjusted = if base_cost.has_creature_tap_payment() {
+        adjusted.with_creature_tap_payment()
+    } else { adjusted };
+    (adjusted, budget)
+}
+
+/// Capacity of matching optional generic reductions, using the same source,
+/// controller and selected-ability gates as total-cost pricing.
+pub(crate) fn optional_activation_reduction_capacity(
+    game: &GameState, activator: PlayerId, source: ObjectId,
+    targets: &[Target], facts: ActivationCostAbility,
+) -> u32 {
+    let view = DerivedGameView::new(game);
+    let base = crate::mana::ManaCost::default();
+    let mut all = facts;
+    all.optional_generic_reduction_limit = None;
+    let mut none = facts;
+    none.optional_generic_reduction_limit = Some(0);
+    let (_, maximum) = calculate_effective_activation_mana_cost_with_view_and_budget(game, activator, source, &base, targets, Some(all), &view);
+    let (_, mandatory) = calculate_effective_activation_mana_cost_with_view_and_budget(game, activator, source, &base, targets, Some(none), &view);
+    maximum.saturating_sub(mandatory)
 }
 
 /// Lock announced X in the original cost before taxes and reductions.
@@ -1874,22 +1908,20 @@ where
             let mut reduction = max_cost_payment_sacrifice_reduction_for_selection(
                 hypothetical, player, &proposal, true,
             );
-            // CR 702.180a: the stack-zoned proposal skips the resource
-            // preview, so add the best Harmonize tap reduction here.
+            // CR 702.180a, 702.119a: the stack-zoned proposal skips the
+            // resource preview, so add the best tap or sacrifice reduction here.
             if spell.zone != Zone::Stack
-                && alternative_method_for_casting_method(game, player, spell, casting_method)
-                    .is_some_and(|method| {
-                        matches!(
-                            method,
-                            crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
-                        )
-                    })
+                && let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method)
             {
-                reduction += get_convoke_creatures(game, player)
-                    .iter()
-                    .map(|(id, _)| game.current_power(*id).unwrap_or(0).max(0) as u32)
-                    .max()
-                    .unwrap_or(0);
+                if method.can_tap_creature_for_power_reduction() {
+                    reduction += get_convoke_creatures(game, player)
+                        .iter()
+                        .map(|(id, _)| game.current_power(*id).unwrap_or(0).max(0) as u32)
+                        .max()
+                        .unwrap_or(0);
+                } else {
+                    reduction += maximum_emerge_reduction(game, player, spell.id, &method);
+                }
             }
             apply_minimum_spell_total_mana_with_view(
                 &hypothetical_view, &effective.reduce_generic(reduction),
@@ -2046,6 +2078,11 @@ pub(crate) fn spell_has_active_flash_with_view(
                 );
             }
             if s.has_flash() {
+                return true;
+            }
+            if s.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::CastAtInstantTiming)
+                && a.functions_in(&spell.zone) && s.is_active(game, spell_id)
+            {
                 return true;
             }
             // "This spell has flash as long as ..." compiled as a conditional
@@ -2428,6 +2465,55 @@ pub(crate) fn spell_cast_restrictions_allow(
         })
 }
 
+/// Values admitted by an exact text definition of X. A count mentioning an
+/// opponent chooses one real opponent's count, never the interval between them.
+pub(crate) fn spell_defined_x_values(
+    game: &GameState, player: PlayerId, spell: &crate::object::Object,
+) -> Result<Option<Vec<u32>>, crate::effects::ExecutionError> {
+    use crate::target::PlayerFilter;
+    let ctx = ExecutionContext::new_default(spell.id, player);
+    let mut admitted: Option<Vec<u32>> = None;
+    for ability in spell.abilities.iter() {
+        if !ability.functional_zones.contains(&Zone::Stack) { continue; }
+        let crate::ability::AbilityKind::Static(rule) = &ability.kind else { continue; };
+        let Some(value) = rule.this_spell_x_definition_value() else { continue; };
+        let mut values = Vec::new();
+        if let crate::effect::Value::Count(filter) = value.unhinted()
+            && (filter.owner == Some(PlayerFilter::Opponent)
+                || filter.controller == Some(PlayerFilter::Opponent))
+        {
+            for opponent in crate::effects::helpers::resolve_player_filter_to_list(game, &PlayerFilter::Opponent, &ctx.filter_context(game), &ctx)? {
+                let mut specific = filter.clone();
+                if specific.owner == Some(PlayerFilter::Opponent) { specific.owner = Some(PlayerFilter::Specific(opponent)); }
+                if specific.controller == Some(PlayerFilter::Opponent) { specific.controller = Some(PlayerFilter::Specific(opponent)); }
+                values.push(resolve_value(game, &crate::effect::Value::Count(specific), &ctx)?.max(0) as u32);
+            }
+        } else {
+            values.push(resolve_value(game, &value, &ctx)?.max(0) as u32);
+        }
+        values.sort_unstable(); values.dedup();
+        if let Some(previous) = &mut admitted { previous.retain(|value| values.contains(value)); }
+        else { admitted = Some(values); }
+    }
+    Ok(admitted)
+}
+
+/// Whether a resulting spell can satisfy an effect's restriction with its
+/// text-defined X. Preserve the selected face and the instruction's bindings.
+pub(crate) fn spell_matches_requirement_with_defined_x(
+    game: &GameState, caster: PlayerId, spell: &crate::object::Object,
+    requirement: &crate::target::ObjectFilter, filter_ctx: &crate::filter::FilterContext,
+) -> Result<Option<bool>, crate::effects::ExecutionError> {
+    let Some(values) = spell_defined_x_values(game, caster, spell)? else { return Ok(None); };
+    let mut snapshot = crate::snapshot::ObjectSnapshot::from_object(spell, game);
+    snapshot.zone = Zone::Stack;
+    snapshot.controller = caster;
+    Ok(Some(values.into_iter().any(|value| {
+        snapshot.x_value = Some(value);
+        requirement.matches_snapshot(&snapshot, filter_ctx, game)
+    })))
+}
+
 /// Check a forced printed-mana-cost X of zero on the proposed spell face.
 /// The caller supplies a stack proposal, including its casting controller;
 /// source-relative values must not inspect the physical card's exile face.
@@ -2436,6 +2522,7 @@ pub(crate) fn spell_x_minimum_allows_zero(
     player: PlayerId,
     spell: &crate::object::Object,
 ) -> Result<bool, crate::effects::ExecutionError> {
+    if let Some(values) = spell_defined_x_values(game, player, spell)? { return Ok(!values.is_empty()); }
     let ctx = ExecutionContext::new_default(spell.id, player).with_x(0);
     for ability in spell.abilities.iter() {
         if !ability.functional_zones.contains(&Zone::Stack) {
@@ -2815,7 +2902,7 @@ fn offering_grants_timing(
     spell: &crate::object::Object,
 ) -> bool {
     spell.optional_costs.iter().any(|optional| {
-        optional.kind == ironsmith_core::OptionalCostKind::Offering
+        optional.kind.sacrifice_reduces_mana_cost_and_grants_timing()
             && (spell.zone != Zone::Stack
                 || spell
                     .optional_costs_paid
@@ -2869,7 +2956,8 @@ fn casting_method_grants_sneak_timing(
     let Some(method) = method else {
         return false;
     };
-    method.name().eq_ignore_ascii_case("Sneak")
+    method.returns_attacker_enters_attacking()
+        && game.active_players().contains(&player)
         && matches!(game.turn.phase, Phase::Combat)
         && game.turn.step == Some(Step::DeclareBlockers)
 }
@@ -3141,7 +3229,7 @@ fn plotted_cast_method_allows(
 ) -> bool {
     if !matches!(
         alternative_method_for_casting_method(game, player, spell, casting_method),
-        Some(crate::alternative_cast::AlternativeCastingMethod::Plot { .. })
+        Some(method) if method.prepares_face_up_sorcery()
     ) {
         return true;
     }
@@ -3155,7 +3243,7 @@ fn plotted_cast_method_allows(
     // stack; zone-change cleanup has removed the old exile object's designation.
     spell.zone == Zone::Stack
         || (spell.zone == Zone::Exile
-            && game.is_plotted_by(spell.id, player)
+            && game.is_prepared_face_up_by(spell.id, player)
             && game
                 .plotted_turn(spell.id)
                 .is_some_and(|turn| turn < game.turn.turn_number))
@@ -3171,7 +3259,7 @@ fn foretold_cast_method_allows(
 ) -> bool {
     if !matches!(
         alternative_method_for_casting_method(game, player, spell, casting_method),
-        Some(crate::alternative_cast::AlternativeCastingMethod::Foretell { .. })
+        Some(method) if method.prepares_face_down()
     ) {
         return true;
     }
@@ -3265,6 +3353,7 @@ pub(crate) fn completed_cast_proposal_is_legal(
     player: PlayerId,
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
+    from_zone: Zone,
     targets: &[crate::Target],
 ) -> bool {
     completed_cast_proposal_is_legal_with_timing_permission(
@@ -3272,6 +3361,7 @@ pub(crate) fn completed_cast_proposal_is_legal(
         player,
         spell,
         casting_method,
+        from_zone,
         false,
         targets,
     )
@@ -3286,12 +3376,14 @@ pub(crate) fn completed_effect_driven_cast_proposal_is_legal(
     player: PlayerId,
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
+    from_zone: Zone,
 ) -> bool {
     completed_cast_proposal_is_legal_with_timing_permission(
         game,
         player,
         spell,
         casting_method,
+        from_zone,
         true,
         &[],
     )
@@ -3302,6 +3394,7 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
     player: PlayerId,
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
+    from_zone: Zone,
     timing_permission_from_effect: bool,
     targets: &[crate::Target],
 ) -> bool {
@@ -3324,10 +3417,12 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
     {
         return false;
     }
+    let mut origin_view = spell.clone();
+    origin_view.zone = from_zone;
     if violates_any_cant_cast_restriction_from_other_sources(game, player, spell, Some(spell.id))
         || violates_any_cast_limit(game, player, spell)
         || spell.is_land()
-        || !spell_cast_restrictions_allow(game, player, spell)
+        || !spell_cast_restrictions_allow(game, player, &origin_view)
     {
         return false;
     }
@@ -3880,7 +3975,7 @@ fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
         return true;
     }
     if !game
-        .current_has_static_ability_id(spell_id, crate::static_abilities::StaticAbilityId::Assist)
+        .spell_allows_other_player_generic_payment(spell_id)
     {
         return false;
     }
@@ -3970,7 +4065,7 @@ pub(crate) fn max_x_payable_with_payment_resources(
 ) -> Option<u32> {
     let spell = game.object(spell_id)?;
     let assist = game
-        .current_has_static_ability_id(spell_id, crate::static_abilities::StaticAbilityId::Assist);
+        .spell_allows_other_player_generic_payment(spell_id);
     let delve = spell_has_delve(game, spell);
     let convoke = spell_has_convoke(game, spell);
     let improvise = spell_has_improvise(game, spell);
@@ -4172,15 +4267,15 @@ pub(crate) fn can_cast_spell_with_context(
     let cast_view = without_combined_split_characteristics(cast_view, spell, casting_method);
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
-    // An empty exile price fixes printed X to zero. Check the authored
+    // An empty zone price fixes printed X to zero. Check the authored
     // minimum in the same selected-face, stack-zone proposal used for payment,
-    // rather than reading the original exile object's characteristics by ID.
+    // rather than reading the original zone object's characteristics by ID.
     // This gate is deliberately separate from additional-only X and paid/X
     // prices, whose X remains a later announcement.
     if spell_for_checks.mana_cost.as_ref().is_some_and(|cost| cost.has_x())
         && matches!(selected_alternative.as_ref(),
             Some(crate::alternative_cast::AlternativeCastingMethod::FromZone {
-                zone: Zone::Exile, total_cost, ..
+                total_cost, ..
             }) if total_cost.costs().is_empty())
         && !with_cast_payment_proposal(
             game, player, spell.id, spell_for_checks, casting_method, |proposed| {
@@ -4840,10 +4935,7 @@ pub(crate) fn can_cast_with_cost_with_context(
         let selected_method =
             alternative_method_for_casting_method(game, player, spell_for_checks, casting_method);
         let can_pay_adjusted = if selected_method.as_ref().is_some_and(|method| {
-            matches!(
-                method,
-                crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
-            )
+            method.can_tap_creature_for_power_reduction()
         }) {
             let full_cost = calculate_effective_mana_cost_with_targets_internal(
                 game,
@@ -5034,7 +5126,7 @@ pub(crate) fn spell_view_for_face_down_cast(
 /// [`face_down_cast_kind`]. The result is then stored publicly on the
 /// face-down state (`FaceDownCastState::disguise_ward`) and never re-derived.
 pub fn face_down_cast_uses_disguise(game: &GameState, spell: &crate::object::Object) -> bool {
-    face_down_cast_kind(game, spell) == Some(crate::game_state::FaceDownCastKind::Disguise)
+    face_down_cast_kind(game, spell).is_some_and(crate::game_state::FaceDownCastKind::grants_ward)
 }
 
 pub(crate) fn linked_face_definition(
@@ -5150,7 +5242,7 @@ pub(crate) fn spell_view_for_split_other_half_cast(
     let other_def = linked_face_definition(game, spell)?;
     // CR 702.127a: an aftermath half "can't be cast from any zone other than a
     // graveyard" (a cast in progress has already moved to the stack).
-    if definition_has_aftermath(&other_def) && !matches!(spell.zone, Zone::Graveyard | Zone::Stack)
+    if definition_casts_only_from_graveyard(&other_def) && !matches!(spell.zone, Zone::Graveyard | Zone::Stack)
     {
         return None;
     }
@@ -5162,16 +5254,16 @@ pub(crate) fn spell_view_for_split_other_half_cast(
     Some(view)
 }
 
-/// Whether a split-card half carries aftermath (CR 702.127a).
-pub(crate) fn definition_has_aftermath(def: &crate::cards::CardDefinition) -> bool {
+/// A zone restriction belongs to the selected half, regardless of its keyword name.
+pub(crate) fn definition_casts_only_from_graveyard(def: &crate::cards::CardDefinition) -> bool {
     def.abilities.iter().any(|ability| {
-        matches!(
-            &ability.kind,
-            crate::ability::AbilityKind::Static(static_ability)
-                if static_ability
-                    .compiled_model()
-                    .is_some_and(|model| model.label == "Aftermath")
-        )
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return false; };
+        ability.this_spell_cast_restriction_kind().is_some_and(|kind| matches!(
+            kind.condition,
+            Some(crate::static_abilities::ThisSpellCastCondition::Condition(
+                ironsmith_core::Condition::SourceIsInZone(crate::zone::Zone::Graveyard)
+            ))
+        ))
     })
 }
 
@@ -5179,7 +5271,7 @@ pub(crate) fn spell_view_for_fused_split_cast(
     game: &GameState,
     spell: &crate::object::Object,
 ) -> Option<crate::object::Object> {
-    if spell.linked_face_layout != crate::card::LinkedFaceLayout::Split || !spell.has_fuse {
+    if spell.linked_face_layout != crate::card::LinkedFaceLayout::Split || !spell.can_combine_split_halves() {
         return None;
     }
     let other_def = linked_face_definition(game, spell)?;
@@ -5240,6 +5332,10 @@ pub(crate) fn can_cast_with_alternative_with_context(
                 .and_then(|view| view.spell_effect.as_deref())
                 .map(|program| &**program)
         });
+    if method.uses_first_draw_reveal() && spell.zone != Zone::Stack
+        && !game.miracle_cast_is_authorized(spell.id) { return false; }
+    if method.discard_exile_cast_cost().is_some()
+        && spell.zone != Zone::Stack && !game.madness_cast_is_authorized(spell.id, player) { return false; }
     let free_plot_cost = crate::mana::ManaCost::new();
     if let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
@@ -5253,7 +5349,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
         return false;
     }
     let mana_cost = match method {
-        AlternativeCastingMethod::Foretell { .. } => {
+        method if method.prepares_face_down() => {
             // CR 702.143a/d: only the card's owner, and only after the turn it
             // became foretold has ended (the stack shortcut covers a cast in
             // progress, as for Plot).
@@ -5264,8 +5360,8 @@ pub(crate) fn can_cast_with_alternative_with_context(
             }
             get_mana_cost_for_method(method, spell_for_checks)
         }
-        AlternativeCastingMethod::Plot { .. } => {
-            if !game.is_plotted_by(spell.id, player) {
+        method if method.prepares_face_up_sorcery() => {
+            if !game.is_prepared_face_up_by(spell.id, player) {
                 return false;
             }
             let Some(plotted_turn) = game.plotted_turn(spell.id) else {
@@ -5279,7 +5375,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
             }
             Some(&free_plot_cost)
         }
-        AlternativeCastingMethod::Suspend { .. } => return false,
+        method if method.suspend_spec().is_some() => return false,
         // CR 702.35a: only the madness trigger grants permission, only to the
         // card's owner, and only while that trigger resolves.
         AlternativeCastingMethod::Madness { .. } => {
@@ -5933,10 +6029,7 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
             if let Some(method) =
                 alternative_method_for_casting_method(game, player, spell, casting_method)
             {
-                let reduction = if matches!(
-                    method,
-                    crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
-                ) {
+                let reduction = if method.can_tap_creature_for_power_reduction() {
                     get_convoke_creatures(game, player)
                         .iter()
                         .map(|(id, _)| game.current_power(*id).unwrap_or(0).max(0) as u32)
@@ -5949,7 +6042,7 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
             }
         }
         for optional in spell.optional_costs.iter().filter(|optional| {
-            optional.kind == ironsmith_core::OptionalCostKind::Offering
+            optional.kind.sacrifice_reduces_mana_cost_and_grants_timing()
                 && spell
                     .optional_costs_paid
                     .was_paid_label(optional.cost_ref())

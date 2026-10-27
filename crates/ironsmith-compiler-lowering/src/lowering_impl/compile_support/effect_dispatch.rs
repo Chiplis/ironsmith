@@ -3051,6 +3051,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
         battlefield_face_down: false,
         battlefield_transformed: false,
         attached_to: None,
+        entry_grants,
         entry_type_changes: None,
         entry_counters,
         all,
@@ -3058,7 +3059,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
     else {
         return Ok(None);
     };
-    if *zone == Zone::Battlefield || !entry_counters.is_empty() || !tagged_destinations.is_empty()
+    if *zone == Zone::Battlefield || !entry_grants.is_empty() || !entry_counters.is_empty() || !tagged_destinations.is_empty()
         || !retained_reference_tags.is_empty()
     {
         return Ok(None);

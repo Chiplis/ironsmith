@@ -1309,6 +1309,9 @@ impl WasmGame {
 
             let mut builder =
                 ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), name);
+            for identity in &face.custom_keyword_identities {
+                builder = builder.with_custom_keyword(identity.clone());
+            }
             if let Some(colors) = Self::parse_custom_color_indicator(&face.color_indicator)? {
                 builder = builder.color_indicator(colors);
             }
@@ -1320,6 +1323,18 @@ impl WasmGame {
                 false,
             )
             .map_err(|err| JsValue::from_str(&format!("face {} parse failed: {err}", index + 1)))?;
+            if let Some(display) = face.display_oracle_text.as_deref() {
+                // Compilation above remains strict. Only the authored surface is
+                // restored; execution retains the expanded, typed effects.
+                definition.canonical_text = display.trim().to_string();
+                let lines: Vec<String> = display.lines().map(str::trim)
+                    .filter(|line| !line.is_empty()).map(str::to_string).collect();
+                definition.ability_labels = if lines.len() == definition.abilities.len() {
+                    lines
+                } else {
+                    Vec::new()
+                };
+            }
             definition.card.linked_face_layout = draft.layout.linked_face_layout();
             definitions.push(definition);
         }
@@ -1366,6 +1381,14 @@ impl WasmGame {
 
     fn definition_to_custom_face_input(definition: &CardDefinition) -> CustomCardFaceInput {
         CustomCardFaceInput {
+            custom_keyword_identities: definition.abilities.iter().filter_map(|ability| {
+                match &ability.kind {
+                    ironsmith::ability::AbilityKind::Static(ability) =>
+                        ability.custom_keyword_name().map(str::to_owned),
+                    _ => None,
+                }
+            }).collect(),
+            display_oracle_text: None,
             name: definition.card.name.clone(),
             mana_cost: definition.card.mana_cost.as_ref().map(ManaCost::to_oracle),
             color_indicator: Self::color_indicator_codes(definition.card.color_indicator),

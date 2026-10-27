@@ -1776,11 +1776,11 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
             &["this", "it"],
             &["spell", "creature", "permanent", "card"],
             &["was"],
-            &["kicked"],
+            &[crate::keyword_forms::KICKED],
         ],
     ) || crate::word_primitives::parse_choice_sequence_complete(
         &filter_words,
-        &[&["time", "times"], &["this", "it"], &["was"], &["kicked"]],
+        &[&["time", "times"], &["this", "it"], &["was"], &[crate::keyword_forms::KICKED]],
     ) {
         return Some(scale_where_x_number_value(Value::KickCount, multiplier));
     }

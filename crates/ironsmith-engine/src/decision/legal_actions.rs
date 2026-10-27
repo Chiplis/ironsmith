@@ -311,6 +311,39 @@ fn append_granted_play_from_actions_for_card(
     view: &DerivedGameView<'_>,
 ) -> Result<(), crate::effects::ExecutionError> {
     append_exact_permission_actions_for_card(game, actions, player, card, source_zone, view)?;
+    // CR 601.3 and 406.3b: each printed alternative proposes its own spell
+    // characteristics before a quality-restricted permission is selected.
+    for (index, alternative) in card.alternative_casts.iter().enumerate() {
+        if alternative.cast_from_zone() != Zone::Hand { continue; }
+        let origin = CastingMethod::PlayFrom {
+            source: card_id, zone: source_zone, use_alternative: Some(index),
+        };
+        let (face, _, _) = crate::alternative_cast::play_permission::selected_face(
+            game, player, card, &origin,
+        )?;
+        let query = crate::grant_registry::proposed_card_face_query(game, &face)?;
+        let face_view = DerivedGameView::new(&query);
+        let face_card = query.object(card_id)
+            .ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
+        let grants = query.effect_store.grant_registry
+            .get_grants_for_card(&query, card_id, source_zone, player);
+        if let Some(error) = query.token_resource_failure() { return Err(error); }
+        for grant in &grants {
+            if !matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+                || grant.play_from_constraints.requires_exact_selection()
+                || is_limited_budget_choice(&query, player, &grants, grant)
+                || !grant_usage_limit_allows(&query, player, grant.permission_identity.as_ref(), grant.usage_limit)
+            { continue; }
+            let method = CastingMethod::PlayFrom {
+                source: grant.source.source_id(), zone: source_zone, use_alternative: Some(index),
+            };
+            if can_cast_spell_with_view(&query, player, face_card, &method, &face_view) {
+                actions.push(LegalAction::CastSpell {
+                    spell_id: card_id, from_zone: source_zone, casting_method: method,
+                });
+            }
+        }
+    }
     // Budget choices were offered above as exact permissions; an unselected
     // action here would let the engine pick the budget instead of the player.
     let budget_choice_sources = {
@@ -372,32 +405,6 @@ fn append_granted_play_from_actions_for_card(
                     use_alternative: None,
                 },
             });
-        }
-
-        for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
-            if alt_cast.cast_from_zone() == Zone::Hand
-                && can_cast_spell_with_view(
-                    game,
-                    player,
-                    card,
-                    &CastingMethod::PlayFrom {
-                        source: grant.source_id,
-                        zone: from_zone,
-                        use_alternative: Some(idx),
-                    },
-                    view,
-                )
-            {
-                actions.push(LegalAction::CastSpell {
-                    spell_id: card_id,
-                    from_zone,
-                    casting_method: CastingMethod::PlayFrom {
-                        source: grant.source_id,
-                        zone: from_zone,
-                        use_alternative: Some(idx),
-                    },
-                });
-            }
         }
 
         if source_zone != Zone::Graveyard {
@@ -722,7 +729,7 @@ fn append_zone_granted_alternative_cast_actions_for_card(
         }
         // CR 702.35a: a granted madness cost is usable only while the madness
         // trigger resolves, never as an ordinary cast from exile.
-        if method.is_madness() && !game.madness_cast_is_authorized(card_id, player) {
+        if method.discard_exile_cast_cost().is_some() && !game.madness_cast_is_authorized(card_id, player) {
             continue;
         }
         let requirements = build_requirements_for_method(method);
@@ -771,11 +778,11 @@ fn append_zone_granted_alternative_cast_actions_for_card(
             _ => continue,
         };
 
-        // The zero-component exile price intentionally has no mana component.
+        // The zero-component zone price intentionally has no mana component.
         // The complete cast calculation supplies an empty base, then adds
         // mandatory mana costs and cost increases instead of skipping them.
         let can_cast = if matches!(method, crate::alternative_cast::AlternativeCastingMethod::FromZone {
-            zone: Zone::Exile, total_cost, .. } if total_cost.costs().is_empty()) {
+            total_cost, .. } if total_cost.costs().is_empty()) {
             can_cast_spell_with_view(game, player, card, &casting_method, view)
         } else {
             can_cast_with_cost_with_view_for_casting_method(
@@ -1149,7 +1156,7 @@ fn build_hand_summaries<'a>(game: &'a GameState, hand: &[ObjectId]) -> Vec<HandC
                 has_hand_special_actions,
                 can_cast_face_down: spell_can_be_cast_face_down(game, card),
                 has_split_other_half,
-                has_fuse: card.has_fuse
+                has_fuse: card.can_combine_split_halves()
                     && card.linked_face_layout == crate::card::LinkedFaceLayout::Split,
                 has_hand_native_alternatives,
             })
@@ -2198,6 +2205,20 @@ fn compute_legal_actions_checked(
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
 
     add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants)?;
+    // An ordinary play permission can cover command-zone cards that are not
+    // commanders. The same permission must expose their alternative prices.
+    if view.player_has_active_grants_for_zone(player, Zone::Command) {
+        for &card_id in &game.command_zone {
+            if !requested_action_source(card_id) { continue; }
+            let Some(card) = game.object(card_id) else { continue; };
+            append_cast_actions_from_zone_for_card(
+                game, &mut actions, player, card_id, card, Zone::Command, &view, true,
+            )?;
+        }
+        append_granted_land_play_actions_from_public_zone(
+            game, &mut actions, player, Zone::Command, &view,
+        )?;
+    }
     for card_id in other_players_granted_hand_cards(game, player) {
         if !requested_action_source(card_id) {
             continue;

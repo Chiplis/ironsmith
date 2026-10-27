@@ -30,7 +30,7 @@ export default function MseCardInteractions({result,rulesView,onActivate,highlig
     })}
     {helpers.map((region,index)=>{
       const helper=region.helper,style=position(region);
-      if(helper.type==='keyword')return <KeywordHelperText key={`helper-${index}`} text={helper.text} rule={helper.rule} respectContext
+      if(helper.type==='keyword')return <KeywordHelperText key={`helper-${index}`} text={helper.text} context={helper.context} rule={helper.rule} respectContext
         className="mse-card-rule-helper" style={style}><span className="mse-helper-label">{helper.text}</span></KeywordHelperText>;
       return <GameSymbolHelper key={`helper-${index}`} sym={helper.symbol}>
         <button type="button" className="mse-card-rule-helper mse-card-symbol-helper" style={style} aria-label={`{${helper.symbol}}`}

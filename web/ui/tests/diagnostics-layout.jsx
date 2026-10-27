@@ -31,7 +31,8 @@ if (sizingParams.has('objects')) {
 }
 function StackFixture(){
  const enabled = useCardStackMode();
- return enabled ? <CardStackPile /> : null;
+ const [focused, setFocused] = useState(null);
+ return enabled ? <CardStackPile focusedStackObjectId={focused} onInspectObject={(id, options) => setFocused(options?.stackEntry?.id ?? id)} /> : null;
 }
 function Fixture(){
  const [stackOrder,setStackOrder]=useState(sizingParams.get("stackOrder"));

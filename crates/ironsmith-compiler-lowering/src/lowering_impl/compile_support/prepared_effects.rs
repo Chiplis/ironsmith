@@ -2380,6 +2380,7 @@ fn last_tagged_target_in_effect(effect: &Effect) -> Option<(TagKey, ChooseSpec)>
 fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::ItIsLandCard
+        | PredicateAst::UnpairedCreaturesCanPair
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatches(_)
         | PredicateAst::ItMatchedLastKnown(_)

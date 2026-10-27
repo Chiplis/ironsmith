@@ -1508,6 +1508,19 @@ impl ContinuousActionInputs {
         if let Some(source_type) = &self.source_type {
             effect = effect.with_source_type(source_type.clone());
         }
+
+        // The nested text is printed on this object for linking (CR 607.1a).
+        // Keep the captured parent acquisition; a targeted grant to another
+        // object or an independently gained ability cannot inherit its links.
+        if matches!(definition.target, EffectTarget::Source)
+            && matches!(&effect.modification, Modification::AddAbilityGeneric(_)
+                | Modification::AddAbility(_) | Modification::SetAbilities(_))
+            && let Some(owner) = ctx.linked_exile_owner.as_ref()
+            && owner.host == ctx.source
+            && owner.acquisition.is_printed_rules_text()
+        {
+            effect.linked_exile_self_grant_owner = Some(Box::new(owner.clone()));
+        }
         if let Some(condition) = &definition.condition {
             effect = effect.with_condition(materialize_runtime_condition(condition, game, ctx)?);
         }

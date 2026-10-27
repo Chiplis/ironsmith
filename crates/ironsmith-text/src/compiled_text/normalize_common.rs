@@ -1599,6 +1599,14 @@ fn describe_token_blueprint_with_name_role(
                 extra_ability_texts.push(text);
             }
             AbilityKind::Activated(activated) => {
+                let rendered = describe_inline_ability(ability);
+                if token.card.subtypes.contains(&Subtype::Equipment)
+                    && rendered.starts_with("Equip ")
+                    && !rendered.contains_lit(". ")
+                {
+                    keyword_texts.push(lowercase_first(rendered.trim_end_matches('.')));
+                    continue;
+                }
                 if let Some(crew) = describe_structural_crew_keyword(activated) {
                     keyword_texts.push(crew.to_ascii_lowercase());
                     continue;
@@ -2031,7 +2039,7 @@ fn compact_equipment_token_ability_payload(token: &CardDefinition) -> Option<Str
     }
 
     Some(format!(
-        "\"{ability_text}\" and {}",
+        "{} and \"{ability_text}.\"",
         lowercase_first(&equip_text)
     ))
 }
@@ -5409,5 +5417,29 @@ fn compact_temporary_additional_block_surface(line: &str) -> Option<String> {
     };
     Some(format!(
         "{subject} gets {pump} until end of turn. That creature can block up to {count_text} additional creatures this turn."
+    ))
+}
+
+/// A repeated keyword is a comma list, with every instance preserved.
+/// Callers pass ability-derived keyword surfaces, never Oracle/source text.
+pub(super) fn render_repeated_keyword_list(parts: &[String]) -> Option<String> {
+    let first = parts.first()?.trim().trim_end_matches('.');
+    if parts.len() < 2
+        || first.is_empty()
+        || first.contains(',')
+        || parts.iter().any(|part| {
+            !part
+                .trim()
+                .trim_end_matches('.')
+                .eq_ignore_ascii_case(first)
+        })
+    {
+        return None;
+    }
+    let keyword = lowercase_first(first);
+    Some(capitalize_first(
+        &std::iter::repeat_n(keyword, parts.len())
+            .collect::<Vec<_>>()
+            .join(", "),
     ))
 }

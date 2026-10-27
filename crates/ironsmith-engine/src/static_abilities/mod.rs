@@ -1112,6 +1112,10 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    fn defined_face_down_ward(&self) -> Option<bool> { None }
+
+    fn turn_face_up_adds_counter(&self) -> bool { self.is_megamorph() }
+
     /// Returns true if this is a megamorph ability.
     fn is_megamorph(&self) -> bool {
         false
@@ -1428,6 +1432,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// The exact authored definition of X, including a choice of opponent.
+    fn this_spell_x_definition_value(&self) -> Option<crate::effect::Value> {
+        None
+    }
+
     /// Return the minimum legal value for X while casting this spell, if any.
     fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
         None
@@ -1735,6 +1744,9 @@ impl PartialEq for StaticAbility {
     fn eq(&self, other: &Self) -> bool {
         // Cloned immutable definitions are equal without rendering their nested payload.
         if Arc::ptr_eq(&self.0, &other.0) { return true; }
+        if self.custom_keyword_name().is_some() || other.custom_keyword_name().is_some() {
+            return self.custom_keyword_name() == other.custom_keyword_name();
+        }
         if self.0.id() != other.0.id() {
             return false;
         }
@@ -1798,6 +1810,15 @@ impl StaticAbility {
     /// Get the ability's unique identifier.
     pub fn id(&self) -> StaticAbilityId {
         self.0.id()
+    }
+
+    /// Custom identity never aliases an official keyword's ID. Its behavior
+    /// is represented by the other executable abilities on the object.
+    pub fn custom_keyword_name(&self) -> Option<&str> {
+        match &self.compiled_model()?.payload {
+            ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { name } => Some(name),
+            _ => None,
+        }
     }
 
     pub fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
@@ -1910,6 +1931,10 @@ impl StaticAbility {
 
     pub fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
         self.0.this_spell_x_maximum_value()
+    }
+
+    pub fn this_spell_x_definition_value(&self) -> Option<crate::effect::Value> {
+        self.0.this_spell_x_definition_value()
     }
 
     pub fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
@@ -2421,6 +2446,17 @@ impl StaticAbility {
         self.0.has_first_strike()
     }
 
+    /// Combat timing behavior is independent of named keyword identity.
+    pub fn deals_damage_in_first_step(&self) -> bool {
+        matches!(self.id(), StaticAbilityId::FirstStrike | StaticAbilityId::DoubleStrike)
+            || matches!(self.keyword_marker_mechanic(), Some(ironsmith_core::KeywordMarkerMechanic::EarlyCombatDamage { .. }))
+    }
+
+    pub fn deals_damage_in_both_steps(&self) -> bool {
+        self.id() == StaticAbilityId::DoubleStrike
+            || self.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::EarlyCombatDamage { also_regular: true })
+    }
+
     pub fn has_double_strike(&self) -> bool {
         self.0.has_double_strike()
     }
@@ -2504,6 +2540,9 @@ impl StaticAbility {
     pub fn ward_cost(&self) -> Option<&crate::cost::TotalCost> {
         self.0.ward_cost()
     }
+
+    pub fn defined_face_down_ward(&self) -> Option<bool> { self.0.defined_face_down_ward() }
+    pub fn turn_face_up_adds_counter(&self) -> bool { self.0.turn_face_up_adds_counter() }
 
     pub fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> {
         self.0.turn_face_up_cost()

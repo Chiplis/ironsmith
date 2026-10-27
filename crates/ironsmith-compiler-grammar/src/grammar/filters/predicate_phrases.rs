@@ -289,7 +289,7 @@ const IS_OR_ARE_WORDS: &[&str] = &["is", "are"];
 const BE_VERB_WORDS: &[&str] = &["is", "are", "was", "were"];
 const MANA_SYMBOL_WORDS: &[&str] = &["w", "u", "b", "r", "g", "c", "s"];
 const SOURCE_FILTER_IGNORED_DESCRIPTOR_WORDS: &[&str] =
-    &["attached", "tapped", "untapped", "saddled", "crewed"];
+    &["attached", "tapped", "untapped", crate::keyword_forms::SADDLED, "crewed"];
 const AURA_WORDS: &[&str] = &["aura", "auras"];
 const CONTROL_WORD: &str = "control";
 const CONTROL_OR_CONTROLS_WORDS: &[&str] = &["control", "controls"];
@@ -1316,7 +1316,7 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
                 "renowned",
                 "tapped",
                 "untapped",
-                "saddled",
+                crate::keyword_forms::SADDLED,
                 "prepared",
                 "monstrous",
             ]),
@@ -1408,7 +1408,7 @@ fn source_state_predicate_from_clause(
             Some(PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted))
         };
     }
-    if surface::exact(clause, &["saddled"]) {
+    if surface::exact(clause, &[crate::keyword_forms::SADDLED]) {
         return if negative {
             Some(PredicateAst::Not(Box::new(PredicateAst::Source(
                 SourcePredicateAst::SourceIsSaddled,
@@ -2425,9 +2425,7 @@ fn parse_stack_object_targets_only_source_predicate(
     target_filter.source = true;
 
     Some(PredicateAst::ItMatches(
-        ObjectFilter::spell()
-            .targeting_only_object(target_filter)
-            .target_count_exact(1),
+        ObjectFilter::spell().targeting_only_object(target_filter),
     ))
 }
 
@@ -3924,6 +3922,20 @@ fn parse_passive_this_way_tagged_object_predicate(
 fn parse_active_this_way_discard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
+    // A past-tense discard in an effect sequence refers to that sequence's
+    // discard result even when the reminder omits "this way". The ordinary
+    // reference binder still requires a preceding discard; it is not a turn
+    // history query and must not inspect an unrelated card in the graveyard.
+    let words = crate::lexer::token_word_refs(tokens);
+    let mut implicit_result_tokens;
+    let tokens = if words.starts_with(&["you", "discarded"])
+        && !words.ends_with(&["this", "way"])
+        && !words.ends_with(&["this", "turn"])
+    {
+        implicit_result_tokens = tokens.to_vec();
+        implicit_result_tokens.extend(crate::lexer::synthetic_word_tokens(["this", "way"]));
+        implicit_result_tokens.as_slice()
+    } else { tokens };
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[
         &["discard"],

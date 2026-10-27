@@ -303,3 +303,5 @@ pub(crate) use composition::{
 pub use damage::DealDamageBySourcesEffect;
 
 pub use damage::DealDamageEachEffect;
+
+pub use ironsmith_core::SetPermanentDesignationEffect;

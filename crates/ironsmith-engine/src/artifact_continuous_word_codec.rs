@@ -83,7 +83,7 @@ fn encode_sublayer(sublayer: PtSublayer) -> Result<ironsmith_core::CompiledPtSub
     }
 }
 
-fn encode_modification(modification: Modification) -> Result<wire::WireContinuousModification, Error> {
+pub(super) fn encode_modification(modification: Modification) -> Result<wire::WireContinuousModification, Error> {
     use wire::WireContinuousModification as W;
     Ok(match modification {
         Modification::AddAbility(ability) => W::AddAbility(encode_runtime_static_ability(ability)?),
@@ -121,6 +121,7 @@ fn encode_modification(modification: Modification) -> Result<wire::WireContinuou
         Modification::SwitchPowerToughness => W::SwitchPowerToughness,
         Modification::RemoveAllAbilities => W::RemoveAllAbilities,
         Modification::RewriteText(change) => W::RewriteText(change),
+        Modification::MergeComponent { .. } => return Err(unsupported("physical merge is runtime state, not an authored instruction")),
         Modification::CopyOf { .. } => {
             // WireContinuousModification has no captured-copy envelope. In
             // particular it cannot retain executable abilities, spell-program

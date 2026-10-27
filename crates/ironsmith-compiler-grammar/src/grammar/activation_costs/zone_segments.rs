@@ -58,6 +58,11 @@ pub fn parse_reveal_segment_tokens(
             card_type: None,
         });
     }
+    if let Some(prefix) = lowered.strip_suffix(&["until".into(), "upkeep".into(), "ends".into()])
+        && prefix == ["reveal", "this", "card", "from", "your", "hand"]
+    {
+        return Ok(ActivationCostSegmentCst::RevealSourceFromHandUntilUpkeepEnds);
+    }
     parse_segment(tokens, parse_reveal_segment_lexed, "reveal-cost")
 }
 

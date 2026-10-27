@@ -155,8 +155,12 @@ pub fn parse_modal_header(
     info: &LineInfo,
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ModalHeader>, CardTextError> {
-    let spree = tokens.first().is_some_and(|token| token.is_word("spree"));
-    let tiered = tokens.first().is_some_and(|token| token.is_word("tiered"));
+    let words = crate::lexer::token_word_refs(tokens);
+    let prose_spree = words == ["choose", "one", "or", "more", "additional", "costs"];
+    let prose_tiered = words == ["choose", "one", "additional", "cost"];
+    let descriptive_mode_costs = prose_spree || prose_tiered;
+    let spree = prose_spree || tokens.first().is_some_and(|token| token.is_word("spree"));
+    let tiered = prose_tiered || tokens.first().is_some_and(|token| token.is_word("tiered"));
     // CR 700.2: "An opponent chooses one —" has an opponent choose the modes
     // while the spell is cast.
     let opponent_choose_spec = parse_opponent_modal_choose_spec(tokens);
@@ -308,6 +312,7 @@ pub fn parse_modal_header(
         max,
         spree,
         tiered,
+        descriptive_mode_costs,
         weighted_mode_points: super::grammar::modal::parse_modal_point_header_tokens(tokens)
             .is_some(),
         random,
@@ -473,7 +478,7 @@ fn parse_conditional_mode_change(
     let condition = if condition_tokens.len() == 3
         && condition_tokens[0].is_word("it")
         && condition_tokens[1].is_word("was")
-        && condition_tokens[2].is_word("kicked")
+        && condition_tokens[2].is_word(crate::keyword_forms::KICKED)
     {
         crate::cards::builders::PredicateAst::ThisSpellWasKicked
     } else {
@@ -552,7 +557,11 @@ fn replace_modal_header_x_in_effect_ast(
 ) -> Result<(), CardTextError> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
+            SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. }) => {},
+            SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => {},
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
             | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count: amount,
                 ..
@@ -575,7 +584,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend {
-                counters: amount,
+                counters: amount, ..
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
                 count: amount,
@@ -674,7 +683,7 @@ fn replace_modal_header_x_in_effect_ast(
                 amount: Some(amount),
                 ..
             }) => replace_modal_header_x_in_value(amount, replacement, clause)?,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }) => {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count, .. }) => {
                 replace_modal_header_x_in_value(amount, replacement, clause)?;
                 replace_modal_header_x_in_value(count, replacement, clause)?;
             }
@@ -739,6 +748,13 @@ fn replace_modal_header_x_in_effect_ast(
             })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
@@ -755,6 +771,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::DescribedTopCardFaceDown { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
@@ -852,7 +869,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Game(GameActionAst::WinGame)
             | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
             | SubjectVerbActionAst::ZoneMoves(
-                ZoneMoveActionAst::ReturnSourceTransformedFromExile,
+                ZoneMoveActionAst::ReturnSourceTransformedFromExile | ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline | ZoneMoveActionAst::ExchangeSourceWithHandAura,
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })

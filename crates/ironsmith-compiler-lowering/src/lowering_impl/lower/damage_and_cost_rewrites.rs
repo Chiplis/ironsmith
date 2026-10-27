@@ -649,6 +649,7 @@ pub fn lower_normalized_card_ast_with_facts(
         }
     }
     super::linked_exile::bind_scalar_linked_exile(&mut definition);
+    super::linked_exile::bind_champion_pairs(&mut definition);
     super::linked_exile::bind_static_linked_exile(&mut definition);
     super::linked_exile::bind_private_return_linked_exile(&mut definition);
     super::linked_exile::bind_class_linked_exile(&mut definition);

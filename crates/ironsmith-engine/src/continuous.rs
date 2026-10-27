@@ -287,6 +287,9 @@ pub struct ContinuousEffect {
 
     /// Stable generating occurrence; distinct equal abilities are independent.
     pub originating_ability: Option<Box<ContinuousAbilityOrigin>>,
+
+    /// CR 607.1a: a printed ability grants a nested paired ability to itself.
+    pub linked_exile_self_grant_owner: Option<Box<crate::linked_exile::LinkedExileOwner>>,
 }
 
 /// Unique identifier for a continuous effect.
@@ -773,6 +776,8 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     /// CR 612.2 replacement of authored color/type words in layer 3.
     /// Appended to preserve the existing serialized variant ordinals.
     RewriteText(ironsmith_core::TextChange),
+    /// A physical merge participates in layer 1a at the merge timestamp.
+    MergeComponent { component: crate::ids::StableId, on_top: bool },
 }
 
 impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
@@ -807,6 +812,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 name_override_surface,
                 add_supertypes,
             },
+            Self::MergeComponent { component, on_top } => ContinuousModification::MergeComponent { component, on_top },
             Self::ChangeController(value) => ContinuousModification::ChangeController(value),
             Self::ChangeControllerToEffectController => {
                 ContinuousModification::ChangeControllerToEffectController
@@ -1049,7 +1055,7 @@ impl Modification {
     /// Returns which layer this modification applies in.
     pub fn layer(&self) -> Layer {
         match self {
-            Modification::CopyOf { .. } => Layer::Copy,
+            Modification::CopyOf { .. } | Modification::MergeComponent { .. } => Layer::Copy,
 
             Modification::ChangeController(_)
             | Modification::ChangeControllerToEffectController => Layer::Control,
@@ -1478,6 +1484,22 @@ impl ContinuousEffectManager {
         self.revision += 1;
     }
 
+    /// An entering composite has its components' stickers while replacements
+    /// inspect it. The original card keeps the same sticker occurrence too;
+    /// this projection neither moves it nor allocates another ability identity.
+    pub(crate) fn project_sticker_onto_entry(&mut self, id: ContinuousEffectId, original: ObjectId, entrant: ObjectId, zone: Zone) {
+        if let Some(effect) = Arc::make_mut(&mut self.effects).iter_mut().find(|effect| effect.id == id) {
+            effect.applies_to = EffectTarget::Filter(ObjectFilter {
+                zone: Some(zone),
+                any_of: vec![ObjectFilter { specific: Some(original), ..Default::default() },
+                             ObjectFilter { specific: Some(entrant), ..Default::default() }],
+                ..Default::default()
+            });
+            effect.source_type = EffectSourceType::Resolution { locked_targets: vec![original, entrant] };
+            self.revision += 1;
+        }
+    }
+
     /// Move only the persistent sticker effect to the card's new public-zone identity.
     pub fn retarget_sticker(&mut self, id: ContinuousEffectId, object: ObjectId) {
         if let Some(effect) = Arc::make_mut(&mut self.effects)
@@ -1582,6 +1604,12 @@ impl ContinuousEffectManager {
         {
             if effect.source == old {
                 effect.source = new;
+                changed = true;
+            }
+            if let Some(owner) = effect.linked_exile_self_grant_owner.as_mut()
+                && owner.host == old
+            {
+                owner.host = new;
                 changed = true;
             }
             match &mut effect.applies_to {
@@ -2081,6 +2109,7 @@ impl ContinuousEffect {
             source_type: EffectSourceType::default(),
             originating_static_ability: None,
             originating_ability: None,
+            linked_exile_self_grant_owner: None,
         }
     }
 
@@ -2766,19 +2795,39 @@ pub(crate) fn unmodified_ability_occurrences(
     object: &Object,
     current_turn: u32,
 ) -> CalculatedAbilities {
-    let mut chars = initial_characteristics(object, current_turn);
+    let mut chars = initial_characteristics(object, current_turn, None);
     add_intrinsic_abilities(&mut chars);
     apply_level_granted_abilities(object, &mut chars);
     chars.abilities
 }
 
-fn initial_characteristics(object: &Object, current_turn: u32) -> CalculatedCharacteristics {
-    let mut chars = initial_text_box_characteristics(object);
+fn initial_characteristics(object: &Object, current_turn: u32, game: Option<&crate::game_state::GameState>) -> CalculatedCharacteristics {
+    let mut chars = initial_text_box_characteristics(object, game);
     add_temporary_static_ability_grants(object, &mut chars, current_turn);
     chars
 }
 
-fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristics {
+fn initial_text_box_characteristics(object: &Object, game: Option<&crate::game_state::GameState>) -> CalculatedCharacteristics {
+    if let Some(component) = game.and_then(|game| game.merged_permanent(object.stable_id))
+        .and_then(|state| state.components.iter().find(|component| component.object.stable_id == object.stable_id))
+    {
+        let mut base = component.object.clone();
+        base.id = object.id;
+        base.initial_controller = object.initial_controller;
+        let mut chars = initial_unmerged_text_box_characteristics(&base, game);
+        if component.face_down {
+            chars.abilities.clear();
+            chars.static_abilities = Vec::new().into();
+        }
+        return chars;
+    }
+    initial_unmerged_text_box_characteristics(object, game)
+}
+
+fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crate::game_state::GameState>) -> CalculatedCharacteristics {
+    if let Some(chars) = game.and_then(|game| game.characteristicless_face_down_characteristics(object.id)) {
+        return chars;
+    }
     // The object stores the face-down overlay directly for action/zone handling.
     // Layer calculation must nevertheless begin with its underlying copiable
     // values so that copy effects apply in 1a before face-down status in 1b.
@@ -2797,7 +2846,10 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         |combined| combined.supertypes.clone(),
     );
     let mut chars = CalculatedCharacteristics {
-        copy_values: Some(Arc::new(CopiableValues::from_object(object))),
+        copy_values: Some(Arc::new(game.map_or_else(
+            || CopiableValues::from_object(object),
+            |game| CopiableValues::from_object_with_linked_face(object, game),
+        ))),
         alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
         mana_cost: object
@@ -3462,7 +3514,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(object) = objects.get(&id) else {
             continue;
         };
-        let mut chars = initial_characteristics(object, game.turn.turn_number);
+        let mut chars = initial_characteristics(object, game.turn.turn_number, Some(game));
         if chars.world_supertype_since.is_some() {
             chars.world_supertype_since = game
                 .effect_store
@@ -4041,40 +4093,18 @@ pub(crate) fn copiable_values_with_effects(
             normal.apply_flipped_face(&definition);
             normal
         });
-    let mut chars = initial_text_box_characteristics(unflipped.as_ref().unwrap_or(object));
+    let mut chars = initial_text_box_characteristics(unflipped.as_ref().unwrap_or(object), Some(game));
+    if game.is_room_fully_unlocked(object_id)
+        && object.split_combined.as_ref().is_some_and(|combined| combined.unfused_half.is_some())
+    {
+        // CR 709.5b/d: both printed halves are copied, but a fully unlocked
+        // donor's combined live half must not become the copy's first half.
+        let values = CopiableValues::from_object_with_linked_face(object, game);
+        copy_characteristics_from_copiable_values(&values, &mut chars, false, &None, &None, &[], None);
+    }
     if game.is_flipped(object_id) {
         if let Some(values) = &object.copied_face_values {
             copy_characteristics_from_copiable_values(values, &mut chars, false, &None, &None, &[], None);
-        }
-    }
-    if let Some(values) = chars.copy_values.as_mut() {
-        if values.other_copy_face.is_none()
-            && matches!(object.linked_face_layout, crate::card::LinkedFaceLayout::Flip | crate::card::LinkedFaceLayout::Split | crate::card::LinkedFaceLayout::Prepare)
-        {
-            let normal = unflipped.as_ref().unwrap_or(object);
-            if let Some(other) = game.linked_face_definition_by_name_or_id(normal.other_face_name.as_deref(), normal.other_face) {
-                let values = Arc::make_mut(values);
-                values.copy_face_layout = normal.linked_face_layout;
-                let other = Object::from_card_definition(crate::ids::ObjectId::from_raw(0), &other, normal.owner, normal.zone);
-                let mut other_values = CopiableValues::from_object(&other);
-                // CR 710.1c: a flipped flip card keeps the normal half's mana
-                // cost and color, so those are part of the flipped face values.
-                if normal.linked_face_layout == crate::card::LinkedFaceLayout::Flip {
-                    other_values.mana_cost = values.mana_cost.clone();
-                    other_values.colors = values.colors;
-                }
-                if let Some(merged) = game.merged_permanent(object.stable_id) {
-                    // The top component contributes the alternate face; every
-                    // other component still contributes its abilities (730.2).
-                    for component in merged.components.iter().skip(1).filter(|component| !component.face_down) {
-                        std::sync::Arc::make_mut(&mut other_values.abilities).extend(component.object.abilities.iter().cloned());
-                        other_values.ability_labels.extend(component.object.ability_labels.iter().cloned());
-                        other_values.alternative_casts.extend(component.object.alternative_casts.iter().cloned());
-                        other_values.optional_costs.extend(component.object.optional_costs.iter().cloned());
-                    }
-                }
-                values.other_copy_face = Some(Box::new(other_values));
-            }
         }
     }
     let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
@@ -4191,6 +4221,22 @@ pub(crate) fn copiable_values_with_effects(
     Some(CopiableValues::from_calculated(&chars))
 }
 
+/// Information for an already selected copy donor (CR 608.2h). This is not
+/// permission to select or act on a departed object. Exact incarnation LKI
+/// survives later turns; another incarnation of the same card is irrelevant.
+pub(crate) fn referenced_copiable_values(
+    source: ObjectId,
+    game: &crate::game_state::GameState,
+) -> Option<CopiableValues> {
+    if let Some(snapshot) = game.source_characteristic_lki_snapshot(source, None) {
+        return Some(snapshot.copiable_values.clone());
+    }
+    let effects = game.all_continuous_effects();
+    copiable_values_with_effects(source, game.objects_map(), &effects,
+        &game.battlefield, game.commander_objects(), game)
+}
+
+
 /// Calculate an object's effective text box after copy/control/text effects.
 ///
 /// This stops before layers 4-7 so callers can inspect text-derived abilities
@@ -4208,7 +4254,7 @@ pub fn text_box_characteristics_with_effects(
     }
     let object = objects.get(&object_id)?;
 
-    let mut chars = initial_text_box_characteristics(object);
+    let mut chars = initial_text_box_characteristics(object, Some(game));
     let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
 
     let mut effects_by_layer: HashMap<Layer, Vec<&ContinuousEffect>> = HashMap::with_capacity(3);
@@ -4332,6 +4378,28 @@ pub fn text_box_characteristics_with_effects(
     Some(chars)
 }
 
+/// Apply the physical component using the characteristics present at this
+/// point in layer 1a. Earlier copy effects remain duration-sensitive.
+fn apply_merge_component(
+    chars: &mut CalculatedCharacteristics,
+    object: &Object,
+    component_id: crate::ids::StableId,
+    on_top: bool,
+    effect: &ContinuousEffect,
+    game: &crate::game_state::GameState,
+) {
+    let Some(component) = game.merged_permanent(object.stable_id)
+        .and_then(|state| state.components.iter().find(|component| component.object.stable_id == component_id)) else { return; };
+    let mut values = CopiableValues::from_object_with_linked_face(&component.object, game);
+    if component.face_down { values.abilities = Arc::new(Vec::new()); }
+    if on_top {
+        copy_characteristics_from_copiable_values(&values, chars, true, &None, &None, &[], Some(effect.into()));
+    } else {
+        replace_rules_text_abilities(chars, values.abilities.as_ref().clone(), Some(effect.into()), true);
+        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+    }
+}
+
 fn apply_text_box_modification_to_chars(
     effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
@@ -4341,6 +4409,10 @@ fn apply_text_box_modification_to_chars(
 ) {
     chars.abilities.begin_effect(effect);
     match &effect.modification {
+        Modification::MergeComponent { component, on_top } => {
+            apply_merge_component(chars, object, *component, *on_top, effect, game);
+        }
+
         Modification::CopyOf {
             copiable_values,
             preserve_source_abilities,
@@ -4409,12 +4481,15 @@ fn calculate_with_layers_direct_internal(
     sort_mode: DependencySortMode,
     include_ability_counters: bool,
 ) -> CalculatedCharacteristics {
+    if let Some(chars) = game.characteristicless_face_down_characteristics(object.id) {
+        return chars;
+    }
     let _tap_reads = game.derived_tap_read_scope();
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
-    let mut chars = initial_characteristics(object, game.turn.turn_number);
+    let mut chars = initial_characteristics(object, game.turn.turn_number, Some(game));
     if chars.world_supertype_since.is_some() {
         chars.world_supertype_since = game
             .effect_store
@@ -6593,6 +6668,10 @@ fn apply_modification_to_chars(
 ) {
     chars.abilities.begin_effect(effect);
     match &effect.modification {
+        Modification::MergeComponent { component, on_top } => {
+            apply_merge_component(chars, object, *component, *on_top, effect, game);
+        }
+
         // Layer 1: Copy
         Modification::CopyOf {
             copiable_values,
@@ -7316,7 +7395,7 @@ mod relative_control_value_tests {
                 ContinuousEffect::new(target, bob, EffectTarget::Specific(target), modification);
             assert_eq!(effect.modification.layer(), Layer::Control);
             let object = game.object(target).unwrap();
-            let mut simulated = initial_characteristics(object, game.turn.turn_number);
+            let mut simulated = initial_characteristics(object, game.turn.turn_number, Some(&game));
             crate::dependency::apply_continuous_effect_to_chars_for_dependency(
                 &effect,
                 &mut simulated,

@@ -1,3 +1,5 @@
+import {isBuilderCreatedCard} from './card-glint/printing-choices.mjs';
+import {printableCardOrder} from './card-print-order.mjs';
 import {MSE_PRINTING_FIELDS} from './mse/printing-style.mjs';
 import {cardIntrinsicManaColors,withoutIntrinsicManaLines} from './land-mana-choices.js';
 
@@ -19,12 +21,12 @@ export function cardFrameSnapshot(card) {
   // Yavimaya turned into a Forest renders green even with a colorless identity.
   const intrinsic = cardIntrinsicManaColors(card);
   if (intrinsic.length) snapshot.intrinsic_mana = intrinsic;
-  return JSON.stringify(snapshot);
+  return JSON.stringify(isBuilderCreatedCard(card) ? printableCardOrder(snapshot) : snapshot);
 }
 
 export function cardFrameFaceIndex(card, imageUrl) {
   const faces=card?.card_faces;
-  if(!Array.isArray(faces)||faces.length<2||['split','adventure'].includes(card.layout))return 0;
+  if(!Array.isArray(faces)||faces.length<2||['split','aftermath','adventure','prepare','room','flip'].includes(card.layout))return 0;
   if(/\/back\//.test(String(imageUrl)))return 1;
   const index=faces.findIndex(face=>face.name===card.name);
   return Math.max(0,index);

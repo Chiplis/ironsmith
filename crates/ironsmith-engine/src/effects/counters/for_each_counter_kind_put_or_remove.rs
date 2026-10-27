@@ -204,7 +204,7 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                     } else {
                         super::kind_selection::kinds_on(game, &target_group)
                     };
-                    if counter_kinds.is_empty() {
+                    if counter_kinds.is_empty() && self.fixed_counter_type.is_none() {
                         continue;
                     }
                     counter_kinds.sort_by_key(|counter_type| format!("{counter_type:?}"));

@@ -1,5 +1,5 @@
 // CR 123.2 sticker sheets: the session catalog of registered sheets, the
-// sheets each player brings to a match, and the pregame choice of which of
+// sheets each player brings to a match, and the pregame selection of which of
 // them are accessible during the game (CR 103.2d).
 
 /// Everything a player gains access to by choosing one sticker sheet.
@@ -17,6 +17,13 @@ pub(super) struct StickerSheetSpec {
 
 /// At most this many of a player's sheets are accessible in one game.
 const MAX_CHOSEN_STICKER_SHEETS: usize = 3;
+const MIN_CONSTRUCTED_STICKER_SHEETS: usize = 10;
+
+impl MatchFormatInput {
+    fn uses_limited_sticker_sheets(self) -> bool {
+        matches!(self, Self::ConspiracyDraft | Self::CommanderDraft)
+    }
+}
 
 /// Registry name of the compiled definition holding one ability row.
 fn sticker_row_definition_name(sheet: &str, index: usize) -> String {
@@ -89,6 +96,7 @@ impl WasmGame {
         &self,
         pools: &[Vec<String>],
         player_count: usize,
+        format: MatchFormatInput,
     ) -> Result<(), String> {
         if pools.len() > player_count {
             return Err(format!(
@@ -111,6 +119,14 @@ impl WasmGame {
                         seat + 1
                     ));
                 }
+            }
+            if !pool.is_empty() && !format.uses_limited_sticker_sheets()
+                && pool.len() < MIN_CONSTRUCTED_STICKER_SHEETS
+            {
+                return Err(format!(
+                    "player {} must bring at least {MIN_CONSTRUCTED_STICKER_SHEETS} unique sticker sheets in constructed play",
+                    seat + 1
+                ));
             }
         }
         Ok(())
@@ -144,9 +160,9 @@ impl WasmGame {
         }
     }
 
-    /// Hand out the sheets brought to this match. Players with at most three
-    /// sheets get all of them; the rest choose in pregame turn order, so they
-    /// are returned as the choice queue.
+    /// CR 103.2d/123.2a-b: constructed selects exactly three at random from
+    /// each submitted pool. Limited leaves the choice (including none) to its
+    /// player. Use the match RNG so peers and transcript replay agree.
     fn take_sticker_sheet_choices(&mut self, order: &[PlayerId]) -> Vec<(PlayerId, Vec<String>)> {
         let Some(pools) = self.pending_sticker_sheet_pools.take() else {
             return Vec::new();
@@ -156,10 +172,13 @@ impl WasmGame {
             let Some(pool) = pools.get(player.index()).filter(|pool| !pool.is_empty()) else {
                 continue;
             };
-            if pool.len() <= MAX_CHOSEN_STICKER_SHEETS {
-                self.grant_sticker_sheets(player, pool);
-            } else {
+            if self.match_format.uses_limited_sticker_sheets() {
                 queue.push((player, pool.clone()));
+            } else {
+                let mut chosen = pool.clone();
+                self.game.shuffle_slice(&mut chosen);
+                chosen.truncate(MAX_CHOSEN_STICKER_SHEETS);
+                self.grant_sticker_sheets(player, &chosen);
             }
         }
         queue
@@ -267,7 +286,6 @@ mod sticker_sheet_tests {
     }
 
     fn game_with_sheets(count: usize) -> (WasmGame, Vec<String>) {
-        let _guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         let names: Vec<String> = (0..count).map(|index| format!("Test Sheet {index}")).collect();
         for name in &names {
@@ -279,6 +297,7 @@ mod sticker_sheet_tests {
 
     #[test]
     fn sheet_rows_compile_into_ability_and_pt_stickers() {
+        let _guard = crate::test_id_counter_guard();
         let (game, names) = game_with_sheets(1);
         let spec = game.sticker_sheet_spec(&names[0]).expect("registered");
         assert_eq!(spec.name_stickers, vec!["Cool", "Fluffy", "Otter"]);
@@ -293,41 +312,49 @@ mod sticker_sheet_tests {
 
     #[test]
     fn pools_must_list_unique_known_sheets() {
-        let (game, names) = game_with_sheets(2);
+        let _guard = crate::test_id_counter_guard();
+        let (game, names) = game_with_sheets(10);
         assert!(game
-            .validate_sticker_sheet_pools(&[names.clone(), Vec::new()], 2)
+            .validate_sticker_sheet_pools(&[names.clone(), Vec::new()], 2, MatchFormatInput::Normal)
             .is_ok());
         assert!(game
-            .validate_sticker_sheet_pools(&[vec![names[0].clone(), names[0].to_uppercase()]], 2)
+            .validate_sticker_sheet_pools(&[vec![names[0].clone(), names[0].to_uppercase()]], 2, MatchFormatInput::Normal)
             .unwrap_err()
             .contains("unique"));
         assert!(game
-            .validate_sticker_sheet_pools(&[vec!["Not A Sheet".to_string()]], 2)
+            .validate_sticker_sheet_pools(&[vec!["Not A Sheet".to_string()]], 2, MatchFormatInput::Normal)
             .unwrap_err()
             .contains("not a known sticker sheet"));
+        for count in 1..10 {
+            assert!(game.validate_sticker_sheet_pools(&[names[..count].to_vec()], 2, MatchFormatInput::Normal)
+                .unwrap_err().contains("at least 10"));
+        }
+        assert!(game.validate_sticker_sheet_pools(&[Vec::new()], 2, MatchFormatInput::Normal).is_ok());
+        assert!(game.validate_sticker_sheet_pools(&[names[..2].to_vec()], 2, MatchFormatInput::CommanderDraft).is_ok());
     }
 
     #[test]
-    fn three_or_fewer_sheets_are_granted_and_more_are_chosen() {
+    fn limited_players_can_choose_none_even_from_small_pools() {
+        let _guard = crate::test_id_counter_guard();
         let (mut game, names) = game_with_sheets(5);
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 7);
+        game.match_format = MatchFormatInput::ConspiracyDraft;
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
         game.pending_sticker_sheet_pools = Some(vec![names[..2].to_vec(), names.clone()]);
         let queue = game.take_sticker_sheet_choices(&[alice, bob]);
-        assert_eq!(queue, vec![(bob, names.clone())]);
-        assert_eq!(game.revealed_sticker_sheets, vec![(alice, names[..2].to_vec())]);
-        assert_eq!(game.game.available_name_stickers(alice).len(), 6);
-        assert_eq!(game.game.available_art_stickers(alice).len(), 2);
-        assert_eq!(game.game.available_pt_stickers(alice).len(), 2);
-        assert_eq!(game.game.available_ability_stickers(alice).len(), 2);
+        assert_eq!(queue, vec![(alice, names[..2].to_vec()), (bob, names.clone())]);
+        assert!(game.revealed_sticker_sheets.is_empty());
+        assert!(game.game.available_name_stickers(alice).is_empty());
         assert!(game.game.available_name_stickers(bob).is_empty());
     }
 
     #[test]
     fn pregame_choice_grants_only_the_chosen_sheets() {
+        let _guard = crate::test_id_counter_guard();
         let (mut game, names) = game_with_sheets(5);
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 7);
+        game.match_format = MatchFormatInput::ConspiracyDraft;
         let alice = PlayerId::from_index(0);
         game.pregame = Some(PregameState::new(&[alice], 7, MatchFormatInput::Normal));
         game.pregame.as_mut().unwrap().stage = PregameStage::StickerSheets {
@@ -347,8 +374,69 @@ mod sticker_sheet_tests {
     }
 
     #[test]
-    fn match_start_offers_sheet_choice_before_mulligans() {
-        let (mut game, names) = game_with_sheets(4);
+    fn constructed_sheet_randomness_is_seeded_per_player_and_cannot_reroll() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut game, names) = game_with_sheets(12);
+        let order = [PlayerId::from_index(0), PlayerId::from_index(1)];
+        let mut first = None;
+        let mut outcomes = HashSet::new();
+        for seed in [7, 7, 8, 9, 10, 11] {
+            game.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, seed);
+            game.pending_sticker_sheet_pools = Some(vec![names.clone(), names.clone()]);
+            let before = game.game.irreversible_random_count();
+            assert!(game.take_sticker_sheet_choices(&order).is_empty());
+            assert_eq!(game.game.irreversible_random_count(), before + 2);
+            let chosen = game.revealed_sticker_sheets.clone();
+            assert_eq!(chosen.len(), 2);
+            for (player, sheets) in &chosen {
+                assert_eq!(sheets.len(), 3);
+                assert_eq!(sheets.iter().collect::<HashSet<_>>().len(), 3);
+                assert!(sheets.iter().all(|name| names.contains(name)));
+                assert_eq!(game.game.available_name_stickers(*player).len(), 9);
+                assert_eq!(game.game.available_art_stickers(*player).len(), 3);
+                assert_eq!(game.game.available_pt_stickers(*player).len(), 3);
+                assert_eq!(game.game.available_ability_stickers(*player).len(), 3);
+            }
+            if seed == 7 {
+                if let Some(expected) = &first { assert_eq!(&chosen, expected); }
+                else { first = Some(chosen.clone()); }
+            }
+            outcomes.insert(chosen[0].1.clone());
+            assert!(game.take_sticker_sheet_choices(&order).is_empty());
+            assert_eq!(game.revealed_sticker_sheets, chosen);
+            assert_eq!(game.game.irreversible_random_count(), before + 2);
+        }
+        assert!(outcomes.len() > 1, "different match seeds must select different sheets");
+    }
+
+    #[test]
+    fn limited_sheet_choices_precede_opening_hands_and_may_select_none() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut game, names) = game_with_sheets(2);
+        game.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 7);
+        game.match_format = MatchFormatInput::ConspiracyDraft;
+        game.populate_explicit_libraries(&[vec!["Plains".into(); 40], vec!["Plains".into(); 40]])
+            .expect("limited libraries");
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.pending_sticker_sheet_pools = Some(vec![names.clone(), Vec::new()]);
+        game.finish_match_setup(7).expect("limited setup");
+        for player in [alice, bob] { assert!(game.game.player(player).unwrap().hand.is_empty()); }
+        assert!(matches!(game.pending_decision.as_ref(), Some(DecisionContext::SelectOptions(options))
+            if options.player == alice && options.min == 0 && options.max == 2));
+        game.apply_sticker_sheet_choice(&[]).expect("choose no sheets");
+        game.normalize_pregame_state().expect("advance to opening hands");
+        assert!(game.revealed_sticker_sheets.is_empty());
+        assert!(game.game.available_name_stickers(alice).is_empty());
+        for player in [alice, bob] { assert_eq!(game.game.player(player).unwrap().hand.len(), 7); }
+        game.normalize_pregame_state().expect("normalization is idempotent");
+        for player in [alice, bob] { assert_eq!(game.game.player(player).unwrap().hand.len(), 7); }
+    }
+
+    #[test]
+    fn constructed_match_randomly_selects_three_sheets_before_mulligans() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut game, names) = game_with_sheets(10);
         let deck = vec!["Plains".to_string(); 60];
         let config = MatchSetupInput {
             player_names: vec!["Alice".to_string(), "Bob".to_string()],
@@ -380,21 +468,13 @@ mod sticker_sheet_tests {
         game.apply_match_setup_with_stickers(config, None, Some(vec![names.clone(), Vec::new()]))
             .expect("constructed match with sticker sheets");
         let alice = PlayerId::from_index(0);
-        match game.pending_decision.as_ref() {
-            Some(DecisionContext::SelectOptions(options)) => {
-                assert_eq!(options.player, alice);
-                assert_eq!(options.options.len(), 4);
-                assert_eq!((options.min, options.max), (0, 3));
-            }
-            other => panic!("expected the sticker sheet choice, got {other:?}"),
-        }
-        game.dispatch_typed_command(UiCommand::SelectOptions { option_indices: vec![0, 2] }, 0.0)
-            .expect("sheet choice accepted");
-        assert_eq!(
-            game.revealed_sticker_sheets,
-            vec![(alice, vec![names[0].clone(), names[2].clone()])]
-        );
-        assert_eq!(game.game.available_name_stickers(alice).len(), 6);
+        assert_eq!(game.revealed_sticker_sheets.len(), 1);
+        assert_eq!(game.revealed_sticker_sheets[0].0, alice);
+        let selected = &game.revealed_sticker_sheets[0].1;
+        assert_eq!(selected.len(), 3);
+        assert_eq!(selected.iter().collect::<HashSet<_>>().len(), 3);
+        assert!(selected.iter().all(|name| names.contains(name)));
+        assert_eq!(game.game.available_name_stickers(alice).len(), 9);
         match game.pending_decision.as_ref() {
             Some(DecisionContext::Priority(priority)) => {
                 assert!(priority.actions.contains(&LegalAction::KeepOpeningHand));

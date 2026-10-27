@@ -229,6 +229,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                 let player = resolve_player_filter(game, &self.player, ctx)?;
                 let count = match self.kind {
                     UpkeepPaymentKind::Echo => 1,
+                    UpkeepPaymentKind::PerSourceCounter(counter) => resolve_value(game, &crate::effect::Value::CountersOnSource(counter), ctx)?.max(0) as usize,
                     UpkeepPaymentKind::Cumulative => resolve_value(
                         game,
                         &crate::effect::Value::CountersOnSource(CounterType::Age),
@@ -301,6 +302,8 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                         ctx.source,
                         if self.kind == UpkeepPaymentKind::Echo {
                             "Pay echo cost?".into()
+                        } else if matches!(self.kind, UpkeepPaymentKind::PerSourceCounter(_)) {
+                            format!("Pay the cost {count} time(s)?")
                         } else {
                             format!("Pay cumulative upkeep {count} time(s)?")
                         },
@@ -348,11 +351,13 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                 // The entire optional keyword cost has now succeeded. A successful
                 // zero cost still represents the player's affirmative acknowledgement.
                 // The receipt is not emitted by affordability simulation or installments.
+                if matches!(self.kind, UpkeepPaymentKind::PerSourceCounter(_)) { return Ok(outcome); }
                 let action = match self.kind {
                     UpkeepPaymentKind::Cumulative => {
                         crate::events::KeywordActionKind::CumulativeUpkeepPaid
                     }
                     UpkeepPaymentKind::Echo => crate::events::KeywordActionKind::EchoCostPaid,
+                    UpkeepPaymentKind::PerSourceCounter(_) => unreachable!("ordinary payment returned above"),
                 };
                 let snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
                     .or(source_before_payment);

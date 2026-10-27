@@ -91,3 +91,20 @@ export function cardGlintActionsCovered(regions,rulesView) {
       ? rulesView.manaGroups.get(lineIndex).options.every(option => !option.actions.length || regions.some(r => r.lineIndex===lineIndex && r.option===option.output))
       : regions.some(r => r.lineIndex===lineIndex)));
 }
+
+// Font sizes in the painter's 488px coordinate space. Interactive inspectors
+// can choose the scrollable frame when fitting the printed face gets too small.
+export function cardGlintRulesFontSize(result) {
+  if (!result) return null;
+  const {api,face,canvas}=result,context=canvas.getContext('2d');
+  context.save();context.resetTransform();
+  try {
+    const kind=api.faceFrame(face);
+    const layouts=kind.startsWith('planeswalker')?api.planeswalkerRuleRows(context,face).map(row=>row.layout)
+      :kind==='saga'?(()=>{const saga=api.sagaRuleLayout(context,face);return [saga.reminder,...saga.rows.map(row=>row.layout)];})()
+      :kind==='normal'?[api.isRetro(face)?api.retroTextLayout(context,face):api.ordinaryTextLayout(context,face)]:[];
+    const sizes=layouts.filter(Boolean).flatMap(layout=>layout.lines.filter(line=>line.role==='rules')
+      .flatMap(line=>line.runs.filter(run=>!run.symbol&&run.text.trim()).map(run=>run.size)));
+    return sizes.length?Math.min(...sizes):null;
+  } finally {context.restore();}
+}

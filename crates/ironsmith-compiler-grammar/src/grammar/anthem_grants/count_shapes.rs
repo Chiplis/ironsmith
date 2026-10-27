@@ -370,7 +370,7 @@ mod tests {
         );
         assert_eq!(
             TokenWordView::new(segments[1]).to_word_refs(),
-            ["each", "foretold", "card", "you", "own", "in", "exile"]
+            ["each", crate::keyword_forms::FORETOLD, "card", "you", "own", "in", "exile"]
         );
     }
 }

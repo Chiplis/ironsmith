@@ -106,6 +106,13 @@ impl EffectExecutor for ExileUntilEffect {
 impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
     fn select(&self, game: &mut GameState, ctx: &mut ExecutionContext)
         -> Result<super::movement_instruction::SelectedZoneMovement, ExecutionError> {
+                if self.duration == ExileUntilDuration::OpponentBecomesMonarch
+                    && game.duration_event_occurred(ctx.duration_window_start, |event| {
+                        event.downcast::<crate::events::MonarchChangedEvent>().is_some_and(|event| game.are_opponents(ctx.controller, event.monarch))
+                    })?
+                {
+                    return Ok(super::movement_instruction::SelectedZoneMovement::Finished(EffectOutcome::count(0)));
+                }
                 let leave_watcher = if self.duration == ExileUntilDuration::SourceLeavesBattlefield
                 {
                     if let Some(watcher_spec) = &self.leave_watcher {

@@ -7,6 +7,7 @@ import { I18nProvider } from "../src/i18n/I18nContext";
 import HandZone from "../src/components/board/HandZone";
 import DragOverlay from "../src/components/overlays/DragOverlay";
 import { HAND_KEYBOARD_CAST_EVENT } from "../src/lib/hand-cast-keyboard";
+import { installHandToggleShortcut, useHandOpen } from "../src/lib/hand-open";
 import "../src/index.css";
 
 const { state } = window.__handKeyboardFixture;
@@ -46,6 +47,8 @@ export function DragProbe() {
 }
 
 export function Fixture() {
+  const handOpen = useHandOpen();
+  useEffect(() => installHandToggleShortcut(document), []);
   return (
     <I18nProvider>
       <GameContext.Provider value={{ state, multiplayer: null }}>
@@ -56,7 +59,7 @@ export function Fixture() {
             {/* The hand sits at the foot of the viewport, as it does on the
                 board, so an arrow lifted towards the middle points upwards. */}
             <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "flex-end", background: "#14171c" }}>
-              <div data-hand-case style={{ position: "relative", width: "100%", height: 300 }}>
+              <div data-hand-case data-hand-open={handOpen} style={{ position: "relative", width: "100%", height: 300 }}>
                 <HandZone player={state.players[0]} selectedObjectId={null} onInspect={() => {}} isExpanded layout="fan" />
               </div>
             </div>

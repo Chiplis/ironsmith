@@ -22,11 +22,14 @@ impl EffectExecutor for AscendEffect {
             .filter(|&object_id| {
                 !game.is_phased_out(object_id)
                     && game.controller_of_id(object_id) == Some(controller)
+                    && (!self.historic_only || game.current_card_types(object_id).is_some_and(|t| t.contains(&crate::types::CardType::Artifact))
+                        || game.current_has_supertype(object_id, crate::types::Supertype::Legendary)
+                        || game.current_subtypes(object_id).is_some_and(|t| t.contains(&crate::types::Subtype::Saga)))
             })
             .count();
 
-        if permanent_count >= 10 {
-            game.grant_citys_blessing(controller);
+        if permanent_count >= self.minimum as usize {
+            if self.enduring_story { game.grant_enduring_story(controller); } else { game.grant_citys_blessing(controller); }
         }
         Ok(EffectOutcome::resolved())
     }

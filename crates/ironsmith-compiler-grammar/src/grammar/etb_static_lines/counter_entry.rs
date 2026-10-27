@@ -629,7 +629,7 @@ fn parse_enters_with_counter_known_for_each_tail_lexed<'a>(
                 primitives::kw("it").void(),
                 primitives::phrase(&["this", "spell"]),
             )),
-            primitives::phrase(&["was", "kicked"]),
+            primitives::phrase(&["was", crate::keyword_forms::KICKED]),
             primitives::sentence_end(),
         )
             .value(EntersWithCounterKnownForEachKind::KickCount),

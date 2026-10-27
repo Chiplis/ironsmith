@@ -279,13 +279,7 @@ impl ShuffleObjectsIntoLibraryProposal {
                 if result.final_zone == Zone::Library {
                     for &new_id in &result.new_object_ids {
                         if let Some(owner) = game.object(new_id).map(|object| object.owner) {
-                            crate::effects::cards::position_library_card(
-                                game,
-                                owner,
-                                new_id,
-                                crate::effects::cards::LibraryCardPosition::Bottom,
-                                "card moved into library before shuffle",
-                            );
+                            game.move_library_card_to_bottom(owner, new_id, "card moved into library before shuffle");
                         }
                     }
                     moved_ids.extend(result.new_object_ids.iter().copied());

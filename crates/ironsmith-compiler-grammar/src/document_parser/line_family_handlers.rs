@@ -184,6 +184,7 @@ pub(super) fn run_triggered_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("triggered-line");
+    if crate::keyword_static::parse_descriptive_reminder_line(&ctx.line.tokens).is_some() { return ParseOutcome::NoMatch; }
     if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
         return line_family_match(ctx, result);
     }
@@ -775,7 +776,7 @@ pub(super) fn run_champion_line_family(
     push_synthetic_words(&mut triggered_tokens, &["you", "control"]);
     triggered_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
     let triggered_line = rewrite_line_tokens(ctx.line, &triggered_tokens);
-    let triggered = line_family_try!(ctx, rule, recognize_triggered_line(&triggered_line));
+    let mut triggered = line_family_try!(ctx, rule, recognize_triggered_line(&triggered_line));
 
     // CR 702.72a: champion is two linked triggered abilities (CR 702.72b),
     // not an "until" duration: the championed card returns through a
@@ -802,7 +803,10 @@ pub(super) fn run_champion_line_family(
     );
     return_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
     let return_line = rewrite_line_tokens(ctx.line, &return_tokens);
-    let returned = line_family_try!(ctx, rule, recognize_triggered_line(&return_line));
+    let mut returned = line_family_try!(ctx, rule, recognize_triggered_line(&return_line));
+    let group = u32::try_from(ctx.line.info.line_index).expect("card line index fits champion group");
+    triggered.info.semantic_facts.triggered_ability.champion = Some(ironsmith_core::resolution_model::ChampionRole::Exile(group));
+    returned.info.semantic_facts.triggered_ability.champion = Some(ironsmith_core::resolution_model::ChampionRole::Return(group));
     line_family_match(
         ctx,
         LineDispatchResult {
@@ -1303,6 +1307,69 @@ pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("keyword-line");
+    // These whole-line definition readers are probes ahead of the ordinary
+    // families: a line they can't read (or misread) keeps its usual owner.
+    if let Ok(Some(effects)) =
+        crate::effect_sentences::parse_described_effect_bundle(&ctx.line.tokens).and_then(|parsed| {
+            if parsed.is_some() { Ok(parsed) } else { crate::effect_sentences::parse_described_effect_bundle(&ctx.line.info.source_tokens) }
+        }) {
+        return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+            info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None,
+            parsed: Some(Box::new(LineAst::Statement { effects })),
+        }), ctx.idx + 1));
+    }
+
+    if let Ok(Some(parsed)) = crate::semantic_line_parsing::parse_descriptive_static_program(&ctx.line.tokens) {
+        return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+            info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None,
+            parsed: Some(Box::new(parsed)),
+        }), ctx.idx + 1));
+    }
+
+    // A whole descriptive definition owns its complete line. Letting the
+    // statement probe read a suffix first loses the definition's lowering
+    // (entry programs and abilities copied from subsequent lines, in particular).
+    if let Some(abilities) = crate::keyword_static::parse_descriptive_reminder_line(&ctx.line.tokens)
+        .or_else(|| crate::keyword_static::parse_descriptive_reminder_line(&ctx.line.info.source_tokens)) {
+        return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+            info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
+        }), ctx.idx + 1));
+    }
+    if let Ok(Some(method)) =
+        crate::grammar::shared_util::alternative_cost_lines::parse_self_zone_alternative_cost(&ctx.line.tokens).and_then(|parsed| {
+            if parsed.is_some() { Ok(parsed) } else { crate::grammar::shared_util::alternative_cost_lines::parse_self_zone_alternative_cost(&ctx.line.info.source_tokens) }
+        }) {
+        return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+            info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None,
+            parsed: Some(Box::new(LineAst::AlternativeCastingMethod(method))),
+        }), ctx.idx + 1));
+    }
+    // These definitions have ordinary prose heads, so they must reach the
+    // alternative-cost registry before the keyword-head whitelist.
+    // A prose head is only a probe here: a line this registry can't read
+    // (an ordinary additional cost, say) keeps its usual families.
+    if ctx.line.tokens.first().is_some_and(|token| token.is_any_word(&["as", "cast", "if", "choose", "pay"]))
+        && crate::grammar::keyword_dispatch::parse_keyword_dispatch_hint_tokens(&ctx.line.tokens)
+            != Some(crate::grammar::keyword_dispatch::KeywordDispatchHint::AlternativeOrExertFamily)
+    {
+        if let Ok(Some(crate::recognized_document::KeywordLinePayload::Ast(parsed))) =
+            crate::keyword_payloads::parse_alternative_cast(ctx.line, &ctx.line.tokens, &ctx.line.info.source_tokens) {
+            return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+                info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None, parsed: Some(parsed),
+            }), ctx.idx + 1));
+        }
+    }
+    let original = crate::lexer::render_token_slice(&ctx.line.info.source_tokens).to_ascii_lowercase();
+    if original.starts_with("as an additional cost to cast this spell, you may choose an opponent. if this is a permanent,") {
+        if let Some(crate::recognized_document::KeywordLinePayload::Ast(parsed)) = line_family_try!(ctx, rule,
+            crate::keyword_payloads::parse_additional_cost(ctx.line, &ctx.line.info.source_tokens, &ctx.line.info.source_tokens)) {
+            return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+                info: ctx.line.info.clone(), parse_tokens: ctx.line.info.source_tokens.clone(), chosen_option: None, parsed: Some(parsed),
+            }), ctx.idx + 1));
+        }
+    }
+
     if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
         return line_family_match(ctx, result);
     }
@@ -1361,8 +1428,10 @@ pub(super) fn run_keyword_line_family(
     if let Some(actions) = parse_ability_line_lexed(&ctx.line.tokens)
         && matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::CumulativeUpkeep { .. } | crate::cards::builders::KeywordAction::Suspend { .. }])
     {
-        let parsed = matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::Suspend { .. }])
-            .then(|| Box::new(LineAst::Abilities(actions)));
+        // Keep the complete keyword reading. Re-parsing this as an ordinary
+        // static line can find the instruction inside its payment and discard
+        // the cumulative-upkeep owner.
+        let parsed = Some(Box::new(LineAst::Abilities(actions)));
         return line_family_match(
             ctx,
             LineDispatchResult::single(
@@ -1375,6 +1444,11 @@ pub(super) fn run_keyword_line_family(
                 ctx.idx + 1,
             ),
         );
+    }
+    if document_grammar::parse_cumulative_upkeep_surface(&ctx.line.tokens).is_some() {
+        return line_family_error(ctx, rule, CardTextError::ParseError(
+            "unsupported cumulative upkeep payment instruction".to_string(),
+        ));
     }
     if let Some(split_lines) =
         line_family_try!(ctx, rule, split_same_line_and_or_kicker_keywords(ctx.line))

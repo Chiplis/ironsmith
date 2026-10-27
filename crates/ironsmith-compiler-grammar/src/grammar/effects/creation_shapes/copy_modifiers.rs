@@ -12,6 +12,7 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CopyModifierSpec {
+    pub without_mana_cost: bool,
     pub set_colors: Option<ColorSet>,
     /// "in addition to its other colors and types": colors added to the
     /// copied ones (CR 707.9b).

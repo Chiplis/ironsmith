@@ -209,6 +209,24 @@ pub fn parse_token_definition_shape_tokens(
         }
     }
 
+    if has("planeswalker") && !has("creature") && !has("artifact") {
+        let mut subtypes = Vec::new();
+        for word in words {
+            if matches!(*word, "planeswalker" | "legendary" | "blue" | "white" | "black" | "red" | "green" | "colorless" | "and" | "a" | "an") { continue; }
+            let subtype = leaf::parse_leaf_subtype_complete(word).ok()?;
+            if !ironsmith_core::SubtypeFamily::Planeswalker.all_subtypes().contains(&subtype) { return None; }
+            subtypes.push(subtype);
+        }
+        let loyalty = outer_words.windows(2).find_map(|pair| (pair[1] == "loyalty").then(|| pair[0].parse::<u32>().ok()).flatten()).unwrap_or(0);
+        let name = named_card.clone().unwrap_or_else(|| {
+            let name = subtypes.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ");
+            if name.is_empty() { "Planeswalker Token".into() } else { format!("{name} Token") }
+        });
+        return Some(TokenDefinitionSpec::Planeswalker(crate::model::token_definition::PlaneswalkerTokenShape {
+            name, subtypes, colors: token_colors(words), legendary: has("legendary"), loyalty,
+        }));
+    }
+
     let equipment_subject =
         has("equipment") && common::phrase_present(&rule_words, &["equipped", "creature"]);
     if has("artifact") && pt.is_none() && (!has("creature") || equipment_subject) {
@@ -289,6 +307,7 @@ pub fn parse_token_definition_shape_tokens(
             None
         };
         return Some(TokenDefinitionSpec::Construct(ConstructTokenShape {
+            snow: has("snow"),
             power_toughness: pt.unwrap_or((0, 0)),
             artifact_scaling,
         }));
@@ -328,6 +347,7 @@ pub fn parse_token_definition_shape_tokens(
         subtypes,
         power_toughness: pt.unwrap_or((0, 0)),
         legendary: has("legendary"),
+        snow: has("snow"),
         colors: token_colors(&words),
         use_source_chosen_color,
         use_source_chosen_creature_type,

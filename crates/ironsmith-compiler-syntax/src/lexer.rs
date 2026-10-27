@@ -1232,6 +1232,10 @@ fn render_needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
     if positioned && prev.span.end == current.span.start {
         return false;
     }
+    if positioned && prev.kind == TokenKind::Quote && current.kind == TokenKind::Word
+        && prev.span.end < current.span.start {
+        return true;
+    }
 
     if matches!(
         current.kind,

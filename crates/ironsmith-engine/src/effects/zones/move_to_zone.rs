@@ -28,7 +28,7 @@ use super::{
 pub use ironsmith_core::BattlefieldController;
 pub type LibraryPlacementOrder = ironsmith_core::LibraryPlacementOrder;
 pub type MoveToZoneAttackTargetMode = ironsmith_core::MoveToZoneAttackTargetMode;
-pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect;
+pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect<crate::continuous::Modification>;
 
 fn normalize_order_response(
     response: Vec<crate::ids::ObjectId>,
@@ -59,6 +59,12 @@ fn order_library_move_objects(
         return Ok(object_ids);
     }
 
+    // A retained library set is presented in the library's current order,
+    // independent of the order in which a filter or tag enumerated it.
+    let object_ids = if let Some(owner) = object_ids.first().and_then(|id| game.object(*id)).map(|o| o.owner)
+        && object_ids.iter().all(|id| game.object(*id).is_some_and(|o| o.zone == Zone::Library && o.owner == owner)) {
+        game.player(owner).unwrap().library.iter().rev().copied().filter(|id| object_ids.contains(id)).collect()
+    } else { object_ids };
     match order {
         LibraryPlacementOrder::Owners => {
             let mut ordered = Vec::new();
@@ -455,21 +461,6 @@ fn prepare_move_zone_proposals(
                     .copied()
                     .unwrap_or(effect.zone)
             });
-        if to == Zone::Battlefield
-            && snapshot.zone != Zone::Battlefield
-            && snapshot.subtypes.contains(&crate::types::Subtype::Aura)
-            && let Some(target) = prepared.attachment
-        {
-            let controller = match effect.battlefield_controller {
-                BattlefieldController::You => ctx.controller,
-                BattlefieldController::Owner | BattlefieldController::Preserve => snapshot.owner,
-            };
-            if !crate::effects::permanents::aura_can_enter_attached_to(
-                game, object, controller, target,
-            ) {
-                continue;
-            }
-        }
         let scope = ReplacementEventContext::with_scope(
             game,
             crate::events::Event::zone_change(
@@ -575,8 +566,13 @@ fn move_entry_options(
         .with_entry_attachment(attachment)
         .transformed(effect.enters_transformed)
         .face_down(effect.enters_face_down);
-    let mut modifications = Vec::new();
+    options.entry_attachment_specified |= ctx.pending_entry_attachment.is_some();
+    let mut modifications = effect.entry_modifications.clone();
     if let Some(changes) = &effect.entry_type_changes {
+        modifications.extend(changes.color_changes.iter().map(|change| match change {
+            ironsmith_core::effect::BattlefieldEntryColorChange::Add(colors) => crate::continuous::Modification::AddColors(*colors),
+            ironsmith_core::effect::BattlefieldEntryColorChange::Set(colors) => crate::continuous::Modification::SetColors(*colors),
+        }));
         modifications.extend(changes.removed_subtype_families.iter().copied()
             .map(crate::continuous::Modification::RemoveAllSubtypesOfFamily));
         if !changes.added_card_types.is_empty() {
@@ -611,6 +607,11 @@ fn move_entry_options(
 }
 
 impl EffectExecutor for MoveToZoneEffect {
+    fn visit_resolution_child_effects(&self, _visitor: &mut dyn FnMut(&crate::effect::Effect)) {}
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for modification in &self.entry_modifications { modification.visit_owned_effects(visitor); }
+    }
     fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
         vec![self.target.clone()]
     }
@@ -940,7 +941,10 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             super::resolve_zone_move_objects(game, ctx, &self.target)
         };
         ctx.iteration.iterated_player = saved_iterated_player;
-        let mut object_ids = resolved?;
+        let mut object_ids = match resolved {
+            Err(ExecutionError::InvalidTarget) if self.target.count().min == 0 => Vec::new(),
+            other => other?,
+        };
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
@@ -1115,12 +1119,6 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         } else {
             None
         };
-        // CR 303.4i: an explicitly named host that is undefined (it left, or
-        // never existed) doesn't become a free choice of some other host.
-        let entry_attachment_undefined = prepared.is_none()
-            && self.zone == Zone::Battlefield
-            && ctx.pending_entry_attachment.is_some()
-            && entry_attachment.is_none();
         // CR 303.4h: a permanent entering as a non-Aura or face down is
         // neither Aura, Equipment nor Fortification, so it enters unattached
         // whatever its card was in the old zone.
@@ -1228,44 +1226,11 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 continue;
             };
             let from_zone = target_lki_before_move.zone;
-            let mut requested_zone = ctx
+            let requested_zone = ctx
                 .simultaneous_zone_destination(object_id)
                 .unwrap_or_else(|| destinations.get(&object_id).copied().unwrap_or(self.zone));
-            // CR 303.4i: an Aura an effect would put onto the battlefield
-            // attached to something it can't legally enchant (or to a named
-            // host that is undefined) stays where it is, or goes to its
-            // owner's graveyard from the stack; it doesn't enter and choose
-            // some other object instead.
-            if requested_zone == Zone::Battlefield
-                && from_zone != Zone::Battlefield
-                && prepared.is_none()
-                && !enters_without_attachment_role
-                && target_lki_before_move
-                    .subtypes
-                    .contains(&crate::types::Subtype::Aura)
-            {
-                let entering_controller = match self.battlefield_controller {
-                    BattlefieldController::You => ctx.controller,
-                    BattlefieldController::Owner | BattlefieldController::Preserve => {
-                        target_lki_before_move.owner
-                    }
-                };
-                let blocked = match entry_attachment {
-                    Some(target) => !crate::effects::permanents::aura_can_enter_attached_to(
-                        game,
-                        object_id,
-                        entering_controller,
-                        target,
-                    ),
-                    None => entry_attachment_undefined,
-                };
-                if blocked {
-                    if from_zone != Zone::Stack {
-                        continue;
-                    }
-                    requested_zone = Zone::Graveyard;
-                }
-            }
+            // Attachment legality belongs to the prepared entrant: copy,
+            // face-down and authored type changes can remove its Aura status.
             let target_lki_before_move =
                 original_snapshots.get(&object_id).cloned().ok_or_else(|| {
                     ExecutionError::InternalError(
@@ -1505,7 +1470,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                 if arriving.kind == crate::object::ObjectKind::Card { original_arrivals.push(arrival); }
                             }
                         }
-                        if final_zone == Zone::Hand {
+                        {
                             for &id in &result.new_object_ids {
                                 let arriving = game.object(id).ok_or_else(|| {
                                     ExecutionError::InternalError(
@@ -1513,7 +1478,11 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                     )
                                 })?;
                                 let snapshot = ObjectSnapshot::from_object(arriving, game);
-                                if arriving.kind == crate::object::ObjectKind::Card {
+                                // A composite can split across destinations; its summary
+                                // final_zone does not describe every physical component.
+                                if arriving.zone == Zone::Hand
+                                    && arriving.kind == crate::object::ObjectKind::Card
+                                {
                                     let memory = Clone::clone(&snapshot);
                                     authored_facts.push(
                                         crate::effect::ExecutionFact::CardsPutIntoHand {
@@ -1580,6 +1549,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                 // Each resulting card's own zone decides (a meld
                                 // commander component may go to the command zone
                                 // while its partner goes to the library).
+                                if self.zone == Zone::Library && final_zone == Zone::Library {
+                                    game.record_simultaneous_library_placement(new_id, if self.to_top { crate::effects::cards::LibraryCardPosition::Top } else { crate::effects::cards::LibraryCardPosition::Bottom });
+                                }
                                 if !self.to_top
                                     && let Some(owner) = game
                                         .object(new_id)
@@ -2880,3 +2852,7 @@ mod replacement_move_owner_contract_tests {
 #[cfg(test)]
 #[path = "movement_prepared_boundary_tests.rs"]
 mod prepared_boundary_tests;
+
+#[cfg(test)]
+#[path = "entry_color_tests.rs"]
+mod entry_color_tests;

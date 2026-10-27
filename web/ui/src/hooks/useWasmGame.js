@@ -1,3 +1,4 @@
+import { listCustomMechanics } from "../lib/custom-card-library.js";
 import { createSnapshotDecoder } from "../lib/snapshot-channel.js";
 import { beginEngineRequest, endEngineRequest, recordWorkerTaskDiagnostics,
   recordEngineResultReceipt, resetWorkerTaskDiagnostics } from '../lib/action-diagnostics.js';
@@ -25,6 +26,7 @@ const WORKER_METHODS = [
   "cardsMeetingThreshold",
   "createCustomCard",
   "replaceHandWithCustomCards",
+  "startSandbox",
   "createRuntimeSavepoint",
   "captureExactBuildSnapshot",
   "restoreExactBuildSnapshot",
@@ -178,6 +180,8 @@ export function useWasmGame() {
   // Register the catalogue before child passive effects begin startup-board or
   // card-art requests. Those reads wait for readiness instead of fetching JSON.
   useLayoutEffect(() => {
+    // Restore saved helper definitions before cards are displayed after reload.
+    void listCustomMechanics().catch(() => {});
     let disposed = false;
     const sharedAnalysisRuntime = shouldShareAnalysisRuntime();
     let nextRequestId = 1;

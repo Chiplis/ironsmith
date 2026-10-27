@@ -17,6 +17,19 @@ use super::restriction_normalization::{
 pub fn parse_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedActivationRestriction> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.len() == 5 && words.ends_with(&["only", "as", "a", "sorcery"]) {
+        let synthetic = crate::lexer::synthetic_word_tokens(["activate", "only", "as", "a", "sorcery"]);
+        return Some(parse_activation_restriction_surface_tokens(&synthetic));
+    }
+    if matches!(words.as_slice(), ["activate", "only", "if", "this", "equipment" | "permanent", "is", "attached", "to", "a", "creature"]) {
+        return Some(ParsedActivationRestriction {
+            presentation_text: normalized_surface(tokens), timing: None,
+            condition: Some(PredicateAst::AttachedToSourceMatches(crate::target::ObjectFilter::creature())),
+            text_only_condition: None, normalization: ActivationRestrictionNormalizationFact::Preserve,
+            mana_usage_restriction: None, once_per_turn_after_other_restrictions: false,
+        });
+    }
     if let Some(parsed) = parse_cant_activate_this_ability_window_restriction(tokens) {
         return Some(parsed);
     }

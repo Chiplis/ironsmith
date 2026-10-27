@@ -5,9 +5,12 @@ use ironsmith_compiler_ast::TagRef;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum LibraryActionAst {
+    ExileGraveyardForTotalManaValue { amount: Value },
+    RetrieveOutsideOrRummage { filter: ObjectFilter },
     Mill {
         count: Value,
     },
+    DescribedTopCardFaceDown { cloak: bool },
     ManifestTopCardOfLibrary,
     CloakTopCardOfLibrary,
     ShuffleHandAndGraveyardIntoLibrary,

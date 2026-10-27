@@ -1,0 +1,9 @@
+import {createRoot} from 'react-dom/client';
+import CardFramePresentation from '../src/components/cards/CardFramePresentation';
+import {I18nProvider} from '../src/i18n/I18nContext';
+import '../src/index.css';
+import './ability-affordance-preview.css';
+const card={name:'Yawgmoth, Thran Physician',mana_cost:'{2}{B}{B}',colors:['B'],type_line:'Legendary Creature — Human Cleric',power:'2',toughness:'4',set:'mh1',rarity:'mythic',oracle_text:'Protection from Humans\n{T}, Pay 1 life, Sacrifice another creature: Put a -1/-1 counter on up to one target creature and draw a card.\n{B}{B}, Discard a card: Proliferate.'};
+const examples=[['available','Blue · Available','Hover or focus: choose this ability.'],['selected','Green · Selected','The chosen ability stays green during costs and targeting.'],['unavailable','Red · Unavailable','Hover or focus: cannot pay this ability’s cost.']];
+window.inkActivations=[];
+createRoot(document.getElementById('root')).render(<I18nProvider><main className="ability-concept"><div className="concept-intro"><span className="eyebrow">IRONSMITH · LIVE CARD FRAME RENDERER</span><h1>Read the ability. See its state.</h1><p>Blue to choose · green when chosen · red when unavailable</p></div><div className="study-grid">{examples.map(([state,title,description])=><section className="ability-study" data-example={state} key={state}><header><h2>{title}</h2></header><div className="study-card"><CardFramePresentation card={card} imageUrl={window.__abilityArt} rulesView={{lines:card.oracle_text.split('\n'),actions:new Map([[1,[{id:1,mana_payment_available:state!=='unavailable'}]],[2,[{id:2,mana_payment_available:true}]]])}} highlighted={state==='selected'?new Set([1]):undefined} onActivate={action=>window.inkActivations.push(action.id)}/></div><p>{description}</p></section>)}</div><footer>Full-paragraph hit areas. Static abilities remain neutral. Unavailable abilities do not dispatch an activation.</footer></main></I18nProvider>);

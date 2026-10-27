@@ -439,6 +439,9 @@ fn commit_countered_ability(game: &mut GameState, index: usize) -> EffectOutcome
     if !game.stack.get(index).is_some_and(|entry| entry.is_ability) {
         return EffectOutcome::target_invalid();
     }
+    if game.stack[index].ability_effects.as_ref().is_some_and(|program| program.ability_cant_be_countered) {
+        return EffectOutcome::protected();
+    }
     let entry = game.stack.remove(index);
     let outcome = countered_ability_outcome(game, &entry);
     super::copy_spell::discard_departed_ability_copy_object(game, &entry);

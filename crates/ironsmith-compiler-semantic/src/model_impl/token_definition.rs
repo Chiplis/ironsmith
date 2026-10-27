@@ -377,6 +377,15 @@ pub struct LandTokenShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct PlaneswalkerTokenShape {
+    pub name: String,
+    pub subtypes: Vec<Subtype>,
+    pub colors: ColorSet,
+    pub legendary: bool,
+    pub loyalty: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct EnchantmentTokenShape {
     pub name: String,
     pub text_roles: Option<TokenDescriptionTextRoles>,
@@ -462,6 +471,7 @@ pub struct CreatureTokenShape {
     pub subtypes: Vec<Subtype>,
     pub power_toughness: (i32, i32),
     pub legendary: bool,
+    pub snow: bool,
     pub colors: ColorSet,
     pub use_source_chosen_color: bool,
     pub use_source_chosen_creature_type: bool,
@@ -477,6 +487,7 @@ pub enum ConstructArtifactScalingShape {
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct ConstructTokenShape {
+    pub snow: bool,
     pub power_toughness: (i32, i32),
     pub artifact_scaling: Option<ConstructArtifactScalingShape>,
 }
@@ -507,6 +518,7 @@ pub enum TokenDefinitionSpec {
     AstartesWarrior(AstartesWarriorTokenShape),
     Creature(CreatureTokenShape),
     ModifiedBuiltin(ModifiedBuiltinTokenShape),
+    Planeswalker(PlaneswalkerTokenShape),
 }
 
 impl TokenDefinitionSpec {
@@ -558,7 +570,7 @@ impl TokenDefinitionSpec {
             // Named and built-in token shapes may carry abilities during
             // lowering even when their compact parser shape has no fields for
             // them. Treat them conservatively as nonempty.
-            Self::Land(_) => false,
+            Self::Land(_) | Self::Planeswalker(_) => false,
             Self::PrototypeReference(_)
             | Self::Builtin(_)
             | Self::Angel

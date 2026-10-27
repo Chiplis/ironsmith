@@ -1,6 +1,7 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::perf::PerfTimer;
+use crate::filter::ObjectFilterExt as _;
 
 fn total_cost_contains_tap(cost: &crate::cost::TotalCost) -> bool {
     match cost.kind() {
@@ -14,18 +15,7 @@ fn total_cost_contains_tap(cost: &crate::cost::TotalCost) -> bool {
 }
 
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
-    if !pending.cost_references_ready {
-        return ActivationStage::ChoosingCostReferences;
-    }
-    if !pending.remaining_requirements.is_empty() {
-        ActivationStage::ChoosingTargets
-    } else if !pending.pending_target_distributions.is_empty() {
-        ActivationStage::ChoosingDistribution
-    } else if !pending.remaining_cost_steps.is_empty() || pending.mana_cost_to_pay.is_some() {
-        ActivationStage::ChoosingNextCost
-    } else {
-        ActivationStage::ReadyToFinalize
-    }
+    super::priority_cast::activation_stage_after_announcements(pending)
 }
 
 fn build_target_assignments(
@@ -86,6 +76,26 @@ fn retain_announced_target_controllers(
                 retained.entry(crate::tag::TagKey::from(format!("__announced_target_controller_{index}__")))
                     .or_insert_with(|| vec![snapshot]);
             }
+        }
+    }
+}
+
+fn retain_announced_target_tags(
+    game: &GameState,
+    targets: &[Target],
+    requirements: &[TargetRequirement],
+    assignments: &[crate::game_state::TargetAssignment],
+    retained: &mut std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+) {
+    for (requirement, assignment) in requirements.iter().zip(assignments) {
+        if requirement.announcement_tags.is_empty() { continue; }
+        let snapshots = assignment.range.clone().filter_map(|index| {
+            let Target::Object(id) = targets.get(index)? else { return None; };
+            game.object(*id).and_then(|object|
+                crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
+        }).collect::<Vec<_>>();
+        for tag in &requirement.announcement_tags {
+            retained.insert(tag.clone(), snapshots.clone());
         }
     }
 }
@@ -215,6 +225,7 @@ pub(super) fn begin_mana_ability_activation_with_outputs(
 ) -> Result<ManaActivationProgress, GameLoopError> {
     let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
     let mut saved_root_checkpoint = false;
+    let mut active_guard = None;
     let mut result = (|| -> Result<ManaActivationProgress, GameLoopError> {
         if game.object(*source).is_some()
             && let Some(ability) = game.current_ability(*source, *ability_index)
@@ -283,6 +294,15 @@ pub(super) fn begin_mana_ability_activation_with_outputs(
             let source_snapshot = game
                 .object(*source)
                 .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+
+            let announced_origin = source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                .and_then(|origins| origins.get(*ability_index).cloned())
+                .ok_or_else(|| GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+                    "mana announcement has no acquired ability identity".into())))?;
+            if !game.begin_mana_activation_guard(mana_ability_provenance, *source, announced_origin) {
+                return Err(GameLoopError::InvalidState("This mana ability has not finished resolving".into()));
+            }
+            active_guard = Some(mana_ability_provenance);
 
             let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
                 *source,
@@ -463,6 +483,8 @@ pub(super) fn begin_mana_ability_activation_with_outputs(
                     try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
 
+                game.end_mana_activation_guard(mana_ability_provenance);
+                active_guard = None;
                 let notification = queue_prepared_activation_notification_with_outputs(
                     game,
                     trigger_queue,
@@ -563,6 +585,11 @@ pub(super) fn begin_mana_ability_activation_with_outputs(
         }
     } else if saved_root_checkpoint && !state.has_pending_action() {
         state.clear_checkpoint();
+    }
+    if let Some(announcement) = active_guard {
+        let retained = state.pending_mana_ability.as_ref().is_some_and(|pending| pending.provenance == announcement)
+            || state.pending_mana_parents.iter().any(|pending| pending.provenance == announcement);
+        if !retained { game.end_mana_activation_guard(announcement); }
     }
     result
 }
@@ -1712,6 +1739,7 @@ pub(super) fn apply_targets_response(
                 build_target_assignments(&requirements, targets, pending.chosen_targets.len())?;
             // Combine previously chosen targets with new ones
             pending.chosen_targets.extend(targets.iter().cloned());
+            retain_announced_target_tags(game, &pending.chosen_targets, &requirements, &assignments, &mut pending.tagged_objects);
             retain_announced_target_controllers(game, &pending.chosen_targets, &assignments, &mut pending.tagged_objects);
             pending
                 .chosen_target_assignments
@@ -1722,6 +1750,7 @@ pub(super) fn apply_targets_response(
                 pending.activator,
                 pending.x_value.and_then(|x| u32::try_from(x).ok()),
                 None,
+                &pending.tagged_objects,
                 &pending.chosen_targets,
                 &pending.chosen_target_assignments,
                 &requirements,
@@ -1881,6 +1910,7 @@ pub(super) fn apply_targets_response(
         .chosen_target_assignments
         .extend(assignments.iter().cloned());
     pending.chosen_targets = all_targets.clone();
+    retain_announced_target_tags(game, &pending.chosen_targets, &requirements, &assignments, &mut pending.tagged_objects);
     retain_announced_target_controllers(game, &pending.chosen_targets, &assignments, &mut pending.tagged_objects);
     if let Err(error) = append_target_distribution_requirements(
         game,
@@ -1888,6 +1918,7 @@ pub(super) fn apply_targets_response(
         pending.caster,
         pending.x_value,
         Some(&pending.optional_costs_paid),
+        &pending.tagged_objects,
         &pending.chosen_targets,
         &pending.chosen_target_assignments,
         &requirements,
@@ -1994,6 +2025,16 @@ pub(super) fn apply_x_value_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
+        if pending.stage == ActivationStage::ChoosingCostReduction {
+            if let Err(error) = super::priority_cast::select_activation_cost_reduction(game, &mut pending, x_value, decision_maker) {
+                state.pending_activation = Some(pending);
+                return Err(error);
+            }
+            let result = continue_activation(game, trigger_queue, state, pending, decision_maker);
+            if result.is_err() { state.rollback_action(game); }
+            return result;
+        }
+
         if pending.counter_removal_declaration.is_some()
             && pending.stage != ActivationStage::ChoosingCostReferences
         {
@@ -2138,6 +2179,24 @@ pub(super) fn apply_x_value_response(
         )
     })?;
 
+    if let Some(spell) = game.object(pending.spell_id)
+        && let Some(values) = crate::decision::spell_defined_x_values(game, pending.caster, spell)
+            .map_err(GameLoopError::ExecutionFailed)?
+        && !values.contains(&x_value)
+    {
+        state.pending_cast = Some(pending);
+        return Err(ResponseError::IllegalChoice("X must satisfy this spell's definition".into()).into());
+    }
+    if let Some((requirement, context)) = &pending.effect_spell_requirement
+        && let Some(spell) = game.object(pending.spell_id)
+    {
+        let mut snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(spell, game);
+        snapshot.x_value = Some(x_value);
+        if !requirement.matches_snapshot(&snapshot, context, game) {
+            state.pending_cast = Some(pending);
+            return Err(ResponseError::IllegalChoice("The resulting spell does not satisfy its cast permission".into()).into());
+        }
+    }
     // Store the X value
     pending.x_value = Some(x_value);
     if let Some(obj) = game.object_mut(pending.spell_id) {

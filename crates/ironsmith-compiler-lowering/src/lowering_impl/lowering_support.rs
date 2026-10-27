@@ -1121,6 +1121,8 @@ fn default_trigger_last_object_prelude(
     }
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => default_trigger_last_object_prelude(trigger, tag),
+        TriggerSpec::BecomesTargetedBySourceController { target, .. } if target.source =>
+            Some(EffectPreludeTag::TriggeringSource(tag.clone())),
         TriggerSpec::ThisBecomesTargetedBySpell(_)
         | TriggerSpec::ThisBecomesTargetedByStackObject(_)
         | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
@@ -3820,7 +3822,8 @@ pub fn stage_owned_triggered_effects_for_lowering(
     fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
         match predicate {
             PredicateAst::ItIsLandCard
-            | PredicateAst::ItIsSoulbondPaired
+            | PredicateAst::UnpairedCreaturesCanPair
+        | PredicateAst::ItIsSoulbondPaired
             | PredicateAst::ItMatches(_)
             | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_) => true,

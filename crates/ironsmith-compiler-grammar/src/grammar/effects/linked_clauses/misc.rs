@@ -111,7 +111,7 @@ const INSTEAD_OF_GRAVEYARD_AS_IT_RESOLVES: &[&[&str]] = &[
         "instead", "of", "putting", "it", "into", "graveyard", "as", "it", "resolves",
     ],
 ];
-const IF_YOU_DO_IT_BECOMES_PLOTTED: &[&str] = &["if", "you", "do", "it", "becomes", "plotted"];
+const IF_YOU_DO_IT_BECOMES_PLOTTED: &[&str] = &["if", "you", "do", "it", "becomes", crate::keyword_forms::PLOTTED];
 
 /// "exile that card [with a dream counter on it] instead of putting it into
 /// your graveyard as it resolves" (Goliath Daydreamer, Lilah): a replacement

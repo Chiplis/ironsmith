@@ -118,6 +118,9 @@
     if let Some(compact) = describe_creature_pile_destroy_bundle(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_fixed_binary_pile_bundle(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_graveyard_creature_pile_exile_return_bundle(&filtered) {
         return compact;
     }

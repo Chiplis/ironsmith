@@ -351,15 +351,15 @@ pub(super) fn parse_effect_clause_unstacked(
     {
         let words = crate::lexer::token_word_refs(tokens);
         let tail = match words.as_slice() {
-            ["it's" | "its", "goaded", tail @ ..] | ["it", "is", "goaded", tail @ ..] => Some(tail),
+            ["it's" | "its", crate::keyword_forms::GOADED, tail @ ..] | ["it", "is", crate::keyword_forms::GOADED, tail @ ..] => Some(tail),
             // "that creature is also goaded" (Hot Pursuit): the same passive
             // goad of the referenced creature; "also" adds to its other state.
-            ["that", "creature", "is", "goaded", tail @ ..]
-            | ["that", "creature", "is", "also", "goaded", tail @ ..]
-            | ["it", "is", "also", "goaded", tail @ ..] => Some(tail),
+            ["that", "creature", "is", crate::keyword_forms::GOADED, tail @ ..]
+            | ["that", "creature", "is", "also", crate::keyword_forms::GOADED, tail @ ..]
+            | ["it", "is", "also", crate::keyword_forms::GOADED, tail @ ..] => Some(tail),
             // "They're goaded for the rest of the game." (Dack Fayden,
             // Helping Hand): the plural referent, goaded until the game ends.
-            ["they're" | "theyre", "goaded", tail @ ..] | ["they", "are", "goaded", tail @ ..]
+            ["they're" | "theyre", crate::keyword_forms::GOADED, tail @ ..] | ["they", "are", crate::keyword_forms::GOADED, tail @ ..]
                 if matches!(tail, [] | ["for", "the", "rest", "of", "the" | "this", "game"]) =>
             {
                 Some(tail)
@@ -996,13 +996,13 @@ pub(crate) fn parse_referenced_tokens_goaded_sentence(
 ) -> Option<EffectAst> {
     let words = crate::lexer::token_word_refs(tokens);
     let subject_len = match words.as_slice() {
-        ["the" | "that", "token", "is", "goaded", ..] => 4,
-        ["the" | "those", "tokens", "are", "goaded", ..] => 4,
+        ["the" | "that", "token", "is", crate::keyword_forms::GOADED, ..] => 4,
+        ["the" | "those", "tokens", "are", crate::keyword_forms::GOADED, ..] => 4,
         _ => return None,
     };
     let goaded = tokens
         .iter()
-        .position(|token| token.is_word("goaded"))?;
+        .position(|token| token.is_word(crate::keyword_forms::GOADED))?;
     let tail = crate::lexer::trim_lexed_commas(&tokens[goaded + 1..]);
     let tail_words = &words[subject_len..];
     // Undurationed and rest-of-game forms keep their existing readings.

@@ -31,7 +31,10 @@ fn gather_out(
     }
 }
 fn gather_in(game: &GameState, id: ObjectId, into: &mut BTreeSet<ObjectId>) {
-    if into.contains(&id) || game.is_phase_out_held(id) || !game.is_phased_out(id) {
+    // CR 610.4a: duration holds suppress the untap step's automatic return,
+    // whose candidate owner already excludes held permanents. An independent
+    // phase-in instruction may return one and cancels its former holds.
+    if into.contains(&id) || !game.is_phased_out(id) {
         return;
     }
     let Some(object) = game
@@ -150,6 +153,8 @@ impl GameState {
                 held.remove(id);
             }
             flags.phase_out_holds_until_visit_roll.remove(id);
+            flags.tap_on_held_phase_in.remove(id);
+            for pending in self.auxiliary_tracking_mut().pending_phase_duration_returns.values_mut() { pending.remove(id); }
         }
         self.mark_continuous_state_dirty();
         self.effect_store
@@ -160,6 +165,10 @@ impl GameState {
         self.effect_store.grant_registry.expire_source_presence_for_phasing(
             &outgoing.keys().copied().collect::<Vec<_>>());
         self.expire_condition_ended_prevention_shields();
+        for id in outgoing.keys().chain(incoming.iter()).copied() {
+            self.refresh_prepared_spell_copy(id);
+        }
+        self.reconcile_library_top_identity();
         let kind = if outgoing.is_empty() {
             EventKind::PermanentPhasedIn
         } else {

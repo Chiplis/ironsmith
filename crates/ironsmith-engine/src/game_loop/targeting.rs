@@ -1198,7 +1198,7 @@ pub fn drain_pending_trigger_events_with_dm(
         result = Err(error);
     }
     if result.is_err() || decision_maker.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && decision_maker.awaiting_choice());
         *trigger_queue = queue_checkpoint;
     }
     game.end_token_resource_scope(root, &meter);
@@ -1263,14 +1263,16 @@ fn drain_pending_trigger_events_inner<E>(
                 queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
                 // CR 603.7b: a one-shot delayed trigger sees the whole group.
                 queue_delayed_triggers_for_simultaneous_events(game, trigger_queue, &simultaneous);
+                let mut simultaneous_sources = Vec::new();
                 for event in &simultaneous {
                     if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
                         && change.from == crate::zone::Zone::Battlefield
                         && change.to != crate::zone::Zone::Battlefield
                     {
-                        departed_sources.extend(change.objects.iter().copied());
+                        simultaneous_sources.extend(change.objects.iter().copied());
                     }
                 }
+                if !simultaneous_sources.is_empty() { departed_sources.push(simultaneous_sources); }
                 continue;
             }
             let source_leave = event
@@ -1288,7 +1290,7 @@ fn drain_pending_trigger_events_inner<E>(
                 &mut one_or_more_zone_changes_seen,
             );
             if let Some(source_ids) = source_leave {
-                departed_sources.extend(source_ids);
+                departed_sources.push(source_ids);
             }
         }
 
@@ -1327,8 +1329,8 @@ fn drain_pending_trigger_events_inner<E>(
             }
         }
 
-        for source_id in departed_sources {
-            game.return_exiled_for_source_leave(source_id);
+        for sources in departed_sources {
+            game.return_exiled_for_sources_leave(&sources);
         }
     }
     Ok(())
@@ -1388,6 +1390,51 @@ pub type ExtractedTarget<'a> = crate::effects::TargetSelectionProfile<'a>;
 /// Extract a ChooseSpec from an Effect, if it has one that requires selection.
 pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
     effect.target_selection_profile()
+}
+
+fn is_source_attachment_target(effect: &Effect) -> bool {
+    let mut operation = effect;
+    while let Some(child) = operation.transparent_child_effect() {
+        operation = child;
+    }
+    operation.downcast_ref::<crate::effects::AttachToEffect>().is_some()
+}
+
+fn target_announcement_tags(effect: &Effect) -> Vec<crate::tag::TagKey> {
+    let mut tags = Vec::new();
+    let mut operation = effect;
+    loop {
+        if let Some(tagged) = operation.downcast_ref::<crate::effects::TaggedEffect>() {
+            tags.push(tagged.tag.clone());
+        }
+        let Some(child) = operation.transparent_child_effect() else { break; };
+        operation = child;
+    }
+    // Only a declaration establishes its chosen object before resolution.
+    // A tagged destroy/return instruction has not acted yet.
+    if operation.downcast_ref::<crate::effects::TargetOnlyEffect>().is_none() {
+        tags.clear();
+    }
+    tags
+}
+
+pub(super) fn retain_targets_satisfying_enchant_restrictions(
+    game: &GameState,
+    effect: &Effect,
+    source: Option<ObjectId>,
+    targets: &mut Vec<Target>,
+) {
+    let Some(source) = source else { return; };
+    if !is_source_attachment_target(effect) {
+        return;
+    }
+    targets.retain(|target| {
+        let target = match target {
+            Target::Object(id) => crate::object::AttachmentTarget::Object(*id),
+            Target::Player(id) => crate::object::AttachmentTarget::Player(*id),
+        };
+        crate::effects::permanents::aura_enchant_restrictions_allow_target(game, source, target)
+    });
 }
 
 /// Counter transfers retain their authored endpoint order through wrappers.
@@ -1519,6 +1566,8 @@ fn relaxed_exchange_later_target_spec(spec: &ChooseSpec) -> ChooseSpec {
 #[derive(Clone)]
 pub(crate) struct DeclaredTarget {
     spec: ChooseSpec,
+    announcement_tags: Vec<crate::tag::TagKey>,
+    reference_only: bool,
     synthetic_prelude: bool,
     synthetic_prelude_consumed: bool,
 }
@@ -1530,10 +1579,12 @@ fn declare_target(profile: &ExtractedTarget<'_>, declared: &mut Vec<DeclaredTarg
             | crate::effects::TargetReusePolicy::SyntheticPrelude
     ) || !declared
         .iter()
-        .any(|declared| target_spec_reuses_declared_target(profile.spec, &declared.spec))
+        .any(|declared| !declared.reference_only && target_spec_reuses_declared_target(profile.spec, &declared.spec))
     {
         declared.push(DeclaredTarget {
             spec: profile.spec.clone(),
+            announcement_tags: Vec::new(),
+            reference_only: false,
             synthetic_prelude: matches!(
                 profile.reuse_policy,
                 crate::effects::TargetReusePolicy::SyntheticPrelude
@@ -1587,6 +1638,10 @@ impl CoordinatedTargetState {
             self.additions.push(declared.clone());
             if declared.synthetic_prelude {
                 self.shared.push(declared);
+            } else if !declared.announcement_tags.is_empty() {
+                let mut reference = declared;
+                reference.reference_only = true;
+                self.shared.push(reference);
             }
         }
     }
@@ -1693,6 +1748,9 @@ fn profile_reuses_declared_target(
     }
 
     for declared in declared {
+        if declared.reference_only {
+            continue;
+        }
         if !target_spec_reuses_declared_target(profile.spec, &declared.spec) {
             continue;
         }
@@ -1716,7 +1774,7 @@ pub(super) fn resolve_modal_mode_counts(
 ) -> (usize, usize) {
     if source_id
         .and_then(|id| game.object(id))
-        .is_some_and(|source| source.optional_costs_paid.was_entwined())
+        .is_some_and(|source| source.optional_costs_paid.paid_to_choose_all_modes())
     {
         let all_modes = modal.modes.len();
         return (all_modes, all_modes);
@@ -2293,7 +2351,9 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     }
 
     if let Some(modal) = effect.modal_effect_spec() {
-        let modes_for_this_modal = if !*consumed_modal_selection {
+        let modes_for_this_modal = if let Some(announced) = modal.announced_modes {
+            Some(announced)
+        } else if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {
@@ -2318,6 +2378,11 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             return true;
         }
         declare_target(&extracted, declared_targets);
+        if let Some(declared) = declared_targets.iter_mut().rev()
+            .find(|declared| !declared.reference_only && declared.spec == *extracted.spec)
+        {
+            declared.announcement_tags = target_announcement_tags(effect);
+        }
         let (min_targets, _) = resolved_target_bounds(game, &extracted, caster, source_id);
         // For "any number" effects, we can cast even with no legal targets.
         if min_targets == 0 {
@@ -2326,7 +2391,7 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
         let chooser_candidates = extracted.chooser.map_or_else(
             || vec![None],
             |chooser| {
-                delegated_target_chooser_candidates(game, caster, source_id, chooser)
+                delegated_target_chooser_candidates(game, caster, source_id, chooser, declared_targets, view)
                     .into_iter()
                     .map(Some)
                     .collect()
@@ -2360,6 +2425,7 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
                 source_id,
                 &mut legal_targets,
             );
+            retain_targets_satisfying_enchant_restrictions(game, effect, source_id, &mut legal_targets);
             retain_targets_allowed_by_cast_target_restrictions(
                 game,
                 caster,
@@ -2519,7 +2585,9 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     }
 
     if let Some(modal) = effect.modal_effect_spec() {
-        let modes_for_this_modal = if !*consumed_modal_selection {
+        let modes_for_this_modal = if let Some(announced) = modal.announced_modes {
+            Some(announced)
+        } else if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {
@@ -2621,6 +2689,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     link_relative_target_to_prior_requirement(&spec, requirements);
                 requirements.push(TargetRequirement {
                     spec,
+                    source_attachment: false,
+                    announcement_tags: Vec::new(),
                     chooser: None,
                     legal_targets,
                     legal_target_sets,
@@ -2669,6 +2739,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
                 requirements.push(TargetRequirement {
                     spec,
+                    source_attachment: false,
+                    announcement_tags: Vec::new(),
                     chooser: None,
                     legal_targets,
                     legal_target_sets,
@@ -2717,6 +2789,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             source_id,
             &mut legal_targets,
         );
+        retain_targets_satisfying_enchant_restrictions(game, effect, source_id, &mut legal_targets);
         retain_targets_allowed_by_cast_target_restrictions(
             game,
             caster,
@@ -2757,6 +2830,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             );
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
+                source_attachment: is_source_attachment_target(effect),
+                announcement_tags: target_announcement_tags(effect),
                 chooser: extracted.chooser.cloned(),
                 legal_targets,
                 legal_target_sets,
@@ -3235,7 +3310,7 @@ fn extract_target_requirements_from_iterated_effect(
             return;
         }
         declare_target(&profile, declared_targets);
-        let legal_targets = compute_legal_targets_with_counter_declaration(
+        let mut legal_targets = compute_legal_targets_with_counter_declaration(
             game,
             &spec,
             caster,
@@ -3243,6 +3318,7 @@ fn extract_target_requirements_from_iterated_effect(
             references,
             declaration,
         );
+        retain_targets_satisfying_enchant_restrictions(game, effect, source_id, &mut legal_targets);
         let (min_targets, max_targets) = resolved_target_bounds(game, &profile, caster, source_id);
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
@@ -3264,6 +3340,8 @@ fn extract_target_requirements_from_iterated_effect(
         if has_enough_targets || extracted.chooser.is_some() {
             requirements.push(TargetRequirement {
                 spec,
+                source_attachment: is_source_attachment_target(effect),
+                announcement_tags: target_announcement_tags(effect),
                 chooser: extracted.chooser.cloned(),
                 legal_targets,
                 legal_target_sets,
@@ -3299,13 +3377,40 @@ fn delegated_target_chooser_candidates(
     controller: PlayerId,
     source_id: Option<ObjectId>,
     chooser: &PlayerFilter,
+    declared: &[DeclaredTarget],
+    view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<PlayerId> {
-    let filter_ctx = game.filter_context_for(controller, source_id);
+    // Legality precedes actual choices. Explore only the declaration tags
+    // referenced by this chooser, using real legal candidates for each.
+    let mut contexts = vec![game.filter_context_for(controller, source_id)];
+    for tag in ironsmith_core::tag::tag_keys_of(chooser) {
+        let Some(declaration) = declared.iter()
+            .find(|declaration| declaration.announcement_tags.contains(&tag))
+        else { continue; };
+        let mut bound = Vec::new();
+        for context in contexts {
+            let candidates = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+                game, &declaration.spec, controller, source_id,
+                Some(&context.tagged_objects), view,
+            );
+            for target in candidates {
+                let Target::Object(id) = target else { continue; };
+                let Some(object) = game.object(id) else { continue; };
+                let mut context = context.clone();
+                context.tagged_objects.insert(tag.clone(), vec![
+                    crate::snapshot::ObjectSnapshot::from_object(object, game),
+                ]);
+                bound.push(context);
+            }
+        }
+        contexts = bound;
+    }
     game.players
         .iter()
         .filter(|player| player.is_in_game())
         .filter_map(|player| {
-            crate::filter::player_filter_matches_game(chooser, player.id, game, &filter_ctx)
+            contexts.iter().any(|context|
+                crate::filter::player_filter_matches_game(chooser, player.id, game, context))
                 .then_some(player.id)
         })
         .collect()
@@ -3594,7 +3699,9 @@ fn count_target_selection_slots_from_effect_internal(
     }
 
     if let Some(modal) = effect.modal_effect_spec() {
-        let modes_for_this_modal = if !*consumed_modal_selection {
+        let modes_for_this_modal = if let Some(announced) = modal.announced_modes {
+            Some(announced)
+        } else if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {
@@ -4674,7 +4781,9 @@ pub(super) fn collect_validation_target_specs_from_effect(
     }
 
     if let Some(modal) = effect.modal_effect_spec() {
-        let modes_for_this_modal = if !*consumed_modal_selection {
+        let modes_for_this_modal = if let Some(announced) = modal.announced_modes {
+            Some(announced)
+        } else if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {

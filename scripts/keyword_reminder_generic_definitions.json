@@ -1,0 +1,99 @@
+{
+  "702.25": {
+    "declaration": "Flanking",
+    "text": "Whenever a creature without flanking blocks this creature, the blocking creature gets -1/-1 until end of turn.",
+    "rule": "702.25a",
+    "reason": "The observed reminders are attached to grants; the definition describes the recipient's own ability."
+  },
+  "702.64": {
+    "declaration": "Absorb 1",
+    "text": "If a source would deal damage to this creature, prevent 1 of that damage.",
+    "rule": "702.64a",
+    "reason": "The observed Sliver-wide reminder describes the granting card's scope, not an individual Absorb ability."
+  },
+  "702.68": {
+    "declaration": "Frenzy 1",
+    "text": "Whenever this creature attacks and isn't blocked, it gets +1/+0 until end of turn.",
+    "rule": "702.68a",
+    "reason": "The observed Sliver-wide reminder must become the recipient's own attack trigger."
+  },
+  "702.70": {
+    "declaration": "Poisonous 1",
+    "text": "Whenever this creature deals combat damage to a player, that player gets a poison counter.",
+    "rule": "702.70a",
+    "reason": "The generic definition belongs to this creature; a grant's Sliver scope and the poison-loss rule are not its definition."
+  },
+  "702.38": {
+    "declaration": "Amplify 1",
+    "text": "As this creature enters, reveal any number of cards from your hand that share a creature type with it. This creature enters with a +1/+1 counter on it for each card revealed this way.",
+    "rule": "702.38a",
+    "reason": "The revealed cards must share a creature type with the source; printed examples enumerate that card's particular creature types."
+  },
+  "702.76": {
+    "declaration": "Prowl {3}",
+    "text": "You may cast this spell for its prowl cost if you dealt combat damage to a player this turn with a source that shares a creature type with this spell.",
+    "rule": "702.76a",
+    "reason": "Use the spell's actual creature types instead of a printed card's Sphinx/Rogue examples."
+  },
+  "702.128": {
+    "declaration": "Embalm {3}",
+    "text": "{3}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's white, it has no mana cost, and it's a Zombie in addition to its other types. Activate only as a sorcery.",
+    "rule": "702.128a",
+    "reason": "The copy keeps its own other types; it must not acquire the representative card's Cat, Human, or other printed types."
+  },
+  "702.129": {
+    "declaration": "Eternalize {3}",
+    "text": "{3}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's 4/4, it's black, it has no mana cost, and it's a Zombie in addition to its other types. Activate only as a sorcery.",
+    "rule": "702.129a",
+    "reason": "The copy keeps its own other types rather than the representative card's additional creature types."
+  },
+  "702.132": {
+    "declaration": "Assist",
+    "text": "Another player may pay any amount of the generic mana in this spell's total cost.",
+    "rule": "702.132a",
+    "reason": "The printed numeric limit describes that spell's cost; the generic definition uses the live total generic cost."
+  },
+  "702.158": {
+    "declaration": "Space sculptor",
+    "text": "As a state-based action, each creature without a sector designation is assigned alpha, beta, or gamma sector by its controller. Players who don't control a permanent with this ability assign first, then the other players assign, in active-player order within each group. A permanent keeps its sector until no player controls a permanent with this ability or an ability whose source has this ability. Sector designations aren't copiable.",
+    "rule": "702.158",
+    "reason": "Use the ability's source and complete sector rules, not the sole printed card's name."
+  },
+  "702.44": {
+    "declaration": "Sunburst",
+    "text": "If this permanent is entering as a creature, ignoring type-changing effects that would affect it, it enters with a +1/+1 counter on it for each color of mana spent to cast it. Otherwise, it enters with a charge counter on it for each color of mana spent to cast it.",
+    "rule": "702.44a–b",
+    "reason": "Printed reminders choose one counter type from the printed card; the generic definition must choose from the entering object."
+  },
+  "702.55": {
+    "declaration": "Haunt",
+    "text": "On a permanent, this ability means \"When this permanent is put into a graveyard from the battlefield, exile it haunting target creature.\" On an instant or sorcery spell, this ability means \"When this spell is put into a graveyard during its resolution, exile it haunting target creature.\"",
+    "rule": "702.55a",
+    "reason": "Permanent and spell reminders describe different branches of the same rule; neither branch alone defines the family."
+  },
+  "702.150": {
+    "declaration": "Compleated",
+    "text": "If this permanent would enter with one or more loyalty counters on it and the player who cast it paid life for Phyrexian mana symbols in its cost, it instead enters with two fewer loyalty counters for each of those symbols.",
+    "rule": "702.150a",
+    "reason": "The ability applies to all Phyrexian mana symbols, not only the representative card’s green symbol.",
+    "metadata": "Type: Planeswalker\nMana cost: {3}{G/P}\nLoyalty: 4"
+  },
+  "702.161": {
+    "declaration": "Living metal",
+    "text": "During your turn, this permanent is an artifact creature in addition to its other types.",
+    "rule": "702.161a",
+    "reason": "The Vehicle reminder omits the artifact type granted by the full rule."
+  },
+  "702.184": {
+    "declaration": "Station",
+    "text": "Tap another untapped creature you control: Put a number of charge counters on this permanent equal to the tapped creature’s power. Activate only as a sorcery.",
+    "rule": "702.184a",
+    "reason": "Use the source permanent, not a printed Spacecraft or Planet type or its station threshold."
+  },
+  "702.174": {
+    "declaration": "Gift a card",
+    "text": "As an additional cost to cast this spell, you may choose an opponent. If this is a permanent, when it enters, if you paid that cost, the chosen player draws a card. If this is an instant or sorcery spell, if you paid that cost, the chosen player draws a card before its other effects.",
+    "rule": "702.174a–b,e,j",
+    "reason": "Gift timing depends on whether the source is a permanent or a spell; the instant-only reminder is not the whole definition."
+  }
+}

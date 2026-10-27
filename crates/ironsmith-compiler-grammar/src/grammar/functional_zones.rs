@@ -197,6 +197,7 @@ const DISCARD_THIS_CARD_PHRASE: &[&str] = &["discard", "this", "card"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TriggerFunctionalZoneFacts {
+    pub excluded_zones: Vec<Zone>,
     pub explicit_zone: Option<Zone>,
     /// The zone hint continues "... or on the battlefield" (eminence), so the
     /// ability functions in both the explicit zone and the battlefield.
@@ -210,7 +211,7 @@ mod tests;
 
 #[path = "functional_zones/trigger.rs"]
 mod trigger_programs;
-pub use trigger_programs::parse_trigger_functional_zone_facts_tokens;
+pub use trigger_programs::{parse_trigger_functional_zone_facts_tokens, split_ability_function_exclusion};
 use trigger_programs::parse_trigger_zone_hint_tokens;
 #[path = "functional_zones/object_action.rs"]
 mod object_action_programs;

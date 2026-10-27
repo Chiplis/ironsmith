@@ -881,6 +881,7 @@ impl StaticAbilityKind for ExertAttack {
 /// Enlist's optional tap cost and its linked power-boost trigger (CR 702.154).
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnlistAttack {
+    pub descriptive: bool,
     pub linked_trigger: crate::ability::TriggeredAbility,
     pub display_text: String,
 }
@@ -891,6 +892,7 @@ impl EnlistAttack {
         display: impl Into<String>,
     ) -> Self {
         Self {
+            descriptive: false,
             linked_trigger,
             display_text: display.into(),
         }
@@ -939,7 +941,7 @@ impl EnlistAttack {
         crate::decisions::context::SelectObjectsContext::new(
             controller,
             Some(source),
-            "Choose up to one creature to tap for enlist",
+            if self.descriptive { "Choose up to one creature to tap for the attacking creature" } else { "Choose up to one creature to tap for enlist" },
             candidates,
             0,
             Some(1),
@@ -949,7 +951,7 @@ impl EnlistAttack {
 
 impl StaticAbilityKind for EnlistAttack {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::EnlistAttack
+        if self.descriptive { StaticAbilityId::KeywordMarker } else { StaticAbilityId::EnlistAttack }
     }
 
     fn display(&self) -> String {
@@ -957,7 +959,7 @@ impl StaticAbilityKind for EnlistAttack {
     }
 
     fn is_keyword(&self) -> bool {
-        true
+        !self.descriptive
     }
 
     fn optional_attack_cost_prompt(
@@ -1040,6 +1042,11 @@ impl StaticAbilityKind for EnlistAttack {
                     &source_object,
                     game,
                 );
+                let (receipt, enlist_event) = if self.descriptive {
+                    let tap_event = taps.outcome.events.first().cloned().ok_or_else(||
+                        "Tap payment has no completed tap observation".to_string())?;
+                    (taps, tap_event)
+                } else {
                 let enlist_provenance = game
                     .provenance_graph_mut()
                     .alloc_root_event(EventKind::KeywordAction);
@@ -1069,6 +1076,8 @@ impl StaticAbilityKind for EnlistAttack {
                     "Enlist payment has no completed keyword observation".to_string()
                 })?;
                 let receipt = taps.append_batch_completion_outputs(completion);
+                (receipt, enlist_event)
+                };
                 let linked_trigger = TriggeredAbilityEntry {
                     linked_exile_owner: None,
                     source_number_owner: None,

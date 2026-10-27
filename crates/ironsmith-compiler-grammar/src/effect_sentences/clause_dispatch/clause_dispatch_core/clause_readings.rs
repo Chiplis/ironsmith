@@ -78,7 +78,7 @@ const CLAUSE_READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("clear-suspected-designation"),
         head: HeadDiscriminator::Any,
-        admits: |input| input.tokens.iter().any(|token| token.is_word("suspected")),
+        admits: |input| input.tokens.iter().any(|token| token.is_word(crate::keyword_forms::SUSPECTED)),
         read: |input| input.outcome(super::super::suspected::parse_clear_suspected_clause(input.tokens)),
     },
     Reading {

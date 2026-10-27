@@ -1,5 +1,10 @@
+import {contextualKeywordReminder} from "./keyword-reminder-context.js";
+import { activeCustomMechanics, customMechanicRevision } from "./custom-mechanics.js";
 import { localeCatalogs } from "../i18n/catalog.js";
 import { MTG_KEYWORD_RULES } from "./mtg-keyword-rules.generated.js";
+import { officialKeywordForms, customKeywordForms, surfaceForms } from "./keyword-forms.js";
+
+import { MTG_KEYWORD_REMINDERS } from "./mtg-keyword-reminders.generated.js";
 
 const WORD_BOUNDARY_CLASS = "\\p{L}\\p{N}_";
 
@@ -32,10 +37,14 @@ function aliasPattern(alias) {
 
 const indexes = new Map();
 function keywordIndex(locale) {
-  if (indexes.has(locale)) return indexes.get(locale);
+  const cacheKey = `${locale}:${customMechanicRevision()}`;
+  if (indexes.has(cacheKey)) return indexes.get(cacheKey);
+  indexes.clear();
   const localized = localeCatalogs[locale]?.rules || {};
-  const entries = MTG_KEYWORD_RULES.flatMap(rule => {
-    const aliases = new Set([rule.title, ...(rule.aliases || []), localized[rule.id]?.title, ...(localized[rule.id]?.aliases || [])]);
+  const customRules = activeCustomMechanics().map(def => ({ id: `custom:${def.keyword}`, title: def.keyword, aliases: surfaceForms(customKeywordForms(def)), summary: def.reminder, custom: true }));
+  const entries = [...customRules, ...MTG_KEYWORD_RULES].flatMap(rule => {
+    const lexicon = rule.custom ? [] : [rule.title, ...(rule.aliases || [])].map(officialKeywordForms).filter(Boolean).flatMap(surfaceForms);
+    const aliases = new Set([rule.title, ...(rule.aliases || []), ...lexicon, localized[rule.id]?.title, ...(localized[rule.id]?.aliases || [])]);
     return [...aliases].filter(Boolean).map(normalizeAlias)
       .filter(alias => alias.length > 1 || alias === "∞")
       .map(alias => ({ alias, rule }));
@@ -46,7 +55,7 @@ function keywordIndex(locale) {
     `(^|[^${WORD_BOUNDARY_CLASS}])(${[...byAlias.keys()].map(aliasPattern).join("|")})(?![${WORD_BOUNDARY_CLASS}])`, "giu"
   );
   const index = { byAlias, pattern };
-  indexes.set(locale, index);
+  indexes.set(cacheKey, index);
   return index;
 }
 
@@ -105,7 +114,7 @@ export function splitTextWithMtgKeywordRules(text, locale = "en") {
     if (keywordStart > lastIndex) {
       segments.push({ type: "text", text: source.slice(lastIndex, keywordStart) });
     }
-    segments.push({ type: "keyword", text: source.slice(keywordStart, keywordEnd), rule });
+    segments.push({ type: "keyword", text: source.slice(keywordStart, keywordEnd), context: source.slice(keywordEnd), rule });
     lastIndex = keywordEnd;
   }
 
@@ -117,3 +126,20 @@ export function splitTextWithMtgKeywordRules(text, locale = "en") {
 }
 
 export { MTG_KEYWORD_RULES };
+
+// Reminder text is English source material; other locales retain their localized
+// CR summaries until a translated reminder catalog is available. Match the actual
+// keyword, not the shared CR id (cycling, landcycling, etc. differ).
+export function getMtgKeywordHelp(alias, rule, locale = "en", context = "") {
+  if (rule?.custom) return { title: rule.title, description: rule.summary, reminder: null };
+  const localizedRule = localeCatalogs[locale]?.rules?.[rule?.id] || rule;
+  const key = normalizeAlias(alias);
+  const reminder = locale === "en"
+    ? contextualKeywordReminder(key, alias, context, MTG_KEYWORD_REMINDERS[key], localizedRule?.summary || '')
+    : null;
+  return {
+    title: localizedRule?.title,
+    description: reminder?.text || localizedRule?.summary || "",
+    reminder: reminder || null,
+  };
+}

@@ -66,7 +66,7 @@ pub(crate) fn riot_ability() -> Ability {
             "this creature",
             false,
             false,
-            None,
+            Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Riot)),
         ),
     ))
 }
@@ -2601,7 +2601,7 @@ impl CardDefinitionBuilder {
     /// Battle cry means "Whenever this creature attacks, each other attacking creature
     /// gets +1/+0 until end of turn."
     pub fn battle_cry(self) -> Self {
-        let mut filter = ObjectFilter::creature().you_control().other();
+        let mut filter = ObjectFilter::creature().other();
         filter.attacking = true;
         self.with_ability(Ability::triggered(
             Trigger::this_attacks(),
@@ -2953,7 +2953,7 @@ impl CardDefinitionBuilder {
                 .set_colors(ColorSet::BLACK)
                 .added_subtype(Subtype::Zombie)
                 .set_base_power_toughness(4, 4)
-                .without_mana_cost(),
+                .without_mana_cost().created_by(ironsmith_core::effect::TokenCreationMethod::Eternalize),
         );
 
         self.with_ability(Ability {
@@ -3134,10 +3134,7 @@ impl CardDefinitionBuilder {
     /// Spell haunt reminder: "When this spell card is put into a graveyard after resolving,
     /// exile it haunting target creature."
     pub fn haunt(self) -> Self {
-        let trigger = if self
-            .card_builder
-            .card_types_ref()
-            .contains(&CardType::Creature)
+        let trigger = if !self.card_builder.card_types_ref().iter().any(|kind| matches!(kind, CardType::Instant | CardType::Sorcery))
         {
             Trigger::this_dies()
         } else {
@@ -3150,10 +3147,7 @@ impl CardDefinitionBuilder {
             )
         };
 
-        let functional_zones = if self
-            .card_builder
-            .card_types_ref()
-            .contains(&CardType::Creature)
+        let functional_zones = if !self.card_builder.card_types_ref().iter().any(|kind| matches!(kind, CardType::Instant | CardType::Sorcery))
         {
             vec![Zone::Battlefield]
         } else {
@@ -3163,9 +3157,7 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::exile(
-                    ChooseSpec::Source,
-                )]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::haunt_exile(Vec::new(), Vec::new())]),
                 choices: vec![ChooseSpec::target(ChooseSpec::creature())],
                 intervening_if: None,
                 presentation_label: None,
@@ -3179,24 +3171,26 @@ impl CardDefinitionBuilder {
     /// Provoke means "Whenever this creature attacks, you may have target creature defending
     /// player controls untap and block it if able."
     pub fn provoke(self) -> Self {
-        let target_spec = ChooseSpec::Target(Box::new(ChooseSpec::Object(
+        const PROVOKED_TAG: &str = "__provoked_creature";
+        let target_spec = ChooseSpec::target(ChooseSpec::Object(
             ObjectFilter::creature().controlled_by(PlayerFilter::Defending),
-        )));
-        let untap = Effect::new(crate::effects::UntapEffect::with_spec(target_spec.clone()));
-        let must_block = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
-            target_spec.clone(),
-            crate::continuous::Modification::AddAbility(StaticAbility::must_block()),
-            Until::EndOfCombat,
         ));
+        let declare_target = Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone())).tag(PROVOKED_TAG);
+        let must_block_this = Effect::cant_until(
+            crate::effect::Restriction::must_block_specific_attacker(
+                ObjectFilter::tagged(PROVOKED_TAG), ObjectFilter::source(),
+            ), Until::EndOfCombat,
+        );
+        let choose = Effect::with_id(0, Effect::may(vec![declare_target, must_block_this]));
+        let untap = Effect::if_then(crate::effect::EffectId(0), crate::effect::EffectPredicate::Happened,
+            vec![Effect::untap(ChooseSpec::tagged(PROVOKED_TAG))]);
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::this_attacks(),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    untap, must_block,
-                ]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![choose, untap]),
                 choices: vec![target_spec],
                 intervening_if: None,
-                presentation_label: None,
+                presentation_label: Some(ability::PresentationLabel::Keyword(ability::PresentationKeyword::Provoke)),
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3285,6 +3279,8 @@ impl CardDefinitionBuilder {
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(
                     vec![
                         Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
+                        Effect::if_then(EffectId(0), crate::effect::EffectPredicate::Happened, vec![
+                        Effect::may_choose_new_targets_player(EffectId(0), PlayerFilter::You),
                         Effect::new(crate::effects::ChoosePlayerEffect::new(
                             PlayerFilter::You,
                             PlayerFilter::Opponent,
@@ -3298,13 +3294,13 @@ impl CardDefinitionBuilder {
                                 opponent.clone(),
                             )),
                         ),
-                        Effect::may_choose_new_targets_player(EffectId(0), PlayerFilter::You),
                         Effect::may_choose_new_targets_player(EffectId(1), opponent),
+                        ]),
                     ],
                 )]),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: None,
+                presentation_label: Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Demonstrate)),
             }),
             functional_zones: vec![Zone::Stack],
         })
@@ -3903,7 +3899,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
-                presentation_label: None,
+                presentation_label: Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Storm)),
             }),
             functional_zones: vec![Zone::Stack],
         })
@@ -4469,6 +4465,7 @@ impl CardDefinitionBuilder {
     /// Add warp with the given cost.
     pub fn warp(mut self, cost: ManaCost) -> Self {
         self.alternative_casts.push(AlternativeCastingMethod::Warp {
+            descriptive: false,
             cost,
             additional_cost: Default::default(),
         });
@@ -4541,6 +4538,7 @@ impl CardDefinitionBuilder {
     pub fn overload(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(AlternativeCastingMethod::Overload {
+                descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                 cost,
                 effects: Vec::new(),
             });
@@ -4552,6 +4550,7 @@ impl CardDefinitionBuilder {
     pub fn cleave(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(AlternativeCastingMethod::Cleave {
+                descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                 cost,
                 effects: Vec::new(),
             });
@@ -4571,6 +4570,7 @@ impl CardDefinitionBuilder {
         )));
         self.alternative_casts
             .push(AlternativeCastingMethod::Awaken {
+                descriptive: false, additional_cost: ironsmith_core::TotalCost::free(),
                 amount,
                 cost,
                 effects,

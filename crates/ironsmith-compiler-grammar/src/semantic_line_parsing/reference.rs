@@ -163,6 +163,7 @@ fn build_clash_then_return_coordination(
         },
         action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash {
             opponent: crate::ClashOpponentAst::Opponent,
+            descriptive: false,
         }),
     });
     let coordination = CoordinationAst::new(

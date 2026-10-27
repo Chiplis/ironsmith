@@ -10,6 +10,7 @@ pub enum ExchangeActionAst {
     ExchangeTextBoxes {
         target: TargetAst,
         include_source: bool,
+        duration: Until,
     },
     ExchangeZones {
         zone1: Zone,

@@ -136,7 +136,7 @@ mod tests {
     fn start(game: &mut GameState, card: ObjectId, queue: &mut TriggerQueue, state: &mut PriorityLoopState) {
         let action = intent(game, card);
         let progress = apply_priority_response_with_dm(game, queue, state, &PriorityResponse::PriorityAction(action), &mut SelectFirstDecisionMaker).unwrap();
-        assert!(matches!(progress, GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(context)) if context.exile_face_down_choice && !context.exile_play_choice && context.options.len() == 4));
+        assert!(matches!(progress, GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(context)) if context.exile_face_down_choice && !context.exile_play_choice && context.options.len() == 6));
         assert!(game.is_face_down(card)); assert!(!game.can_player_look_at_face_down_exiled_card(card, B));
     }
     fn finish(game: &mut GameState, queue: &mut TriggerQueue, state: &mut PriorityLoopState, choice: usize) {
@@ -156,8 +156,10 @@ mod tests {
                 let actions = compute_legal_actions(&game, B).unwrap().into_iter().filter(|action| crate::decision::legal_action_source(action) == Some(card)).collect::<Vec<_>>();
                 assert_eq!(actions.len(), 2); assert_eq!(crate::decision::format_action_short(&game, &intent(&game, card), None), "Cast exiled card face down");
                 start(&mut game, card, &mut queue, &mut state);
-                assert_eq!(state.pending_exile_face_down.as_ref().unwrap().kinds, vec![FaceDownCastKind::Morph, FaceDownCastKind::Megamorph, FaceDownCastKind::Disguise]);
-                apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::ExileFaceDownChoice(3), &mut SelectFirstDecisionMaker).unwrap();
+                assert_eq!(state.pending_exile_face_down.as_ref().unwrap().kinds, vec![FaceDownCastKind::Morph, FaceDownCastKind::Megamorph, FaceDownCastKind::Disguise, FaceDownCastKind::Defined { ward: false }, FaceDownCastKind::Defined { ward: true }]);
+                // Cancel is the option after the declarable kinds.
+                let cancel = state.pending_exile_face_down.as_ref().unwrap().kinds.len();
+                apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::ExileFaceDownChoice(cancel), &mut SelectFirstDecisionMaker).unwrap();
                 assert!(!state.has_pending_action()); assert!(game.is_face_down(card)); assert!(game.hidden_face_down_cast_claim(card).is_none());
                 assert_eq!(game.player(B).unwrap().mana_pool.red, mana); assert!(game.stack.is_empty());
             }
@@ -353,8 +355,9 @@ mod tests {
         assert!(game.stack.is_empty()); assert_eq!(queue.entries.len(), 1); assert_eq!(queue.entries[0].source, observer);
         assert_eq!(queue.entries[0].trigger_identity, original_identity); assert_eq!(queue.entries[0].triggering_event.object_id(), Some(preceding_source));
         assert_eq!(state.pending_exile_face_down.as_ref().unwrap().declared_kind, Some(FaceDownCastKind::Morph));
+        let cancel = state.pending_exile_face_down.as_ref().unwrap().kinds.len();
         apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
-            &PriorityResponse::ExileFaceDownChoice(3), &mut SelectFirstDecisionMaker).unwrap();
+            &PriorityResponse::ExileFaceDownChoice(cancel), &mut SelectFirstDecisionMaker).unwrap();
         assert!(!state.has_pending_action()); assert!(!state.has_opened_exile_play_receipt());
         assert_eq!(game.stack.len(), 1, "only the pre-existing trigger may advance"); assert!(game.is_face_down(card));
         super::super::resolve_stack_entry_with(&mut game, &mut SelectFirstDecisionMaker).unwrap();

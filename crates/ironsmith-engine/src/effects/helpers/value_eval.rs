@@ -609,8 +609,7 @@ pub(crate) fn resolve_wide(
             context.object_number_wide(target_spec, NumericProperty::Power)
         }
         Value::BasePowerOf(target_spec) => context
-            .object_number(target_spec, NumericProperty::BasePower)
-            .map(i64::from),
+            .object_number_wide(target_spec, NumericProperty::BasePower),
         Value::StationContributionOf(target_spec) => {
             // CR 702.184c / 608.2h: a contributor that left the battlefield
             // uses its last known information, including the static
@@ -681,8 +680,7 @@ pub(crate) fn resolve_wide(
             context.object_number_wide(target_spec, NumericProperty::ManaValue)
         }
         Value::ColorsOf(target_spec) => context
-            .object_number(target_spec, NumericProperty::ColorCount)
-            .map(i64::from),
+            .object_number_wide(target_spec, NumericProperty::ColorCount),
         // "for each of the chosen colors it is" (Tablet of the Guilds): the
         // referenced object's colors among the source's chosen colors.
         Value::ChosenColorsOf(target_spec) => {
@@ -749,6 +747,11 @@ pub(crate) fn resolve_wide(
             Err(ExecutionError::ObjectNotFound(id))
         }
         Value::TypeCountOf(target_spec) => {
+            if let Some(total) = context.linked_exile_characteristic_sum(target_spec, |chars| {
+                (chars.supertypes.len() + chars.card_types.len() + chars.subtypes.len()) as i64
+            })? {
+                return Ok(total);
+            }
             let ctx = context.require_execution(
                 value,
                 "type counts require a resolving context",
@@ -780,6 +783,12 @@ pub(crate) fn resolve_wide(
                             .filter(|pip| pip.contains(&symbol))
                             .count() as i64
                     };
+
+                    if let Some(total) = context.linked_exile_characteristic_sum(target_spec, |chars| {
+                        chars.mana_cost.as_ref().map_or(0, count_symbols)
+                    })? {
+                        return Ok(total);
+                    }
 
                     if matches!(target_spec.base(), ChooseSpec::All(_)) {
                         return Ok(i64::from(

@@ -1,9 +1,6 @@
 //! Attach to effect implementation.
 
-use super::{
-    attach_battlefield_object_to_target, attachment_can_attach_to_target,
-    choose_color_as_becomes_attached,
-};
+use super::choose_color_as_becomes_attached;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_from_spec, resolve_single_target_from_spec};
@@ -50,7 +47,7 @@ impl EffectExecutor for AttachToEffect {
             let candidates = resolve_objects_from_spec(game, &self.target, ctx)?
                 .into_iter()
                 .filter(|id| {
-                    attachment_can_attach_to_target(game, ctx.source, AttachmentTarget::Object(*id))
+                    super::attachment_can_attach_during_effect(game, ctx, ctx.source, AttachmentTarget::Object(*id))
                         && !crate::targeting::has_protection_from_source(game, *id, ctx.source)
                 })
                 .collect::<Vec<_>>();
@@ -115,7 +112,7 @@ pub(super) fn complete_resolved_attachment(
         crate::effects::ResolvedTarget::Object(id) => AttachmentTarget::Object(id),
         crate::effects::ResolvedTarget::Player(id) => AttachmentTarget::Player(id),
     };
-    if attach_battlefield_object_to_target(game, source, target)
+    if super::attach_battlefield_object_during_effect(game, ctx, source, target)
         && matches!(choice, AttachmentChoicePolicy::ChooseColor)
     {
         choose_color_as_becomes_attached(game, ctx, source, target);

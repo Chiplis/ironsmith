@@ -47,6 +47,7 @@ pub enum PredicateAst {
     SecondMainPhaseOfTurn,
     ItIsLandCard,
     ItIsSoulbondPaired,
+    UnpairedCreaturesCanPair,
     ItMatches(ObjectFilter),
     /// The implicit object matched this filter immediately before its zone change.
     ///
@@ -342,7 +343,8 @@ impl PredicateAst {
     pub fn uses_implicit_object_reference(&self) -> bool {
         match self {
             PredicateAst::ItIsLandCard
-            | PredicateAst::ItIsSoulbondPaired
+            | PredicateAst::UnpairedCreaturesCanPair
+        | PredicateAst::ItIsSoulbondPaired
             | PredicateAst::ItMatches(_)
             | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_) => true,
@@ -373,6 +375,7 @@ impl PredicateAst {
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn)
             | PredicateAst::Source(SourcePredicateAst::SourceSuspected)
             | PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn)
+            | PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlSinceYourLastUpkeep)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedThisCombat)

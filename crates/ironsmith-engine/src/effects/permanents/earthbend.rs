@@ -32,7 +32,7 @@ impl EffectExecutor for EarthbendEffect {
         if !self.awaken {
             visitor(&counters);
             visitor(&Effect::new(ScheduleDelayedTriggerEffect::new(
-                Trigger::this_dies_or_is_exiled(), vec![Effect::return_from_graveyard_or_exile_to_battlefield(true)],
+                Trigger::this_dies_or_is_exiled(), vec![Effect::new(crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect::new(true).under_control_of(crate::target::PlayerFilter::You))],
                 true, vec![], crate::target::PlayerFilter::You)));
         }
     }
@@ -66,13 +66,13 @@ impl EffectExecutor for EarthbendEffect {
                 let counters = crate::effects::helpers::resolve_value(game, &self.counters, ctx)?
                     .max(0) as u32;
                 let target = resolve_single_object_for_effect(game, ctx, &self.target)?;
-                if self.awaken {
+                if self.awaken || self.descriptive {
                     return execute_land_animation_with_outputs(
                         game,
                         ctx,
                         target,
                         counters,
-                        true,
+                        self.awaken,
                         None,
                     );
                 }
@@ -231,7 +231,7 @@ fn execute_land_animation_with_outputs(
     });
     let schedule = ScheduleDelayedTriggerEffect::new(
         Trigger::this_dies_or_is_exiled(),
-        vec![Effect::return_from_graveyard_or_exile_to_battlefield(true)],
+        vec![Effect::new(crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect::new(true).under_control_of(crate::target::PlayerFilter::You))],
         true,
         vec![target],
         crate::target::PlayerFilter::Specific(ctx.controller),
@@ -243,11 +243,8 @@ fn execute_land_animation_with_outputs(
             EffectOutcome::count(0),
         ));
     }
-    let mut completion = action
-        .ok_or_else(|| {
-            ExecutionError::InternalError("earthbend body lost its action proposal".into())
-        })?
-        .clone();
+    let Some(action) = action else { return Ok(collect_animation_outputs(outcomes)); };
+    let mut completion = action.clone();
     // The land is the subject; the instruction source can be another
     // object entirely. Freeze the completed incarnation before additions.
     let subject = keyword_object_snapshot(game, target)?

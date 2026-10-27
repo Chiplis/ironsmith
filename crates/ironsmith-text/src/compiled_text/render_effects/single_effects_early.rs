@@ -900,7 +900,7 @@ pub(super) fn describe_clash_repeat_process(
             })
             .flatten()
     })?;
-    if clash_index + 1 != body.len() {
+    if clash.descriptive || clash_index + 1 != body.len() {
         return None;
     }
 

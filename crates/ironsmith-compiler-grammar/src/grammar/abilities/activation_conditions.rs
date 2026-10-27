@@ -25,7 +25,20 @@ const ACTIVATE_ONLY_INSTANT_PREFIXES: &[&[&str]] = &[
     &["activate", "only", "as", "an", "instant"],
     &["activate", "only", "as", "instant"],
 ];
-const ACTIVATE_ONLY_SORCERY_PREFIXES: &[&[&str]] = &[&["activate", "only", "as", "a", "sorcery"]];
+const ACTIVATE_ONLY_SORCERY_PREFIXES: &[&[&str]] = &[
+    &["activate", "only", "as", "a", "sorcery"],
+    &["equip", "only", "as", "a", "sorcery"],
+    &["fortify", "only", "as", "a", "sorcery"],
+    &["transmute", "only", "as", "a", "sorcery"],
+    &["transfigure", "only", "as", "a", "sorcery"],
+    &["level", "up", "only", "as", "a", "sorcery"],
+    &["scavenge", "only", "as", "a", "sorcery"],
+    &["unearth", "only", "as", "a", "sorcery"],
+    &["outlast", "only", "as", "a", "sorcery"],
+    &["reconfigure", "only", "as", "a", "sorcery"],
+    &["craft", "only", "as", "a", "sorcery"],
+    &["station", "only", "as", "a", "sorcery"],
+];
 const DURING_OPPONENTS_TURN_PREFIXES: &[&[&str]] = &[
     &["activate", "only", "during", "an", "opponents", "turn"],
     &["activate", "only", "during", "opponents", "turn"],
@@ -265,6 +278,11 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
     // Upkeep windows are checked before the once-each-turn marker so a
     // combined "during your upkeep and only once each turn" keeps its step
     // window; the per-turn limit is added by the restriction fact builder.
+    if matches_prefix_tokens(tokens, &["activate", "only", "during", "this", "card's", "owner's", "upkeep"])
+        || matches_prefix_tokens(tokens, &["activate", "only", "during", "this", "cards", "owners", "upkeep"])
+    {
+        return Some(ActivationTiming::DuringSourceOwnersUpkeep);
+    }
     if matches_prefix_tokens(tokens, &["activate", "only", "during", "your", "upkeep"]) {
         return Some(ActivationTiming::DuringYourUpkeep);
     }
@@ -298,7 +316,9 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
 }
 
 pub fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_RESTRICTION_PREFIXES)
+    matches_exact_tokens(tokens, &["activate", "this", "ability", "only", "once"])
+        || matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_RESTRICTION_PREFIXES)
+        || matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES)
         || matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP)
         || parse_counted_activation_cap(tokens).is_some()
 }

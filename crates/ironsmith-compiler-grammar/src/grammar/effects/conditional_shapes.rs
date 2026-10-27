@@ -136,7 +136,7 @@ fn parse_counter_spell_conditional_lexed<'a>(
         .take()
         .parse_next(input)?;
     let kind = alt((
-        primitives::phrase(&["if", "it", "was", "kicked"])
+        primitives::phrase(&["if", "it", "was", crate::keyword_forms::KICKED])
             .value(CounterSpellConditionalKind::IfKicked),
         second_spell_cast_tail.value(CounterSpellConditionalKind::SecondCastThisTurn),
     ))

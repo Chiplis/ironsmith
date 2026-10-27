@@ -483,13 +483,15 @@ impl SbaCandidates {
                     chars
                         .static_abilities
                         .iter()
-                        .any(|ability| ability.id() == StaticAbilityId::StartYourEngines),
+                        .any(|ability| ability.id() == StaticAbilityId::StartYourEngines
+                            || ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::InitializeControllerSpeed)),
                 ) << 5)
                 | (u16::from(
                     chars
                         .static_abilities
                         .iter()
-                        .any(|ability| ability.id() == StaticAbilityId::SpaceSculptor),
+                        .any(|ability| ability.id() == StaticAbilityId::SpaceSculptor
+                            || ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::AssignCreatureSectors)),
                 ) << 6)
                 | (u16::from(chars.card_types.contains(&CardType::Creature)) << 7)
                 | (u16::from(chars.static_abilities.iter().any(|ability| {
@@ -649,7 +651,7 @@ impl SbaCandidates {
             && game.stack.iter().any(|entry| {
                 entry.is_ability
                     && entry.source_snapshot.as_ref().is_some_and(|source| {
-                        source.has_static_ability_id(StaticAbilityId::SpaceSculptor)
+                        snapshot_has_sector_assignment_behavior(source)
                     })
             });
         if any_object_change
@@ -960,6 +962,14 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
 }
 
+fn snapshot_has_sector_assignment_behavior(source: &crate::snapshot::ObjectSnapshot) -> bool {
+    source.has_static_ability_id(StaticAbilityId::SpaceSculptor)
+        || source.abilities.iter().any(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Static(ability) => ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::AssignCreatureSectors),
+            _ => false,
+        })
+}
+
 /// Check the sector-assignment state-based action (CR 704.5u).
 fn check_space_sculptor_sbas_with_view(
     game: &GameState,
@@ -972,7 +982,9 @@ fn check_space_sculptor_sbas_with_view(
         .iter()
         .copied()
         .filter(|&object| !game.is_phased_out(object))
-        .filter(|&object| view.object_has_static_ability_id(object, StaticAbilityId::SpaceSculptor))
+        .filter(|&object| view.object_has_static_ability_id(object, StaticAbilityId::SpaceSculptor)
+            || view.calculated_characteristics(object).is_some_and(|chars| chars.static_abilities.iter().any(|ability|
+                ability.is_active(game, object) && ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::AssignCreatureSectors))))
         .collect::<Vec<_>>();
     sculptors.sort_by_key(|object| object.0);
 
@@ -983,7 +995,7 @@ fn check_space_sculptor_sbas_with_view(
         let sculptor_source_ability_on_stack = game.stack.iter().any(|entry| {
             entry.is_ability
                 && entry.source_snapshot.as_ref().is_some_and(|source| {
-                    source.has_static_ability_id(StaticAbilityId::SpaceSculptor)
+                    snapshot_has_sector_assignment_behavior(source)
                 })
         });
         if !sculptor_source_ability_on_stack && game.has_sector_designations() {
@@ -1311,7 +1323,9 @@ fn check_start_engines_sbas_with_view(
         let controls_start_your_engines = candidates.iter().copied().any(|obj_id| {
             !game.is_phased_out(obj_id)
                 && game.current_controller(obj_id) == Some(player.id)
-                && view.object_has_static_ability_id(obj_id, StaticAbilityId::StartYourEngines)
+                && (view.object_has_static_ability_id(obj_id, StaticAbilityId::StartYourEngines)
+                    || view.calculated_characteristics(obj_id).is_some_and(|chars| chars.static_abilities.iter().any(|ability|
+                        ability.is_active(game, obj_id) && ability.keyword_marker_mechanic() == Some(ironsmith_core::KeywordMarkerMechanic::InitializeControllerSpeed))))
         });
 
         if controls_start_your_engines {
@@ -1368,7 +1382,7 @@ fn check_permanent_sbas_for_ids(
         // IMPORTANT: Use calculated_toughness to account for counters and effects!
         if view.object_has_card_type(obj_id, CardType::Creature) {
             let is_indestructible = !game.can_be_destroyed(obj_id)
-                || view.object_has_static_ability_id(obj.id, StaticAbilityId::Indestructible);
+                || view.object_resists_destruction(obj.id);
 
             // Use calculated toughness to include -1/-1 counters, pump effects, etc.
             // CR 208.3/704.5f: a creature with no toughness has toughness 0.
@@ -1791,6 +1805,14 @@ struct TokenCleanupCache {
     command: TokenZoneIndex,
     copies: im::OrdSet<ObjectId>,
 }
+/// Both cleanup paths must recognize copies of cards as well as spell copies.
+fn copy_ceases_outside_stack(game: &GameState, object: &crate::object::Object) -> bool {
+    (object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack)
+        || (!matches!(object.zone, Zone::Stack | Zone::Battlefield)
+            && game.is_prepare_spell_copy_object(object.id)
+            && !(object.zone == Zone::Exile && game.is_prepared_spell_copy(object.id)))
+}
+
 fn check_token_cleanup_incremental(game: &GameState, actions: &mut Vec<StateBasedAction>) {
     let mut cache = game.sba_candidate_cache().borrow_mut();
     let cache = &mut cache.cleanup;
@@ -1842,7 +1864,7 @@ fn check_token_cleanup_incremental(game: &GameState, actions: &mut Vec<StateBase
     if let Some(changed) = changed {
         for id in changed {
             if game.object(id).is_some_and(|object| {
-                object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack
+                copy_ceases_outside_stack(game, object)
             }) {
                 cache.copies.insert(id);
             } else {
@@ -1854,7 +1876,7 @@ fn check_token_cleanup_incremental(game: &GameState, actions: &mut Vec<StateBase
             .objects_map()
             .values()
             .filter(|object| {
-                object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack
+                copy_ceases_outside_stack(game, object)
             })
             .map(|object| object.id)
             .collect();
@@ -1908,15 +1930,7 @@ fn check_token_cleanup(game: &GameState, actions: &mut Vec<StateBasedAction>) {
     let mut copies: Vec<_> = game
         .objects_map()
         .values()
-        .filter(|object| {
-            (object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack)
-                // CR 722.3 / 704.5e: a prepare spell copy is a copy of a card;
-                // outside the stack and battlefield it ceases to exist unless
-                // it is the copy waiting in exile for its prepared permanent.
-                || (!matches!(object.zone, Zone::Stack | Zone::Battlefield)
-                    && game.is_prepare_spell_copy_object(object.id)
-                    && !(object.zone == Zone::Exile && game.is_prepared_spell_copy(object.id)))
-        })
+        .filter(|object| copy_ceases_outside_stack(game, object))
         .map(|object| object.id)
         .collect();
     copies.sort_unstable();
@@ -2529,7 +2543,7 @@ fn prepare_and_apply_state_based_actions(
         &ctx,
     );
     crate::effects::SimultaneousEffectCompletion::freeze(zone_completion.as_mut(), game)?;
-    let frozen_destroy = crate::events::processing::freeze_destroy_receipts(game, destroy_receipts);
+    let frozen_destroy = crate::events::processing::freeze_destroy_receipts(game, &ctx, destroy_receipts);
     crate::effects::SimultaneousEffectCompletion::observe_original(
         zone_completion.as_mut(),
         game,
@@ -4531,22 +4545,15 @@ mod tests {
         game.set_soulbond_pair(creature_id, land_id);
         game.effect_store.continuous_effects.cleanup_end_of_turn();
 
+        game.refresh_continuous_state().expect("type expiry refresh completes");
+        assert!(game.soulbond_pairs().is_empty(),
+            "CR 702.95e: the pair ends during the world refresh, before SBAs");
         let actions = check_state_based_actions(&game);
-        assert!(
-            actions.iter().any(|action| {
-                matches!(
-                    action,
-                    StateBasedAction::SoulbondUnpairs(id) if *id == creature_id || *id == land_id
-                )
-            }),
-            "noncreature land should no longer satisfy soulbond creature requirement"
-        );
-
+        assert!(!actions.iter().any(|action| matches!(action, StateBasedAction::SoulbondUnpairs(_))),
+            "there is no lingering pair for the SBA pass to remove");
         let mut dm = AlwaysYesDecisionMaker;
-        assert!(
-            apply_state_based_actions_with(&mut game, &mut dm)
-                .expect("replacement operation must finish without execution error")
-        );
+        assert!(!apply_state_based_actions_with(&mut game, &mut dm)
+            .expect("replacement operation must finish without execution error"));
         assert_eq!(game.soulbond_partner(creature_id), None);
         assert_eq!(game.soulbond_partner(land_id), None);
     }

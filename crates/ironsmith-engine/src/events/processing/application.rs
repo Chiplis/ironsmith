@@ -669,7 +669,11 @@ pub(super) fn apply_trait_replacement(
                 return Ok(TraitApplyResult::Unchanged(event));
             };
             let mut pending = etb.clone();
-            pending.pending_program = Some((program.clone(), effect.controller));
+            pending.pending_program = Some((program.clone(), effect.controller,
+                crate::linked_exile::LinkedExileOwner::capture(
+                    effect.source, program.linked_exile_pair,
+                    effect.ability_origin.as_ref().map(|origin| &origin.ability),
+                )));
             TraitApplyResult::Modified(event.rewrap(pending))
         }
 
@@ -2327,11 +2331,8 @@ pub(super) fn etb_value_uses_revealed_choice(value: &crate::effect::Value) -> bo
     }
 }
 
-/// CR 702.44a: sunburst's counter kind is decided as the permanent enters:
-/// +1/+1 counters if it enters as a creature, charge counters otherwise
-/// (Engineered Explosives under March of the Machines enters as a creature).
-/// Printed sunburst is compiled with the kind its printed types imply, so
-/// re-derive it here from the entering object's prospective characteristics.
+/// CR 702.44a: choose the counter kind from the entering object's base
+/// characteristics, ignoring continuous type-changing effects.
 fn sunburst_entry_counter_type(
     game: &GameState,
     event: &Event,
@@ -2350,8 +2351,8 @@ fn sunburst_entry_counter_type(
     }
     let is_sunburst_marker = |ability: &crate::ability::Ability| {
         matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
-            if static_ability.keyword_marker_mechanic()
-                == Some(ironsmith_core::KeywordMarkerMechanic::Sunburst))
+            if matches!(static_ability.keyword_marker_mechanic(),
+                Some(ironsmith_core::KeywordMarkerMechanic::Sunburst | ironsmith_core::KeywordMarkerMechanic::EntryCountersFromSpentColors)))
     };
     if !game
         .object(entering_object)
@@ -2363,15 +2364,11 @@ fn sunburst_entry_counter_type(
         crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
             .filter(|etb| etb.object == entering_object)
             .and_then(|etb| etb.prospective_game_state(game));
-    let enters_as_creature = match prospective.as_ref() {
-        Some(prospective) => prospective
-            .calculated_characteristics(entering_object)
-            .map(|chars| chars.card_types.contains(&crate::types::CardType::Creature))
-            .unwrap_or_else(|| {
-                prospective.current_has_card_type(entering_object, crate::types::CardType::Creature)
-            }),
-        None => game.current_has_card_type(entering_object, crate::types::CardType::Creature),
-    };
+    // CR 702.44a ignores type-changing effects, but observes a copy
+    // replacement's base characteristics in the prospective entry state.
+    let enters_as_creature = prospective.as_ref().unwrap_or(game)
+        .object(entering_object)
+        .is_some_and(|object| object.card_types.contains(&crate::types::CardType::Creature));
     if enters_as_creature {
         CounterType::PlusOnePlusOne
     } else {

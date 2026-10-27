@@ -160,8 +160,9 @@ pub struct ManaPaymentRequest {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub assist_completion: Option<Box<ManaPaymentRequest>>,
-    /// Ancestor mana activations cannot fund themselves. This does not
-    /// forbid tapping their permanents for a distinct Waterbend obligation.
+    /// Explicit source-wide payment restrictions (for example, a cast
+    /// permission that allows activating only certain lands). CR 605.3c
+    /// ability-occurrence guards are retained separately in native game state.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub activation_excluded_sources: Vec<ObjectId>,
 }
@@ -184,11 +185,7 @@ impl ManaPaymentRequest {
             obligation: PaymentObligation::Required,
             preferences: ManaPaymentPreferences::default(),
             assist_completion: None,
-            activation_excluded_sources: if reason.is_mana_ability() {
-                vec![source]
-            } else {
-                Vec::new()
-            },
+            activation_excluded_sources: Vec::new(),
         }
     }
 

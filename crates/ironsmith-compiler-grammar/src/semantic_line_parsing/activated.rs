@@ -401,7 +401,17 @@ fn ability_cant_be_copied_sentence(tokens: &[OwnedLexToken]) -> Option<bool> {
 fn split_rewrite_activated_effect_text(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> SplitRewriteActivatedEffectText {
-    let (sentence_tokens, restrictions) = split_tokens_for_parse(effect_parse_tokens);
+    let (mut sentence_tokens, restrictions) = split_tokens_for_parse(effect_parse_tokens);
+    let attached_kind = sentence_tokens.first().and_then(|tokens| {
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        match words.as_slice() {
+            ["attach", "to", "target", kind @ ("creature" | "land"), "you", "control"] => Some((*kind).to_owned()),
+            _ => None,
+        }
+    });
+    if let Some(kind) = attached_kind {
+        sentence_tokens.retain(|tokens| crate::lexer::parser_token_word_refs(tokens) != ["this", "card", "enters", "unattached", "and", "stays", "on", "the", "battlefield", "if", "the", kind.as_str(), "leaves"]);
+    }
     finalize_rewrite_activated_effect_sentences(restrictions, sentence_tokens)
 }
 

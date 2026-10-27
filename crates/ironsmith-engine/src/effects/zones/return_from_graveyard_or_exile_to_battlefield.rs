@@ -59,7 +59,7 @@ impl EffectExecutor for ReturnFromGraveyardOrExileToBattlefieldEffect {
             let put_effect = PutOntoBattlefieldEffect::new(
                 ChooseSpec::SpecificObject(target_id),
                 self.tapped,
-                PlayerFilter::OwnerOf(ObjectRef::Specific(target_id)),
+                self.returning_player.clone().unwrap_or(PlayerFilter::OwnerOf(ObjectRef::Specific(target_id))),
             );
             execute_effect(game, &Effect::new(put_effect), ctx)
         })?;

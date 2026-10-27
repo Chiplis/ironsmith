@@ -2841,7 +2841,7 @@ function PriorityBar({
       size="sm"
       className={cn("decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] shrink-0 self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide", ported && "topbar-ported-decision-button", dockSubmitFooter && !decisionDetailsExpanded && "decision-cancel-button--compact")}
       aria-label={t("decision.cancel")}
-      title={t("decision.cancel")}
+      title={`${t("decision.cancel")} (ESC)`}
       disabled={!canCancelDecision}
       onPointerDown={(event) => {
         if (!canCancelDecision || event.button !== 0) return;
@@ -2879,7 +2879,7 @@ function PriorityBar({
           data-local-action={localDecisionButton ? "true" : "false"}
           aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
           disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-          title={ui(peerWaiting ? t("decision.waitingForPeers") : (showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))))}
+          title={peerWaiting ? t("decision.waitingForPeers") : `${ui(showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain")))} (SPACE)`}
           onPointerDown={(event) => {
             if (peerWaitLocked) return;
             if (showViewedCardsStep) {
@@ -3616,6 +3616,7 @@ function PriorityBar({
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                        title={peerWaiting ? t("decision.waitingForPeers") : `${ui(showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain")))} (SPACE)`}
                         disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
                         onPointerDown={(event) => {
                           if (peerWaitLocked) return;
@@ -3886,6 +3887,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
     <PeerWaitPopover peerWait={peerWait}>
       <Button variant="ghost" size="sm"
         className="decision-neon-button decision-main-button combat-submit-button rounded-none px-3 font-bold uppercase"
+        title={peerWaiting ? t("decision.waitingForPeers") : `${combatMainLabel} (SPACE)`}
         style={{ ...decisionButtonStyle, fontSize: combatMainDecisionFontSize(combatMainLabel) }}
         data-local-action={localDecisionButton ? "true" : "false"}
         disabled={primaryDisabled} aria-disabled={primaryDisabled}
@@ -3955,6 +3957,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
               {quickControls}
               {canCancelDecision ? <Button type="button" variant="ghost" size="sm"
                 className="decision-neon-button decision-neon-button--danger decision-cancel-button h-10 shrink-0 rounded-none px-3 font-bold uppercase"
+                title={`${t("decision.cancel")} (ESC)`}
                 onClick={() => cancelDecision()}>{t("decision.cancel")}</Button> : null}
             </div>
           </div>

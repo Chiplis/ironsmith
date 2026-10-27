@@ -190,11 +190,11 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
       {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
       <div className="mana-payment-submit-row">
       <div className="mana-payment-secondary-controls">
-        <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
+        <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" title={`${ui('Cancel')} (ESC)`} disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
         {inlineSubmit ? quickControls : null}
       </div>
       {inlineSubmit && <div className="mana-payment-pay-region">
-        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
+        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title={`${ui('Pay')} (SPACE)`} disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
         {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
       </div>}
       </div>

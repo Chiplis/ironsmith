@@ -305,12 +305,21 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::Investigate { count }) => {
                 f.debug_tuple("Investigate").field(count).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Incubate { amount, count }) => f
+            Self::KeywordActions(KeywordActionAst::Incubate { amount, count, .. }) => f
                 .debug_struct("Incubate")
                 .field("amount", amount)
                 .field("count", count)
                 .finish(),
+            Self::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount }) => f.debug_tuple("ExileGraveyardForTotalManaValue").field(amount).finish(),
+            Self::Library(LibraryActionAst::RetrieveOutsideOrRummage { filter }) => f.debug_tuple("RetrieveOutsideOrRummage").field(filter).finish(),
             Self::KeywordActions(KeywordActionAst::Learn) => f.write_str("Learn"),
+            Self::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost) => f.write_str("ReturnUnblockedAttackerForCost"),
+            Self::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies) => f.write_str("ExileResolvedSpellForCombatCopies"),
+            Self::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents) => f.write_str("CopiesAssignedToOpponents"),
+            Self::KeywordActions(KeywordActionAst::PairUnpairedCreatures) => f.write_str("PairUnpairedCreatures"),
+            Self::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender) => f.write_str("EnterAttackingReturnedDefender"),
+            Self::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent) => f.write_str("OptionalSourceCopiesForControllerAndOpponent"),
+            Self::KeywordActions(KeywordActionAst::SetPermanentDesignation { designation }) => f.debug_tuple("SetPermanentDesignation").field(designation).finish(),
             Self::KeywordActions(KeywordActionAst::EmitKeywordAction { action, amount }) => f
                 .debug_struct("EmitKeywordAction")
                 .field("action", action)
@@ -319,6 +328,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ReorderTopPlanarDeck { count } => {
                 f.debug_tuple("ReorderTopPlanarDeck").field(count).finish()
             }
+            Self::ZoneMoves(ZoneMoveActionAst::ExchangeSourceWithHandAura) => f.write_str("ExchangeSourceWithHandAura"),
+            Self::ZoneMoves(ZoneMoveActionAst::ReturnSourceWithHasteAndExileDeadline) => f.write_str("ReturnSourceWithHasteAndExileDeadline"),
             Self::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile) => {
                 f.write_str("ReturnSourceTransformedFromExile")
             }
@@ -337,7 +348,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("EmpowerJace")
                 .field("amount", amount)
                 .finish(),
-            Self::KeywordActions(KeywordActionAst::Amass { subtype, amount }) => f
+            Self::KeywordActions(KeywordActionAst::Amass { subtype, amount, .. }) => f
                 .debug_struct("Amass")
                 .field("subtype", subtype)
                 .field("amount", amount)
@@ -363,10 +374,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::Populate { count, .. }) => {
                 f.debug_tuple("Populate").field(count).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Airbend { target }) => {
+            Self::KeywordActions(KeywordActionAst::Airbend { target, .. }) => {
                 f.debug_tuple("Airbend").field(target).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Explore { target }) => {
+            Self::KeywordActions(KeywordActionAst::Explore { target, .. }) => {
                 f.debug_tuple("Explore").field(target).finish()
             }
             Self::KeywordActions(KeywordActionAst::Endure { target, amount }) => f
@@ -375,7 +386,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("amount", amount)
                 .finish(),
             Self::KeywordActions(KeywordActionAst::Exploit) => f.write_str("Exploit"),
-            Self::KeywordActions(KeywordActionAst::Connive { target, count }) => f
+            Self::KeywordActions(KeywordActionAst::Connive { target, count, .. }) => f
                 .debug_struct("Connive")
                 .field("target", target)
                 .field("count", count)
@@ -391,6 +402,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.write_str("RollToVisitAttractions")
             }
             Self::KeywordActions(KeywordActionAst::RollPlanarDie) => f.write_str("RollPlanarDie"),
+            Self::Library(LibraryActionAst::DescribedTopCardFaceDown { cloak }) => f.debug_struct("PutTopCardFaceDown").field("ward", cloak).finish(),
             Self::Library(LibraryActionAst::ManifestTopCardOfLibrary) => {
                 f.write_str("ManifestTopCardOfLibrary")
             }
@@ -401,10 +413,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.write_str("ManifestCardFromHand")
             }
             Self::KeywordActions(KeywordActionAst::ManifestDread) => f.write_str("ManifestDread"),
-            Self::KeywordActions(KeywordActionAst::Earthbend { counters }) => {
+            Self::KeywordActions(KeywordActionAst::Earthbend { counters, .. }) => {
                 f.debug_tuple("Earthbend").field(counters).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Behold { subtype, count }) => f
+            Self::KeywordActions(KeywordActionAst::Behold { subtype, count, .. }) => f
                 .debug_struct("Behold")
                 .field("subtype", subtype)
                 .field("count", count)
@@ -422,7 +434,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::FightIterated { creature2 }) => {
                 f.debug_tuple("FightIterated").field(creature2).finish()
             }
-            Self::KeywordActions(KeywordActionAst::Clash { opponent }) => {
+            Self::KeywordActions(KeywordActionAst::Clash { opponent, .. }) => {
                 f.debug_tuple("Clash").field(opponent).finish()
             }
             Self::Random(RandomActionAst::FlipCoin) => f.write_str("FlipCoin"),
@@ -928,6 +940,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 cloak,
                 manifest,
                 shuffle_before,
+                described_face_down,
             }) => f
                 .debug_struct("PutOntoBattlefield")
                 .field("target", target)
@@ -936,6 +949,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("cloak", cloak)
                 .field("manifest", manifest)
                 .field("shuffle_before", shuffle_before)
+                .field("described_face_down", described_face_down)
                 .finish(),
             Self::RevealLook(RevealLookActionAst::RevealCardsFromHand {
                 count,
@@ -1533,6 +1547,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("explicit_return_surface", explicit_return_surface)
                 .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                entry_grants,
                 entry_type_changes,
                 entry_counters,
             retained_reference_tags,
@@ -1561,6 +1576,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 all,
             }) => f
                 .debug_struct("MoveToZone")
+                .field("entry_grants", entry_grants)
                 .field("entry_type_changes", entry_type_changes)
                 .field("entry_counters", entry_counters)
                 .field("retained_reference_tags", retained_reference_tags)
@@ -2618,6 +2634,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
+            Self::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount }) => f.debug_tuple("PutCountersThenBecomeMonstrous").field(amount).finish(),
+            Self::Counters(CounterActionAst::PutCountersThenBecomeRenowned { amount }) => f.debug_tuple("PutCountersThenBecomeRenowned").field(amount).finish(),
+            Self::Counters(CounterActionAst::PayForEachSourceCounter { counter_type, cost }) => f.debug_tuple("PayForEachSourceCounter").field(counter_type).field(cost).finish(),
+            Self::Counters(CounterActionAst::GrowCountersOnChosenHolders) => f.write_str("GrowCountersOnChosenHolders"),
             Self::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,
@@ -2927,7 +2947,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::KeywordActions(KeywordActionAst::RingTemptsYou) => f.write_str("RingTemptsYou"),
             Self::KeywordActions(KeywordActionAst::VentureIntoDungeon {
-                undercity_if_no_active,
+                undercity_if_no_active, ..
             }) => f
                 .debug_struct("VentureIntoDungeon")
                 .field("undercity_if_no_active", undercity_if_no_active)
@@ -3036,11 +3056,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 follow_up_effects,
                 remove_damage_only,
+                ordinary_destruction_replacement,
             }) => {
                 let mut debug = f.debug_struct("Regenerate");
                 debug
                     .field("target", target)
                     .field("follow_up_effects", follow_up_effects);
+                if *ordinary_destruction_replacement { debug.field("ordinary_destruction_replacement", &true); }
                 if *remove_damage_only {
                     debug.field("remove_damage_only", remove_damage_only);
                 }

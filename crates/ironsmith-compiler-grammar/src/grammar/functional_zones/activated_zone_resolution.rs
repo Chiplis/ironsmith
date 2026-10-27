@@ -147,7 +147,7 @@ fn explicit_activation_zones(words: &[&str]) -> Option<Vec<Zone>> {
     let end = source_end(words, start)?;
     // "Activate only if this card is suspended" (Greater Gargadon): a
     // suspended card is in exile (CR 702.62b).
-    if words.get(end) == Some(&"is") && matches!(words.get(end + 1), Some(&"suspended" | &"exiled")) {
+    if words.get(end) == Some(&"is") && matches!(words.get(end + 1), Some(&crate::keyword_forms::SUSPENDED | &"exiled")) {
         return Some(vec![Zone::Exile]);
     }
     if words.get(end) != Some(&"is") || !matches!(words.get(end + 1), Some(&"in" | &"on")) {

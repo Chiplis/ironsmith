@@ -43,7 +43,7 @@ impl EffectExecutor for CastFaceDownUsingActivationManaEffect {
                 requires_source_on_battlefield: false, expires_after_turn: Some(game.turn.turn_number), single_use: true });
             game.set_hidden_face_down_cast_claim(card, crate::game_state::FaceDownCastKind::Permission { source: ctx.source });
             let option = EffectDrivenCastOption { object_id: card, from_zone: Zone::Hand,
-                casting_method: crate::alternative_cast::CastingMethod::FaceDown, label: "Cast chosen card face down".into() };
+                casting_method: crate::alternative_cast::CastingMethod::FaceDown, requirement: None, label: "Cast chosen card face down".into() };
             let cast = super::runtime_helpers::cast_effect_driven_spell_with_payment_policy(game, ctx, player,
                 &option, EffectDrivenCastPayment::WithoutPayingManaCost, true)?;
             game.revoke_face_down_cast_permissions_from(ctx.source);

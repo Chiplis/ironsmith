@@ -429,11 +429,12 @@ pub(super) fn predicate_matches_with_context(
     let filter_ctx = ctx.filter_context(game);
     let matching = memories
         .iter()
-        // One producer can record several actions ("create an Insect token,
-        // then mill a card"); "an Insect card was milled this way" reads only
-        // the milled cards, whose memory is captured in the library.
+        // Typed mill receipts identify the exact public destinations (701.17c),
+        // including replacement mills (701.17d). Only legacy mixed memories
+        // need the library-origin guard to exclude unrelated created tokens.
         .filter(|memory| {
             surface.action != crate::effect::PriorEffectAction::Milled
+                || recorded.is_some()
                 || (memory.zone == crate::zone::Zone::Library && !memory.is_token)
         })
         .filter(|memory| surface.filter.matches_snapshot(memory, &filter_ctx, game))

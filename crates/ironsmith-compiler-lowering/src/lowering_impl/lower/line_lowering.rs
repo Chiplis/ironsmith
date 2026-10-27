@@ -37,7 +37,7 @@ pub(super) fn apply_line_ast(
                 Some(crate::ability::PresentationLabel::CaseSolved)
             ) {
                 materialize_static_abilities(
-                    builder,
+                    builder, state,
                     actions.into_iter().map(StaticAbilityAst::KeywordAction).collect(),
                     semantic_facts,
                 )
@@ -46,10 +46,10 @@ pub(super) fn apply_line_ast(
             }
         }
         NormalizedLineChunk::StaticAbility(ability) => {
-            materialize_static_abilities(builder, vec![ability], semantic_facts)
+            materialize_static_abilities(builder, state, vec![ability], semantic_facts)
         }
         NormalizedLineChunk::StaticAbilities(abilities) => {
-            materialize_static_abilities(builder, abilities, semantic_facts)
+            materialize_static_abilities(builder, state, abilities, semantic_facts)
         }
         NormalizedLineChunk::Ability(ability) => {
             materialize_ability(builder, ability, semantic_facts)
@@ -117,9 +117,14 @@ fn materialize_keyword_actions(
         match action {
             KeywordAction::Backup(amount) => state.pending_backups.push(PendingBackup {
                 ability_boundary: builder.abilities.len(),
-                amount,
+                amount, descriptive: false,
             }),
             KeywordAction::Cipher => state.pending_cipher = true,
+            KeywordAction::CumulativeUpkeep { total_cost, .. } => {
+                let payment =
+                    crate::lowering::cost_materialization::lower_cumulative_upkeep_payment(&total_cost)?;
+                builder = builder.cumulative_upkeep_effects(payment);
+            }
             action => builder = builder.apply_keyword_action(action),
         }
     }
@@ -133,7 +138,7 @@ fn keyword_actions_materialize_one_ability_each(
     if actions.len() < 2
         || actions
             .iter()
-            .any(|action| matches!(action, KeywordAction::Backup(_) | KeywordAction::Cipher))
+            .any(|action| matches!(action, KeywordAction::Backup(_) | KeywordAction::Cipher | KeywordAction::CumulativeUpkeep { .. }))
     {
         return false;
     }
@@ -198,6 +203,7 @@ mod source_line_keyword_group_tests {
 
 fn materialize_static_abilities(
     mut builder: CardDefinitionBuilder,
+    state: &mut RewriteLoweredCardState,
     abilities: Vec<StaticAbilityAst>,
     semantic_facts: &LineSemanticFacts,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -238,6 +244,25 @@ fn materialize_static_abilities(
     let mut turn_surface_recorded = false;
     for ability in abilities {
         match ability {
+            StaticAbilityAst::Static(ability)
+                if matches!(ability.payload, ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::RevealSharedTypesForEntryCounters { .. } }) => {
+                let ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::RevealSharedTypesForEntryCounters { amount } } = ability.payload else { unreachable!() };
+                builder = builder.with_ability(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::as_enters_effect_program(
+                        vec![crate::effect::Effect::new(crate::effects::AmplifyEffect { amount, descriptive: true })].into(),
+                        "this creature", false, false, None,
+                    ),
+                ));
+            }
+            StaticAbilityAst::Static(ref ability)
+                if matches!(ability.payload, ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::LinkOnGraveyardArrival }) => {
+                builder = builder.graveyard_arrival_link(true);
+            }
+            StaticAbilityAst::Static(ref ability)
+                if matches!(ability.payload, ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::EntryCountersAndFollowingAbilities { .. } }) => {
+                let ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::EntryCountersAndFollowingAbilities { amount } } = ability.payload else { unreachable!() };
+                state.pending_backups.push(PendingBackup { ability_boundary: builder.abilities.len() + lowered_abilities.len(), amount, descriptive: true });
+            }
             StaticAbilityAst::AttachmentRestriction { .. }
             | StaticAbilityAst::KeywordAction(KeywordAction::Fuse) if case_solved => {
                 return Err(CardTextError::ParseError(
@@ -265,6 +290,14 @@ fn materialize_static_abilities(
                 if !case_solved =>
             {
                 builder = builder.commander_ninjutsu(cost);
+            }
+            StaticAbilityAst::Static(ref ability)
+                if builder.card_builder.card_types_ref().iter().any(|t| matches!(t, crate::types::CardType::Instant | crate::types::CardType::Sorcery))
+                    && matches!(ability.payload, ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { .. } }) => {
+                let ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story } } = ability.payload else { unreachable!() };
+                let mut effects = builder.spell_effect.take().unwrap_or_default();
+                effects.push(crate::effect::Effect::new(ironsmith_core::AscendEffect::designation_if_permanent_count(minimum, historic_only, enduring_story)));
+                builder.spell_effect = Some(effects);
             }
             ability => {
                 let ability = lower_static_ability_ast(ability)?;
@@ -475,6 +508,7 @@ fn materialize_ability(
         &mut ability,
         semantic_facts.triggered_ability.leading_unless_surface,
     );
+    apply_ability_stack_rules(&mut ability, semantic_facts);
     Ok(builder.with_ability(ability))
 }
 
@@ -517,7 +551,18 @@ fn materialize_triggered(
         &mut parsed,
         semantic_facts.triggered_ability.leading_unless_surface,
     );
+    apply_ability_stack_rules(&mut parsed, semantic_facts);
     Ok(builder.with_ability(parsed))
+}
+
+fn apply_ability_stack_rules(ability: &mut Ability, facts: &LineSemanticFacts) {
+    if let AbilityKind::Triggered(triggered) = &mut ability.kind { triggered.effects.champion = facts.triggered_ability.champion; }
+    if !facts.ability_cant_be_countered { return; }
+    match &mut ability.kind {
+        AbilityKind::Triggered(triggered) => triggered.effects.ability_cant_be_countered = true,
+        AbilityKind::Activated(activated) => activated.effects.ability_cant_be_countered = true,
+        AbilityKind::Static(_) => {},
+    }
 }
 
 /// The leading/trailing `unless` distinction is line-level punctuation
@@ -1542,19 +1587,29 @@ fn materialize_gift(
     prepared: PreparedEffectsForLowering,
     timing: GiftTimingAst,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
+    let native = cost.cost_ref().kind == ironsmith_core::OptionalCostKind::Gift;
+    let reference = cost.cost_ref();
+    let timing = if matches!(timing, GiftTimingAst::SourceCardType) {
+        if builder.card_builder.card_types_ref().iter().any(|kind| matches!(kind, crate::types::CardType::Instant | crate::types::CardType::Sorcery)) {
+            GiftTimingAst::SpellResolution
+        } else { GiftTimingAst::PermanentEtb }
+    } else { timing };
     builder = builder.optional_cost(cost);
     match timing {
+        GiftTimingAst::SourceCardType => unreachable!("source timing resolved above"),
         GiftTimingAst::SpellResolution => {
             let lowered = lower_prepared_statement_effects(&prepared)?;
             let mut effects = lowered.effects.to_vec();
-            effects.push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer));
+            if native { effects.push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer)); }
             let gift = crate::effect::Effect::conditional(
-                crate::ConditionExpr::ThisSpellPaidLabel("Gift".into()),
+                crate::ConditionExpr::ThisSpellPaidLabel(reference.clone()),
                 effects,
                 Vec::new(),
             );
             if let Some(existing) = builder.spell_effect.as_mut() {
-                existing.push(gift);
+                let mut effects = vec![gift];
+                effects.extend(existing.all_effects_owned());
+                *existing = crate::resolution::ResolutionProgram::from_effects(effects);
             } else {
                 builder.spell_effect =
                     Some(crate::resolution::ResolutionProgram::from_effects(vec![
@@ -1570,7 +1625,7 @@ fn materialize_gift(
                 trigger.clone(),
                 Vec::new(),
                 vec![Zone::Battlefield],
-                Some(PredicateAst::ThisSpellPaidLabel("Gift".into())),
+                Some(PredicateAst::ThisSpellPaidLabel(reference.clone())),
                 None,
                 prepared.imports.clone(),
             );
@@ -1582,7 +1637,7 @@ fn materialize_gift(
                 parsed,
                 prepared: Some(NormalizedPreparedAbility::Triggered { trigger, prepared }),
             })?;
-            if let AbilityKind::Triggered(triggered) = &mut parsed.kind {
+            if native && let AbilityKind::Triggered(triggered) = &mut parsed.kind {
                 triggered
                     .effects
                     .push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer));
@@ -1647,6 +1702,14 @@ fn materialize_alternative_cast(
     builder: CardDefinitionBuilder,
     mut method: crate::alternative_cast::AlternativeCastingMethod,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
+    if let crate::alternative_cast::AlternativeCastingMethod::FromZone { instructions, .. } = &method
+        && let Some((time, price)) = &instructions.timed_exile {
+        // Share the two exile triggers, but replace the native permission
+        // with the descriptive one so named Suspend queries stay distinct.
+        let mut builder = builder.suspend_with_time(*time, price.clone());
+        builder.alternative_casts.pop();
+        return Ok(builder.alternative_cast(method));
+    }
     // "You may cast this spell as though it had flash if you pay {N} more":
     // the {N} is an optional additional cost that grants flash timing, not
     // an alternative cost (CR 118.8, 601.2f), so it combines with free casts
@@ -1671,6 +1734,24 @@ fn materialize_alternative_cast(
         method = crate::alternative_cast::AlternativeCastingMethod::Retrace {
             total_cost: crate::cost::TotalCost::from_costs(costs),
         };
+    }
+    if let crate::alternative_cast::AlternativeCastingMethod::FromZone { total_cost, instructions, .. } = &mut method
+        && instructions.add_printed_mana_cost
+    {
+        let printed = builder.card_builder.mana_cost_ref().cloned().ok_or_else(||
+            CardTextError::ParseError("this casting permission requires the source's printed mana cost".into()))?;
+        fn add_mana(cost: &crate::cost::TotalCost, mana: &crate::mana::ManaCost) -> crate::cost::TotalCost {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::All(parts) => {
+                    let mut parts = parts.clone();
+                    parts.insert(0, crate::costs::Cost::mana(mana.clone()));
+                    crate::cost::TotalCost::from_costs(parts)
+                }
+                ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(branches.iter().map(|branch| add_mana(branch, mana)).collect()),
+            }
+        }
+        *total_cost = add_mana(total_cost, &printed);
+        instructions.add_printed_mana_cost = false;
     }
     Ok(builder.alternative_cast(method))
 }

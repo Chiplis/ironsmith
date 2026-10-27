@@ -289,13 +289,16 @@ pub(super) fn apply_pending_mechanic_linkages(
     };
 
     for ability in &mut builder.abilities {
-        if is_haunt_placeholder_ability(ability)
-            && let crate::ability::AbilityKind::Triggered(ref mut triggered) = ability.kind
-        {
-            triggered.effects = crate::resolution::ResolutionProgram::from_effects(vec![
-                crate::effect::Effect::haunt_exile(haunt_effects, haunt_choices),
-            ]);
-            break;
+        if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+            for segment in &mut triggered.effects.segments {
+                for effect in &mut segment.default_effects {
+                    if let Some(link) = effect.downcast_ref::<crate::effects::HauntExileEffect>() {
+                        *effect = crate::effect::Effect::new(crate::effects::HauntExileEffect {
+                            haunt_effects: haunt_effects.clone(), haunt_choices: haunt_choices.clone(), descriptive: link.descriptive,
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -324,10 +327,9 @@ fn apply_pending_backup_abilities(
             let granted_abilities = original_abilities[boundary..].to_vec();
             abilities.push(Ability::triggered(
                 crate::triggers::Trigger::this_enters_battlefield(),
-                vec![crate::effect::Effect::backup(
-                    backup.amount,
-                    granted_abilities,
-                )],
+                vec![crate::effect::Effect::new(crate::effects::BackupEffect {
+                    amount: backup.amount, granted_abilities, descriptive: backup.descriptive,
+                })],
             ));
             next_backup += 1;
         }
@@ -368,19 +370,6 @@ fn apply_pending_cipher_effect(
         });
     }
     builder
-}
-
-fn is_haunt_placeholder_ability(ability: &Ability) -> bool {
-    let AbilityKind::Triggered(triggered) = &ability.kind else {
-        return false;
-    };
-    triggered.effects.segments.iter().any(|segment| {
-        segment.default_effects.iter().any(|effect| {
-            effect
-                .downcast_ref::<crate::effects::ExileEffect>()
-                .is_some_and(|exile| exile.spec == ChooseSpec::Source)
-        })
-    })
 }
 
 fn looked_collection_prelude(
@@ -858,8 +847,8 @@ fn bind_graveyard_cast_trigger_to_triggering_permanent_entry(ability: &mut Abili
     triggered.effects.segments[0]
         .default_effects
         .insert(0, crate::effect::Effect::tag_triggering_object(tag));
-    triggered.effects =
-        crate::resolution::ResolutionProgram::new(std::mem::take(&mut triggered.effects.segments));
+    let segments = std::mem::take(&mut triggered.effects.segments);
+    triggered.effects.replace_segments(segments);
 }
 
 pub(super) fn finalize_lowered_card(
@@ -903,6 +892,17 @@ pub(super) fn finalize_lowered_card(
                 finalize_program_references(&mut activated.effects);
             }
             _ => {}
+        }
+    }
+    // A paid land-animation ability follows the entire base spell, even if
+    // its declaration preceded that spell text. Build both native and
+    // descriptive programs only after every source line has been lowered.
+    for method in &mut builder.alternative_casts {
+        if let crate::alternative_cast::AlternativeCastingMethod::Awaken { amount, effects, .. } = method {
+            *effects = builder.spell_effect.as_ref().map(|program| program.all_effects_owned()).unwrap_or_default();
+            effects.push(crate::effect::Effect::new(crate::effects::EarthbendEffect::awaken(
+                crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(ObjectFilter::land().you_control())), *amount,
+            )));
         }
     }
     link_alternative_cast_condition_references(&mut builder);
@@ -1962,7 +1962,7 @@ fn strip_terminal_unconsumed_damage_aggregate_id(
         return;
     }
     *effect = with_id.effect.as_ref().clone();
-    *program = crate::resolution::ResolutionProgram::new(program.segments.clone());
+    program.replace_segments(program.segments.clone());
 }
 
 fn tagged_return_to_hand(
@@ -2098,7 +2098,7 @@ fn correlate_clash_win_return_replacement(program: &mut crate::resolution::Resol
     )];
     let mut win_segment = win_segment.clone();
     win_segment.default_effects = vec![conditional];
-    *program = crate::resolution::ResolutionProgram::new(vec![clash_segment, win_segment]);
+    program.replace_segments(vec![clash_segment, win_segment]);
 }
 
 /// A searched card is still in the library when its destination is chosen.
@@ -2217,7 +2217,7 @@ fn correlate_additional_cost_chosen_type_search_destination(
             branch_condition,
             vec![rewritten_search],
         ));
-    *program = crate::resolution::ResolutionProgram::new(vec![segment]);
+    program.replace_segments(vec![segment]);
 }
 
 #[cfg(test)]
@@ -2360,7 +2360,7 @@ fn correlate_additional_cost_damage_replacement(
         capture_condition_result: conditional.capture_condition_result,
         presentation_label: conditional.presentation_label.clone(),
     });
-    *program = crate::resolution::ResolutionProgram::from_effects(vec![replacement]);
+    program.replace_segments(vec![crate::resolution::ResolutionSegment::from_effects(vec![replacement])]);
 }
 
 #[cfg(test)]
@@ -2599,7 +2599,8 @@ fn link_alternative_cast_condition_references(builder: &mut CardDefinitionBuilde
             }
             prior_matched = local;
         }
-        *program = crate::resolution::ResolutionProgram::new(std::mem::take(&mut program.segments));
+        let segments = std::mem::take(&mut program.segments);
+    program.replace_segments(segments);
     }
 
     if let Some(program) = builder.spell_effect.as_mut() {
@@ -2792,7 +2793,8 @@ fn bind_quantified_player_damage_values(program: &mut crate::resolution::Resolut
             branch.replacement_effects = branch.replacement_effects.iter().map(rewrite).collect();
         }
     }
-    *program = crate::resolution::ResolutionProgram::new(std::mem::take(&mut program.segments));
+    let segments = std::mem::take(&mut program.segments);
+    program.replace_segments(segments);
 }
 
 #[cfg(test)]
@@ -2896,7 +2898,18 @@ mod alternative_ability_reference_tests {
                 starts_new_source_line: true,
             },
         ]));
-        link_alternative_cast_condition_references(&mut builder);
+        // A paid land-animation ability follows the entire base spell, even if
+    // its declaration preceded that spell text. Build both native and
+    // descriptive programs only after every source line has been lowered.
+    for method in &mut builder.alternative_casts {
+        if let crate::alternative_cast::AlternativeCastingMethod::Awaken { amount, effects, .. } = method {
+            *effects = builder.spell_effect.as_ref().map(|program| program.all_effects_owned()).unwrap_or_default();
+            effects.push(crate::effect::Effect::new(crate::effects::EarthbendEffect::awaken(
+                crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(ObjectFilter::land().you_control())), *amount,
+            )));
+        }
+    }
+    link_alternative_cast_condition_references(&mut builder);
         for (index, expected) in [true, false].into_iter().enumerate() {
             let crate::ability::AbilityKind::Triggered(triggered) = &builder.abilities[index].kind else { unreachable!() };
             let conditional = triggered.effects.segments[0].default_effects[0].downcast_ref::<crate::effects::ConditionalEffect>().unwrap();

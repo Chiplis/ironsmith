@@ -20,10 +20,19 @@ pub struct LinkedExilePair {
     pub pair: u32,
 }
 
+/// The two abilities of one authored champion occurrence (CR 702.72).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum ChampionRole { Exile(u32), Return(u32) }
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct ResolutionProgram<E> {
     pub segments: Vec<ResolutionSegment<E>>,
+    /// A non-resolving instruction of this activated/triggered ability.
+    /// It belongs to the exact stack program, including a copied ability.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub ability_cant_be_countered: bool,
     /// Expressions explicitly sampled when an ability is activated. Authored
     /// programs contain None; announced stack programs retain the exact sample.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
@@ -44,6 +53,8 @@ pub struct ResolutionProgram<E> {
     /// A separately owned linked numeric entry/reselection/read relationship.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub source_number_pair: Option<LinkedExilePair>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub champion: Option<ChampionRole>,
     /// Immutable authored activation occurrence, including its face and costs.
     /// Kept separately from runtime acquisition and from an activation ordinal.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -104,11 +115,13 @@ impl<E> Default for ResolutionProgram<E> {
     fn default() -> Self {
         Self {
             segments: Vec::new(),
+            ability_cant_be_countered: false,
             activation_values: Vec::new(),
             linked_exile_pair: None,
             trigger_definition: None,
             unavailable_trigger_definition: false,
             source_number_pair: None,
+            champion: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -120,10 +133,12 @@ impl<E: Clone> ResolutionProgram<E> {
     pub fn new(segments: Vec<ResolutionSegment<E>>) -> Self {
         let mut program = Self {
             segments,
+            ability_cant_be_countered: false,
             activation_values: Vec::new(),            linked_exile_pair: None,
             trigger_definition: None,
             unavailable_trigger_definition: false,
             source_number_pair: None,
+            champion: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -222,11 +237,17 @@ impl<E: Clone> ResolutionProgram<E> {
     }
 
     pub fn extend(&mut self, other: Self) {
+        // An unowned accumulator adopts one complete ability's instructions.
+        // Appending another ability's effects does not grant its protection.
+        if self.segments.is_empty() && !self.unavailable_copied_definition
+            && !self.unavailable_trigger_definition
+        { self.ability_cant_be_countered |= other.ability_cant_be_countered; }
         self.unavailable_trigger_definition |= other.unavailable_trigger_definition;
         self.unavailable_copied_definition |= other.unavailable_copied_definition;
         if self.segments.is_empty() {
             self.linked_exile_pair = other.linked_exile_pair;
             self.source_number_pair = other.source_number_pair;
+            self.champion = other.champion;
             self.activation_definition = other.activation_definition;
         } else if !other.segments.is_empty()
             && self.linked_exile_pair != other.linked_exile_pair
@@ -253,6 +274,7 @@ impl<E: Clone> ResolutionProgram<E> {
             self.trigger_definition = None;
             self.unavailable_trigger_definition = true;
         }
+        if !self.segments.is_empty() && !other.segments.is_empty() && self.champion != other.champion { self.champion = None; }
         if !self.segments.is_empty() && !other.segments.is_empty()
             && self.source_number_pair != other.source_number_pair
         {
@@ -317,11 +339,13 @@ impl<E> ResolutionProgram<E> {
             segments.push(segment.try_map_effects(&mut f)?);
         }
         let mut mapped = ResolutionProgram::new(segments);
+        mapped.ability_cant_be_countered = self.ability_cant_be_countered;
         mapped.activation_values = self.activation_values;
         mapped.linked_exile_pair = self.linked_exile_pair;
         mapped.trigger_definition = self.trigger_definition;
         mapped.unavailable_trigger_definition = self.unavailable_trigger_definition;
         mapped.source_number_pair = self.source_number_pair;
+        mapped.champion = self.champion;
         mapped.activation_definition = self.activation_definition;
         mapped.unavailable_copied_definition = self.unavailable_copied_definition;
         Ok(mapped)
@@ -451,8 +475,10 @@ impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
         debug.field("segments", &self.segments)
             .field("linked_exile_pair", &self.linked_exile_pair)
             .field("activation_definition", &self.activation_definition);
+        if self.ability_cant_be_countered { debug.field("ability_cant_be_countered", &true); }
         // Historical runtime trigger identities still use Debug for unstamped
         // definitions. Omitted identity metadata must not change their input.
+        if self.champion.is_some() { debug.field("champion", &self.champion); }
         if self.source_number_pair.is_some() { debug.field("source_number_pair", &self.source_number_pair); }
         if self.trigger_definition.is_some() { debug.field("trigger_definition", &self.trigger_definition); }
         if self.unavailable_trigger_definition { debug.field("unavailable_trigger_definition", &true); }

@@ -149,6 +149,10 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             ));
         }
     }
+    if matches!(words, ["for", "each", "time", "this", "spell's" | "spells", "additional", "cost", "was", "paid"]) {
+        return Some((Value::TimesPaidLabel(ironsmith_core::OptionalCostRef::from("Additional"))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), words.len()));
+    }
     if let Some(tail) = words.strip_prefix(&["for", "each", "additional"])
         && let Some(mana_words) = tail.strip_suffix(&["you", "paid"])
         && !mana_words.is_empty()
@@ -1162,7 +1166,7 @@ pub(super) fn is_kick_count(words: &[&str]) -> bool {
     {
         return false;
     }
-    if rest.len() < 2 || !permission_shapes::suffix_words(rest, &["was", "kicked"]) {
+    if rest.len() < 2 || !permission_shapes::suffix_words(rest, &["was", crate::keyword_forms::KICKED]) {
         return false;
     }
     let source_words = &rest[..rest.len() - 2];

@@ -112,7 +112,7 @@ pub(crate) fn audit_payload_reading(
             "Any player may pay {} to ignore this permanent's effect until end of turn",
             cost.to_oracle()
         ),
-        P::Companion(condition) => format!("Companion — deck condition: {}", sr(condition)),
+        P::Companion(condition) => if model.id == Some(ironsmith_core::StaticAbilityId::Companion) { format!("Companion — deck condition: {}", sr(condition)) } else { model.label.clone() },
         P::CopyActivatedAbilities(spec) => format!("This has the activated abilities of {}", sr(spec)),
         P::CopyStaticAbilityVariants(spec) => format!("This has the static abilities of {}", sr(spec)),
         P::CopyTriggeredAbilities(spec) => format!("This has the triggered abilities of {}", sr(spec)),
@@ -128,7 +128,10 @@ pub(crate) fn audit_payload_reading(
             "Loyalty abilities of {} can be activated any time you could cast an instant",
             objects(filter)
         ),
-        P::ThisSpellXMaximum { maximum, .. } => format!("X is at most {}", describe_value(maximum)),
+        P::ThisSpellXMaximum { maximum, definition, .. } => match definition {
+            Some(value) => format!("X is defined as {}", describe_value(value)),
+            None => format!("X is at most {}", describe_value(maximum)),
+        },
         P::ThisSpellXMinimum { minimum, .. } => format!("X is at least {}", describe_value(minimum)),
         P::DieRollResultAdjustment(adjustment) => format!("Die roll results are adjusted: {}", sr(adjustment)),
         P::BandsWithOther(filter) => format!("Bands with other {}", objects(filter)),
@@ -639,9 +642,49 @@ pub(crate) fn audit_payload_reading(
             use ironsmith_core::KeywordMarkerMechanic as M;
             let action = |saddles: bool| if saddles { "saddles Mounts and crews Vehicles" } else { "crews Vehicles" };
             match mechanic {
+                M::AttackingDoesNotCauseTap => "Attacking doesn't cause this creature to tap".to_string(),
+                M::CastAtInstantTiming => "You may cast this spell any time you could cast an instant".to_string(),
+                M::DamageIsLethalToCreatures => "Any amount of damage this deals to a creature is enough to destroy it.".to_string(),
+                M::CombatDamageAddsPoison { amount } => format!("Players dealt combat damage by this creature also get {amount} poison counters."),
+                M::OverflowCombatDamage { through_planeswalkers } => if *through_planeswalkers {
+                    "This creature can deal excess combat damage to the controller of the planeswalker it's attacking.".to_string()
+                } else {
+                    "This creature can deal excess combat damage to the player or planeswalker it's attacking.".to_string()
+                },
+                M::ExileGraveyardCardsForGenericMana => "Each card you exile from your graveyard while casting this spell pays for {1}.".into(),
+                M::TapCreaturesForMana => "Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.".into(),
+                M::DestroyAttachmentInstead => "If enchanted permanent would be destroyed, instead remove all damage from it and destroy this Aura.".into(),
+                M::AttachWhileCreature => "This permanent can be attached while it's a creature.".into(),
+                M::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story } => format!("If you control {minimum} or more {}, you {} for the rest of the game.", if *historic_only { "artifacts, legendaries, and/or Sagas" } else { "permanents" }, if *enduring_story { "have an enduring story" } else { "get the city's blessing" }),
+                M::ExileOnStackExitIfCastFrom { zone } => format!("If this spell was cast from your {}, exile it instead of putting it anywhere else any time it would leave the stack.", format!("{zone:?}").to_ascii_lowercase()),
+                M::TapArtifactsForGenericMana => "Each artifact you tap after you're done activating mana abilities pays for {1}.".into(),
+                M::PhaseDuringUntap => "This phases in or out before you untap during each of your untap steps.".to_string(),
+                M::DestructionImmune => "This permanent cannot be destroyed.".to_string(),
+                M::DamageAsCounters { poison_players } => if *poison_players {
+                    "This deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.".to_string()
+                } else {
+                    "This deals damage to creatures in the form of -1/-1 counters.".to_string()
+                },
+                M::DamageGrantsControllerLife => "Damage dealt by this creature also causes you to gain that much life.".to_string(),
+                M::EarlyCombatDamage { also_regular } => if *also_regular {
+                    "This creature deals both first-strike and regular combat damage".to_string()
+                } else { "This creature deals combat damage before creatures without first strike".to_string() },
+                M::EntryCountersFromSpentColors => "If this permanent is entering as a creature, ignoring type-changing effects that would affect it, it enters with a +1/+1 counter on it for each color of mana spent to cast it. Otherwise, it enters with a charge counter on it for each color of mana spent to cast it.".into(),
+                M::EntryCountersAndFollowingAbilities { amount } => format!("When this creature enters, put {amount} +1/+1 counters on target creature. If that's another creature, it gains the following abilities until end of turn."),
                 M::Sunburst => "Sunburst".to_string(),
                 M::Compleated => "Compleated".to_string(),
+                M::DayNightTransformDefinition { day_face } => if *day_face { "If it's neither day nor night, it becomes day. If it's night, this permanent enters transformed. As it becomes night, if this permanent is front face up, transform it. This permanent can't transform except due to this ability. If a player casts no spells during their own turn, it becomes night next turn.".into() } else { "If it's neither day nor night and no permanent establishes day, it becomes night. As it becomes day, if this permanent is back face up, transform it. This permanent can't transform except due to this ability. If a player casts at least two spells during their own turn, it becomes day next turn.".into() },
+                M::CombatBandsAndDamageChoice => "As you declare attackers, you may group one or more attacking creatures with this ability and up to one other attacking creature into a band. Each creature can belong to only one band, and all members must attack the same player, planeswalker, or battle. The band lasts for the rest of combat even if this ability is lost; creatures removed from combat leave the band. Members don't share abilities. A creature blocking any member blocks all members, and an effect that blocks one member blocks the whole band. If this creature is blocking an attacker, you choose how that attacker divides its combat damage among its blockers. If this creature is blocked, you choose how its blockers divide their combat damage among the creatures they block.".into(),
+                M::AssignCreatureSectors => "As a state-based action, each creature without a sector designation is assigned alpha, beta, or gamma sector by its controller. Players who don't control a permanent with this ability assign first, then the other players assign, in active-player order within each group. A permanent keeps its sector until no player controls a permanent with this ability or an ability whose source has this ability. Sector designations aren't copiable.".into(),
+                M::InitializeControllerSpeed => "If you have no speed while you control this permanent, your speed becomes 1 as a state-based action. Whenever one or more opponents lose life during your turn, if your speed is less than 4, your speed increases by 1. This inherent ability has no source and triggers only once each turn. Your speed remains after this permanent leaves the battlefield. Max speed is 4.".into(),
+                M::ChooseSagaEntryChapter => "As this Saga enters, choose a number between one and its final chapter number. It enters with the chosen number of lore counters. Chapter abilities of this Saga can't trigger the turn it entered unless it has exactly the number of lore counters specified in that chapter's symbol.".into(),
+                M::AnotherPlayerPaysGeneric => "As you cast this spell, before activating mana abilities, you may choose another player. That player may activate mana abilities before you do and may pay any amount of the generic mana in this spell's total cost before you pay the rest.".into(),
+                M::EntryLoyaltyReductionPerLifePip => "For each Phyrexian mana symbol paid with life, this planeswalker enters with two fewer loyalty counters.".into(),
                 M::Epic => "Epic".to_string(),
+                M::RecurringCopyOnFirstNameResolution => "If this is the first time a spell you control with this spell's name has resolved this game, at the beginning of each of your precombat main phases for the rest of the game, create a copy of this object in exile. You may cast the copy without paying its mana cost. Exile this spell.".into(),
+                M::RevealSharedTypesForEntryCounters { amount } => format!("As this creature enters, reveal any number of cards from your hand that share a creature type with it. This creature enters with {amount} +1/+1 counters on it for each card revealed this way."),
+                M::CastBothSplitHalvesFromHand => "You may cast one or both halves of this card from your hand. If you cast both, combine their characteristics and mana costs into one spell, then follow the left half's instructions before the right half's instructions.".into(),
+                M::LinkOnGraveyardArrival => "On a permanent, this ability means \"When this permanent is put into a graveyard from the battlefield, exile it haunting target creature.\" On an instant or sorcery spell, this ability means \"When this spell is put into a graveyard during its resolution, exile it haunting target creature.\"".into(),
                 M::Paradigm => "Paradigm".to_string(),
                 M::AssignsCombatDamageAsThoughPowerPositive => {
                     "This creature assigns combat damage as though its power were positive".to_string()

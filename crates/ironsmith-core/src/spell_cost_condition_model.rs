@@ -76,4 +76,6 @@ pub enum ThisSpellCostCondition {
     /// Every listed condition holds ("If a creature is attacking you and you
     /// control a Forest and a Plains", Qasali Ambusher).
     All(Vec<ThisSpellCostCondition>),
+    /// At least one independently evaluated casting condition holds.
+    Any(Vec<ThisSpellCostCondition>),
 }
