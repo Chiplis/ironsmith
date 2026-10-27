@@ -3249,7 +3249,7 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 Effect::goad_for(spec.clone(), duration.clone())
             };
-            let effect = tag_object_target_effect(goad, &spec, ctx, "goaded");
+            let effect = tag_object_target_effect(goad, &spec, ctx, ironsmith_core::keyword_forms::GOADED);
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], choices))
         }
@@ -3349,7 +3349,7 @@ pub(super) fn compile_subject_verb_late(
                 spec
             };
             let effect =
-                tag_object_target_effect(Effect::suspect(spec.clone()), &spec, ctx, "suspected");
+                tag_object_target_effect(Effect::suspect(spec.clone()), &spec, ctx, ironsmith_core::keyword_forms::SUSPECTED);
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target }) => {

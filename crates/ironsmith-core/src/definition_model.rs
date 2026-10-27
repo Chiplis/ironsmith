@@ -163,3 +163,55 @@ where
         })
     }
 }
+
+/// Generic payment shapes produced from a custom keyword's reminder text.
+pub const GENERIC_ALTERNATIVE_COST_NAME: &str = "Parsed alternative cost";
+
+impl<A, E, C, Cond> CardDefinition<A, E, C, crate::AlternativeCastingMethod<E, C, Cond>, crate::OptionalCost<C>>
+where
+    C: CostComponent + Clone,
+    E: Clone,
+    Cond: Clone,
+{
+    /// Attribute the single generic payment a custom keyword's definition
+    /// created to that keyword, so "a spell using <keyword>" can read its
+    /// receipt. Official payments are never renamed. Returns whether a unique
+    /// generic payment existed.
+    pub fn attribute_custom_keyword_payment(&mut self, keyword: &str) -> bool {
+        let keyword = keyword.trim();
+        let generic_alternatives = self
+            .alternative_casts
+            .iter()
+            .filter(|method| method.name().eq_ignore_ascii_case(GENERIC_ALTERNATIVE_COST_NAME))
+            .count();
+        let generic_additional = self
+            .optional_costs
+            .iter()
+            .filter(|cost| cost.reference.kind == crate::OptionalCostKind::Additional && cost.reference.discriminator.is_none())
+            .count();
+        match (generic_alternatives, generic_additional) {
+            (1, 0) => {
+                for method in &mut self.alternative_casts {
+                    if let crate::AlternativeCastingMethod::Composed { name, .. }
+                    | crate::AlternativeCastingMethod::FromZone { name, .. } = method
+                        && name.eq_ignore_ascii_case(GENERIC_ALTERNATIVE_COST_NAME)
+                    {
+                        *name = keyword.to_string().into();
+                        return true;
+                    }
+                }
+                false
+            }
+            (0, 1) => {
+                let cost = self
+                    .optional_costs
+                    .iter_mut()
+                    .find(|cost| cost.reference.kind == crate::OptionalCostKind::Additional)
+                    .expect("counted above");
+                cost.reference.discriminator = Some(keyword.to_string());
+                true
+            }
+            _ => false,
+        }
+    }
+}

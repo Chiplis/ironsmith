@@ -5185,6 +5185,10 @@ struct CustomCardFaceInput {
     /// oracle_text independently of these names.
     #[serde(default)]
     custom_keyword_identities: Vec<String>,
+    /// Custom keywords whose definition created this face's single generic
+    /// optional or alternative payment ("a spell using <keyword>").
+    #[serde(default)]
+    custom_keyword_payments: Vec<String>,
     /// Authored custom-mechanic surface, separate from its strictly compiled expansion.
     #[serde(default)]
     display_oracle_text: Option<String>,

@@ -504,6 +504,16 @@
   gap: 8px;
 }
 
+.card-forge-credit-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px 8px;
+}
+
+.card-forge-credit-field--wide {
+  grid-column: 1 / -1;
+}
+
 .card-forge-printing-credit {
   margin: 2px 0 0;
   font-size: 11px;

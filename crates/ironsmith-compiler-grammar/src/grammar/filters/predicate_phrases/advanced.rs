@@ -2361,6 +2361,12 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
         && is_this_spell_possessive_word(label_words[1])
     {
         named_paid_cost_label_from_word(label_words[2])?
+    } else if let Some(label) = (label_words.len() >= 2 && is_paid_cost_possessive_word(label_words[0]))
+        .then(|| mana_cost_label_from_words(&label_words[1..]))
+        .flatten()
+    {
+        // "its {1}{U} cost": the permanent's own spell paid that mana price.
+        label
     } else if label_words.len() == 2 && is_paid_cost_possessive_word(label_words[0]) {
         named_paid_cost_label_from_word(label_words[1])?
     } else if label_words.len() == 1 {

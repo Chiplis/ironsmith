@@ -1,6 +1,7 @@
-import { prepareCustomCard, mergeMechanics, installCustomMechanics } from "./custom-mechanics.js";
+import { prepareCustomCard, mergeMechanics, installCustomMechanics, uninstallCustomMechanic, validateMechanic } from "./custom-mechanics.js";
 import { cardSearchKey } from "./card-search.js";
 export const CUSTOM_CARD_LIBRARY_CHANGED = "custom-card-library-changed";
+export const CUSTOM_MECHANICS_CHANGED = "custom-mechanics-changed";
 let connection;
 let bundled;
 const normalize = value => String(value || "").trim().toLowerCase();
@@ -73,6 +74,31 @@ export async function reserveCustomMechanics(definitions) {
     tx.onerror = tx.onabort = () => reject(failure || tx.error || new Error("Could not reserve custom mechanics"));
   });
   installCustomMechanics(stored);
+  globalThis.dispatchEvent?.(new Event(CUSTOM_MECHANICS_CHANGED));
+}
+
+// Defined directly in the Mechanics tab rather than discovered on a card.
+export async function saveCustomMechanic(definition) {
+  const def = validateMechanic({ sourceCard: "the Mechanics tab", ...definition });
+  const stored = await listCustomMechanics();
+  const existing = stored.find(mechanic => mechanic.keyword === def.keyword);
+  if (existing) throw new Error(`"${def.keyword}" is already saved (from ${existing.sourceCard}). Delete it first to redefine it.`);
+  await reserveCustomMechanics([def]);
+  return def;
+}
+
+// Saved cards keep their own copy of each definition they use, so deleting a
+// mechanic never changes an existing card; it only frees the name.
+export async function deleteCustomMechanic(keyword) {
+  const db = await database();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("mechanics", "readwrite");
+    tx.objectStore("mechanics").delete(keyword);
+    tx.oncomplete = resolve;
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error("Could not delete the custom mechanic"));
+  });
+  uninstallCustomMechanic(keyword);
+  globalThis.dispatchEvent?.(new Event(CUSTOM_MECHANICS_CHANGED));
 }
 
 export async function previewCustomDraft(draft, compile) {

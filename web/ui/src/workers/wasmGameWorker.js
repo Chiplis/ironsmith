@@ -483,6 +483,9 @@ function collectNamesForMethod(method, args) {
       break;
     case "loadDecks":
       collectDeckNames(args?.[0], names);
+      // Partial test decks are padded to 60 with Plains, which the list
+      // itself may not contain.
+      if (args?.[0]?.allowPartialDecks || args?.[0]?.allow_partial_decks) names.push("Plains");
       break;
     case "addCardToHand":
     case "addCardToZone":

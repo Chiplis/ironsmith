@@ -3297,8 +3297,10 @@ button:disabled,
 }
 
 .card-forge-main { overflow-y: auto; }
+/* The face grows with its editor (an open art crop, say), so the details
+   column scrolls to every control instead of clipping it. */
 .card-forge-face-tabs,
-.card-forge-single-face { min-height: 540px; flex-shrink: 0; }
+.card-forge-single-face { min-height: 540px; flex-shrink: 0; height: auto; overflow: visible; }
 .card-forge-face-content { overflow: visible; }
 .card-forge-inline-editor,
 .card-forge-inline-frame { height: auto; min-height: 100%; }

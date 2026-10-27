@@ -6,6 +6,7 @@ export function normalizeDraftForApi(draft) {
     faces: draft.faces.map((face) => ({
       ...(face.displayOracleText != null ? { displayOracleText: face.displayOracleText } : {}),
       ...(face.customKeywordIdentities?.length ? { customKeywordIdentities: [...face.customKeywordIdentities] } : {}),
+      ...(face.customKeywordPayments?.length ? { customKeywordPayments: [...face.customKeywordPayments] } : {}),
       name: String(face.name || "").trim(),
       manaCost: String(face.manaCost || "").trim() || null,
       colorIndicator: face.colorIndicator || [],

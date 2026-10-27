@@ -5329,7 +5329,7 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push("modified".to_string());
         }
         if self.suspected {
-            parts.push("suspected".to_string());
+            parts.push(ironsmith_core::keyword_forms::SUSPECTED.to_string());
         }
         if self.transformed {
             parts.push("transformed".to_string());
@@ -5338,7 +5338,7 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push("prepared".to_string());
         }
         if self.goaded {
-            parts.push("goaded".to_string());
+            parts.push(ironsmith_core::keyword_forms::GOADED.to_string());
         }
         if self.ring_bearer
             && (!self.card_types.is_empty()
@@ -5656,10 +5656,10 @@ impl ObjectFilterExt for ObjectFilter {
             });
         }
         if self.foretold {
-            parts.push("foretold".to_string());
+            parts.push(ironsmith_core::keyword_forms::FORETOLD.to_string());
         }
         if self.warped {
-            parts.push("warped".to_string());
+            parts.push(ironsmith_core::keyword_forms::WARPED.to_string());
         }
         if let Some(colors) = self.required_colors {
             let mut color_words = Vec::new();

@@ -1,5 +1,6 @@
 import { normalizeDraftForApi } from "@/lib/custom-card-draft";
 import SandboxPanel from "./SandboxPanel";
+import MechanicsPanel from "./MechanicsPanel";
 import CustomCardArtEditor from "./CustomCardArtEditor";
 import BuildCardSearch from "./BuildCardSearch";
 import CardPrintingStage from "./CardPrintingStage";
@@ -989,8 +990,12 @@ export default function CreateCardForgeSheet({
           <Tabs value={workspaceTab} onValueChange={setWorkspaceTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <TabsList variant="line" className="shrink-0 px-4">
               <TabsTrigger value="card" disabled={sandboxBusy}>{ui("Card")}</TabsTrigger>
+              <TabsTrigger value="mechanics" disabled={sandboxBusy}>{ui("Mechanics")}</TabsTrigger>
               <TabsTrigger value="sandbox" disabled={submitting}>{ui("Sandbox")}</TabsTrigger>
             </TabsList>
+            <TabsContent value="mechanics" className="min-h-0 flex-1 overflow-y-auto">
+              <MechanicsPanel />
+            </TabsContent>
             <TabsContent forceMount value="sandbox" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <SandboxPanel currentDraft={draft} onBusyChange={setSandboxBusy} onStarted={() => setOpen(false)} />
             </TabsContent>

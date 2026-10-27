@@ -1406,10 +1406,10 @@ pub(super) fn describe_spell_filter(filter: &ObjectFilter) -> String {
     if filter
         .ability_markers
         .iter()
-        .any(|marker| marker == "kicked")
+        .any(|marker| marker == ironsmith_core::keyword_forms::KICKED)
     {
         let mut base = filter.clone();
-        base.ability_markers.retain(|marker| marker != "kicked");
+        base.ability_markers.retain(|marker| marker != ironsmith_core::keyword_forms::KICKED);
         return format!("kicked {}", describe_spell_filter(&base));
     }
     if filter.source {

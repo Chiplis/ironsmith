@@ -62,3 +62,41 @@ test("the picker opens on its first row and walks with the arrow keys", { timeou
     await vite.close();
   }
 });
+
+test("numbered rows choose a way to play by digit", { timeout: 120000 }, async () => {
+  const vite = await createServer({ server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 900, height: 700 }, reducedMotion: "reduce" });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error?.message || error)));
+    // The second way to play it is unavailable, so its number does nothing.
+    const fixtureActions = actions.map((action, index) => (index === 1 ? { ...action, disabled: true } : action));
+    await page.addInitScript((fixture) => { window.__popoverFixture = fixture; }, {
+      actions: fixtureActions,
+      numberHotkeys: true,
+      anchorRect: { left: 380, top: 420, right: 500, bottom: 560, width: 120, height: 140 },
+    });
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/action-popover-keyboard.html`);
+    const rows = page.locator('[data-action-popover] [data-action-row]');
+    await rows.first().waitFor();
+    assert.deepEqual(
+      await page.locator('[data-action-popover] .action-row-number').allTextContents(),
+      ["1", "2", "3"],
+      "every row carries the number that picks it",
+    );
+    assert.equal(await rows.nth(2).getAttribute("aria-keyshortcuts"), "3");
+
+    await page.waitForTimeout(200); // The open guard ignores the press that opened it.
+    await page.keyboard.press("2");
+    await page.keyboard.press("7");
+    assert.deepEqual(await page.evaluate(() => window.__chosen), [], "disabled and missing rows are not chosen");
+    await page.keyboard.press("3");
+    assert.deepEqual(await page.evaluate(() => window.__chosen), ["Cast Dark Ritual without paying its mana cost"]);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await vite.close();
+  }
+});

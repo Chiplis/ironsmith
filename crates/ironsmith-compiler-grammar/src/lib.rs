@@ -193,7 +193,7 @@ pub mod lexer {
 }
 
 pub use ironsmith_compiler_resolve::condition_antecedents;
-pub use ironsmith_compiler_syntax::keyword_forms;
+pub use ironsmith_core::keyword_forms;
 pub use ironsmith_compiler_resolve::effect_ast_normalization;
 pub use ironsmith_compiler_resolve::effect_ast_traversal;
 pub use ironsmith_compiler_resolve::predicate_conditions as reference_resolution_support;

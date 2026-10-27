@@ -181,6 +181,12 @@ pub(super) fn apply_triggered_presentation_label(
         PresentationLabel::Keyword(PresentationKeyword::Storm) => "Storm".to_string(),
         PresentationLabel::Keyword(PresentationKeyword::Riot) => "Riot".to_string(),
         PresentationLabel::Keyword(PresentationKeyword::Increment) => "Increment".to_string(),
+        // A native keyword's trigger reads as the keyword itself ("Demonstrate"),
+        // never "Keyword — <its expansion>"; that dash form is for ability words.
+        PresentationLabel::Keyword(_) => match presentation_label.display_prefix() {
+            Some(keyword) if !keyword.trim().is_empty() => keyword.trim().to_string(),
+            _ => line,
+        },
         PresentationLabel::AbilityWord(label)
             if label
                 .trim()

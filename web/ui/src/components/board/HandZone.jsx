@@ -1100,9 +1100,21 @@ export default function HandZone({
     return () => window.removeEventListener("pointerdown", dismissPinnedHandCard, true);
   }, [clearAnchoredCardPreview, clearHover, isMobileFan, pinnedHandObjectId]);
 
-  const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
-    // Activating a card tucks the rest of the keyboard-opened hand away.
+  // Put every card back at rest: the keyboard selection, its focus lift and any
+  // preview. Closing the hand only does this for a docked reveal shell, and a
+  // card reached by number or arrow keys must settle wherever the hand sits.
+  const putHandDown = useCallback(() => {
     setHandOpen(false);
+    if (handListRef.current?.contains(document.activeElement)) document.activeElement.blur();
+    keyboardNavigationRef.current = false;
+    setKeyboardNavigationActive(false);
+    setKeyboardSelectedObjectId(null);
+    setPinnedHandObjectId(null);
+    clearHover();
+    clearAnchoredCardPreview();
+  }, [clearAnchoredCardPreview, clearHover]);
+
+  const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
     const plan = handKeyboardCastPlan({ actions: plays, card });
     if (plan) {
       // Holding the card drops it back into its slot, so the layout item —
@@ -1114,6 +1126,8 @@ export default function HandZone({
         || event.currentTarget
       );
       const rect = plainRect(element?.getBoundingClientRect?.());
+      // Activating a card tucks the rest of the keyboard-opened hand away.
+      putHandDown();
       // A battlefield slot is the one thing the key press cannot decide, so the
       // card stays held and the slot follows the mouse until it is released.
       if (handKeyboardCastNeedsPointer(plan)) {
@@ -1135,6 +1149,7 @@ export default function HandZone({
       return;
     }
 
+    setHandOpen(false);
     const targetDecision = state?.decision?.kind === "targets" ? state.decision : null;
     const targetId = Number(card?.id);
     const legalTarget = targetDecision?.requirements?.some((requirement) =>
@@ -1150,7 +1165,7 @@ export default function HandZone({
       return;
     }
     handleCardClick(event, card);
-  }, [handleCardClick, startDrag, state]);
+  }, [handleCardClick, putHandDown, startDrag, state]);
 
   const handleCardDoubleClick = (event, card, plays, glowKind) => {
     if (!plays.length) return;

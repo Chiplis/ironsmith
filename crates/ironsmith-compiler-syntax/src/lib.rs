@@ -14,7 +14,6 @@ pub mod slice_primitives;
 pub mod string_primitives;
 pub mod word_primitives;
 
-pub mod keyword_forms;
 pub mod lexer;
 pub mod token_utils;
 

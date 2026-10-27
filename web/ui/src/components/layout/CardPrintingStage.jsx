@@ -5,6 +5,7 @@ import useUiText from "@/i18n/useUiText";
 import { cardGlintDraftFace } from "@/lib/card-glint/draft.mjs";
 import {
   CARD_BORDER_COLORS,
+  CARD_CREDIT_LIMITS,
   CARD_GLINT_FINISHES,
   CARD_RARITIES,
 } from "@/lib/card-glint/printing-choices.mjs";
@@ -36,6 +37,35 @@ function PresentationChoices({ label, options, value, onChange, translate = true
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Footer credits. The frame places them where its real printings do; an empty
+// field keeps the printing's own credit, shown as the placeholder.
+function CreditFields({ presentation, printing, onChange }) {
+  const ui = useUiText();
+  const printed = printing?.printing ?? {};
+  const fields = [
+    { key: "artist", label: ui("Artist"), placeholder: printed.artist || ui("Artist name"), wide: true },
+    { key: "setCode", label: ui("Set"), placeholder: printed.set?.toUpperCase() || "SET" },
+    { key: "collectorNumber", label: ui("Number"), placeholder: printed.collector_number || "001" },
+  ];
+  return (
+    <div className="card-forge-credit-fields">
+      {fields.map(({ key, label, placeholder, wide }) => (
+        <label key={key} className={cn("card-forge-inline-subtypes", wide && "card-forge-credit-field--wide")}>
+          <span className="card-forge-section-label">{label}</span>
+          <input
+            className="card-forge-input card-forge-input--compact"
+            maxLength={CARD_CREDIT_LIMITS[key]}
+            placeholder={placeholder}
+            spellCheck={false}
+            value={presentation[key] ?? ""}
+            onChange={(event) => onChange({ [key]: key === "setCode" ? event.target.value.toUpperCase() : event.target.value })}
+          />
+        </label>
+      ))}
     </div>
   );
 }
@@ -126,6 +156,7 @@ export default function CardPrintingStage({ draft, faceIndex, printing, onPresen
           onChange={(borderColor) => change({ borderColor })} />
         <PresentationChoices label={ui("Rarity")} options={CARD_RARITIES} value={presentation.rarity}
           onChange={(rarity) => change({ rarity })} />
+        <CreditFields presentation={presentation} printing={printing} onChange={change} />
 
       </div>
     </section>

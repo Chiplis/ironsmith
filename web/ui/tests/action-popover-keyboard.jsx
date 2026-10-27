@@ -3,7 +3,7 @@ import { HoverProvider } from "../src/context/HoverContext";
 import ActionPopover from "../src/components/overlays/ActionPopover";
 import "../src/index.css";
 
-const { actions, anchorRect } = window.__popoverFixture;
+const { actions, anchorRect, numberHotkeys = false } = window.__popoverFixture;
 window.__chosen = [];
 window.__closed = 0;
 
@@ -14,6 +14,7 @@ createRoot(document.getElementById("root")).render(
       actions={actions}
       collapseEquivalentActions={false}
       focusOnOpen
+      numberHotkeys={numberHotkeys}
       ariaLabel="Ways to play Dark Ritual"
       variant="game"
       previewCards={false}

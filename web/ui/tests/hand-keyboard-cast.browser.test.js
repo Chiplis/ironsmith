@@ -255,3 +255,30 @@ test("an accepted drop tucks the hand and suppresses hover for 200ms", async () 
     await h.close();
   }
 });
+
+test("Enter on a keyboard-selected card puts the hand back down", { timeout: 120000 }, async () => {
+  const { page, casts, errors, close } = await harness();
+  const handState = () => page.evaluate(() => ({
+    open: document.querySelector("[data-hand-case]")?.getAttribute("data-hand-open"),
+    keyboardNavigation: Boolean(document.querySelector('[data-hand-case] [data-keyboard-navigation="true"]')),
+    focusedHandCard: Boolean(document.activeElement?.closest?.("[data-hand-case] .game-card")),
+  }));
+  try {
+    // Pick the card by number, walk to it with the arrows, then confirm.
+    for (const route of [["3"], ["1", "ArrowRight", "ArrowRight"]]) {
+      for (const key of route) await page.keyboard.press(key);
+      await page.waitForTimeout(120);
+      const before = await handState();
+      assert.equal(before.focusedHandCard, true, `${route.join(" ")} selects a hand card`);
+      const requested = (await casts()).length;
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(150);
+      assert.equal((await casts()).length, requested + 1, "the several ways to play it go to the picker");
+      assert.deepEqual(await handState(), { open: "false", keyboardNavigation: false, focusedHandCard: false },
+        `after ${route.join(" ")} then Enter the hand returns to rest`);
+    }
+  } finally {
+    assert.deepEqual(errors, []);
+    await close();
+  }
+});

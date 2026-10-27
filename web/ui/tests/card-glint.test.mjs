@@ -85,11 +85,17 @@ test('Build drafts carry their printing style, border and rarity to the painter'
 });
 test('printing choices default to shiny with print effects and reject unknown values', async () => {
   const {normalizeCardPresentation,isDefaultCardPresentation} = await import('../src/lib/card-glint/printing-choices.mjs');
-  assert.deepEqual(normalizeCardPresentation(undefined),{finish:'gloss',printEffects:true,style:'match',frame:null,borderColor:null,rarity:null});
+  assert.deepEqual(normalizeCardPresentation(undefined),{finish:'gloss',printEffects:true,style:'match',frame:null,borderColor:null,rarity:null,
+    artist:'',setCode:'',collectorNumber:''});
   assert.deepEqual(normalizeCardPresentation({finish:'chrome',style:'Bad Style!',frame:'x',borderColor:'gold',rarity:'legendary',printEffects:'yes'}),
     normalizeCardPresentation());
   assert.equal(isDefaultCardPresentation({finish:'gloss'}),true);
   assert.equal(isDefaultCardPresentation({printEffects:false}),false);
+  // Credits print only: the set code stays a painter-safe token and never replaces the symbol's set.
+  const credits = normalizeCardPresentation({artist:'  John   Avon ',setCode:'x y!z1234',collectorNumber:'12a ★'});
+  assert.deepEqual([credits.artist,credits.setCode,credits.collectorNumber],['John Avon','XYZ123','12a★']);
+  const face = cardGlintFace({name:'Custom',type_line:'Instant',mana_cost:'{R}'},{printing:{set:'m21'},presentation:credits});
+  assert.deepEqual([face.artist,face.collectorSetCode,face.collectorNumber,face.setCode],['John Avon','XYZ123','12a★','m21']);
 });
 test('in-game faces use printing choices only for the copy added from Build', async () => {
   const {setCardPresentation,clearCardPresentations,snapshotStableIds} = await import('../src/lib/card-glint/printing-choices.mjs');

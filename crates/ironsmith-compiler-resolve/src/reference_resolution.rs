@@ -2738,10 +2738,10 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "detained")?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. }) => {
-                    maybe_tag_target(target, frame, id_gen, "goaded")?;
+                    maybe_tag_target(target, frame, id_gen, ironsmith_core::keyword_forms::GOADED)?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target }) => {
-                    maybe_tag_target(target, frame, id_gen, "suspected")?;
+                    maybe_tag_target(target, frame, id_gen, ironsmith_core::keyword_forms::SUSPECTED)?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: Some(target) }) => {
                     maybe_tag_target(target, frame, id_gen, "no_longer_suspected")?;

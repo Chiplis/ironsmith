@@ -10,7 +10,8 @@ import "./keyboard-shortcuts.css";
 const SHORTCUTS = [
   { keys: ["Space", "Enter"], action: "Pass priority, or confirm the highlighted main action" },
   { keys: ["←", "→"], action: "Move between cards in your hand. With the hand open, → starts at the first card and ← at the last" },
-  { keys: ["Enter"], scope: "on a hand card", action: "Play or cast that card" },
+  { keys: ["Enter"], scope: "on a hand card", action: "Play or cast that card. If there are several ways to play it, a numbered menu opens" },
+  { keys: ["1–9"], scope: "in the play menu", action: "Choose that way to play the card" },
   { keys: ["."], action: "Open or close your hand" },
   { keys: ["Ctrl"], action: "Raise your hand and show card numbers. Press . to close it" },
   { keys: ["1–9"], action: "Show a card in your hand by position. For card 10 or higher, type its digits within 700 ms (1 then 1 shows card 11)" },

@@ -1323,6 +1323,9 @@ impl WasmGame {
                 false,
             )
             .map_err(|err| JsValue::from_str(&format!("face {} parse failed: {err}", index + 1)))?;
+            for keyword in &face.custom_keyword_payments {
+                definition.attribute_custom_keyword_payment(keyword);
+            }
             if let Some(display) = face.display_oracle_text.as_deref() {
                 // Compilation above remains strict. Only the authored surface is
                 // restored; execution retains the expanded, typed effects.
@@ -1388,6 +1391,11 @@ impl WasmGame {
                     _ => None,
                 }
             }).collect(),
+            custom_keyword_payments: definition.alternative_casts.iter().map(|method| method.name().to_string())
+                .chain(definition.optional_costs.iter().filter_map(|cost| cost.reference.discriminator.clone()))
+                .filter(|name| definition.abilities.iter().any(|ability| matches!(&ability.kind,
+                    ironsmith::ability::AbilityKind::Static(ability) if ability.custom_keyword_name() == Some(name.as_str()))))
+                .collect(),
             display_oracle_text: None,
             name: definition.card.name.clone(),
             mana_cost: definition.card.mana_cost.as_ref().map(ManaCost::to_oracle),

@@ -1918,6 +1918,7 @@ export default function Workspace({
           actions={handActionMenu.actions}
           collapseEquivalentActions={false}
           focusOnOpen={Boolean(handActionMenu.keyboard)}
+          numberHotkeys
           ariaLabel={handActionMenu.keyboard
             ? ui("Ways to play {0}", { 0: handActionMenu.cardName || ui("this card") })
             : null}

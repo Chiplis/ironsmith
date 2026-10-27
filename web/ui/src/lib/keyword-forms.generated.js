@@ -1,5 +1,5 @@
-// Generated from crates/ironsmith-compiler-syntax/src/keyword_forms.rs.
-// Regenerate: UPDATE_KEYWORD_FORMS=1 cargo test -p ironsmith-compiler-syntax keyword_forms
+// Generated from crates/ironsmith-core/src/keyword_forms.rs.
+// Regenerate: UPDATE_KEYWORD_FORMS=1 cargo test -p ironsmith-core --features serde --lib keyword_forms
 
 export const OFFICIAL_KEYWORD_FORMS = Object.freeze([
   Object.freeze({ name: "behold", participle: "beheld", designation: null, costNoun: null, variants: Object.freeze([]) }),

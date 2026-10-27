@@ -170,6 +170,7 @@ pub(super) fn custom_face(
 ) -> CustomCardFaceInput {
     CustomCardFaceInput {
         custom_keyword_identities: Vec::new(),
+        custom_keyword_payments: Vec::new(),
         display_oracle_text: None,
         name: name.to_string(),
         mana_cost: None,

@@ -4846,7 +4846,7 @@ impl WasmGame {
             }
         }
 
-        if allow_partial_decks {
+        if allow_partial_decks && accepted_decks.iter().any(|deck| deck.len() < 60) {
             // Keep every card that resolved and report the rest, but ensure
             // local test libraries still satisfy normal constructed's
             // 60-card setup requirement. Padding uses only a basic land and

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { KEYWORD_FORM_DERIVATION_FIXTURES } from '../src/lib/keyword-forms.generated.js';
 import { deriveParticiple, officialKeywordForms, officialFormsWithCostNoun, customKeywordForms, surfaceForms } from '../src/lib/keyword-forms.js';
-import { validateMechanic, compileDraftInput, mergeMechanics } from '../src/lib/custom-mechanics.js';
+import { validateMechanic, compileDraftInput, mergeMechanics, draftMechanics } from '../src/lib/custom-mechanics.js';
 import { bindReminderCost, bindReminderCostFromDeclaration, hasReminderCostReference } from '../src/lib/reminder-costs.js';
 import { getMtgKeywordRule } from '../src/lib/mtg-keywords.js';
 
@@ -77,4 +77,23 @@ test('participle overrides bind, and unbindable participles are left for strict 
   const [shift] = mergeMechanics([], [{ keyword: 'shift', reminder: 'Draw a card, then discard a card.' }]);
   const [action] = compileDraftInput({ faces: [{ name: 'Act', oracleText: 'Shift.\nIf this spell was shifted, draw a card.' }] }, [shift]).faces;
   assert.match(action.oracleText, /If this spell was shifted/);
+});
+
+test('an alternative-price participle names that price, and the payment is attributed', () => {
+  const [flash] = mergeMechanics([], [{ keyword: 'blink', reminder: 'You may cast this spell for its blink cost.' }]);
+  const [face] = compileDraftInput({ faces: [{ name: 'Blinker', oracleText: 'Blink {1}{U}\nWhen this creature enters, if it was blinked, draw a card.' }] }, [flash]).faces;
+  assert.equal(face.oracleText, 'You may cast this spell for {1}{U}.\nWhen this creature enters, if its {1}{U} cost was paid, draw a card.');
+  assert.deepEqual(face.customKeywordPayments, ['blink']);
+  assert.deepEqual(face.customKeywordIdentities, ['blink']);
+});
+
+test('a designation on another card reads the receipt without taking identity', () => {
+  const [definition] = mergeMechanics([], [blink]);
+  const draft = { faces: [{ name: 'Watcher', oracleText: 'Whenever you cast a blinked creature spell, draw a card.' }] };
+  assert.deepEqual(draftMechanics(draft, [definition]).map(def => def.keyword), ['blink']);
+  const [face] = compileDraftInput(draft, [definition]).faces;
+  assert.equal(face.oracleText, 'Whenever you cast a creature spell using blink, draw a card.');
+  assert.equal(face.customKeywordIdentities, undefined);
+  assert.equal(face.customKeywordPayments, undefined);
+  assert.equal(face.displayOracleText, 'Whenever you cast a blinked creature spell, draw a card.');
 });

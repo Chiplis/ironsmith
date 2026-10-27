@@ -100,6 +100,10 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   };
   const chosen = presentation === undefined ? cardPresentation(card) : presentation;
   if (chosen?.rarity) result.rarity = chosen.rarity;
+  // Typed credits fill the frame's own footer slots, like a printing's do.
+  if (chosen?.artist) result.artist = chosen.artist;
+  if (chosen?.collectorNumber) result.collectorNumber = chosen.collectorNumber;
+  if (chosen?.setCode) result.collectorSetCode = chosen.setCode;
   if (result.land && !palette.length) {
     // Lightweight snapshots can lack identity and intrinsic-mana metadata.
     // Derive intrinsic mana from the resolved canonical type, too: passing an
@@ -120,7 +124,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   else if (print.frame === 'future') result.frameTemplate = 'future';
   if (['split','aftermath','adventure','prepare','flip'].includes(result.layout) && card.card_faces?.length > 1) {
     result.faces = card.card_faces.map((part, index) => cardGlintFace({...part, printing:print}, {
-      imageUrl:part.image_uris?.art_crop ?? imageUrl, printing:print, faceIndex:index, builderCreated, presentation:chosen && {rarity:chosen.rarity},
+      imageUrl:part.image_uris?.art_crop ?? imageUrl, printing:print, faceIndex:index, builderCreated, presentation:chosen && {rarity:chosen.rarity,artist:chosen.artist,setCode:chosen.setCode,collectorNumber:chosen.collectorNumber},
     }));
   }
   // Printing treatments are decoration; keep current rules and characteristics.

@@ -1006,6 +1006,26 @@ where
     }
 
     fn display_base(&self) -> String {
+        // A replacement for a spell's mana cost reads as a casting permission
+        // ("You may cast Dragon spells without paying their mana costs").
+        if let Grantable::AlternativePrice { costs, .. } = &self.grantable {
+            let mut filter = self.filter.clone();
+            filter.zone = None;
+            if matches!(filter.owner, Some(PlayerFilter::You)) {
+                filter.owner = None;
+            }
+            let subject = unlimited_zone_castable_filter_description(&filter);
+            let origin = if self.zone == Zone::Hand { String::new() } else { format!(" from your {}", zone_name(self.zone)) };
+            if costs.is_empty() {
+                return format!("You may cast {subject}{origin} without paying their mana costs");
+            }
+            let price = costs
+                .iter()
+                .map(|cost| cost.display().trim().trim_end_matches('.').to_string())
+                .collect::<Vec<_>>()
+                .join(" and ");
+            return format!("You may cast {subject}{origin} by paying {price} rather than their mana costs");
+        }
         // The permission reads as the plain play permission, then names the
         // extra cost paid with each cast through it.
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ZoneCastFromCardManaCost {

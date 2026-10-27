@@ -687,6 +687,12 @@ pub(super) fn object_has_static_ability_id(object: &Object, ability_id: StaticAb
         .any(|ability| ability.id() == ability_id)
 }
 
+/// The keyword named by a "using <keyword>" marker, which the grammar emits
+/// for a custom keyword's attributive form ("a blinked spell").
+pub(super) fn custom_keyword_payment_marker(marker: &str) -> Option<&str> {
+    marker.trim().strip_prefix("using ").map(str::trim).filter(|keyword| !keyword.is_empty())
+}
+
 pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     object_has_ability_marker_in_view(object, None, marker)
 }
@@ -710,7 +716,7 @@ fn object_has_ability_marker_in_view(
         .unwrap_or(object.ability_labels.as_slice());
     let enchant_filter = chars.map(|chars| chars.aura_attach_filter.as_ref())
         .unwrap_or(object.aura_attach_filter.as_deref());
-    if marker.trim().eq_ignore_ascii_case("kicked") {
+    if marker.trim().eq_ignore_ascii_case(ironsmith_core::keyword_forms::KICKED) {
         return object.optional_costs_paid.was_kicked();
     }
     // "a modal spell" (CR 700.2): its spell text offers modes.
@@ -719,6 +725,10 @@ fn object_has_ability_marker_in_view(
             .spell_effect
             .as_deref()
             .is_some_and(program_offers_modes);
+    }
+    // "a spell using blink": a payment attributed to that custom keyword.
+    if let Some(keyword) = custom_keyword_payment_marker(marker) {
+        return object.optional_costs_paid.paid_custom_keyword(keyword);
     }
     // "a spell using teamwork": its Teamwork optional cost was paid.
     if marker.trim().eq_ignore_ascii_case("teamwork") {
@@ -990,12 +1000,15 @@ pub(super) fn snapshot_has_ability_marker(
     use crate::ability::AbilityKind;
 
     let normalized_marker = marker.trim().to_ascii_lowercase();
-    if normalized_marker == "kicked" {
+    if normalized_marker == ironsmith_core::keyword_forms::KICKED {
         return snapshot.optional_costs_paid.was_kicked();
     }
     if normalized_marker == "modal" {
         return matches!(&snapshot.copiable_values.spell_effect,
             crate::snapshot::SpellProgramState::Present(program) if program_offers_modes(program));
+    }
+    if let Some(keyword) = custom_keyword_payment_marker(marker) {
+        return snapshot.optional_costs_paid.paid_custom_keyword(keyword);
     }
     if normalized_marker == "teamwork" {
         return snapshot.optional_costs_paid.was_paid_label(crate::cost::OptionalCostRef::new(

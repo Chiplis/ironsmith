@@ -42,6 +42,7 @@ export default function ActionPopover({
   disabled = false,
   anchorElement = null,
   focusOnOpen = false,
+  numberHotkeys = false,
   ariaLabel = null,
   onMouseEnter = null,
   onMouseLeave = null,
@@ -121,6 +122,25 @@ export default function ActionPopover({
     if (focusOnOpen && phase === "open") actionRows()[0]?.focus();
   }, [actionRows, focusOnOpen, phase]);
 
+  // Number keys pick a row by its badge, like the numbered hand. Capture runs
+  // ahead of the hand's own digit shortcut, which would select a card instead.
+  const chooseRef = useRef(null);
+  useEffect(() => {
+    if (!numberHotkeys) return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.isComposing || event.repeat
+        || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey
+        || !/^[1-9]$/.test(event.key)
+        || event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      if (chooseRef.current?.(Number(event.key) - 1)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [numberHotkeys]);
+
   const palette = useMemo(
     () => (
       variant === "game"
@@ -170,6 +190,15 @@ export default function ActionPopover({
     ),
     [actions, collapseEquivalentActions]
   );
+  chooseRef.current = (index) => {
+    const action = actionGroups[index]?.firstAction;
+    if (!action || disabled || action.disabled === true) return false;
+    if ((Date.now() - openedAtRef.current) < 160) return true;
+    dispatchHandActionHover(null);
+    clearHover();
+    onAction(action);
+    return true;
+  };
   const estimatedHeight = (actionGroups.length * rowHeight) + headerHeight + 16;
   const popoverHeight = fitViewport
     ? Math.min(measuredHeight ?? estimatedHeight, window.innerHeight - 16)
@@ -329,6 +358,7 @@ export default function ActionPopover({
                 }
               }}
               role="button"
+              aria-keyshortcuts={numberHotkeys && i < 9 ? String(i + 1) : undefined}
               aria-disabled={rowDisabled || undefined}
               aria-pressed={typeof action.selected === "boolean" ? action.selected : undefined}
               tabIndex={rowDisabled ? -1 : 0}
@@ -339,7 +369,9 @@ export default function ActionPopover({
                   transition: "color 180ms ease",
                 }}
               >
-                <span className="flex items-center gap-2"><span className="min-w-0 flex-1"><SymbolText text={stripActionPrefix(group.label || action.label)} /></span>{action.selected && <Check size={15} aria-hidden="true" className="shrink-0" />}</span>
+                <span className="flex items-center gap-2">{numberHotkeys && i < 9 && (
+                  <span className="action-row-number flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-amber-200 bg-slate-950 px-1 text-xs font-bold text-amber-100" aria-hidden="true">{i + 1}</span>
+                )}<span className="min-w-0 flex-1"><SymbolText text={stripActionPrefix(group.label || action.label)} /></span>{action.selected && <Check size={15} aria-hidden="true" className="shrink-0" />}</span>
               </div>
             </div>
           );

@@ -32,7 +32,15 @@ export const CARD_PRINT_EFFECTS = Object.freeze({
 // "match" keeps the card's own printing, i.e. its current set.
 export const DEFAULT_CARD_PRESENTATION = Object.freeze({
   finish:'gloss',printEffects:true,style:'match',frame:null,borderColor:null,rarity:null,
+  artist:'',setCode:'',collectorNumber:'',
 });
+// Footer credits typed in Build. Empty keeps the printing's own credit. The
+// set code is printed only; it never selects a set symbol or calibration.
+export const CARD_CREDIT_LIMITS = Object.freeze({artist:60,setCode:6,collectorNumber:8});
+const credit = (value,limit,pattern) => {
+  const text = typeof value === 'string' ? value.replace(/\s+/g,' ').trim() : '';
+  return (pattern ? text.replace(pattern,'') : text).slice(0,limit);
+};
 
 const pick = (options,value,fallback) => options.some(option => option.id === value) ? value : fallback;
 const styleId = value => typeof value === 'string' && /^[-a-z0-9]{1,48}$/.test(value) ? value : null;
@@ -46,6 +54,9 @@ export function normalizeCardPresentation(value) {
     frame: value?.style === style ? styleId(value?.frame) : null,
     borderColor: pick(CARD_BORDER_COLORS,value?.borderColor ?? null,null),
     rarity: pick(CARD_RARITIES,value?.rarity ?? null,null),
+    artist: credit(value?.artist,CARD_CREDIT_LIMITS.artist),
+    setCode: credit(value?.setCode,CARD_CREDIT_LIMITS.setCode,/[^A-Za-z0-9]/g).toUpperCase(),
+    collectorNumber: credit(value?.collectorNumber,CARD_CREDIT_LIMITS.collectorNumber,/[^A-Za-z0-9★/-]/g),
   };
 }
 

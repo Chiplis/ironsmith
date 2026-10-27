@@ -40,19 +40,28 @@ export function surfaceForms(forms) {
 // Every official name-derived form (participles, designations, variants).
 export const officialSurfaceForms = () => OFFICIAL_KEYWORD_FORMS.flatMap(surfaceForms);
 
-const FORM_FIELDS = ['participle', 'designation', 'costNoun'];
+const FORM_FIELDS = ['participle', 'designation', 'costNoun', 'variants'];
+const plainForm = value => {
+  const form = key(value);
+  if (!/^[a-z][a-z '-]{0,63}$/.test(form)) throw new Error(`Custom keyword form "${value}" must be plain words.`);
+  return form;
+};
 
-// Explicit custom overrides: { participle?, designation?, costNoun? }.
+// Explicit custom overrides: { participle?, designation?, costNoun?, variants? }.
 export function normalizeFormOverrides(forms) {
   if (forms == null) return undefined;
-  if (typeof forms !== 'object' || Array.isArray(forms)) throw new Error('Custom keyword forms must be an object of participle, designation, and costNoun.');
+  if (typeof forms !== 'object' || Array.isArray(forms)) throw new Error('Custom keyword forms must be an object of participle, designation, costNoun, and variants.');
   const result = {};
   for (const [field, value] of Object.entries(forms)) {
-    if (!FORM_FIELDS.includes(field)) throw new Error(`Unknown custom keyword form "${field}". Use participle, designation, or costNoun.`);
+    if (!FORM_FIELDS.includes(field)) throw new Error(`Unknown custom keyword form "${field}". Use participle, designation, costNoun, or variants.`);
     if (value == null || value === '') continue;
-    const form = key(value);
-    if (!/^[a-z][a-z '-]{0,63}$/.test(form)) throw new Error(`Custom keyword form "${value}" must be plain words.`);
-    result[field] = form;
+    if (field === 'variants') {
+      const variants = [...new Set((Array.isArray(value) ? value : String(value).split(/[,\n]/)).map(item => String(item).trim()).filter(Boolean).map(plainForm))];
+      if (variants.length > 8) throw new Error('A custom keyword can have at most 8 other forms.');
+      if (variants.length) result.variants = variants;
+      continue;
+    }
+    result[field] = plainForm(value);
   }
   return Object.keys(result).length ? result : undefined;
 }
@@ -66,6 +75,6 @@ export function customKeywordForms(definition) {
     participle: overrides.participle || deriveParticiple(name),
     designation: overrides.designation || null,
     costNoun: overrides.costNoun || name,
-    variants: [],
+    variants: overrides.variants || [],
   };
 }

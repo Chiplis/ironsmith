@@ -1,7 +1,7 @@
 import { expandKnownReminderDefinition } from './official-reminder-definitions.js';
 import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefinition, bindExileCastObject, hasNextUntapCostDefinition, nextUntapCostText, hasReminderCardParameter, bindReminderCard, isActivationReminder, bindActivationReminder, bindReminderCost, hasReminderCostReference, bindReminderActivationLabel, bindReminderValueFromDeclaration, hasRepeatedCopyPayment, expandRepeatedCopyPayment, bindReminderCostFromDeclaration } from './reminder-costs.js';
 import { MTG_KEYWORD_RULES } from './mtg-keyword-rules.generated.js';
-import { OFFICIAL_KEYWORD_FORMS, officialSurfaceForms, customKeywordForms, normalizeFormOverrides } from './keyword-forms.js';
+import { OFFICIAL_KEYWORD_FORMS, officialSurfaceForms, customKeywordForms, normalizeFormOverrides, surfaceForms } from './keyword-forms.js';
 
 export const mechanicKey = value => String(value || '').normalize('NFKC').replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
 export const reminderKey = value => mechanicKey(value).replace(/[“”]/g, '"');
@@ -31,12 +31,27 @@ export function validateMechanic(definition) {
   }
   const overrides = normalizeFormOverrides(definition.forms);
   const forms = customKeywordForms({ keyword, forms: overrides });
-  for (const form of [forms.participle, forms.designation, forms.costNoun]) {
+  for (const form of [forms.participle, forms.designation, forms.costNoun, ...forms.variants]) {
     if (form && form !== keyword && reservedForms.has(form)) {
       throw new Error(`"${keyword}" cannot use "${form}" as one of its forms; it belongs to an official keyword. Override it in the mechanic's forms.`);
     }
   }
   return { keyword, reminder, expansion: mechanicExpansion(bindReminderActivationLabel(reminder, keyword)), sourceCard: String(definition.sourceCard || 'an earlier card'), version: 1, ...(overrides ? { forms: overrides } : {}) };
+}
+
+// Every word or phrase that names a mechanic: its name and each form.
+const namingForms = def => { const forms = customKeywordForms(def); return [...surfaceForms(forms), forms.costNoun]; };
+
+// A second custom keyword may not reuse another's name or forms; references
+// such as "if it was blinked" must name exactly one mechanic.
+export function mechanicFormClash(definitions, incoming) {
+  const words = new Set(namingForms(incoming));
+  for (const def of definitions) {
+    if (def.keyword === incoming.keyword) continue;
+    const shared = namingForms(def).find(form => words.has(form));
+    if (shared) return new Error(`Custom mechanic "${incoming.keyword}" cannot use "${shared}": "${def.keyword}" (from ${def.sourceCard}) already uses it. Give one of them a different form.`);
+  }
+  return null;
 }
 
 export function mechanicConflict(existing, incoming) {
@@ -48,7 +63,11 @@ export function mergeMechanics(existing, incoming) {
   for (const value of incoming) {
     const def = validateMechanic(value), previous = definitions.get(def.keyword);
     if (previous && reminderKey(previous.reminder) !== reminderKey(def.reminder)) throw mechanicConflict(previous, def);
-    if (!previous) definitions.set(def.keyword, def);
+    if (!previous) {
+      const clash = mechanicFormClash([...definitions.values()], def);
+      if (clash) throw clash;
+      definitions.set(def.keyword, def);
+    }
   }
   return [...definitions.values()];
 }
@@ -126,7 +145,10 @@ function definingReminders(face, keyword) {
 export function draftMechanics(draft, known = []) {
   const supplied = mergeMechanics(known, draft.customMechanics || []);
   const declared = supplied.flatMap(def => draft.faces.flatMap(face => definingReminders(face, def.keyword)));
-  return mergeMechanics(supplied, declared).filter(def => draft.faces.some(face => mechanicPattern(def).test(String(face.oracleText || '').replace(/\([^()]*\)/g, ''))));
+  return mergeMechanics(supplied, declared).filter(def => draft.faces.some(face => {
+    const semantic = String(face.oracleText || '').replace(/\([^()]*\)/g, '');
+    return mechanicPattern(def).test(semantic) || designationPattern(def).test(semantic);
+  }));
 }
 
 export function compileDraftInput(draft, definitions) {
@@ -134,9 +156,13 @@ export function compileDraftInput(draft, definitions) {
     let text = String(face.oracleText || '');
     const semantic = text.replace(/\([^()]*\)/g, '');
     const used = definitions.filter(def => mechanicPattern(def).test(semantic) || valuePattern(def.keyword).test(semantic));
-    if (!used.length) {
+    // A card naming another card's keyword ("a blinked spell") reads its
+    // receipts but never gains its identity.
+    const referenced = definitions.filter(def => designationPattern(def).test(semantic));
+    if (!used.length && !referenced.length) {
       const result = { ...face };
       delete result.customKeywordIdentities;
+      delete result.customKeywordPayments;
       return result;
     }
     // Source presentation is carried explicitly, never reconstructed by
@@ -211,32 +237,71 @@ export function compileDraftInput(draft, definitions) {
       });
     }
     for (const def of used) text = bindParticipleReferences(text, def);
-    return { ...face, oracleText: text, displayOracleText,
-      customKeywordIdentities: used.map(def => def.keyword) };
+    for (const def of referenced) text = bindDesignations(text, def);
+    const payments = used.filter(def => definitionPayment(text, def)).map(def => def.keyword);
+    const result = { ...face, oracleText: text, displayOracleText,
+      customKeywordIdentities: used.map(def => def.keyword),
+      ...(payments.length === 1 ? { customKeywordPayments: payments } : {}) };
+    if (!used.length) delete result.customKeywordIdentities;
+    if (payments.length !== 1) delete result.customKeywordPayments;
+    return result;
   }) };
 }
 
 const OPTIONAL_ADDITIONAL_COST = /\b(?:As an additional cost to cast this spell, you may|You may pay an additional)\b[^.]*/gi;
+const ALTERNATIVE_PRICE = /\bYou may cast this (?:spell|card)\b[^.]*?\bfor ((?:\{[^{}]+\})+)(?=[ .,])/gi;
 const PARTICIPLE_SUBJECTS = '(it|this spell|this creature|this permanent|this card)';
 
-// A participle reference ("if it was blinked") to a custom optional additional
-// cost tests that payment, the generic reading of "kicked". It binds only when
-// the expanded face has exactly one non-repeatable optional additional cost;
-// any other reference is left as written for strict compilation to judge.
-function bindParticipleReferences(text, def) {
-  const { participle } = customKeywordForms(def);
-  const pattern = () => new RegExp(`\\b${PARTICIPLE_SUBJECTS}\\s+(was|wasn't|was not)\\s+${escape(participle)}\\b`, 'gi');
-  if (!pattern().test(text)) return text;
+// The single generic payment a definition creates on an expanded face: an
+// optional additional cost, or an alternative price in mana. Anything else
+// (repeatable, ambiguous, non-mana) has no payment a form can name.
+export function definitionPayment(text, def) {
   const optional = text.match(OPTIONAL_ADDITIONAL_COST) || [];
-  if (optional.length !== 1 || /\bany number of times\b/i.test(optional[0])) return text;
-  if (!(def.expansion.match(OPTIONAL_ADDITIONAL_COST) || []).length) return text;
+  const alternatives = [...text.matchAll(ALTERNATIVE_PRICE)];
+  if (def.expansion.match(OPTIONAL_ADDITIONAL_COST)) {
+    if (optional.length !== 1 || alternatives.length || /\bany number of times\b/i.test(optional[0])) return null;
+    return { kind: 'additional' };
+  }
+  if (/\bYou may cast this (?:spell|card)\b[^.]*?\bfor\b/i.test(def.expansion)) {
+    if (alternatives.length !== 1 || optional.length) return null;
+    return { kind: 'alternative', cost: alternatives[0][1] };
+  }
+  return null;
+}
+
+// A participle reference ("if it was blinked") tests the payment its definition
+// created, the generic reading of "kicked" or "cast for its warp cost". It binds
+// only to a unique payment; any other reference is left as written for strict
+// compilation to judge.
+function bindParticipleReferences(text, def) {
+  const forms = customKeywordForms(def);
+  const words = [forms.participle, ...forms.variants].map(escape).join('|');
+  const pattern = () => new RegExp(`\\b${PARTICIPLE_SUBJECTS}\\s+(was|wasn't|was not)\\s+(?:${words})\\b`, 'gi');
+  if (!pattern().test(text)) return text;
+  const payment = definitionPayment(text, def);
+  if (!payment) return text;
   const before = text;
   return text.replace(pattern(), (match, subject, verb, offset) => {
     if (!outsideQuotation(before, offset)) return match;
     const owner = /^this spell$/i.test(subject) ? "this spell's" : 'its';
     const head = subject[0] === subject[0].toUpperCase() ? owner[0].toUpperCase() + owner.slice(1) : owner;
-    return `${head} additional cost ${/^was$/i.test(verb) ? 'was' : "wasn't"} paid`;
+    const price = payment.kind === 'additional' ? 'additional' : payment.cost;
+    return `${head} ${price} cost ${/^was$/i.test(verb) ? 'was' : "wasn't"} paid`;
   });
+}
+
+// "a blinked spell": another spell paid with that keyword's payment. Rewritten
+// to "a spell using blink", which the compiler reads as that receipt.
+function designationPattern(def) {
+  const forms = customKeywordForms(def);
+  const words = [...new Set([forms.participle, forms.designation, ...forms.variants].filter(Boolean))].map(escape).join('|');
+  return new RegExp(`\\b(${words})\\s+((?:[a-z]+\\s+){0,3}?spells?)\\b`, 'gi');
+}
+
+function bindDesignations(text, def) {
+  const before = text;
+  return text.replace(designationPattern(def), (match, _form, noun, offset) =>
+    outsideQuotation(before, offset) ? `${noun} using ${def.keyword}` : match);
 }
 
 // If another line fails first, still retain an unambiguous bare custom
@@ -357,5 +422,8 @@ export function installCustomMechanics(definitions) {
     }
   }
   if (changed) revision++;
+}
+export function uninstallCustomMechanic(keyword) {
+  if (active.delete(mechanicKey(keyword))) revision++;
 }
 export const activeCustomMechanics = () => [...active.values()];

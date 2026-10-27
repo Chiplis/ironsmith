@@ -609,8 +609,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 // cast with its Teamwork optional cost paid.
                 let using_teamwork = crate::lexer::parser_token_word_refs(filter_tokens)
                     .ends_with(&["using", "teamwork"]);
+                // "a spell using blink": the web binder's reading of a custom
+                // keyword's designation ("a blinked spell"); the receipt of a
+                // payment attributed to that keyword, never an official one.
+                let using_custom = (!using_teamwork)
+                    .then(|| custom_keyword_using_suffix(filter_tokens))
+                    .flatten();
                 let filter_tokens = if using_teamwork {
                     &filter_tokens[..filter_tokens.len().saturating_sub(2)]
+                } else if let Some((start, _)) = &using_custom {
+                    &filter_tokens[..*start]
                 } else {
                     filter_tokens
                 };
@@ -668,7 +676,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 // "a spell" once the marker words are stripped; the marker
                 // still needs a filter to live on (an unqualified spell
                 // trigger has none).
-                if filter_tokens.is_empty() || (is_unqualified_spell && !modal && !using_teamwork) {
+                if filter_tokens.is_empty() || (is_unqualified_spell && !modal && !using_teamwork && using_custom.is_none()) {
                     return Ok(None);
                 }
                 parse_object_filter_lexed(filter_tokens, other)
@@ -684,6 +692,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         }
                         if using_teamwork {
                             filter.ability_markers.push("teamwork".to_string());
+                        }
+                        if let Some((_, keyword)) = &using_custom {
+                            filter.ability_markers.push(format!("using {keyword}"));
                         }
                         if modal {
                             filter.ability_markers.push("modal".to_string());
@@ -6652,4 +6663,19 @@ fn damage_amount_comparison_operator(
         Cmp::NotEqual(n) => (Op::NotEqual, *n),
         _ => return None,
     })
+}
+
+/// `(start, keyword)` for a trailing "using <keyword>" naming a custom keyword:
+/// plain words that are not an official keyword's name or form.
+fn custom_keyword_using_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, String)> {
+    let start = tokens.iter().rposition(|token| token.is_word("using"))?;
+    let words = crate::lexer::parser_token_word_refs(&tokens[start + 1..]);
+    if words.is_empty() || words.len() != tokens.len() - start - 1 || words.len() > 4 {
+        return None;
+    }
+    let keyword = words.join(" ");
+    if crate::keyword_forms::official(&keyword).is_some() || crate::keyword_forms::is_participle(&keyword) {
+        return None;
+    }
+    Some((start, keyword))
 }

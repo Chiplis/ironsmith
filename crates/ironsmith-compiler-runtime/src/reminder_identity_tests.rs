@@ -6619,3 +6619,58 @@ fn reminder_identity_custom_participle_tests_its_own_payment_not_kicker() {
     );
     assert!(raw.is_err());
 }
+
+/// An alternative-price custom keyword's participle binds to that price, and
+/// its payment is attributed to the keyword without any official receipt.
+#[test]
+fn reminder_identity_custom_alternative_participle_and_payment_attribution() {
+    let mut card = definition(
+        "Blinker",
+        "Mana cost: {3}{G}\nYou may cast this spell for {1}{U}.\nWhen this creature enters, if its {1}{U} cost was paid, draw a card.",
+        Some("blink"),
+    );
+    let condition = card.abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Triggered(triggered) => triggered.intervening_if.clone(),
+        _ => None,
+    }).unwrap();
+    let ironsmith::ConditionExpr::ThisSpellPaidLabel(query) = &condition else { panic!("{condition:?}") };
+    assert!(matches!(query.kind, ironsmith_core::OptionalCostKind::AlternativeCast(_)));
+    assert!(card.attribute_custom_keyword_payment("blink"));
+    let [method] = card.alternative_casts.as_slice() else { unreachable!() };
+    assert_eq!(method.name(), "blink");
+    let mut paid = ironsmith_core::OptionalCostsPaid::default();
+    paid.mark_label_paid(ironsmith_core::OptionalCostRef::new(ironsmith_core::OptionalCostKind::AlternativeCast(
+        ironsmith_core::AlternativeCostReference::paid_marker(method.name(), method.mana_cost()),
+    )));
+    assert!(paid.was_paid_label(query.clone()));
+    assert!(paid.paid_custom_keyword("blink"));
+    assert!(!paid.paid_custom_keyword("dash") && !paid.was_kicked());
+
+    // An official alternative price is never renamed for a custom keyword.
+    let mut dash = definition("Dasher", "Dash {1}{R}", None);
+    assert!(!dash.attribute_custom_keyword_payment("blink"));
+    assert_eq!(dash.alternative_casts[0].name(), "Dash");
+}
+
+/// "a spell using blink" (the web binder's "a blinked spell") reads only a
+/// payment attributed to that custom keyword.
+#[test]
+fn reminder_identity_custom_designation_reads_only_its_keyword_receipt() {
+    let watcher = definition("Watcher", "Whenever you cast a spell using blink, draw a card.", None);
+    let trigger = format!("{:?}", watcher.abilities);
+    assert!(trigger.contains("\"using blink\""), "{trigger}");
+    assert!(definition("Official", "Whenever you cast a spell using convoke, draw a card.", None)
+        .abilities.iter().all(|ability| !format!("{ability:?}").contains("using convoke")));
+
+    let mut spell = definition("Blinked", "As an additional cost to cast this spell, you may pay {1}{U}.\nDraw a card.", Some("blink"));
+    assert!(spell.attribute_custom_keyword_payment("blink"));
+    let reference = spell.optional_costs[0].reference.clone();
+    let mut paid = ironsmith_core::OptionalCostsPaid::default();
+    paid.mark_label_paid(reference);
+    assert!(paid.paid_custom_keyword("blink"));
+    assert!(paid.was_paid_label(ironsmith_core::OptionalCostRef::new(ironsmith_core::OptionalCostKind::Additional)));
+    assert!(!paid.paid_custom_keyword("glimmer") && !paid.was_kicked());
+    let mut kicked = ironsmith_core::OptionalCostsPaid::default();
+    kicked.mark_label_paid(definition("Kicked", "Kicker {1}{U}\nDraw a card.", None).optional_costs[0].reference.clone());
+    assert!(!kicked.paid_custom_keyword("blink"));
+}

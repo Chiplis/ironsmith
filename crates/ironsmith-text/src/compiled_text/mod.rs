@@ -164,6 +164,14 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 // Static abilities read through the engine's audit-aware
                 // display: many text renderers here key on retained strings.
                 if let AbilityKind::Static(static_ability) = &ability.kind {
+                    // An Aura's Enchant static mirrors `aura_attach_filter`,
+                    // which the base chunk already read; as in ordinary text,
+                    // it is not a second line.
+                    if static_ability.id() == crate::static_abilities::StaticAbilityId::Enchant
+                        && def.aura_attach_filter.is_some()
+                    {
+                        continue;
+                    }
                     if let Some(line) = static_ability
                         .compiled_model()
                         .and_then(audit_readings::audit_payload_reading)

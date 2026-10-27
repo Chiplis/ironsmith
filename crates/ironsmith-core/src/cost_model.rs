@@ -1283,6 +1283,21 @@ impl OptionalCostRef {
         self.payment_window == CostPaymentWindow::ThisTurn
     }
 
+    /// A generic optional additional cost or alternative cast that a custom
+    /// keyword's definition created carries that keyword's name.
+    pub fn attributed_to_custom_keyword(&self, keyword: &str) -> bool {
+        match &self.kind {
+            OptionalCostKind::Additional => self
+                .discriminator
+                .as_deref()
+                .is_some_and(|name| name.eq_ignore_ascii_case(keyword.trim())),
+            OptionalCostKind::AlternativeCast(reference) => {
+                reference.method_name().eq_ignore_ascii_case(keyword.trim())
+            }
+            _ => false,
+        }
+    }
+
     pub fn matches_query(&self, query: &Self) -> bool {
         if !query.kind.is_query_for(&self.kind) {
             return false;
@@ -1579,6 +1594,12 @@ impl OptionalCostsPaid {
 
     pub fn was_paid(&self, index: usize) -> bool {
         self.costs.get(index).map(|(_, n)| *n > 0).unwrap_or(false)
+    }
+
+    /// Whether a payment attributed to the custom keyword `keyword` was made
+    /// ("a spell using blink"). Official payments never carry that attribution.
+    pub fn paid_custom_keyword(&self, keyword: &str) -> bool {
+        self.costs.iter().any(|(stored, n)| *n > 0 && stored.attributed_to_custom_keyword(keyword))
     }
 
     pub fn was_paid_label(&self, label: impl Into<OptionalCostRef>) -> bool {

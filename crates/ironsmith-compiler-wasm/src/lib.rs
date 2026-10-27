@@ -14,6 +14,10 @@ struct CompileCardInput {
     text: String,
     #[serde(default)]
     custom_keyword_identities: Vec<String>,
+    /// Custom keywords whose definition created this card's single generic
+    /// optional or alternative payment ("a spell using <keyword>").
+    #[serde(default)]
+    custom_keyword_payments: Vec<String>,
     #[serde(default)]
     allow_unsupported: bool,
     #[serde(default = "default_local_id")]
@@ -47,6 +51,9 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
             },
         )
         .map_err(|error| error.to_string())?;
+    for keyword in &input.custom_keyword_payments {
+        compiled.definition.attribute_custom_keyword_payment(keyword);
+    }
     compiled.definition.card.id = CardId::from_raw(local_id);
     compiled.definition.card.other_face = input.other_face_id.map(CardId::from_raw);
     compiled.definition.card.other_face_name = input.other_face_name.clone();

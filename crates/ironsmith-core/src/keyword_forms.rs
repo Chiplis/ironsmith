@@ -328,8 +328,8 @@ pub fn render_js_catalog() -> String {
         value.map_or_else(|| "null".to_string(), |value| format!("{value:?}"))
     }
     let mut out = String::from(
-        "// Generated from crates/ironsmith-compiler-syntax/src/keyword_forms.rs.\n\
-         // Regenerate: UPDATE_KEYWORD_FORMS=1 cargo test -p ironsmith-compiler-syntax keyword_forms\n\n\
+        "// Generated from crates/ironsmith-core/src/keyword_forms.rs.\n\
+         // Regenerate: UPDATE_KEYWORD_FORMS=1 cargo test -p ironsmith-core --features serde --lib keyword_forms\n\n\
          export const OFFICIAL_KEYWORD_FORMS = Object.freeze([\n",
     );
     for forms in OFFICIAL_KEYWORD_FORMS {

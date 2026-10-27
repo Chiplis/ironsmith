@@ -5208,7 +5208,7 @@ impl ObjectFilter {
             parts.push("modified".to_string());
         }
         if self.suspected {
-            parts.push("suspected".to_string());
+            parts.push(crate::keyword_forms::SUSPECTED.to_string());
         }
         if self.transformed {
             parts.push("transformed".to_string());
@@ -5217,7 +5217,7 @@ impl ObjectFilter {
             parts.push("prepared".to_string());
         }
         if self.goaded {
-            parts.push("goaded".to_string());
+            parts.push(crate::keyword_forms::GOADED.to_string());
         }
         if self.ring_bearer
             && (!self.card_types.is_empty()
@@ -5624,10 +5624,10 @@ impl ObjectFilter {
             });
         }
         if self.foretold {
-            parts.push("foretold".to_string());
+            parts.push(crate::keyword_forms::FORETOLD.to_string());
         }
         if self.warped {
-            parts.push("warped".to_string());
+            parts.push(crate::keyword_forms::WARPED.to_string());
         }
         if let Some(colors) = self.required_colors {
             let mut color_words = Vec::new();
@@ -7293,6 +7293,11 @@ impl ObjectFilter {
         for marker in &self.ability_markers {
             if marker.eq_ignore_ascii_case("modal") {
                 parts.push("that's modal".to_string());
+                continue;
+            }
+            // "a spell using blink": a custom keyword's paid designation.
+            if marker.starts_with("using ") {
+                parts.push(marker.to_ascii_lowercase());
                 continue;
             }
             parts.push(format!("with {}", marker.to_ascii_lowercase()));

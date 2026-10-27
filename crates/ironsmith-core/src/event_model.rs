@@ -155,7 +155,7 @@ impl KeywordActionKind {
             "crime" | "crimes" => Some(Self::CommitCrime),
             "craft" | "crafts" | "crafted" | "crafting" => Some(Self::Craft),
             "crew" | "crews" | "crewed" | "crewing" => Some(Self::Crew),
-            "saddle" | "saddles" | "saddled" | "saddling" => Some(Self::Saddle),
+            "saddle" | "saddles" | crate::keyword_forms::SADDLED | "saddling" => Some(Self::Saddle),
             "cycle" | "cycles" | "cycled" => Some(Self::Cycle),
             "cycling" => Some(Self::Cycle),
             "convoke" | "convokes" | "convoked" => Some(Self::Convoke),
@@ -189,7 +189,7 @@ impl KeywordActionKind {
                 Some(Self::EncounterPhenomenon)
             }
             "abandon" | "abandons" | "abandoned" | "abandoning" => Some(Self::AbandonScheme),
-            "plot" | "plots" | "plotted" | "plotting" => Some(Self::Plot),
+            "plot" | "plots" | crate::keyword_forms::PLOTTED | "plotting" => Some(Self::Plot),
             "renown" | "renowned" => Some(Self::Renown),
             "connive" | "connives" | "connived" => Some(Self::Connive),
             "proliferate" | "proliferates" => Some(Self::Proliferate),

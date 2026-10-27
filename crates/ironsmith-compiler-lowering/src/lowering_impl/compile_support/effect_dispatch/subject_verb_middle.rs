@@ -3509,7 +3509,7 @@ pub(super) fn compile_subject_verb_middle(
         }),
         SubjectVerbActionAst::Characteristics(
             CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { target },
-        ) => compile_tagged_effect_for_target(target, ctx, "saddled", |spec| {
+        ) => compile_tagged_effect_for_target(target, ctx, ironsmith_core::keyword_forms::SADDLED, |spec| {
             Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                 spec,
                 Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new()),
