@@ -1465,6 +1465,17 @@ impl CardDefinitionBuilder {
     }
 
     pub fn suspend_with_time(self, time: ironsmith_core::SuspendTime, cost: ManaCost) -> Self {
+        self.suspend_with_counters(time, cost, crate::object::CounterType::Time)
+    }
+
+    /// Suspend's exile triggers over `counter_type` counters; a described
+    /// timed exile may name its own counter (CR 702.62a uses time counters).
+    pub fn suspend_with_counters(
+        self,
+        time: ironsmith_core::SuspendTime,
+        cost: ManaCost,
+        counter_type: crate::object::CounterType,
+    ) -> Self {
         self.alternative_cast(crate::alternative_cast::AlternativeCastingMethod::Suspend {
             cost,
             time,
@@ -1475,14 +1486,14 @@ impl CardDefinitionBuilder {
                     crate::target::PlayerFilter::You,
                 ),
                 effects: vec![crate::effect::Effect::remove_counters(
-                    crate::object::CounterType::Time,
+                    counter_type,
                     1,
                     crate::target::ChooseSpec::Source,
                 )]
                 .into(),
                 choices: vec![],
                 intervening_if: Some(crate::ConditionExpr::SourceHasCounterAtLeast {
-                    counter_type: crate::object::CounterType::Time,
+                    counter_type,
                     count: 1,
                     surface: crate::SourceCounterThresholdSurface::SourceHas,
                 }),
@@ -1498,7 +1509,7 @@ impl CardDefinitionBuilder {
                     crate::triggers::CounterRemovedFromTrigger::new(
                         crate::target::ObjectFilter::source(),
                     )
-                    .counter_type(crate::object::CounterType::Time)
+                    .counter_type(counter_type)
                     .last(),
                 ),
                 effects: vec![crate::effect::Effect::may(vec![

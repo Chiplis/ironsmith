@@ -2538,9 +2538,11 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
             display.to_string()
         } else if let Some(replacement) = &self.replacement_mana_cost {
             if self.filter == ObjectFilter::source() {
+                // An empty replacement cost is the whole mana cost waived.
+                let replacement = replacement.to_oracle();
                 format!(
                     "You may pay {} rather than pay this ability's mana cost",
-                    replacement.to_oracle()
+                    if replacement.is_empty() { "{0}" } else { replacement.as_str() }
                 )
             } else {
                 format!(
@@ -2549,6 +2551,33 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
                     self.filter.description()
                 )
             }
+        } else if self.filter == ObjectFilter::source()
+            && let Some(multiplier) = &self.multiplier
+            && self.per_matching_objects.is_none()
+            && self.per_basic_land_types_among.is_none()
+        {
+            // The reduction scales with a counted value: "{1} less ... for
+            // each +1/+1 counter on creatures you control", "{X} less ...,
+            // where X is the number of differently named lands you control".
+            let (amount, tail) = describe_cost_modifier_amount(multiplier);
+            let amount = if self.reduction == 1 {
+                amount
+            } else {
+                format!("{{{}}}", self.reduction)
+            };
+            let mut line = format!(
+                "This ability costs {}{amount} less to activate",
+                if self.optional { "up to " } else { "" }
+            );
+            if let Some(tail) = tail {
+                if tail.starts_with("where ") {
+                    line.push_str(", ");
+                } else {
+                    line.push(' ');
+                }
+                line.push_str(&tail);
+            }
+            line
         } else if self.filter == ObjectFilter::source() {
             format!("This ability costs {}{{{}}} less to activate", if self.optional { "up to " } else { "" }, self.reduction)
         } else {
@@ -2560,7 +2589,13 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
             )
         };
         if let Some(filter) = &self.per_matching_objects {
-            line.push_str(&format!(" for each {}", filter.description()));
+            // "for each creature ...", not "for each a creature ...".
+            let description = filter.description();
+            let description = description
+                .strip_prefix("a ")
+                .or_else(|| description.strip_prefix("an "))
+                .unwrap_or(&description);
+            line.push_str(&format!(" for each {description}"));
         } else if let Some(filter) = &self.per_basic_land_types_among {
             line.push_str(&format!(
                 " for each basic land type among {}",

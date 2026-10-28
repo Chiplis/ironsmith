@@ -164,6 +164,7 @@ mod relative_opponent_choice;
 
 mod conditional_copy_vanishing;
 
+mod pay_purpose_clause;
 mod urza_land_surfaces;
 mod vote_outcome_pairs;
 
@@ -373,3 +374,4 @@ mod semantic_loss_wave_mc;
 mod semantic_loss_wave_md;
 
 mod cumulative_upkeep_effect_programs;
+mod sequenced_spell_cost_modifier;

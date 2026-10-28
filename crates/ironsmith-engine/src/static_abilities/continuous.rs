@@ -2711,11 +2711,13 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             ) {
                 return "as long as it hasn't dealt damage yet".to_string();
             }
+            // Parenthesized groups are stripped later as reminder text, so a
+            // negation reads "unless ..." rather than "not (...)".
             let positive = describe_static_condition(inner);
-            match positive.strip_prefix("as long as ") {
-                Some(body) => format!("as long as it isn't the case that {body}"),
-                None => format!("as long as not ({positive})"),
-            }
+            format!(
+                "unless {}",
+                positive.strip_prefix("as long as ").unwrap_or(&positive)
+            )
         }
         crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let subject = describe_static_player(player);
@@ -2817,6 +2819,20 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             } else {
                 "controls"
             };
+            if *count == 1 {
+                let described = described_filter.description();
+                let described = if described.starts_with("a ")
+                    || described.starts_with("an ")
+                    || described.starts_with("another ")
+                {
+                    described
+                } else if described.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) {
+                    format!("an {described}")
+                } else {
+                    format!("a {described}")
+                };
+                return format!("as long as {subject} {verb} {described}");
+            }
             format!("as long as {subject} {verb} {count_text} or more {object_text}")
         }
         crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
@@ -2836,6 +2852,48 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         } => {
             if let Some(display) = ironsmith_core::semantic_audit::authored(display.as_deref()) {
                 return format!("as long as {}", display.replace(" dont ", " don't "));
+            }
+            // "as long as it has three or more +1/+1 counters on it".
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && let AnthemCountExpression::CountersOnSource(counter_type)
+                | AnthemCountExpression::CountersOnSourceWithSurface { counter_type, .. }
+                | AnthemCountExpression::CountersOnSourceWithPronoun { counter_type, .. } = count
+                && let Comparison::GreaterThanOrEqual(n @ 1..) | Comparison::LessThanOrEqual(n @ 1..) =
+                    comparison
+            {
+                let counter = counter_type.description();
+                if matches!(comparison, Comparison::LessThanOrEqual(_)) {
+                    let amount = number_word_u32(*n as u32).unwrap_or_else(|| n.to_string());
+                    return format!("as long as it has {amount} or fewer {counter} counters on it");
+                }
+                return if *n == 1 {
+                    format!("as long as it has a {counter} counter on it")
+                } else {
+                    let amount = number_word_u32(*n as u32).unwrap_or_else(|| n.to_string());
+                    format!("as long as it has {amount} or more {counter} counters on it")
+                };
+            }
+            // An audit reads a count of permanents you or an opponent control
+            // with the installed condition reader ("you control no ...").
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && let AnthemCountExpression::MatchingFilter(filter) = count
+                && filter.zone == Some(crate::zone::Zone::Battlefield)
+                && matches!(
+                    filter.controller,
+                    Some(crate::target::PlayerFilter::You | crate::target::PlayerFilter::Opponent)
+                )
+                && matches!(
+                    comparison,
+                    Comparison::GreaterThanOrEqual(1..)
+                        | Comparison::LessThanOrEqual(0)
+                        | Comparison::LessThan(1)
+                        | Comparison::Equal(_)
+                )
+            {
+                return format!(
+                    "as long as {}",
+                    ironsmith_core::semantic_audit::audited_condition("StaticCondition", condition)
+                );
             }
             format!(
                 "as long as there are {} {}",

@@ -59,6 +59,11 @@ pub fn parse_matching_spell_cost_reduction_shape(
     let has_until_your_next_turn_duration =
         common::prefix(&words, &["until", "your", "next", "turn"])
             || has_trailing_until_your_next_turn_duration;
+    // "Noncreature spells cost {1} less to cast until end of turn": the
+    // explicit duration marks a one-shot effect even without a caster
+    // phrase, so it reduces every player's matching spells this turn.
+    let has_trailing_until_end_of_turn_duration =
+        words.ends_with(&["to", "cast", "until", "end", "of", "turn"]);
 
     let after_to_cast = primitives::parse_prefix(
         crate::util::trim_edge_punctuation_tokens(after_less),
@@ -77,8 +82,14 @@ pub fn parse_matching_spell_cost_reduction_shape(
     }
     if cost_token_idx <= spell_token_idx
         || less_token_idx <= cost_token_idx
-        || (!has_you_cast && !has_that_player_casts && !has_chosen_name && !has_opponents_cast)
-        || (!has_this_turn_duration && !has_until_your_next_turn_duration)
+        || (!has_you_cast
+            && !has_that_player_casts
+            && !has_chosen_name
+            && !has_opponents_cast
+            && !has_trailing_until_end_of_turn_duration)
+        || (!has_this_turn_duration
+            && !has_until_your_next_turn_duration
+            && !has_trailing_until_end_of_turn_duration)
         || after_to_cast.is_none()
     {
         return None;
@@ -102,6 +113,12 @@ pub fn parse_matching_spell_cost_reduction_shape(
     // ignores duration words while retaining typed characteristics.
     let subject_tokens =
         crate::util::trim_edge_punctuation_tokens(&tokens[subject_start_token_idx..cost_token_idx]);
+    // "... deals 3 damage, then noncreature spells cost ...": the subject
+    // must not swallow a preceding sequenced clause; the chain splitter
+    // reads each clause on its own.
+    if parser_token_word_refs(subject_tokens).contains(&"then") {
+        return None;
+    }
     let reduction_tokens =
         crate::util::trim_edge_punctuation_tokens(&tokens[cost_token_idx + 1..less_token_idx]);
     let (mut reduction, used) = crate::util::parse_value(reduction_tokens)?;

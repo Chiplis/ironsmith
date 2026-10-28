@@ -1706,7 +1706,8 @@ fn materialize_alternative_cast(
         && let Some((time, price)) = &instructions.timed_exile {
         // Share the two exile triggers, but replace the native permission
         // with the descriptive one so named Suspend queries stay distinct.
-        let mut builder = builder.suspend_with_time(*time, price.clone());
+        let counter = instructions.timed_exile_counter.unwrap_or(crate::object::CounterType::Time);
+        let mut builder = builder.suspend_with_counters(*time, price.clone(), counter);
         builder.alternative_casts.pop();
         return Ok(builder.alternative_cast(method));
     }

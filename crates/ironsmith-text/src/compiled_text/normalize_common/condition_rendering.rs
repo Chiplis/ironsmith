@@ -442,12 +442,134 @@ fn describe_turn_history_value_comparison(
 
     // Presence-oriented prose can discard a higher threshold or a history
     // qualifier (for example a counter type or an excluded source). Audit
-    // the complete query, comparator and threshold instead of that shorthand.
+    // the complete query, comparator and threshold instead of that shorthand,
+    // except for the queries whose prose below reads every field.
     if ironsmith_core::semantic_audit::semantic_audit_active() {
+        use ironsmith_core::TurnHistoryCount as H;
+        let presence_only = matches!(
+            (operator, right.unhinted()),
+            (GreaterThanOrEqual, Value::Fixed(1))
+                | (GreaterThan, Value::Fixed(0))
+                | (Equal, Value::Fixed(0))
+        );
+        let reads_every_field = match query {
+            H::SpellsCast { exclude_source, .. } => !*exclude_source && presence_only,
+            H::KeywordActionsPerformed { .. } => presence_only,
+            H::Died { .. }
+            | H::EnteredBattlefield(_)
+            | H::Sacrificed { .. }
+            | H::CountersPutOn { .. }
+            | H::TokensCreated(_)
+            | H::TokensCreatedMatching { .. }
+            | H::TurnedFaceUp(_)
+            | H::PutIntoGraveyard { .. }
+            | H::CombatDamageSourcesToPlayers { .. }
+            | H::CreaturesAttackedWith { .. }
+            | H::MaxEnteredBattlefieldByController { .. }
+            | H::LandsPlayed(_) => true,
+            // The prose names the owner and zones; it reads the controller
+            // only for a departure from the battlefield.
+            H::MovedZones { filter, from, to } => {
+                filter.controller.is_none() || (*from == Some(Zone::Battlefield) && to.is_none())
+            }
+            // The ordinal prose ("it's the second creature spell you've cast
+            // this turn") reads the player, filter, source exclusion and
+            // event boundary; it has no words for an origin zone.
+            H::SpellsCast {
+                before_triggering_spell: true,
+                from_zone: None,
+                from_outside_hand: false,
+                ..
+            } => operator == Equal,
+            H::DamageDealtBySource
+            | H::Cycled(_)
+            | H::DiscardedOrCycled(_)
+            | H::DealtExcessDamage(_)
+            | H::CardsDrawn(_)
+            | H::PlayersLostLife(_) => true,
+            _ => false,
+        };
+        if reads_every_field
+            && let Some(text) = describe_turn_history_value_comparison_prose(query, operator, right)
+        {
+            return Some(text);
+        }
+        if let Some(text) = audit_turn_history_presence_reading(query, operator, right) {
+            return Some(text);
+        }
         return Some(ironsmith_core::semantic_audit::structural_reading(
             &(query, operator, right), &[],
         ));
     }
+    describe_turn_history_value_comparison_prose(query, operator, right)
+}
+
+/// Audit readings of history queries the ordinary prose leaves to retained
+/// text: library searches, destructions and counters by a cause. Each reads
+/// every field of the query plus a presence or at-least threshold.
+fn audit_turn_history_presence_reading(
+    query: &ironsmith_core::TurnHistoryCount,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<String> {
+    use crate::effect::ValueComparisonOperator::{GreaterThan, GreaterThanOrEqual};
+    use ironsmith_core::TurnHistoryCount as H;
+    let Value::Fixed(count) = right.unhinted() else {
+        return None;
+    };
+    let at_least = match operator {
+        GreaterThanOrEqual if *count >= 1 => *count as u32,
+        GreaterThan if *count >= 0 => *count as u32 + 1,
+        _ => return None,
+    };
+    let times = if at_least == 1 {
+        String::new()
+    } else {
+        format!(
+            " {} or more times",
+            small_number_word(at_least).unwrap_or_else(|| at_least.to_string())
+        )
+    };
+    let controlled = |filter: &ObjectFilter| {
+        let subject = describe_history_filter_subject(filter, "permanent");
+        let controller = match filter.controller.as_ref() {
+            Some(PlayerFilter::You) => " under your control".to_string(),
+            Some(other) => format!(" {} controlled", describe_history_player_subject(other)),
+            None => String::new(),
+        };
+        format!("{}{controller}", with_indefinite_article(&subject))
+    };
+    match query {
+        H::LibrarySearches { player, own_library_only } => Some(format!(
+            "{} searched {}{times} this turn",
+            describe_history_player_subject(player),
+            if *own_library_only { "their library" } else { "a library" }
+        )),
+        H::DestroyedBy { filter, cause } => Some(format!(
+            "{} was destroyed{times} this turn by {}",
+            controlled(filter),
+            describe_history_cause(cause)
+        )),
+        H::CastSpellsCounteredBy { caster, filter, cause } => {
+            let mut spell_filter = filter.clone();
+            spell_filter.zone = None;
+            let spell = describe_spell_cast_condition_object(&spell_filter);
+            let caster = describe_history_player_subject(caster);
+            Some(format!(
+                "{spell} {caster} cast this turn was countered{times} by {}",
+                describe_history_cause(cause)
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn describe_turn_history_value_comparison_prose(
+    query: &ironsmith_core::TurnHistoryCount,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<String> {
+    use crate::effect::ValueComparisonOperator::{Equal, GreaterThan, GreaterThanOrEqual};
 
     if let Some((player, fragment)) = triggering_spell_ordinal_fragment(query, operator, right) {
         return Some(describe_triggering_spell_ordinal_sentence(
@@ -1070,8 +1192,23 @@ fn describe_turn_history_value_comparison(
                 None
             }
         }
+        // "an opponent had two or more creatures enter the battlefield
+        // under their control this turn" (Lavaball Trap).
+        ironsmith_core::TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => {
+            let player = describe_history_player_subject(player);
+            let subject = describe_history_filter_subject(filter, "permanent");
+            let objects = if is_present {
+                with_indefinite_article(&subject)
+            } else if is_absent {
+                format!("no {}", pluralize_relative_object_phrase(&subject))
+            } else {
+                format!("{count_text} or more {}", pluralize_relative_object_phrase(&subject))
+            };
+            Some(format!(
+                "{player} had {objects} enter the battlefield under their control this turn"
+            ))
+        }
         ironsmith_core::TurnHistoryCount::LibrarySearches { .. }
-        | ironsmith_core::TurnHistoryCount::MaxEnteredBattlefieldByController { .. }
         | ironsmith_core::TurnHistoryCount::DestroyedBy { .. }
         | ironsmith_core::TurnHistoryCount::CastSpellsCounteredBy { .. }
         | ironsmith_core::TurnHistoryCount::Descended(_)
@@ -1891,10 +2028,46 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
     if ironsmith_core::semantic_audit::semantic_audit_active() {
         // Prose coalescing such as "you've done all three" loses the identity
         // of the individual predicates. Preserve the logical tree in audits.
+        // Bracketed groups would be stripped later as annotations, erasing
+        // the operands, so a nested group of the other connective reads as
+        // "both ... and ..." / "either ... or ...".
+        fn operand(condition: &Condition, outer_is_and: bool) -> String {
+            match condition {
+                Condition::Or(a, b) if outer_is_and => {
+                    format!("either {} or {}", operand(a, false), operand(b, false))
+                }
+                Condition::And(a, b) if !outer_is_and => {
+                    format!("both {} and {}", operand(a, true), operand(b, true))
+                }
+                Condition::And(a, b) => format!("{} and {}", operand(a, true), operand(b, true)),
+                Condition::Or(a, b) => format!("{} or {}", operand(a, false), operand(b, false)),
+                other => describe_condition(other),
+            }
+        }
+        // "it's attacking alone": the source attacks and it is the only
+        // attacking creature (a structural pair, not prose).
+        if let Condition::And(left, right) = condition
+            && matches!(left.as_ref(), Condition::SourceIsAttacking)
+            && let Condition::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(counted),
+                comparison: crate::effect::Comparison::Equal(1),
+                ..
+            } = right.as_ref()
+            && counted.attacking
+            && counted.card_types.as_slice() == [CardType::Creature]
+            && counted.controller.is_none()
+            && !counted.source
+            && counted.tagged_constraints.is_empty()
+            && counted.subtypes.is_empty()
+        {
+            return "it's attacking alone".to_string();
+        }
         match condition {
-            Condition::And(a, b) => return format!("[{}] and [{}]", describe_condition(a), describe_condition(b)),
-            Condition::Or(a, b) => return format!("[{}] or [{}]", describe_condition(a), describe_condition(b)),
-            Condition::Not(inner) => return format!("not [{}]", describe_condition(inner)),
+            Condition::And(..) => return operand(condition, true),
+            Condition::Or(..) => return operand(condition, false),
+            Condition::Not(inner) if matches!(inner.as_ref(), Condition::And(..) | Condition::Or(..)) => {
+                return format!("it is not the case that {}", describe_condition(inner));
+            }
             _ => {}
         }
     }
@@ -2612,6 +2785,15 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             let described = strip_indefinite_article(&described_filter.description()).to_string();
+            // "you control a Vampire": one or more is any.
+            if *count == 1 && !described.starts_with("other ") {
+                return format!(
+                    "{} {} {}",
+                    subject,
+                    player_verb(&subject, "control", "controls"),
+                    with_indefinite_article(&described)
+                );
+            }
             let noun = pluralize_noun_phrase(&described);
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
@@ -5449,6 +5631,74 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             if let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) = count {
                 let objects =
                     pluralize_noun_phrase(strip_indefinite_article(&filter.description()));
+                // "you control a legendary creature" / "you control two or
+                // more Elves": a battlefield count over your own permanents.
+                let controls = match filter.controller {
+                    Some(PlayerFilter::You) => Some("you control"),
+                    Some(PlayerFilter::Opponent) => Some("an opponent controls"),
+                    _ => None,
+                };
+                if let Some(controls) = controls
+                    && filter.zone == Some(Zone::Battlefield)
+                    && matches!(
+                        comparison,
+                        ironsmith_core::Comparison::LessThanOrEqual(0)
+                            | ironsmith_core::Comparison::LessThan(1)
+                            | ironsmith_core::Comparison::Equal(_)
+                    )
+                {
+                    let mut base = filter.clone();
+                    base.controller = None;
+                    base.zone = None;
+                    let description = base.description();
+                    let noun = strip_indefinite_article(&description);
+                    return match comparison {
+                        ironsmith_core::Comparison::Equal(n) => {
+                            let amount = ironsmith_core::cardinal_word(*n as u32)
+                                .unwrap_or_else(|| n.to_string());
+                            let objects = if *n == 1 {
+                                noun.to_string()
+                            } else {
+                                pluralize_relative_object_phrase(noun)
+                            };
+                            format!("{controls} exactly {amount} {objects}")
+                        }
+                        _ => format!("{controls} no {}", pluralize_relative_object_phrase(noun)),
+                    };
+                }
+                if let ironsmith_core::Comparison::GreaterThanOrEqual(n) = comparison
+                    && *n > 0
+                    && filter.zone == Some(Zone::Battlefield)
+                    && let Some(controls) = controls
+                {
+                    let mut base = filter.clone();
+                    base.controller = None;
+                    base.zone = None;
+                    let description = base.description();
+                    if *n == 1 {
+                        let described = if description.starts_with("a ")
+                            || description.starts_with("an ")
+                            || description.starts_with("another ")
+                        {
+                            description
+                        } else {
+                            with_indefinite_article(&description)
+                        };
+                        return format!("{controls} {described}");
+                    }
+                    let amount = ironsmith_core::cardinal_word(*n as u32)
+                        .unwrap_or_else(|| n.to_string());
+                    return format!(
+                        "{controls} {amount} or more {}",
+                        pluralize_relative_object_phrase(strip_indefinite_article(&description))
+                    );
+                }
+                if let ironsmith_core::Comparison::GreaterThanOrEqual(1) = comparison {
+                    return format!(
+                        "at least one {}",
+                        strip_indefinite_article(&filter.description())
+                    );
+                }
                 if let ironsmith_core::Comparison::GreaterThanOrEqual(n) = comparison
                     && *n > 0
                 {
@@ -5463,13 +5713,24 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 return match count {
                     Count::CountersOnSource(counter_type)
                     | Count::CountersOnSourceWithSurface { counter_type, .. }
-                    | Count::CountersOnSourceWithPronoun { counter_type, .. } => format!(
-                        "the number of {} counters on this permanent is {}",
-                        describe_counter_type(*counter_type),
-                        describe_comparison(comparison)
-                    ),
+                    | Count::CountersOnSourceWithPronoun { counter_type, .. } => match comparison {
+                        ironsmith_core::Comparison::GreaterThanOrEqual(1) => format!(
+                            "it has a {} counter on it",
+                            describe_counter_type(*counter_type)
+                        ),
+                        ironsmith_core::Comparison::GreaterThanOrEqual(n) if *n > 1 => format!(
+                            "it has {} or more {} counters on it",
+                            ironsmith_core::cardinal_word(*n as u32).unwrap_or_else(|| n.to_string()),
+                            describe_counter_type(*counter_type)
+                        ),
+                        _ => format!(
+                            "the number of {} counters on this permanent {}",
+                            describe_counter_type(*counter_type),
+                            describe_comparison(comparison)
+                        ),
+                    },
                     other => format!(
-                        "the count {} is {}",
+                        "the count {} {}",
                         ironsmith_core::semantic_audit::structural_reading(other, &[]),
                         describe_comparison(comparison)
                     ),

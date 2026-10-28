@@ -3993,6 +3993,34 @@ if filter.zone == Some(Zone::Hand)
             let mut plain_move = move_to_zone.clone();
             plain_move.entry_type_changes = None;
             let rendered = describe_effect(&Effect::new(plain_move));
+            // Purely additive entry changes read as Oracle's "It's a black
+            // Zombie in addition to its other colors and types".
+            if changes.removed_subtype_families.is_empty()
+                && (!changes.added_subtypes.is_empty() || !changes.added_card_types.is_empty())
+                && changes.color_changes.iter().all(|change| {
+                    matches!(change, ironsmith_core::effect::BattlefieldEntryColorChange::Add(_))
+                })
+            {
+                let mut words = Vec::new();
+                for change in &changes.color_changes {
+                    if let ironsmith_core::effect::BattlefieldEntryColorChange::Add(colors) = change {
+                        words.extend(
+                            crate::color::Color::ALL
+                                .into_iter()
+                                .filter(|color| colors.contains(*color))
+                                .map(|color| color.name().to_string()),
+                        );
+                    }
+                }
+                let others = if words.is_empty() { "types" } else { "colors and types" };
+                words.extend(changes.added_subtypes.iter().map(|kind| format!("{kind}")));
+                words.extend(changes.added_card_types.iter().map(|kind| kind.name().to_string()));
+                return format!(
+                    "{}. It's {} in addition to its other {others}",
+                    rendered.trim_end_matches('.'),
+                    with_indefinite_article(&words.join(" "))
+                );
+            }
             let mut clauses = changes.removed_subtype_families.iter()
                 .map(|family| format!("it loses all {}s", family.type_phrase())).collect::<Vec<_>>();
             for change in &changes.color_changes {

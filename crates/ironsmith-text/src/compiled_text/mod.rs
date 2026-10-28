@@ -143,6 +143,7 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 .or_else(|| value.downcast_ref::<crate::effect::Restriction>().map(describe_restriction))
                 .or_else(|| value.downcast_ref::<ironsmith_core::ThisSpellCostCondition>()
                     .and_then(crate::static_abilities::describe_this_spell_cost_condition))
+                .or_else(|| value.downcast_ref::<crate::effect::Value>().map(describe_value))
         },
         || {
             // Each ability renders alone: the ordinary pipeline merges and
@@ -153,8 +154,38 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
             let mut base = def.clone();
             base.abilities.clear();
             base.ability_labels.clear();
-            let mut lines = compiled_text_lines(&base);
-            for (index, ability) in def.abilities.iter().enumerate() {
+            let base_lines = compiled_text_lines(&base);
+            let mut lines: Vec<(AuditLine, String)> = base_lines
+                .iter()
+                .cloned()
+                .map(|line| (AuditLine::Rendered, line))
+                .collect();
+            // CR 716.2a: a Class level's ability is printed under its level
+            // header; the self-grant gated on that level reads as the
+            // granted abilities, as in the ordinary renderer.
+            let abilities = def
+                .abilities
+                .iter()
+                .enumerate()
+                .flat_map(|(index, ability)| {
+                    if let AbilityKind::Static(static_ability) = &ability.kind
+                        && matches!(
+                            static_ability.granted_inline_condition(),
+                            Some(crate::ConditionExpr::SourceClassLevelAtLeast(_))
+                        )
+                    {
+                        let mut granted = static_ability.source_granted_inline_abilities();
+                        if granted.is_empty() {
+                            granted.extend(static_ability.granted_inline_ability());
+                        }
+                        if !granted.is_empty() {
+                            return granted.into_iter().map(|inner| (index, inner)).collect::<Vec<_>>();
+                        }
+                    }
+                    vec![(index, ability)]
+                })
+                .collect::<Vec<_>>();
+            for (index, ability) in abilities {
                 let mut single = def.clone();
                 single.spell_effect = None;
                 single.alternative_casts.clear();
@@ -164,6 +195,77 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 // Static abilities read through the engine's audit-aware
                 // display: many text renderers here key on retained strings.
                 if let AbilityKind::Static(static_ability) = &ability.kind {
+                    // Abilities parsed from one printed line share a group,
+                    // keyed only by label equality, so adjacent readings are
+                    // merged only where the card prints them together.
+                    let group = (0..=index)
+                        .rev()
+                        .take_while(|&earlier| {
+                            def.ability_labels.get(earlier).is_some()
+                                && def.ability_labels.get(earlier) == def.ability_labels.get(index)
+                        })
+                        .last()
+                        .unwrap_or(index);
+                    // Level up tiers print as the card lays them out: the
+                    // range, the base power/toughness, then each ability.
+                    if let Some(levels) = static_ability.level_abilities()
+                        && !levels.is_empty()
+                    {
+                        let subject = subject_for_card(&def.card);
+                        for level in levels {
+                            let range = match level.max_level {
+                                Some(max) if max == level.min_level => format!("Level {}", level.min_level),
+                                Some(max) => format!("Level {}-{}", level.min_level, max),
+                                None => format!("Level {}+", level.min_level),
+                            };
+                            lines.push((AuditLine::Rendered, format!("{range}.")));
+                            if let Some((power, toughness)) = level.power_toughness {
+                                lines.push((AuditLine::Rendered, format!("{power}/{toughness}.")));
+                            }
+                            for granted in &level.abilities {
+                                let text = granted.display();
+                                let text = text.trim().trim_end_matches('.');
+                                let text = audit_static_subject_surface(
+                                    &format!("{}.", capitalize_first(text)),
+                                    subject,
+                                    None,
+                                );
+                                lines.push((AuditLine::Rendered, text));
+                            }
+                            // CR 711.2a: a tier's activated abilities are
+                            // separate abilities gated on its level range;
+                            // they print under the tier header.
+                            for (other_index, other) in def.abilities.iter().enumerate() {
+                                let AbilityKind::Activated(activated) = &other.kind else {
+                                    continue;
+                                };
+                                if level_range_activation_prefix(activated).as_deref() != Some(range.as_str()) {
+                                    continue;
+                                }
+                                let mut tier_ability = other.clone();
+                                if let AbilityKind::Activated(activated) = &mut tier_ability.kind {
+                                    activated
+                                        .additional_restrictions
+                                        .retain(|restriction| !restriction.starts_with("__ironsmith_level_range:"));
+                                }
+                                let mut tier = single.clone();
+                                tier.abilities = vec![tier_ability];
+                                tier.ability_labels =
+                                    def.ability_labels.get(other_index).cloned().into_iter().collect();
+                                lines.extend(
+                                    compiled_text_lines(&tier)
+                                        .into_iter()
+                                        .map(|line| (AuditLine::Rendered, line)),
+                                );
+                            }
+                        }
+                        continue;
+                    }
+                    let kind = if static_ability.is_keyword() {
+                        AuditLine::Keyword(group)
+                    } else {
+                        AuditLine::Static(group)
+                    };
                     // An Aura's Enchant static mirrors `aura_attach_filter`,
                     // which the base chunk already read; as in ordinary text,
                     // it is not a second line.
@@ -176,7 +278,7 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                         .compiled_model()
                         .and_then(audit_readings::audit_payload_reading)
                     {
-                        lines.push(format!("{}.", capitalize_first(line.trim_end_matches('.'))));
+                        lines.push((kind, format!("{}.", capitalize_first(line.trim_end_matches('.')))));
                         continue;
                     }
                     // Rule restrictions have a typed reader here.
@@ -192,23 +294,733 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                             .map(describe_restriction)
                             .collect::<Vec<_>>()
                             .join(" and ");
-                        lines.push(format!("{}.", capitalize_first(line.trim_end_matches('.'))));
+                        lines.push((kind, format!("{}.", capitalize_first(line.trim_end_matches('.')))));
                         continue;
                     }
                     let line = static_ability.display();
                     let line = line.trim().trim_end_matches('.');
                     if !line.is_empty() {
-                        lines.push(format!("{}.", capitalize_first(line)));
+                        lines.push((kind, format!("{}.", capitalize_first(line))));
                     }
                     continue;
                 }
                 single.abilities = vec![ability.clone()];
                 single.ability_labels = def.ability_labels.get(index).cloned().into_iter().collect();
-                lines.extend(compiled_text_lines(&single));
+                // The attachment filter names "enchanted creature" in the
+                // ability; its own Enchant / attach-only line belongs to the
+                // base chunk, so a repeat of it is dropped here.
+                single.aura_attach_filter = def.aura_attach_filter.clone();
+                lines.extend(
+                    compiled_text_lines(&single)
+                        .into_iter()
+                        .filter(|line| {
+                            !((line.starts_with("Enchant ")
+                                || line.starts_with("This Equipment can be attached only to "))
+                                && base_lines.contains(line))
+                        })
+                        .map(|line| (AuditLine::Rendered, line)),
+                );
             }
-            lines
+            compact_station_threshold_lines(collapse_audit_keyword_expansions(
+                finish_audit_static_lines(def, lines),
+            ))
         },
     )
+}
+
+/// Where a semantic-audit line came from: an ordinary per-ability render, or
+/// the audit reading of a static ability (keywords tracked apart).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AuditLine {
+    Rendered,
+    /// A static reading, with the index of the first ability of its printed
+    /// line.
+    Static(usize),
+    Keyword(usize),
+}
+
+/// Static audit readings come from the engine without card context. Give them
+/// the subjects the card's own types and enchant filter fix ("equipped
+/// creature", "this creature"), print keywords as a keyword line, and run the
+/// readings of each printed line that holds several statics through the
+/// text-only surface merges. The merges see only audit readings, never
+/// retained prose, and marker lines pass through untouched.
+fn finish_audit_static_lines(def: &CardDefinition, lines: Vec<(AuditLine, String)>) -> Vec<String> {
+    let subject = subject_for_card(&def.card);
+    let attached = audit_attached_subject(def);
+    let mut out = Vec::with_capacity(lines.len());
+    let mut run: Vec<String> = Vec::new();
+    let mut run_group = None;
+    let flush = |run: &mut Vec<String>, out: &mut Vec<String>| match run.len() {
+        0 => {}
+        1 => out.append(run),
+        _ => out.extend(normalize_ast_surface_lines(std::mem::take(run))),
+    };
+    for (kind, line) in lines {
+        let group = match kind {
+            AuditLine::Static(group) | AuditLine::Keyword(group) => Some(group),
+            AuditLine::Rendered => None,
+        };
+        if group.is_none()
+            || group != run_group
+            || line.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX)
+        {
+            flush(&mut run, &mut out);
+            run_group = None;
+        }
+        if group.is_none() || line.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX) {
+            // "As this land enters": a bare "this" names the card itself.
+            out.push(
+                line.replace("As this enters", &format!("As {subject} enters"))
+                    .replace("When this enters", &format!("When {subject} enters")),
+            );
+            continue;
+        }
+        run_group = group;
+        let line = audit_static_subject_surface(&line, subject, attached.as_deref());
+        // CR 100.2a: the deck-construction copy limit counts cards by name.
+        let line = line.replace(" copies of this card", &format!(" cards named {}", def.card.name));
+        if matches!(kind, AuditLine::Keyword(_))
+            || merge_passes::is_keyword_phrase(line.trim().trim_end_matches('.'))
+        {
+            let keyword = line.trim().trim_end_matches('.').to_string();
+            // Simple keywords share one printed line ("Flying, vigilance").
+            if is_simple_audit_keyword(&keyword)
+                && let Some(previous) = run.last_mut()
+                && previous
+                    .split(", ")
+                    .all(|part| is_simple_audit_keyword(part))
+            {
+                // "protection from black and from red"
+                let last = previous.rsplit(", ").next().unwrap_or("").to_ascii_lowercase();
+                if last.starts_with("protection from ")
+                    && let Some(quality) = keyword.to_ascii_lowercase().strip_prefix("protection from ")
+                {
+                    previous.push_str(&format!(" and from {quality}"));
+                    continue;
+                }
+                previous.push_str(", ");
+                previous.push_str(&lowercase_first(&keyword));
+            } else {
+                run.push(keyword);
+            }
+            continue;
+        }
+        run.push(line);
+    }
+    flush(&mut run, &mut out);
+    out
+}
+
+/// A subject with no determiner naming a kind of object ("Sliver",
+/// "Creature with flying"), which a rule applies to every such object.
+fn is_bare_singular_subject(head: &str) -> bool {
+    let Some(first) = head.split(' ').next() else {
+        return false;
+    };
+    let kinds = [
+        "Creature", "Artifact", "Land", "Enchantment", "Planeswalker", "Permanent",
+        "Nonland", "Noncreature", "Nonartifact", "Nonbasic", "Legendary", "Basic",
+    ];
+    if kinds.contains(&first) {
+        return !head.contains(" you ") && !head.ends_with('s');
+    }
+    !head.contains(' ')
+        && first.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+        && !first.ends_with('s')
+        && ![
+            "It", "This", "That", "Each", "All", "Other", "Another", "You", "Target",
+            "Enchanted", "Equipped", "Fortified", "The", "A", "An",
+        ]
+        .contains(&first)
+}
+
+/// The number a counter-entry reading names: "a" / "two" / "12".
+fn audit_count_word(word: &str) -> Option<u32> {
+    if matches!(word, "a" | "an") {
+        return Some(1);
+    }
+    word.parse().ok().or_else(|| {
+        (1..=30u32).find(|n| ironsmith_core::cardinal_word(*n).as_deref() == Some(word))
+    })
+}
+
+/// "Enters the battlefield with three time counters on it." -> 3 for "time".
+fn audit_entry_counters(line: &str, kind: &str) -> Option<u32> {
+    let rest = line.strip_prefix("Enters the battlefield with ").or_else(|| {
+        line.strip_prefix("This ")
+            .and_then(|rest| rest.split_once(" enters with "))
+            .filter(|(noun, _)| !noun.contains(' '))
+            .map(|(_, rest)| rest)
+    })?;
+    let rest = rest
+        .strip_suffix(&format!(" {kind} counters on it."))
+        .or_else(|| rest.strip_suffix(&format!(" {kind} counter on it.")))?;
+    audit_count_word(rest)
+}
+
+/// Keyword abilities whose whole executable expansion is present read as the
+/// keyword. Each pattern matches every line of the expansion and reads the
+/// parameter back from those lines, so a partial or altered expansion stays
+/// spelled out.
+fn collapse_audit_keyword_expansions(lines: Vec<String>) -> Vec<String> {
+    let has_line = |prefix: &str| lines.iter().any(|line| line.starts_with(prefix));
+    let partner_with = lines
+        .iter()
+        .find_map(|line| line.trim_end_matches('.').strip_prefix("Partner with ").map(str::to_string));
+    let dash = has_line("Dash ");
+    let suspend = has_line("Suspend ");
+    let reconfigure_cost = lines
+        .iter()
+        .find_map(|line| line.trim_end_matches('.').strip_prefix("Reconfigure ").map(str::to_string));
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    let mut idx = 0;
+    while idx < lines.len() {
+        let line = lines[idx].as_str();
+        let next = lines.get(idx + 1).map(String::as_str).unwrap_or("");
+        let third = lines.get(idx + 2).map(String::as_str).unwrap_or("");
+        let vanishing_upkeep = |text: &str| {
+            text.starts_with("At the beginning of your upkeep, if this ")
+                && text.ends_with(" has a time counter on it, remove a time counter from it.")
+        };
+        let vanishing_sacrifice = |text: &str| {
+            text.starts_with("When the last time counter is removed from this ")
+                && text.contains(", sacrifice this ")
+        };
+        if let Some(n) = audit_entry_counters(line, "time")
+            && vanishing_upkeep(next)
+            && vanishing_sacrifice(third)
+        {
+            out.push(format!("Vanishing {n}"));
+            idx += 3;
+            continue;
+        }
+        if vanishing_upkeep(line) && vanishing_sacrifice(next) {
+            out.push("Vanishing".to_string());
+            idx += 2;
+            continue;
+        }
+        if let Some(n) = audit_entry_counters(line, "fade")
+            && next.starts_with(
+                "At the beginning of your upkeep, remove a fade counter from it. If that doesn't happen, sacrifice this ",
+            )
+        {
+            out.push(format!("Fading {n}"));
+            idx += 2;
+            continue;
+        }
+        if let Some(n) = audit_entry_counters(line, "+1/+1") {
+            if next.starts_with("When this ")
+                && next.contains(" dies, tag the triggering object as 'modular_triggering_object', then you may put the number of +1/+1 counters on the tagged object 'modular_triggering_object' +1/+1 counters on target artifact creature")
+            {
+                out.push(format!("Modular {n}"));
+                idx += 2;
+                continue;
+            }
+            if next.starts_with("Whenever another creature enters, if this ")
+                && next.contains(" has a +1/+1 counter on it, tag the triggering object as 'graft_entered_creature', then you may move a +1/+1 counter from this ")
+            {
+                out.push(format!("Graft {n}"));
+                idx += 2;
+                continue;
+            }
+        }
+        if line == "This creature enters with X +1/+1 counters on it."
+            && next == "When this creature enters, if X is 5 or more, draw a card."
+        {
+            out.push("Ravenous".to_string());
+            idx += 2;
+            continue;
+        }
+        const RIOT: [&str; 3] = [
+            "As this creature enters, choose one \u{2014}",
+            "\u{2022} Put a +1/+1 counter on this creature.",
+            "\u{2022} This creature gains Haste.",
+        ];
+        if line == RIOT.join("\n") {
+            out.push("Riot".to_string());
+            idx += 1;
+            continue;
+        }
+        if [line, next, third] == RIOT {
+            out.push("Riot".to_string());
+            idx += 3;
+            continue;
+        }
+        if line.starts_with("As this creature attacks, you may tap a nonattacking creature you control without summoning sickness. When you do, this creature gets +1/+0 for each the tagged object 'enlisted_creature''s power until end of turn") {
+            out.push("Enlist".to_string());
+            idx += 1;
+            continue;
+        }
+        // Champion's linked return trigger is part of the keyword (CR
+        // 702.72a); the ETB half already reads as "Champion a X".
+        if line.starts_with("Champion ")
+            && !line.trim_end_matches('.').contains(". ")
+            && next.starts_with("When this ")
+            && next.ends_with(
+                " leaves the battlefield, return the exiled card to the battlefield under its owner's control.",
+            )
+        {
+            out.push(line.trim_end_matches('.').to_string());
+            idx += 2;
+            continue;
+        }
+        // Suspend's two time-counter triggers belong to its keyword line.
+        if suspend
+            && (vanishing_upkeep(line)
+                || (line.starts_with("When the last time counter is removed from this ")
+                    && line.ends_with("you may cast this card from exile without paying its mana cost.")))
+        {
+            idx += 1;
+            continue;
+        }
+        // Aftermath's cast restriction and exile replacement (CR 702.127).
+        if line.trim_end_matches('.') == "Aftermath" {
+            out.push("Aftermath".to_string());
+            idx += 1;
+            while idx < lines.len()
+                && matches!(
+                    lines[idx].trim_end_matches('.'),
+                    "Cast this spell only if this card is in your graveyard"
+                        | "If this spell was cast from your graveyard, exile it instead of putting it anywhere else any time it would leave the stack"
+                )
+            {
+                idx += 1;
+            }
+            continue;
+        }
+        // Partner with's tutor trigger and Dash's haste belong to their
+        // keyword lines (CR 702.124, 702.109).
+        if let Some(partner) = &partner_with
+            && line == format!("When this creature enters, target player may search their library for a card named {partner}, reveals it, puts it into hand, then shuffles.")
+        {
+            idx += 1;
+            continue;
+        }
+        if dash && line == "This creature has haste as long as this spell's dash cost was paid." {
+            idx += 1;
+            continue;
+        }
+        // The Class level reminder is reminder text, not a rule.
+        if line == "(Gain the next level as a sorcery to add its ability.)" {
+            idx += 1;
+            continue;
+        }
+        if let Some(collapsed) = collapse_decayed_token(line) {
+            out.push(collapsed);
+            idx += 1;
+            continue;
+        }
+        // Reconfigure's unattach ability belongs to its keyword line.
+        if let Some(cost) = &reconfigure_cost
+            && line == format!("{cost}: Unattach this creature. Activate only as a sorcery and only if this creature is attached to a creature.")
+        {
+            idx += 1;
+            continue;
+        }
+        let bare = line.strip_prefix("This creature has ").unwrap_or(line);
+        if let Some((_, rest)) = bare.split_once(" enters, ")
+            && bare.starts_with("As this ")
+            && let Some(keyword) = ["devour ", "amplify "].iter().find(|k| rest.starts_with(**k))
+        {
+            out.push(capitalize_first(&format!("{keyword}{}", rest[keyword.len()..].trim_end_matches('.'))));
+            idx += 1;
+            continue;
+        }
+        if let Some(cost) = line.strip_prefix("Flashback\u{2014}").and_then(|rest| rest.strip_suffix('.'))
+            && cost.starts_with('{')
+            && cost.ends_with('}')
+            && !cost.contains(' ')
+        {
+            out.push(format!("Flashback {cost}"));
+            idx += 1;
+            continue;
+        }
+        // A capitalized subtype names the object: "this Spacecraft".
+        let mut line = audit_protection_list(&dedupe_you_control(line));
+        for subtype in ["Spacecraft", "Vehicle", "Equipment", "Aura", "Saga", "Class", "Case"] {
+            line = line.replace(&format!("this {}", subtype.to_ascii_lowercase()), &format!("this {subtype}"));
+        }
+        let line = line.as_str();
+        // Keyword lines print without a closing period ("Outlast {W}").
+        let trimmed = line.trim_end_matches('.');
+        let keyword_with_cost = matches!(
+            trimmed.split(' ').collect::<Vec<_>>().as_slice(),
+            [keyword, cost]
+                if keyword.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+                    && keyword.chars().all(|ch| ch.is_ascii_alphabetic())
+                    && (cost.starts_with('{') && cost.ends_with('}')
+                        || cost.chars().all(|ch| ch.is_ascii_digit()))
+        );
+        if trimmed.len() + 1 == line.len()
+            && (merge_passes::is_keyword_phrase(trimmed) || keyword_with_cost)
+            && !trimmed.contains(". ")
+        {
+            out.push(trimmed.to_string());
+            idx += 1;
+            continue;
+        }
+        out.push(line.to_string());
+        idx += 1;
+    }
+    // Oracle reads "enters" for the present-tense battlefield entry.
+    out.into_iter()
+        .map(|line| {
+            line.replace(" enters the battlefield", " enters")
+                .replace(" a a ", " a ")
+                .replace(" a an ", " an ")
+        })
+        .collect()
+}
+
+/// "Non-Wall creature without flying can't block this creature" reads as
+/// the exception it grants: "This creature can't be blocked except by Walls
+/// and/or creatures with flying".
+fn audit_blocker_exception(line: &str) -> Option<String> {
+    let (blockers, target) = line.split_once(" can't block ")?;
+    let target = target.strip_suffix('.')?;
+    let (qualities, without) = match blockers.split_once(" creature without ") {
+        Some((head, quality)) if !quality.contains(' ') => (head, Some(quality)),
+        _ => (blockers.strip_suffix(" creature")?, None),
+    };
+    let mut allowed = Vec::new();
+    for quality in qualities.split(' ') {
+        let subtype = quality.strip_prefix("Non-").or_else(|| quality.strip_prefix("non-"))?;
+        allowed.push(pluralize_noun_phrase(subtype));
+    }
+    if let Some(quality) = without {
+        allowed.push(format!("creatures with {quality}"));
+    }
+    if allowed.is_empty() {
+        return None;
+    }
+    let subject = if ["this ", "enchanted ", "equipped "].iter().any(|prefix| target.starts_with(prefix)) {
+        capitalize_first(target)
+    } else if !target.contains(' ') && target.chars().next()?.is_ascii_uppercase() {
+        pluralize_noun_phrase(target)
+    } else {
+        return None;
+    };
+    Some(format!("{subject} can't be blocked except by {}.", allowed.join(" and/or ")))
+}
+
+/// "you control another creature you control with power 4 or greater":
+/// the controller is already named by "you control".
+fn dedupe_you_control(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find("you control ") {
+        let (head, tail) = rest.split_at(at + "you control ".len());
+        out.push_str(head);
+        let window = &tail[..tail.len().min(48)];
+        match window.find(" you control") {
+            Some(repeat)
+                if ["a ", "an ", "another "].iter().any(|article| tail.starts_with(article))
+                    && !window[..repeat].contains([',', '.', '"'])
+                    && !window[..repeat].contains(" and ")
+                    && !window[..repeat].contains(" for ") =>
+            {
+                out.push_str(&tail[..repeat]);
+                rest = &tail[repeat + " you control".len()..];
+            }
+            _ => rest = tail,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// "protection from blue, from black, and from red".
+fn audit_protection_list(line: &str) -> String {
+    let Some(start) = line.to_ascii_lowercase().find("protection from ") else {
+        return line.to_string();
+    };
+    let tail = &line[start..];
+    let end = tail.find([',', '.']).map_or(tail.len(), |end| end);
+    let segment = &tail[..end];
+    let parts = segment.split(" and from ").collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return line.to_string();
+    }
+    let (last, init) = parts.split_last().unwrap();
+    let joined = format!("{}, and from {last}", init.join(", from "));
+    format!("{}{joined}{}", &line[..start], &tail[end..])
+}
+
+/// "create a 2/2 black Zombie creature token with decayed": a token whose
+/// granted abilities are exactly decayed's (CR 702.147) plus its label.
+fn collapse_decayed_token(line: &str) -> Option<String> {
+    const DECAYED: &str = "\"This token can't block\", \"Whenever this token attacks, at this turn's next end of combat, sacrifice this token";
+    let found = line.find(DECAYED)?;
+    let head = &line[..found];
+    let sentence = head.strip_suffix(". It has ").or_else(|| head.strip_suffix(". They have "))?;
+    let rest = &line[found + DECAYED.len()..];
+    let rest = rest.strip_prefix(".\"").or_else(|| rest.strip_prefix('"'))?;
+    let rest = rest
+        .strip_prefix(", and \"")
+        .and_then(|marker| {
+            marker.starts_with(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX)
+                .then(|| marker.find("\u{27e7}.\"").map(|end| &marker[end + "\u{27e7}.\"".len()..]))
+                .flatten()
+        })
+        .unwrap_or(rest);
+    let token_at = sentence.rfind("creature token")? + "creature token".len();
+    let plural = sentence[token_at..].starts_with('s');
+    let token_end = token_at + usize::from(plural);
+    Some(format!(
+        "{} with decayed{}.{}",
+        &sentence[..token_end],
+        &sentence[token_end..],
+        rest.strip_prefix('.').unwrap_or(rest)
+    ))
+}
+
+fn is_simple_audit_keyword(keyword: &str) -> bool {
+    merge_passes::is_keyword_phrase(keyword)
+        && !keyword.contains(|ch: char| ch.is_ascii_digit() || matches!(ch, '{' | '"' | '—' | '.'))
+}
+
+/// The attached-object subject an Aura, Equipment or Fortification prints.
+fn audit_attached_subject(def: &CardDefinition) -> Option<String> {
+    let subtypes = &def.card.subtypes;
+    if subtypes.contains(&Subtype::Equipment) {
+        return Some("equipped creature".to_string());
+    }
+    if subtypes.contains(&Subtype::Fortification) {
+        return Some("fortified land".to_string());
+    }
+    if !subtypes.contains(&Subtype::Aura) {
+        // A creature that attaches itself (bestow, Licids) is an Aura then.
+        return def.card.is_creature().then(|| "enchanted creature".to_string());
+    }
+    let noun = match def.aura_attach_filter.as_ref()? {
+        crate::object::AuraAttachmentFilter::Player(_) => "player",
+        crate::object::AuraAttachmentFilter::Object(filter) => {
+            if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) {
+                "card"
+            } else {
+                match filter.card_types.as_slice() {
+                    [CardType::Creature] => "creature",
+                    [CardType::Land] => "land",
+                    [CardType::Artifact] => "artifact",
+                    [CardType::Enchantment] => "enchantment",
+                    [CardType::Planeswalker] => "planeswalker",
+                    [CardType::Battle] => "battle",
+                    _ => "permanent",
+                }
+            }
+        }
+    };
+    Some(format!("enchanted {noun}"))
+}
+
+fn audit_static_subject_surface(line: &str, subject: &str, attached: Option<&str>) -> String {
+    let mut line = line.to_string();
+    if let Some(attached) = attached {
+        for host in ["object", "permanent"] {
+            let lower = format!("the {host} this is attached to");
+            line = line
+                .replace(&capitalize_first(&lower), &capitalize_first(attached))
+                .replace(&lower, attached);
+        }
+    }
+    // A plain creature Aura's subject is "enchanted creature".
+    if attached == Some("enchanted creature") {
+        line = line
+            .replace("Enchanted permanent", "Enchanted creature")
+            .replace("enchanted permanent", "enchanted creature");
+    }
+    let mut line = line
+        .replace("This source", &capitalize_first(subject))
+        .replace("this source", subject)
+        .replace("This permanent", &capitalize_first(subject))
+        .replace("this permanent", subject)
+        .replace("cast this spells ", "cast this card ")
+        .replace(" as long as it isn't the case that ", " unless ")
+        .replace("Enchanted creature with this Aura attached to it", "Enchanted creature")
+        .replace("Equipped creature with this Equipment attached to it", "Equipped creature");
+    for verb in ["enters", "has", "can't", "gets"] {
+        if let Some(rest) = line.strip_prefix(&format!("This {verb} ")) {
+            line = format!("{} {verb} {rest}", capitalize_first(subject));
+        }
+    }
+    // "This creature enters with five +1/+1 counters on it."
+    if let Some(rest) = line.strip_prefix("Enters the battlefield with ") {
+        line = format!("{} enters with {rest}", capitalize_first(subject));
+    }
+    // "Equip abilities you activate cost {1} less to activate."
+    if let Some(rest) = line.strip_prefix("Activated abilities of a permanent you control cost ")
+        && let Some((amount, condition)) = rest.split_once(" less to activate if it's an equip ability")
+    {
+        let target = condition.trim_end_matches('.');
+        let target = target.replace(" that targets ", " that target ");
+        line = format!("Equip abilities you activate{target} cost {amount} less to activate.");
+    }
+    // A self restriction read without its subject ("Can't block.").
+    for verb in ["Can't ", "Doesn't ", "Can "] {
+        if let Some(rest) = line.strip_prefix(verb) {
+            line = format!("{} {}{rest}", capitalize_first(subject), lowercase_first(verb));
+        }
+    }
+    // "Creatures with power less than this creature's power can't block it"
+    // is how a power-relative evasion reads.
+    if let Some(blockers) = line
+        .strip_prefix(&format!("{} can't be blocked by ", capitalize_first(subject)))
+        .and_then(|rest| rest.strip_suffix('.'))
+        .filter(|rest| rest.starts_with("creatures with power ") && !rest.contains(" as long as "))
+    {
+        line = format!("{} can't block it.", capitalize_first(blockers));
+    }
+    // "can't be blocked except by black creatures": a single negated
+    // blocker quality reads as its exception.
+    if let Some((head, rest)) = line.split_once(" can't be blocked by non")
+        && let Some((qualities, tail)) = rest.split_once(" creatures")
+    {
+        let qualities = qualities.split(" non").collect::<Vec<_>>();
+        if qualities.iter().all(|quality| !quality.is_empty() && !quality.contains(' ')) {
+            let allowed = qualities
+                .iter()
+                .map(|quality| match quality.strip_prefix('-') {
+                    // "non-Wall creatures" -> "Walls"
+                    Some(subtype) => pluralize_noun_phrase(subtype),
+                    None => format!("{quality} creatures"),
+                })
+                .collect::<Vec<_>>()
+                .join(" and/or ");
+            line = format!("{head} can't be blocked except by {allowed}{tail}");
+        }
+    }
+    // A permission to play extra lands is a standing rule of each turn.
+    // Only the extra-land-drop permission takes the clause; "play lands from
+    // your graveyard" already needs your turn (CR 305.2) and prints bare.
+    if line.starts_with("You may play ")
+        && line.contains(" additional land")
+        && !line.contains("turn")
+        && let Some(body) = line.strip_suffix('.')
+    {
+        line = format!("{body} on each of your turns.");
+    }
+    // "This creature can't be blocked except by creatures with defender."
+    if let Some(rest) = line.strip_prefix("Creatures without ")
+        && let Some((quality, noun)) = rest.split_once(" can't block this ")
+        && !quality.contains(' ')
+    {
+        line = format!("This {} can't be blocked except by creatures with {quality}.", noun.trim_end_matches('.'));
+    }
+    // "Creatures with flying can block only creatures with flying."
+    if let Some((blockers, rest)) = line.split_once(" can't block creature without ")
+        .or_else(|| line.split_once(" can't block creatures without "))
+        && !rest.trim_end_matches('.').contains(' ')
+    {
+        line = format!("{blockers} can block only creatures with {}", rest);
+    }
+    // "Slivers can't be blocked except by Slivers", "This creature can't
+    // be blocked except by Walls and/or creatures with flying".
+    if let Some(rewritten) = audit_blocker_exception(&line) {
+        line = rewritten;
+    }
+    if let Some(rest) = line.strip_prefix("Counters can't be put on ")
+        && let Some(object) = rest.strip_suffix('.')
+        && object.starts_with("this ")
+    {
+        line = format!("{} can't have counters put on it.", capitalize_first(object));
+    }
+    line = line
+        .replace(" as long as it is not your turn", " during turns other than yours")
+        .replace(" while 1 is equal to 1", "");
+    if let Some((head, rest)) = line.split_once(" can't ")
+        && let Some(noun) = head.strip_prefix("A ").or_else(|| head.strip_prefix("An "))
+        && !noun.contains(" and ")
+        && !noun.contains(" or ")
+        && !noun.contains(" who ")
+        && !noun.contains(" has ")
+        && !noun.contains(" than ")
+        && !noun.contains([',', '"'])
+        && noun.split(' ').count() <= 5
+    {
+        line = format!(
+            "{} can't {rest}",
+            capitalize_first(&pluralize_relative_object_phrase(noun))
+        );
+    }
+    // "All creatures able to block this creature do so."
+    if let Some(noun) = line
+        .strip_prefix("Creature must block this ")
+        .or_else(|| line.strip_prefix("Creatures must block this "))
+        .and_then(|rest| rest.strip_suffix(" if able."))
+        .filter(|noun| !noun.contains(' '))
+    {
+        line = format!("All creatures able to block this {noun} do so.");
+    }
+    // "except by three or more creatures"
+    if let Some((head, rest)) = line.split_once(" except by ")
+        && let Some((count, tail)) = rest.split_once(" or more ")
+        && let Ok(count) = count.parse::<u32>()
+        && let Some(word) = ironsmith_core::cardinal_word(count)
+    {
+        line = format!("{head} except by {word} or more {tail}");
+    }
+    // "Creatures your opponents control enter tapped."
+    if let Some(at) = line.find(" an opponent controls ")
+        && line[..at].ends_with('s')
+        && !line[..at].contains(' ')
+    {
+        line = format!("{} your opponents control {}", &line[..at], &line[at + " an opponent controls ".len()..]);
+    }
+    line = line.replace(" enter the battlefield tapped", " enter tapped");
+    // A bare singular subject names every such object: "Creature with
+    // flying can't block" is "Creatures with flying can't block".
+    if let Some((head, rest)) = line.split_once(" can't ")
+        && is_bare_singular_subject(head)
+    {
+        line = format!("{} can't {rest}", capitalize_first(&pluralize_relative_object_phrase(head)));
+    }
+    // A granted keyword reads in keyword case, and a granted restriction
+    // ("has Can't be blocked") is that restriction on the subject.
+    for verb in [" has ", " have "] {
+        if let Some((head, predicate)) = line.split_once(verb)
+            && !head.contains('"')
+        {
+            // A grant to every matching object reads in the plural
+            // ("Zombies you control have ..."), never the indefinite "A
+            // Zombie you control has"; a compound subject keeps "Each".
+            let (head, verb) = if verb == " has " && is_bare_singular_subject(head) {
+                let plural = pluralize_relative_object_phrase(head);
+                let head = if head.contains(' ') { capitalize_first(&plural) } else { format!("All {plural}") };
+                (head, " have ")
+            } else { match head.split_once(' ') {
+                Some((article @ ("A" | "An" | "Another"), rest)) if verb == " has " => {
+                    let other = if article == "Another" { "other " } else { "" };
+                    if rest.contains(" and ") || rest.contains(" or ") || rest.contains(" on it") {
+                        (format!("Each {other}{rest}"), verb)
+                    } else {
+                        let plural = pluralize_relative_object_phrase(rest);
+                        (capitalize_first(&format!("{other}{plural}")), " have ")
+                    }
+                }
+                _ => (head.to_string(), verb),
+            } };
+            let body = predicate.trim_end_matches('.');
+            // A granted self restriction ("has this Aura can't attack").
+            let body = ["this Aura ", "this creature ", "This creature ", "this permanent "]
+                .iter()
+                .find_map(|subject| body.strip_prefix(subject).filter(|rest| rest.starts_with("can't ")))
+                .map_or(body.to_string(), |rest| capitalize_first(rest));
+            let body = body.as_str();
+            if let Some(restriction) = body.strip_prefix("Can't ") {
+                return format!("{head} can't {restriction}.");
+            }
+            let normalized = match body.split_once(" during ") {
+                Some((keyword, rest)) if merge_passes::is_keyword_phrase(keyword) => {
+                    format!("{} during {rest}", keyword.to_ascii_lowercase())
+                }
+                _ => merge_passes::normalize_keyword_predicate_case(body),
+            };
+            let end = if predicate.ends_with('.') { "." } else { "" };
+            return format!("{head}{verb}{normalized}{end}");
+        }
+    }
+    line
 }
 
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
@@ -1173,6 +1985,7 @@ fn parse_station_charge_counter_condition(condition: &str) -> Option<i32> {
         "the number of charge counters on this permanent is ",
         "the number of charge counters on this artifact is ",
         "the number of charge counters on this creature is ",
+        "the number of charge counters on this spacecraft is ",
     ]
     .into_iter()
     .find_map(|prefix| lower.strip_prefix(prefix))?;
@@ -1212,6 +2025,7 @@ fn station_threshold_keyword_body(body: &str) -> Option<String> {
     let keyword = [
         "this artifact creature has ",
         "this artifact has ",
+        "this spacecraft has ",
         "this source has ",
         "this creature has ",
     ]

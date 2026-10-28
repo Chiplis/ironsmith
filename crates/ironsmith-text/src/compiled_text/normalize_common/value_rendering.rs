@@ -6539,7 +6539,7 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
     }
 }
 
-fn describe_history_cause(cause: &ironsmith_core::CauseFilter) -> String {
+pub(crate) fn describe_history_cause(cause: &ironsmith_core::CauseFilter) -> String {
     use ironsmith_core::{CauseType, CauseTypeFilter, ControllerFilter};
     let kind = |kind: &CauseType| match kind {
         CauseType::Effect => "a spell or ability",

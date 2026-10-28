@@ -173,7 +173,7 @@ test('custom paid-copy definitions restore the complete payment and bind each us
     return { canCreate: true };
   });
   const second = compileDraftInput({ faces: [{ name: 'B', oracleText: 'Resound—Discard a card' }] }, prepared.draft.customMechanics);
-  assert.match(second.faces[0].oracleText, /you may Discard a card any number of times/);
+  assert.match(second.faces[0].oracleText, /you may discard a card any number of times/);
   assert.match(second.faces[0].oracleText, /for each time this spell's additional cost was paid/);
   assert.deepEqual(second.faces[0].customKeywordIdentities, ['resound']);
 });
@@ -234,4 +234,31 @@ test('custom names receive full unambiguous official definitions without officia
     assert.equal(def.keyword, keyword);
     assert.equal(def.reminder, reminder);
   }
+});
+
+test('{Cost} binds to the declared price, lowercasing an action price mid-sentence', () => {
+  const definitions = mergeMechanics([], [
+    { keyword: 'blink', reminder: "{Cost}: Exile this creature, then return it to the battlefield under its owner's control." },
+    { keyword: 'rush', reminder: "You may pay {Cost} rather than pay this spell's mana cost." },
+  ]);
+  const faces = compileDraftInput({ faces: [
+    { name: 'A', oracleText: 'Blink—Sacrifice another creature.' },
+    { name: 'B', oracleText: 'Rush—Sacrifice a creature.' },
+  ] }, definitions).faces;
+  assert.match(faces[0].oracleText, /^Sacrifice another creature: Exile this creature/);
+  assert.equal(faces[1].oracleText, "You may sacrifice a creature rather than pay this spell's mana cost.");
+});
+
+test('an alternative cost written as "pay {Cost} rather than" answers its participle', () => {
+  const [def] = mergeMechanics([], [{ keyword: 'rush', reminder: "You may pay {Cost} rather than pay this spell's mana cost." }]);
+  const face = compileDraftInput({ faces: [{ name: 'A', oracleText: 'Rush {R}\nWhen this creature enters, if it was rushed, draw a card.' }] }, [def]).faces[0];
+  assert.match(face.oracleText, /if its \{R\} cost was paid, draw a card/);
+  assert.deepEqual(face.customKeywordPayments, ['rush']);
+});
+
+test('"you may pay {Cost} to <effect>" keeps the effect as an "If you do" consequence', () => {
+  const { expansion } = validateMechanic({ keyword: 'glean', reminder: 'When this creature enters, you may pay {Cost} to draw a card.' });
+  assert.equal(expansion, 'When this creature enters, you may pay {Cost}. If you do, draw a card.');
+  // An alternative way to cast is not a purchased effect.
+  assert.equal(validateMechanic({ keyword: 'rush', reminder: 'You may pay {Cost} to cast this spell.' }).expansion, 'You may pay {Cost} to cast this spell.');
 });

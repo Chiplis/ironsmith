@@ -6359,7 +6359,7 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 format!(
                     "{} may play {} additional lands",
                     describe_player_set_filter(filter),
-                    count
+                    small_number_word(*count).unwrap_or_else(|| count.to_string())
                 )
             }
         }
@@ -7068,8 +7068,22 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BlockAlone(filter) => {
             format!("{} can't block alone", filter.description())
         }
+        // The untap-step restriction (CR 502.3): "Enchanted creature doesn't
+        // untap during its controller's untap step", "Lands don't untap
+        // during their controllers' untap steps".
         crate::effect::Restriction::Untap(filter) => {
-            format!("{} can't untap", filter.description())
+            let description = filter.description();
+            if ["enchanted ", "equipped ", "fortified ", "this ", "that ", "the ", "target "]
+                .iter()
+                .any(|prefix| description.starts_with(prefix))
+            {
+                format!("{description} doesn't untap during its controller's untap step")
+            } else {
+                format!(
+                    "{} don't untap during their controllers' untap steps",
+                    pluralize_relative_object_phrase(strip_indefinite_article(&description))
+                )
+            }
         }
         crate::effect::Restriction::ObjectRule { objects, rule } => {
             capitalize_first(&rule.describe(objects))

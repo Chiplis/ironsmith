@@ -2167,7 +2167,7 @@ fn resolve_stack_entry_full_inner(
                             obj,
                             *zone,
                             *idx,
-                        ).is_some_and(|method| method.suspend_spec().is_some()),
+                        ).is_some_and(|method| method.suspend_spec().is_some() && method.timed_exile_grants_haste()),
                     _ => false,
                 };
                 let instructions = battlefield_method.as_ref().map(|method| method.battlefield_instructions()).unwrap_or_default();

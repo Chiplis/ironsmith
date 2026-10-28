@@ -60,15 +60,29 @@ pub fn parse_self_zone_alternative_cost(
             additional_cost: ironsmith_core::TotalCost::from_costs(total.non_mana_costs().cloned().collect()),
         }));
     }
+    // Suspend's full rule (CR 702.62a), or a described timed exile with its
+    // own counter kind and no haste clause. Any other wording declines.
     if let Some(rest) = prose.strip_prefix("if you could begin to cast this card from your hand, you may pay ")
         && let Some((price, rest)) = rest.split_once(" and exile it with ")
-        && let Some(time) = rest.trim_end_matches('.').strip_suffix(" time counters on it. this action doesn't use the stack. at the beginning of your upkeep, if this card is exiled with a time counter on it, remove a time counter from it. when the last time counter is removed from this card, if it's exiled, you may play it without paying its mana cost. if you cast a creature spell this way, it gains haste until you lose control of the spell or the permanent it becomes")
-        && let Ok(time) = time.parse::<u32>() {
+        && let Some((time, rest)) = rest.split_once(' ')
+        && let Ok(time) = time.parse::<u32>()
+        && let Some((kind, rest)) = rest.split_once(" counters on it. this action doesn't use the stack. at the beginning of your upkeep, if this card is exiled with a ")
+        && let Some(rest) = rest.strip_prefix(&format!("{kind} counter on it, remove a {kind} counter from it. when the last {kind} counter is removed from this card, if it's exiled, you may play it without paying its mana cost"))
+        && let Some(haste) = match rest.trim_end_matches('.') {
+            "" => Some(false),
+            ". if you cast a creature spell this way, it gains haste until you lose control of the spell or the permanent it becomes" => Some(true),
+            _ => None,
+        }
+        && let Some(counter) = crate::grammar::filters::parse_counter_type_words(
+            &kind.split(' ').chain(["counters"]).collect::<Vec<_>>()) {
         let price = crate::grammar::values::parse_mana_cost_tokens(&lex_line(price, 0)?)?;
         return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
             "Parsed timed exile", crate::zone::Zone::Exile, ironsmith_core::TotalCost::free(), None, false,
         ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
-            timed_exile: Some((ironsmith_core::SuspendTime::Fixed(time), price)), ..Default::default()
+            timed_exile: Some((ironsmith_core::SuspendTime::Fixed(time), price)),
+            timed_exile_counter: (counter != ironsmith_core::CounterType::Time).then_some(counter),
+            timed_exile_without_haste: !haste,
+            ..Default::default()
         })));
     }
     for (tail, aura) in [

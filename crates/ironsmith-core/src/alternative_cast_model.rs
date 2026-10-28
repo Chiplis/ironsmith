@@ -83,6 +83,12 @@ pub struct ZoneCastInstructions {
     pub merge_with_same_owner_nonhuman: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub timed_exile: Option<(crate::SuspendTime, ManaCost)>,
+    /// The counters a parsed timed exile uses; None is time counters (Suspend).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub timed_exile_counter: Option<crate::CounterType>,
+    /// A parsed timed exile whose free cast grants no haste.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub timed_exile_without_haste: bool,
 }
 
 fn compose_total_cost<C: CostComponent>(
@@ -707,6 +713,19 @@ where
             Self::FromZone { instructions, .. } => instructions.timed_exile.as_ref().map(|(time, cost)| (*time, cost)),
             _ => None,
         }
+    }
+
+    /// The counters a timed exile (Suspend or its described form) places.
+    pub fn timed_exile_counter(&self) -> crate::CounterType {
+        match self {
+            Self::FromZone { instructions, .. } => instructions.timed_exile_counter.unwrap_or(crate::CounterType::Time),
+            _ => crate::CounterType::Time,
+        }
+    }
+
+    /// Whether a creature spell cast through this timed exile gains haste.
+    pub fn timed_exile_grants_haste(&self) -> bool {
+        !matches!(self, Self::FromZone { instructions, .. } if instructions.timed_exile_without_haste)
     }
 
     pub fn disturb_cost(&self) -> Option<&ManaCost> {

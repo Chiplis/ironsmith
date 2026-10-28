@@ -4251,6 +4251,9 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
     cumulative_upkeep_known_payment_text(payment).or_else(|| {
         let text = compile_effect_list(payment);
         let text = text.trim().trim_end_matches('.');
+        // A mana-only payment reads as its cost ("Cumulative upkeep {G} or {W}").
+        let text = text.strip_prefix("pay ").or_else(|| text.strip_prefix("Pay "))
+            .filter(|cost| cost.starts_with('{')).unwrap_or(text);
         (!text.is_empty()).then(|| text.to_string())
     })
 }

@@ -6,12 +6,15 @@ const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // `forms` (keyword-forms.js) names the cost noun when it differs from the
 // keyword ("its upkeep cost" for Cumulative upkeep, or a custom override).
 const costNouns = (keyword, forms) => [...new Set([forms?.costNoun, keyword].filter(Boolean).map(String))];
-const reference = (keyword, forms) => new RegExp(`\\b(?:(?:its|the)\\s+(?:${costNouns(keyword, forms).map(escape).join('|')})|this)\\s+cost\\b`, 'gi');
+// A reminder names its price with the {Cost} placeholder, or with the official
+// wording "its <noun> cost". "Mana cost" always denotes the card's printed
+// mana cost, never a slot.
+const namedCost = (keyword, forms) => costNouns(keyword, forms).some(noun => noun.trim().toLowerCase() === 'mana')
+  ? null : `\\b(?:(?:its|the)\\s+(?:${costNouns(keyword, forms).map(escape).join('|')})|this)\\s+cost\\b`;
+const reference = (keyword, forms) => new RegExp(`(?:${[namedCost(keyword, forms), '\\{cost\\}'].filter(Boolean).join('|')})`, 'gi');
 const outsideQuotation = (text, offset) => (text.slice(0, offset).match(/["“”]/g) || []).length % 2 === 0;
 
 export function hasReminderCostReference(reminder, keyword, forms) {
-  // "Mana cost" always denotes the card's printed mana cost, never a slot.
-  if (costNouns(keyword, forms).some(noun => noun.trim().toLowerCase() === 'mana')) return false;
   return [...String(reminder).matchAll(reference(keyword, forms))].some(match => outsideQuotation(reminder, match.index));
 }
 
@@ -29,7 +32,7 @@ function declaredPrice(reminder, declaredCost) {
 export function bindReminderCost(reminder, keyword, declaredCost, forms) {
   const cost = declaredPrice(reminder, declaredCost);
   if (!hasReminderCostReference(reminder, keyword, forms)) return reminder;
-  if (!cost) throw new Error(`"${keyword}" requires a declared cost to resolve "its ${costNouns(keyword, forms)[0]} cost".`);
+  if (!cost) throw new Error(`"${keyword}" requires a declared cost after the keyword, such as "${keyword} {2}", to fill in its cost.`);
   if (/[\r\n()]/.test(cost) || /\bits\s+.+?\s+cost\b/i.test(cost)) {
     throw new Error(`"${keyword}" requires a concrete cost, including any non-mana payments.`);
   }
@@ -38,7 +41,11 @@ export function bindReminderCost(reminder, keyword, declaredCost, forms) {
     if (!outsideQuotation(reminder, offset)) return match;
     const hadPay = /^pay\s+/i.test(match);
     const actionPrice = /^(?:pay|exile|discard|sacrifice|return|tap|remove)\b/i.test(cost);
-    return `${hadPay && !actionPrice ? match.match(/^pay\s+/i)[0] : ''}${cost}`;
+    // An action price written as its own line ("Blink—Sacrifice a creature.")
+    // reads mid-sentence once it replaces "pay {Cost}".
+    const sentenceStart = /(?:^|[.!?:]\s*)$/.test(reminder.slice(0, offset));
+    const price = actionPrice && !sentenceStart ? cost[0].toLowerCase() + cost.slice(1) : cost;
+    return `${hadPay && !actionPrice ? match.match(/^pay\s+/i)[0] : ''}${price}`;
   });
 }
 
@@ -124,7 +131,7 @@ export function expandRepeatedCopyPayment(reminder, keyword, cost) {
   const shape = repeatedCopyPayment(reminder);
   if (!shape) return reminder;
   const price = bindReminderCost(`its ${keyword} cost`, keyword, cost);
-  const payment = /^(?:pay|exile|discard|sacrifice|return|tap|remove)\b/i.test(price) ? price : `pay ${price}`;
+  const payment = /^(?:pay|exile|discard|sacrifice|return|tap|remove)\b/i.test(price) ? price[0].toLowerCase() + price.slice(1) : `pay ${price}`;
   return `As an additional cost to cast this spell, you may ${payment} any number of times. When you cast this spell, copy it for each time this spell's additional cost was paid. ${shape.tail}`;
 }
 
@@ -225,4 +232,47 @@ export function bindReminderMaterials(reminder, declaration) {
   if (!material.toLowerCase().startsWith(hole[1].toLowerCase() + ' ')) throw new Error('The reminder material count must match its declaration.');
   const text = String(reminder).replace(hole[0], `Exile ${material} from among other permanents you control and/or cards in your graveyard`);
   return { text: bindReminderActivationLabel(text, named[1]), binding: { keyword: named[1], material } };
+}
+
+// Named parameters a custom definition leaves for its declaration to fill,
+// as Suspend's reminder does for N and its cost: "{Cost}" and "{Number}".
+const PARAMETER = /\{(cost|number)\}/gi;
+export const reminderParameters = reminder => [...new Set([...String(reminder).matchAll(PARAMETER)].map(match => match[1].toLowerCase()))];
+// {Cost} alone is bound by bindReminderCost; a {Number} brings the declaration
+// form "Keyword N—price" (or "Keyword N").
+export const hasReminderParameters = reminder => reminderParameters(reminder).includes('number');
+
+// The values a declaration gives: "Keyword 3—{1}{U}", "Keyword {1}{U}—3",
+// "Keyword {1}{U}" or "Keyword 3". Null when it does not supply each one.
+export function parseParameterDeclaration(reminder, keyword, declaration) {
+  const parameters = reminderParameters(reminder);
+  const rest = String(declaration).trim().replace(new RegExp(`^${escape(keyword)}(?![a-z])`, 'i'), '').trim().replace(/\.$/, '').trim();
+  const price = value => /^(?:\{|(?:pay|exile|discard|sacrifice|return|tap|remove)\b|\d+\s+life\b)/i.test(value) && !/[()\n]/.test(value);
+  if (parameters.includes('cost') && parameters.includes('number')) {
+    let match = rest.match(/^(\d+|X)\s*[—–-]\s*(.+)$/i);
+    if (match && price(match[2])) return { number: match[1], cost: match[2].trim() };
+    match = rest.match(/^(.+?)\s*[—–-]\s*(\d+|X)$/i);
+    if (match && price(match[1])) return { cost: match[1].trim(), number: match[2] };
+    return null;
+  }
+  if (parameters.includes('number')) {
+    const match = rest.match(/^(?:[—–-]\s*)?(\d+|X)$/i);
+    return match ? { number: match[1] } : null;
+  }
+  const cost = rest.replace(/^[—–-]\s*/, '');
+  return price(cost) ? { cost } : null;
+}
+
+// Fill {Number}, then the price through the same binder as a {Cost}-only
+// reminder, so "pay {Cost}" reads correctly for mana and non-mana prices.
+export function bindReminderParameters(reminder, keyword, values, forms) {
+  const counted = String(reminder).replace(/\{number\}/gi, values.number);
+  return values.cost === undefined ? counted : bindReminderCost(counted, keyword, values.cost, forms);
+}
+
+// An example declaration for a definition's parameters.
+export function parameterExample(reminder, keyword) {
+  const parameters = reminderParameters(reminder);
+  if (parameters.includes('cost') && parameters.includes('number')) return `${keyword} 3—{1}{U}`;
+  return parameters.includes('number') ? `${keyword} 3` : `${keyword} {1}{U}`;
 }

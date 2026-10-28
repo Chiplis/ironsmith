@@ -1562,7 +1562,7 @@ fn describe_ability_in_zone(
             if matches!(
                 triggered.presentation_label,
                 Some(PresentationLabel::Keyword(
-                    PresentationKeyword::Melee | PresentationKeyword::Provoke | PresentationKeyword::Storm | PresentationKeyword::Riot | PresentationKeyword::Increment
+                    PresentationKeyword::Melee | PresentationKeyword::Provoke | PresentationKeyword::Storm | PresentationKeyword::Riot | PresentationKeyword::Increment | PresentationKeyword::Demonstrate
                 ))
             ) {
                 return vec![format!(

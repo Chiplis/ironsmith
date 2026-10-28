@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import useUiText from '@/i18n/useUiText';
+import { useGame } from '@/context/GameContext';
 import { CUSTOM_MECHANICS_CHANGED, deleteCustomMechanic, listCustomMechanics, saveCustomMechanic } from '@/lib/custom-card-library';
-import { mechanicFormClash, validateMechanic } from '@/lib/custom-mechanics';
-import { FORM_FIELDS, customMechanicEntry, defaultForms, mechanicEntries } from '@/lib/mechanics-catalog';
+import { mechanicFormClash, probeMechanic, validateMechanic } from '@/lib/custom-mechanics';
+import { FORM_FIELDS, REMINDER_TEMPLATES, customMechanicEntry, defaultForms, mechanicEntries } from '@/lib/mechanics-catalog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -56,6 +57,7 @@ function MechanicDetail({ entry, onDeleted }) {
       {entry.custom && entry.expansion && entry.expansion !== entry.summary
         && <p className="text-xs text-muted-foreground">{ui('Compiled meaning:')} {entry.expansion}</p>}
       {entry.custom && <p className="text-xs text-muted-foreground">{ui('Defined by {0}', { 0: entry.sourceCard })}</p>}
+      {entry.reminderSource && <p className="text-xs text-muted-foreground">{ui('As printed for {0} on {1}', { 0: entry.reminderSource.example, 1: entry.reminderSource.card })}</p>}
     </section>
     <section className="space-y-3">
       <div className="card-forge-section-label">{ui('Forms')}</div>
@@ -75,11 +77,79 @@ function draftDefinition(draft) {
   return { keyword: draft.keyword, reminder: draft.reminder, ...(Object.keys(forms).length ? { forms } : {}) };
 }
 
+// Compiles the reminder on a test card as the user types, so a definition
+// the compiler cannot read shows its error before it is saved.
+function useMechanicCompileCheck(definition) {
+  const { game } = useGame();
+  const compile = useMemo(() => (game?.previewCustomCard ? input => game.previewCustomCard(input) : null), [game]);
+  const key = definition ? JSON.stringify(definition) : '';
+  const [check, setCheck] = useState({ key: '', status: 'idle' });
+  useEffect(() => {
+    if (!key || !compile) return undefined;
+    let active = true;
+    const timeoutId = window.setTimeout(async () => {
+      setCheck({ key, status: 'checking' });
+      try {
+        const result = await probeMechanic(JSON.parse(key), compile);
+        if (active) setCheck({ key, status: result.checked ? 'ok' : 'unchecked', ...result });
+      } catch (failure) {
+        if (active) setCheck({ key, status: 'error', message: String(failure?.message || failure), usage: failure?.usage });
+      }
+    }, 250);
+    return () => { active = false; window.clearTimeout(timeoutId); };
+  }, [key, compile]);
+  if (!key || !compile) return { status: 'idle', compile };
+  return check.key === key ? { ...check, compile } : { status: 'checking', compile };
+}
+
+function CompileCheck({ check }) {
+  const ui = useUiText();
+  if (check.status === 'idle') return null;
+  if (check.status === 'checking') return <p className="text-xs text-muted-foreground" data-testid="mechanic-compile-check">{ui('Compiling reminder text…')}</p>;
+  if (check.status === 'unchecked') return <p className="text-xs text-muted-foreground" data-testid="mechanic-compile-check">{ui('This kind of mechanic needs a declaration from its card, so its reminder is checked when a card uses it.')}</p>;
+  if (check.status === 'ok') return <div className="space-y-1 text-xs" data-testid="mechanic-compile-check">
+    <p className="text-emerald-300">{ui('Reminder text compiles.')}</p>
+    {check.permanentAbility === false && <p className="text-amber-200" data-testid="mechanic-spell-only">{ui('It compiles as an instruction, so it only runs when an instant or sorcery resolves. On a creature or other permanent it does nothing. Start it with "{Cost}:", "When", or "If … would" to give permanents an ability.')}</p>}
+  </div>;
+  return <div role="alert" className="space-y-1 text-sm text-red-300" data-testid="mechanic-compile-check">
+    <p>{ui('The reminder text does not compile.')}</p>
+    {check.usage && <p className="text-xs text-muted-foreground">{ui('Test card text:')} “{check.usage}”</p>}
+    <pre className="card-forge-codeblock whitespace-pre-wrap text-xs">{check.message}</pre>
+  </div>;
+}
+
+const titleCase = keyword => keyword.replace(/^./, letter => letter.toUpperCase());
+
+// A template's card line, written with the keyword being defined.
+const templateUsage = (template, keyword) => {
+  const name = keyword.trim() ? titleCase(keyword.trim()) : titleCase(template.keyword);
+  return template.usage.replace(new RegExp(`^${titleCase(template.keyword)}`), name);
+};
+
+function TemplatePicker({ selected, keyword, onPick }) {
+  const ui = useUiText();
+  const template = REMINDER_TEMPLATES.find(candidate => candidate.kind === selected);
+  return <section className="space-y-3 border border-white/10 p-3" data-testid="mechanic-templates">
+    <div className="card-forge-section-label">{ui('Start from a template')}</div>
+    <p className="text-sm text-muted-foreground">{ui('Pick the kind of mechanic to fill in its reminder, then edit the effect. Write {Cost} where the price goes: each card sets its own price after the keyword, and that price replaces {Cost} when the card compiles.')} {ui('Write {Number} where an amount goes; the card then writes the amount before its price, as in "Suspend 3—{1}{U}".')}</p>
+    <div className="flex flex-wrap gap-2" role="group" aria-label={ui('Mechanic templates')}>
+      {REMINDER_TEMPLATES.map(candidate => <Button key={candidate.kind} type="button" size="sm"
+        variant={candidate.kind === selected ? 'default' : 'secondary'} aria-pressed={candidate.kind === selected}
+        data-testid="mechanic-template" onClick={() => onPick(candidate)}>{ui(candidate.kind)}</Button>)}
+    </div>
+    {template && <div className="grid gap-1 text-xs" data-testid="mechanic-template-detail">
+      <p className="text-muted-foreground">{ui(template.note)}</p>
+      <p><span className="text-muted-foreground">{ui('On a card:')}</span> “{templateUsage(template, keyword)}”</p>
+    </div>}
+  </section>;
+}
+
 function MechanicForm({ saved, onSaved }) {
   const ui = useUiText();
   const [draft, setDraft] = useState(emptyDraft);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [template, setTemplate] = useState(null);
   const set = field => event => { setSaveError(''); setDraft(current => ({ ...current, [field]: event.target.value })); };
   const defaults = defaultForms(draft.keyword);
   // Live validation uses exactly the checks saving will apply.
@@ -93,10 +163,12 @@ function MechanicForm({ saved, onSaved }) {
       return clash ? { problem: clash.message } : { definition: def };
     } catch (failure) { return { problem: String(failure?.message || failure) }; }
   }, [draft, saved, ui]);
+  const check = useMechanicCompileCheck(definition && draftDefinition(draft));
+  const blocked = check.status === 'checking' || check.status === 'error';
   const save = async () => {
-    if (!definition || busy) return;
+    if (!definition || busy || blocked) return;
     setBusy(true);
-    try { const def = await saveCustomMechanic(draftDefinition(draft)); setDraft(emptyDraft()); onSaved?.(def); }
+    try { const def = await saveCustomMechanic(draftDefinition(draft), { compile: check.compile }); setDraft(emptyDraft()); setTemplate(null); onSaved?.(def); }
     catch (failure) { setSaveError(String(failure?.message || failure)); }
     finally { setBusy(false); }
   };
@@ -109,10 +181,15 @@ function MechanicForm({ saved, onSaved }) {
     <label className="card-forge-field"><span className="card-forge-section-label">{ui('Keyword')}</span>
       <input className="card-forge-input" value={draft.keyword} onChange={set('keyword')} placeholder={ui("Blink")} maxLength={64} autoComplete="off" />
     </label>
+    <TemplatePicker selected={template} keyword={draft.keyword} onPick={picked => {
+      setSaveError(''); setTemplate(picked.kind);
+      setDraft(current => ({ ...current, keyword: current.keyword.trim() ? current.keyword : picked.keyword, reminder: picked.reminder }));
+    }} />
     <label className="card-forge-field"><span className="card-forge-section-label">{ui('Reminder text')}</span>
       <textarea className="card-forge-input min-h-24" value={draft.reminder} onChange={set('reminder')}
-        placeholder={ui('As an additional cost to cast this spell, you may pay its blink cost.')} />
+        placeholder={ui("{Cost}: Exile this creature, then return it to the battlefield under its owner's control.")} />
       <span className="text-xs text-muted-foreground">{ui('Write the full meaning without parentheses, as it would appear in the reminder.')}</span>
+      <CompileCheck check={check} />
     </label>
     <fieldset className="space-y-4">
       <legend className="card-forge-section-label mb-2">{ui('Forms')}</legend>
@@ -139,7 +216,7 @@ function MechanicForm({ saved, onSaved }) {
     </fieldset>
     {forms && <section className="space-y-2"><div className="card-forge-section-label">{ui('Saved forms')}</div><FormRows forms={forms} /></section>}
     {(problem || saveError) && draft.keyword.trim() && <p role="alert" className="text-sm text-red-300">{saveError || problem}</p>}
-    <Button type="submit" disabled={!definition || busy}>{ui(busy ? 'Saving…' : 'Save mechanic')}</Button>
+    <Button type="submit" disabled={!definition || busy || blocked}>{ui(busy ? 'Saving…' : 'Save mechanic')}</Button>
   </form>;
 }
 

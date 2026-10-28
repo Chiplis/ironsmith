@@ -1861,13 +1861,127 @@ impl StaticAbilityKind for ThisSpellCastRestriction {
         if ironsmith_core::semantic_audit::semantic_audit_active() {
             // The restriction's typed timing and condition, never its prose.
             use ironsmith_core::semantic_audit::{audited_condition, humanize_variant};
+            use crate::static_abilities::{ThisSpellCastCondition as C, ThisSpellCastTiming as T};
             let mut parts = Vec::new();
+            if let Some(T::NotDuringYourFirstTurns(count)) = &self.kind.timing
+                && self.kind.condition.is_none()
+            {
+                let turns = (1..=*count)
+                    .map(|n| ironsmith_core::ordinal_word(n).unwrap_or_else(|| n.to_string()))
+                    .collect::<Vec<_>>();
+                let turns = match turns.len() {
+                    0 | 1 => turns.join(""),
+                    2 => turns.join(" or "),
+                    n => format!("{}, or {}", turns[..n - 1].join(", "), turns[n - 1]),
+                };
+                return format!(
+                    "You can't cast this spell during your {turns} turn{} of the game",
+                    if *count == 1 { "" } else { "s" }
+                );
+            }
             if let Some(timing) = &self.kind.timing {
-                parts.push(humanize_variant(timing));
+                parts.push(match timing {
+                    T::DuringDeclareAttackersStep => "during the declare attackers step".to_string(),
+                    T::DuringDeclareBlockersStep => "during the declare blockers step".to_string(),
+                    T::DuringOpponentsUpkeep => "during an opponent's upkeep".to_string(),
+                    T::DuringOpponentsTurn => "during an opponent's turn".to_string(),
+                    T::DuringYourTurn => "during your turn".to_string(),
+                    T::DuringYourEndStep => "during your end step".to_string(),
+                    T::DuringCombat => "during combat".to_string(),
+                    T::AfterCombat => "after combat".to_string(),
+                    T::BeforeAttackersAreDeclared => "before attackers are declared".to_string(),
+                    T::BeforeCombatDamageStep => "before the combat damage step".to_string(),
+                    T::DuringCombatOnOpponentsTurn => "during combat on an opponent's turn".to_string(),
+                    T::DuringYourDeclareAttackersStep => "during your declare attackers step".to_string(),
+                    T::DuringDeclareBlockersStepOnOpponentsTurn => {
+                        "during the declare blockers step on an opponent's turn".to_string()
+                    }
+                    T::DuringOpponentsTurnBeforeAttackersAreDeclared => {
+                        "during an opponent's turn, before attackers are declared".to_string()
+                    }
+                    T::DuringOpponentsTurnAfterUpkeep => {
+                        "during an opponent's turn after their upkeep step".to_string()
+                    }
+                    other => humanize_variant(other),
+                });
             }
             match &self.kind.condition {
-                Some(crate::static_abilities::ThisSpellCastCondition::Condition(condition)) => {
+                Some(C::Condition(condition)) => {
                     parts.push(format!("if {}", audited_condition("ThisSpellCastRestriction", condition)))
+                }
+                Some(C::YouWereAttackedThisStep) => {
+                    parts.push("if you've been attacked this step".to_string())
+                }
+                Some(C::NoPermanentsNamedOnBattlefield(name)) => {
+                    parts.push(format!("if no permanents named {name} are on the battlefield"))
+                }
+                // "only if you've cast another green spell this turn": the
+                // count is taken while this spell is being cast, so every
+                // counted spell is another one.
+                Some(C::PlayerCastSpellThisTurnOrMore {
+                    player,
+                    spell_filter,
+                    count,
+                }) => {
+                    let spells = crate::static_abilities::cost_modifiers::describe_spell_filter(spell_filter);
+                    let quantity = if *count == 1 {
+                        let spell = spells.replacen("spells", "spell", 1);
+                        if spell.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                            format!("another {spell}")
+                        } else {
+                            format!("another {spell}")
+                        }
+                    } else {
+                        let amount = ironsmith_core::cardinal_word(*count)
+                            .unwrap_or_else(|| count.to_string());
+                        format!("{amount} or more other {spells}")
+                    };
+                    let subject = match player {
+                        crate::target::PlayerFilter::You => "you've".to_string(),
+                        crate::target::PlayerFilter::Opponent => "an opponent has".to_string(),
+                        crate::target::PlayerFilter::Any => "a player has".to_string(),
+                        other => format!("{} has", other.description()),
+                    };
+                    let quantity = if matches!(player, crate::target::PlayerFilter::You) {
+                        quantity
+                    } else {
+                        quantity.replacen("another ", "a ", 1).replacen(" other ", " ", 1)
+                    };
+                    let quantity = match quantity.strip_prefix("a ") {
+                        Some(rest) if rest.starts_with(['a', 'e', 'i', 'o', 'u']) => format!("an {rest}"),
+                        _ => quantity,
+                    };
+                    parts.push(format!("if {subject} cast {quantity} this turn"))
+                }
+                // "only if you control two or more Vampires".
+                Some(C::YouControlAtLeast { filter, count }) => {
+                    let quantity = if *count == 1 {
+                        let described = filter.description();
+                        if described.starts_with("a ") || described.starts_with("an ") {
+                            described
+                        } else if described.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                            format!("an {described}")
+                        } else {
+                            format!("a {described}")
+                        }
+                    } else {
+                        let amount = ironsmith_core::cardinal_word(*count)
+                            .unwrap_or_else(|| count.to_string());
+                        format!(
+                            "{amount} or more {}",
+                            crate::static_abilities::pluralized_subject_text(filter)
+                        )
+                    };
+                    parts.push(format!("if you control {quantity}"))
+                }
+                Some(C::CreatureIsAttackingYou) => {
+                    parts.push("if a creature is attacking you".to_string())
+                }
+                Some(C::CreatureDiedThisTurn) => {
+                    parts.push("if a creature died this turn".to_string())
+                }
+                Some(C::YouControlFewerCreaturesThanEachOpponent) => {
+                    parts.push("if you control fewer creatures than each opponent".to_string())
                 }
                 Some(condition) => parts.push(format!("if {}", humanize_variant(condition))),
                 None => {}

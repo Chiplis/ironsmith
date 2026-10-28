@@ -6674,3 +6674,60 @@ fn reminder_identity_custom_designation_reads_only_its_keyword_receipt() {
     kicked.mark_label_paid(definition("Kicked", "Kicker {1}{U}\nDraw a card.", None).optional_costs[0].reference.clone());
     assert!(!kicked.paid_custom_keyword("blink"));
 }
+
+/// A custom timed exile (the web binder's "Foresee 2—{1}" expansion) counts
+/// down its own counter, from upkeep and from an extra event, and its free
+/// cast grants no haste and no Suspend identity.
+#[test]
+fn reminder_identity_custom_timed_exile_uses_its_counter_events_and_no_haste() {
+    use ironsmith::BooleanContext;
+    use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
+    use ironsmith::object::CounterType;
+    use ironsmith::special_actions::{perform, SpecialAction};
+    struct Accept;
+    impl DecisionMaker for Accept { fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool { true } }
+    let progress = CounterType::Named("progress".into());
+    let text = "If you could begin to cast this card from your hand, you may pay {1} and exile it with 2 progress counters on it. This action doesn't use the stack. At the beginning of your upkeep, if this card is exiled with a progress counter on it, remove a progress counter from it. When the last progress counter is removed from this card, if it's exiled, you may play it without paying its mana cost.\nWhenever an artifact or creature you control enters, if this card is exiled with a progress counter on it, remove a progress counter from it.";
+    let card = definition("Foreseen", text, Some("foresee"));
+    let [method] = card.alternative_casts.as_slice() else { panic!("{:?}", card.alternative_casts) };
+    assert_eq!(method.timed_exile_counter(), progress);
+    assert!(!method.timed_exile_grants_haste());
+    // The described permission, not the native Suspend method.
+    assert_eq!(method.name(), "Parsed timed exile");
+    let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+    let a = PlayerId::from_index(0);
+    game.turn.active_player = a; game.turn.priority_player = Some(a); game.turn.phase = ironsmith::Phase::FirstMain; game.turn.step = None;
+    let card = game.create_object_from_definition(&card, a, Zone::Hand);
+    game.player_mut(a).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless, 1);
+    perform(SpecialAction::Suspend { card_id: card }, &mut game, a, &mut SelectFirstDecisionMaker).unwrap();
+    let exiled = game.exile[0];
+    let counters = |game: &GameState, counter: &CounterType| game.object(exiled).map_or(0, |object| object.counters.get(counter).copied().unwrap_or(0));
+    assert_eq!(counters(&game, &progress), 2);
+    assert_eq!(counters(&game, &CounterType::Time), 0);
+
+    // Upkeep removes one.
+    let event = ironsmith::triggers::TriggerEvent::new(ironsmith::events::BeginningOfUpkeepEvent::new(a), Default::default());
+    let mut queue = ironsmith::triggers::TriggerQueue::new();
+    for entry in ironsmith::triggers::check_triggers(&game, &event) { queue.add(entry); }
+    ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+    ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+    assert_eq!(counters(&game, &progress), 1);
+
+    // A creature entering under its owner's control removes the last one.
+    let bear = definition("Bear", "", None);
+    let bear = game.create_object_from_definition(&bear, a, Zone::Hand);
+    enter_reminder_permanent(&mut game, bear);
+    for entry in drain_reminder_triggers(&mut game) { queue.add(entry); }
+    ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+    ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+    assert_eq!(counters(&game, &progress), 0);
+
+    // The last removal offers the free cast; the creature has no haste.
+    ironsmith::game_loop::drain_pending_trigger_events_with_dm(&mut game, &mut queue, &mut SelectFirstDecisionMaker).unwrap();
+    assert_eq!(queue.entries.len(), 1);
+    ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+    ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut Accept).unwrap();
+    ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+    let creature = *game.battlefield.iter().find(|id| game.object(**id).unwrap().name == "Foreseen").unwrap();
+    assert!(!game.current_has_static_ability_id(creature, StaticAbilityId::Haste));
+}

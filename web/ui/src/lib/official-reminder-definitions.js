@@ -148,6 +148,19 @@ export function expandKnownReminderDefinition(reminder, declaration = '') {
     return expandOfficialReminderDefinition(text, '702.113', `Awaken ${number(match[2])}—${match[1]}`);
   if ((match = text.match(/^Rather than cast this card from your hand, you may pay (.+?) and exile it with (\w+) time counters? on it\. At the beginning of your upkeep, remove a time counter\. When the last is removed, you may cast it without paying its mana cost\. It has haste\.$/i)) && number(match[2]) !== null)
     return expandOfficialReminderDefinition(text, '702.62', `Suspend ${number(match[2])}—${match[1]}`);
+  // The same timed exile with its own counter kind, an optional haste clause
+  // and optional extra removal events ("…upkeep, or whenever …, remove …").
+  // It reads as Suspend's full rule over that counter, without its identity.
+  if ((match = text.match(/^Rather than cast this card from your hand, you may pay (.+?) and exile it with (\w+) ([a-z][a-z-]*) counters? on it\. At the beginning of your upkeep(?:, or ([^.]+?))?, remove an? \3 counter(?: from it)?\. When the last(?: \3 counter)? is removed, you may cast it without paying its mana cost\.(?: (It has haste|If it's a creature, it has haste)\.)?$/i)) && number(match[2]) !== null) {
+    const [, price, count, kind, extra, haste] = match;
+    const counter = kind.toLowerCase();
+    const lines = [`If you could begin to cast this card from your hand, you may pay ${price} and exile it with ${number(count)} ${counter} counters on it. This action doesn't use the stack. At the beginning of your upkeep, if this card is exiled with a ${counter} counter on it, remove a ${counter} counter from it. When the last ${counter} counter is removed from this card, if it's exiled, you may play it without paying its mana cost.${haste ? ' If you cast a creature spell this way, it gains haste until you lose control of the spell or the permanent it becomes.' : ''}`];
+    for (const event of extra ? extra.split(/,?\s+or\s+(?=whenever\b)/i) : []) {
+      if (!/^whenever\b/i.test(event.trim())) return reminder;
+      lines.push(`${event.trim()[0].toUpperCase()}${event.trim().slice(1)}, if this card is exiled with a ${counter} counter on it, remove a ${counter} counter from it.`);
+    }
+    return lines.join('\n');
+  }
   if (/^You may cast this spell with different mana cost, color, and size\. It keeps its abilities and types\.$/i.test(text)) {
     const parameters = String(declaration).match(/((?:\{[^}]+\})+)\s*[—–-]\s*(\d+)\/(\d+)\.?$/);
     if (parameters) return expandOfficialReminderDefinition(text, '702.160', `Prototype ${parameters[1]}—${parameters[2]}/${parameters[3]}`);

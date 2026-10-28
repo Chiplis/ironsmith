@@ -1891,6 +1891,22 @@ fn parse_effect_chain_inner_lexed_unstacked(
     if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
         return Ok(vec![effect]);
     }
+    // "... deals 3 damage to target creature, then noncreature, nonartifact
+    // spells cost {1} less to cast until end of turn": the modifier's subject
+    // owns its comma-separated qualities, so read it as one sequenced clause
+    // before the comma splitter breaks the subject apart.
+    if let Some(split) = tokens
+        .windows(2)
+        .rposition(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+        && let Some(modifier) = matching_spell_cost_modifier_chain(&tokens[split + 2..])
+    {
+        let mut effects = parse_effect_chain_inner_lexed_unstacked(
+            &tokens[..split],
+            recognize_control_flow,
+        )?;
+        effects.push(modifier);
+        return Ok(effects);
+    }
     // "for each creature that dealt damage to this creature this turn,
     // destroy that creature unless its controller pays 2 life" (Giant
     // Albatross, under "If you do,"): the per-object body owns its comma and

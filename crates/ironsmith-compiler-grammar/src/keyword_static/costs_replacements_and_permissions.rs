@@ -644,6 +644,14 @@ pub fn parse_spells_cost_modifier_line(
     }
 
     let subject_tokens = trim_commas(&tokens[subject_start..spells_token_idx]);
+    // A sequenced clause ("... deals 3 damage, then noncreature spells
+    // cost ...") or a duration ("... until end of turn") makes this a
+    // one-shot effect, not a static ability; the effect reader owns it.
+    if crate::lexer::parser_token_word_refs(&subject_tokens).contains(&"then")
+        || clause_words.ends_with(&["until", "end", "of", "turn"])
+    {
+        return Ok(None);
+    }
     let is_this_spell = is_this_subject_reference_lexed(&subject_tokens);
 
     let Some(cost_token_idx) =

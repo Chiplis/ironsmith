@@ -2228,7 +2228,18 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
         "their".to_string()
     };
     let selection = describe_looked_battlefield_selection(choose)?;
-    let put_prefix = "Put";
+    // "Put up to one land card" reads as Oracle's "You may put a land card"
+    // (same choice: zero or one card).
+    let (put_prefix, selection) = match selection.strip_prefix("up to one ") {
+        Some(rest)
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && look_at_top.player == PlayerFilter::You
+                && !rest.starts_with("of ") =>
+        {
+            ("You may put", with_indefinite_article(rest))
+        }
+        _ => ("Put", selection),
+    };
     let control_suffix = match move_to_zone.battlefield_controller {
         crate::effects::BattlefieldController::Preserve => "",
         crate::effects::BattlefieldController::Owner => " under its owner's control",

@@ -2569,9 +2569,14 @@ fn perform_suspend(
     announced_x: Option<u32>,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    let (time, _cost) = {
+    let (time, counter_type) = {
         let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-        suspend_spec(object).ok_or(ActionError::NoSuchAbility)?
+        let (time, _cost) = suspend_spec(object).ok_or(ActionError::NoSuchAbility)?;
+        let counter_type = object.alternative_casts.iter()
+            .find(|method| method.suspend_spec().is_some())
+            .map(|method| method.timed_exile_counter())
+            .unwrap_or(crate::object::CounterType::Time);
+        (time, counter_type)
     };
     let time = time
         .resolve(announced_x)
@@ -2594,7 +2599,7 @@ fn perform_suspend(
     let cause = crate::events::cause::EventCause::from_special_action(Some(new_id), player);
     let event = crate::events::Event::put_counters(
         new_id,
-        crate::object::CounterType::Time,
+        counter_type,
         time,
         cause.clone(),
     )

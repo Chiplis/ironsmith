@@ -53,18 +53,29 @@ pub fn parse_pay(
             ManaCost::from_pips(vec![alternatives]),
         ));
     }
-    let pips = {
+    let (pips, rest) = {
         use winnow::prelude::*;
+        use winnow::stream::Stream;
         let mut stream = LexStream::new(tokens);
-        grammar::collect_mana_pip_groups
+        let pips = grammar::collect_mana_pip_groups
             .parse_next(&mut stream)
             .map_err(|_| {
                 CardTextError::ParseError(format!(
                     "missing payment cost (clause: '{}')",
                     crate::lexer::token_word_refs(tokens).join(" ")
                 ))
-            })?
+            })?;
+        (pips, &tokens[tokens.len() - stream.eof_offset()..])
     };
+    // "you may pay {1} to draw a card": a purpose clause after the payment.
+    // The leading-pip reading would keep only the payment and silently drop
+    // what it buys.
+    if rest.iter().find_map(OwnedLexToken::as_word) == Some("to") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported pay-to clause; write \"pay ... . If you do, ...\" instead (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
 
     Ok(EffectAst::subject_verb_pay_mana(
         player,

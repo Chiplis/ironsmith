@@ -1,4 +1,4 @@
-import { prepareCustomCard, mergeMechanics, installCustomMechanics, uninstallCustomMechanic, validateMechanic } from "./custom-mechanics.js";
+import { prepareCustomCard, mergeMechanics, installCustomMechanics, uninstallCustomMechanic, validateMechanic, probeMechanic } from "./custom-mechanics.js";
 import { cardSearchKey } from "./card-search.js";
 export const CUSTOM_CARD_LIBRARY_CHANGED = "custom-card-library-changed";
 export const CUSTOM_MECHANICS_CHANGED = "custom-mechanics-changed";
@@ -78,11 +78,15 @@ export async function reserveCustomMechanics(definitions) {
 }
 
 // Defined directly in the Mechanics tab rather than discovered on a card.
-export async function saveCustomMechanic(definition) {
+export async function saveCustomMechanic(definition, { compile } = {}) {
   const def = validateMechanic({ sourceCard: "the Mechanics tab", ...definition });
   const stored = await listCustomMechanics();
   const existing = stored.find(mechanic => mechanic.keyword === def.keyword);
   if (existing) throw new Error(`"${def.keyword}" is already saved (from ${existing.sourceCard}). Delete it first to redefine it.`);
+  if (compile) {
+    try { await probeMechanic(def, compile); }
+    catch (failure) { throw new Error(`The reminder text does not compile: ${failure?.message || failure}`); }
+  }
   await reserveCustomMechanics([def]);
   return def;
 }

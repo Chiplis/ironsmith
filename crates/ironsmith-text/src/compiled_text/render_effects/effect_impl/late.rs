@@ -3218,6 +3218,12 @@
         );
     }
     if let Some(extra_turn) = effect.downcast_ref::<crate::effects::ExtraTurnEffect>() {
+        // Oracle words the controller's extra turn as an imperative.
+        if matches!(extra_turn.player, PlayerFilter::You)
+            && ironsmith_core::semantic_audit::semantic_audit_active()
+        {
+            return "take an extra turn after this one".to_string();
+        }
         let player = describe_player_filter(&extra_turn.player);
         return format!(
             "{} {} an extra turn after this one",

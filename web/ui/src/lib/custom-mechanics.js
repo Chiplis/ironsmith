@@ -1,5 +1,5 @@
 import { expandKnownReminderDefinition } from './official-reminder-definitions.js';
-import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefinition, bindExileCastObject, hasNextUntapCostDefinition, nextUntapCostText, hasReminderCardParameter, bindReminderCard, isActivationReminder, bindActivationReminder, bindReminderCost, hasReminderCostReference, bindReminderActivationLabel, bindReminderValueFromDeclaration, hasRepeatedCopyPayment, expandRepeatedCopyPayment, bindReminderCostFromDeclaration } from './reminder-costs.js';
+import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefinition, bindExileCastObject, hasNextUntapCostDefinition, nextUntapCostText, hasReminderCardParameter, bindReminderCard, isActivationReminder, bindActivationReminder, bindReminderCost, hasReminderCostReference, bindReminderActivationLabel, bindReminderValueFromDeclaration, hasRepeatedCopyPayment, expandRepeatedCopyPayment, bindReminderCostFromDeclaration, hasReminderParameters, parseParameterDeclaration, bindReminderParameters, parameterExample } from './reminder-costs.js';
 import { MTG_KEYWORD_RULES } from './mtg-keyword-rules.generated.js';
 import { OFFICIAL_KEYWORD_FORMS, officialSurfaceForms, customKeywordForms, normalizeFormOverrides, surfaceForms } from './keyword-forms.js';
 
@@ -17,6 +17,11 @@ export function mechanicExpansion(reminder, declaration = '') {
   return String(expandKnownReminderDefinition(reminder, declaration)).trim().replace(
     /\b(spells you cast) cost (\{?\d+\}?) less to cast until end of turn\b/gi,
     (_, subject, amount) => `${subject} this turn cost {${amount.replace(/[{}]/g, '')}} less to cast`,
+  ).replace(
+    // "You may pay {Cost} to draw a card" means paying buys the effect; the
+    // compiler reads that as "You may pay {Cost}. If you do, draw a card."
+    /\b(you may pay) (\{cost\}|(?:\{[^{}]+\})+|its [a-z][a-z '-]* cost) to (?!cast\b)([^.!?]+)([.!?]|$)/gi,
+    (_, may, price, effect) => `${may} ${price}. If you do, ${effect}.`,
   );
 }
 
@@ -29,6 +34,9 @@ export function validateMechanic(definition) {
   if (!reminder || reminder.length > 2000 || /[()]/.test(reminder)) {
     throw new Error(`"${keyword}" needs one unambiguous parenthetical reminder explaining its action.`);
   }
+  // Braces hold mana symbols or the two declaration parameters.
+  const unknown = reminder.match(/\{(?!(?:cost|number)\})([a-z][a-z ]{2,})\}/i);
+  if (unknown) throw new Error(`"{${unknown[1]}}" is not a parameter. Use {Cost} for a price and {Number} for an amount, as in "${keyword} 3—{1}{U}".`);
   const overrides = normalizeFormOverrides(definition.forms);
   const forms = customKeywordForms({ keyword, forms: overrides });
   for (const form of [forms.participle, forms.designation, forms.costNoun, ...forms.variants]) {
@@ -100,6 +108,7 @@ function selfCostPattern(keyword) {
 }
 
 function mechanicPattern(definition) {
+  if (hasReminderParameters(definition.reminder)) return costedPattern(definition.keyword);
   if (hasExileCastDefinition(definition.reminder)) return exileObjectPattern(definition.keyword);
   if (hasNextUntapCostDefinition(definition.reminder)) return selfCostPattern(definition.keyword);
   if (hasReminderCardParameter(definition.reminder)) return cardParameterPattern(definition.keyword);
@@ -171,6 +180,15 @@ export function compileDraftInput(draft, definitions) {
     text = displayOracleText;
     for (const def of used) {
       let before = text;
+      if (hasReminderParameters(def.reminder)) {
+        text = text.replace(costedPattern(def.keyword), (match, prefix, keyword, rest, offset) => {
+          if (!outsideQuotation(before, offset)) return match;
+          const values = parseParameterDeclaration(def.reminder, keyword, `${keyword} ${rest}`);
+          if (!values) throw new Error(`"${keyword}" needs its parameters, for example "${parameterExample(def.reminder, keyword)}".`);
+          return prefix + mechanicExpansion(bindReminderParameters(def.reminder, keyword, values, customKeywordForms(def)));
+        });
+        continue;
+      }
       if (/^You may cast this spell with different mana cost, color, and size\. It keeps its abilities and types\.$/i.test(def.reminder)) {
         text = text.replace(costedPattern(def.keyword), (match, prefix, keyword, parameters, offset) => {
           if (!outsideQuotation(before, offset)) return match;
@@ -249,7 +267,10 @@ export function compileDraftInput(draft, definitions) {
 }
 
 const OPTIONAL_ADDITIONAL_COST = /\b(?:As an additional cost to cast this spell, you may|You may pay an additional)\b[^.]*/gi;
-const ALTERNATIVE_PRICE = /\bYou may cast this (?:spell|card)\b[^.]*?\bfor ((?:\{[^{}]+\})+)(?=[ .,])/gi;
+// Both alternative-cost wordings: "You may cast this spell for {R} …" and
+// "You may pay {R} rather than pay this spell's mana cost."
+const ALTERNATIVE_PRICE = /\bYou may (?:cast this (?:spell|card)\b[^.]*?\bfor|pay) ((?:\{[^{}]+\})+)(?=[ .,])(?:(?<=\bfor (?:\{[^{}]+\})+)|(?= rather than pay this (?:spell|card)'s mana cost))/gi;
+const ALTERNATIVE_DEFINITION = /\bYou may (?:cast this (?:spell|card)\b[^.]*?\bfor\b|pay\b[^.]*?\brather than pay this (?:spell|card)'s mana cost\b)/i;
 const PARTICIPLE_SUBJECTS = '(it|this spell|this creature|this permanent|this card)';
 
 // The single generic payment a definition creates on an expanded face: an
@@ -262,7 +283,7 @@ export function definitionPayment(text, def) {
     if (optional.length !== 1 || alternatives.length || /\bany number of times\b/i.test(optional[0])) return null;
     return { kind: 'additional' };
   }
-  if (/\bYou may cast this (?:spell|card)\b[^.]*?\bfor\b/i.test(def.expansion)) {
+  if (ALTERNATIVE_DEFINITION.test(def.expansion)) {
     if (alternatives.length !== 1 || optional.length) return null;
     return { kind: 'alternative', cost: alternatives[0][1] };
   }
@@ -347,6 +368,14 @@ function otherDeclarations(draft, definitions) {
         if (hasReminderMaterialParameter(declaration.reminder)) candidates.push(declaration);
       }
     }
+    // A parameterized declaration: "Keyword 3—{1}{U}" or "Keyword 3".
+    for (const match of semantic.matchAll(/^[ \t]*([a-z][a-z '-]*?)[ \t]+(?:\d+|X)(?:[ \t]*[—–][ \t]*[^\n]+)?$/gim)) {
+      const keyword = mechanicKey(match[1]);
+      if (official.has(keyword) || definitions.some(def => def.keyword === keyword)) continue;
+      for (const declaration of definingReminders(face, keyword)) {
+        if (hasReminderParameters(declaration.reminder) && parseParameterDeclaration(declaration.reminder, keyword, match[0])) candidates.push(declaration);
+      }
+    }
     // A costed declaration has an explicit dash or starts its price with mana.
     // Do not infer arbitrary prose as a mechanic name.
     for (const match of semantic.matchAll(/^[ \t]*([a-z][a-z '-]*?)(?:[ \t]*[—–][ \t]*|[ \t]+(?=\{))[^\n]+$/gim)) {
@@ -427,3 +456,58 @@ export function uninstallCustomMechanic(keyword) {
   if (active.delete(mechanicKey(keyword))) revision++;
 }
 export const activeCustomMechanics = () => [...active.values()];
+
+// A mechanic defined on its own (the Mechanics tab) has no card to prove it
+// compiles. Compile it on a minimal card that uses it the way a card would,
+// through the same expansion as a real draft. Shapes that need a
+// card-specific declaration (materials, activations, variables) can only be
+// judged on a real card.
+const PROBE_COST = '{1}';
+const PERMANENT_REMINDER = /\b(?:this (?:creature|permanent)|enters|attacks|blocks|dies|leaves the battlefield)\b/i;
+
+function probeUsage(def) {
+  const { keyword, reminder } = def;
+  const name = keyword[0].toUpperCase() + keyword.slice(1);
+  if (/^You may cast this spell with different mana cost/i.test(reminder) || hasReminderMaterialParameter(reminder)
+    || hasExileCastDefinition(reminder) || hasNextUntapCostDefinition(reminder) || isActivationReminder(reminder)
+    || /\b[XYZ]\b/.test(reminder)) return null;
+  if (hasReminderParameters(reminder)) return parameterExample(reminder, name).replace('{1}{U}', PROBE_COST);
+  if (hasReminderCardParameter(reminder)) return `${name} the top card of your library.`;
+  if (hasReminderCostReference(reminder, keyword, customKeywordForms(def)) || hasRepeatedCopyPayment(reminder)) return `${name} ${PROBE_COST}`;
+  return `${name}.`;
+}
+
+export async function probeMechanic(value, compile) {
+  const def = validateMechanic(value);
+  const usage = probeUsage(def);
+  if (!usage) return { checked: false };
+  const shapes = [
+    { cardTypes: ['Instant'] },
+    { cardTypes: ['Creature'], power: '2', toughness: '2' },
+  ];
+  if (PERMANENT_REMINDER.test(def.reminder)) shapes.reverse();
+  const attempt = async shape => {
+    const draft = { faces: [{ name: 'Mechanic Test', manaCost: '{0}', ...shape, oracleText: usage }] };
+    const preview = await compile(compileDraftInput(draft, [def]));
+    if (!preview?.canCreate) throw new Error('The reminder text did not compile completely.');
+    return preview.faces?.[0]?.rawCompilation || '';
+  };
+  let firstError = null;
+  for (const shape of shapes) {
+    try {
+      await attempt(shape);
+      // A sentence with no ability shape ("You may pay {Cost} to …") compiles
+      // as a spell instruction, which a permanent never runs.
+      const onPermanent = await attempt(shapes.find(candidate => candidate.power) || shape).catch(() => '');
+      return { checked: true, usage, permanentAbility: grantsPermanentAbility(onPermanent) };
+    } catch (error) {
+      firstError ||= error;
+    }
+  }
+  const failure = new Error(String(firstError?.message || firstError));
+  failure.usage = usage;
+  throw failure;
+}
+
+// Abilities beyond the keyword's own identity marker.
+const grantsPermanentAbility = raw => (raw.match(/\bAbility \{/g) || []).length > (raw.match(/\bKeywordMarker\b/g) || []).length;

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initWasmGame } from '../../../scripts/wasm-test-harness.mjs';
 import { finishPuzzlePregame, passToFirstMain } from './fixtures/native-game-setup.mjs';
-import { prepareCustomCard } from '../src/lib/custom-mechanics.js';
+import { prepareCustomCard, probeMechanic } from '../src/lib/custom-mechanics.js';
+import { REMINDER_TEMPLATES } from '../src/lib/mechanics-catalog.js';
 import { variukDraft } from './custom-mechanics-fixture.mjs';
 
 test('arbitrary custom names expand different reminders with inline and spaced placement', {timeout: 120000}, async () => {
@@ -118,5 +119,52 @@ test('Variuk retains shift in presentation while its real trigger stacks reducti
     assert.ok(state.turn_number >= 2);
     assert.equal(prices().get(Number(sorcery)), '{2}', 'shift expires at end of turn');
     assert.equal(prices().get(Number(colored)), '{1}{U}');
+  } finally { game.free(); }
+});
+
+test('a standalone mechanic compiles its reminder on a test card and reports compiler errors', {timeout: 120000}, async () => {
+  const { game } = await initWasmGame({ pkg: 'demo' });
+  const compile = input => game.previewCustomCard(input);
+  try {
+    assert.deepEqual(await probeMechanic({ keyword: 'glimmer', reminder: 'Draw a card.' }, compile), { checked: true, usage: 'Glimmer.', permanentAbility: false });
+    assert.deepEqual(await probeMechanic({ keyword: 'blink', reminder: '{Cost}: Exile this creature, then return it to the battlefield under its owner\'s control.' }, compile), { checked: true, usage: 'Blink {1}', permanentAbility: true });
+    // A "may pay" sentence is a spell instruction: dead text on a permanent.
+    assert.equal((await probeMechanic({ keyword: 'blink', reminder: 'You may pay {Cost} to exile it and return it to the battlefield under your control.' }, compile)).permanentAbility, false);
+    await assert.rejects(probeMechanic({ keyword: 'bogus', reminder: 'Florp the wibble twice daily.' }, compile),
+      error => error.usage === 'Bogus.' && /Florp the wibble/.test(error.message));
+  } finally { game.free(); }
+});
+
+test('every Mechanics-tab template compiles to its kind of rules text', {timeout: 120000}, async () => {
+  const { game } = await initWasmGame({ pkg: 'demo' });
+  const expected = {
+    'Static ability': raw => (raw.match(/kind: Static\(/g) || []).length > 1,
+    'Activated ability': raw => /kind: Activated\(/.test(raw),
+    'Triggered ability': raw => /kind: Triggered\(/.test(raw),
+    'Replacement effect': raw => /EventReplacementWithEffects/.test(raw),
+    'Additional cost': raw => /optional_costs: \[\s*\S/.test(raw),
+    'Alternative cost': raw => /alternative_casts: \[\s*\S/.test(raw),
+    'Spell instruction': raw => /spell_effect: Some/.test(raw),
+  };
+  try {
+    assert.deepEqual(REMINDER_TEMPLATES.map(template => template.kind), Object.keys(expected));
+    for (const template of REMINDER_TEMPLATES) {
+      const cardTypes = template.kind === 'Spell instruction' ? ['Instant'] : ['Creature'];
+      const draft = { faces: [{ name: 'Template Card', cardTypes, manaCost: '{1}', power: '2', toughness: '2', oracleText: template.usage }],
+        customMechanics: [{ keyword: template.keyword, reminder: template.reminder, sourceCard: 'the Mechanics tab' }] };
+      const prepared = await prepareCustomCard(draft, input => game.previewCustomCard(input));
+      assert.doesNotMatch(prepared.input.faces[0].oracleText, /\{Cost\}/i, template.kind);
+      assert.ok(expected[template.kind](prepared.preview.faces[0].rawCompilation), template.kind);
+    }
+    // The cost templates' notes promise a participle check; it compiles.
+    for (const [kind, usage] of [['Additional cost', 'Empower {2}'], ['Alternative cost', 'Rush {R}']]) {
+      const template = REMINDER_TEMPLATES.find(candidate => candidate.kind === kind);
+      const participle = template.note.match(/"if it was ([a-z]+)"/)[1];
+      const draft = { faces: [{ name: 'Template Card', cardTypes: ['Creature'], manaCost: '{1}', power: '2', toughness: '2',
+        oracleText: `${usage}\nWhen this creature enters, if it was ${participle}, draw a card.` }],
+        customMechanics: [{ keyword: template.keyword, reminder: template.reminder, sourceCard: 'the Mechanics tab' }] };
+      const prepared = await prepareCustomCard(draft, input => game.previewCustomCard(input));
+      assert.match(prepared.preview.faces[0].rawCompilation, /kind: Triggered\(/, kind);
+    }
   } finally { game.free(); }
 });

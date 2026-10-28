@@ -1016,15 +1016,16 @@ where
             }
             let subject = unlimited_zone_castable_filter_description(&filter);
             let origin = if self.zone == Zone::Hand { String::new() } else { format!(" from your {}", zone_name(self.zone)) };
+            let who = if matches!(self.beneficiary, PlayerFilter::Any) { "Any player" } else { "You" };
             if costs.is_empty() {
-                return format!("You may cast {subject}{origin} without paying their mana costs");
+                return format!("{who} may cast {subject}{origin} without paying their mana costs");
             }
             let price = costs
                 .iter()
                 .map(|cost| cost.display().trim().trim_end_matches('.').to_string())
                 .collect::<Vec<_>>()
                 .join(" and ");
-            return format!("You may cast {subject}{origin} by paying {price} rather than their mana costs");
+            return format!("{who} may cast {subject}{origin} by paying {price} rather than their mana costs");
         }
         // The permission reads as the plain play permission, then names the
         // extra cost paid with each cast through it.

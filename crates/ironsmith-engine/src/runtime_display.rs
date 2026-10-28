@@ -590,6 +590,19 @@ pub fn describe_effect(effect: &Effect) -> String {
 /// structural name, which `effect_sentences` scrubs before it reaches a
 /// prompt.
 pub fn describe_value(value: &Value) -> String {
+    // A semantic audit reads values with the installed structural reader,
+    // which names counts, maxima and sums instead of their Debug form.
+    std::thread_local! {
+        static READING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if ironsmith_core::semantic_audit::semantic_audit_active() && !READING.with(|cell| cell.get()) {
+        READING.with(|cell| cell.set(true));
+        let reading = ironsmith_core::semantic_audit::described_value(value);
+        READING.with(|cell| cell.set(false));
+        if let Some(reading) = reading {
+            return reading;
+        }
+    }
     match value {
         Value::SurfaceHinted { value, .. } => describe_value(value),
         Value::Fixed(amount) => amount.to_string(),
@@ -674,6 +687,17 @@ fn possessive_player(player: &PlayerFilter) -> &'static str {
 }
 
 pub fn describe_condition(condition: &Condition) -> String {
+    // A semantic audit reads conditions with the installed structural reader
+    // (the text crate's condition renderer) instead of their Debug form.
+    std::thread_local! {
+        static READING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if ironsmith_core::semantic_audit::semantic_audit_active() && !READING.with(|cell| cell.get()) {
+        READING.with(|cell| cell.set(true));
+        let reading = ironsmith_core::semantic_audit::audited_condition("Condition", condition);
+        READING.with(|cell| cell.set(false));
+        return reading;
+    }
     format!("{condition:?}")
 }
 
