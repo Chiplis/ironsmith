@@ -17,7 +17,7 @@ pub use ironsmith_compiler_grammar::*;
 pub use ironsmith_compiler_lowering::{
     CardDefinitionBuilder, battlefield_entry_counter_fusion, card_builders, card_tokens, cards,
     compile_support, condition_antecedent, effect_pipeline, lower, lowering, lowering_support,
-    runtime_static_ability_helpers,
+    runtime_static_ability_helpers, with_custom_tokens,
 };
 
 pub use facade::{

@@ -1,3 +1,5 @@
+import CommunityFormatEditor from './CommunityFormatEditor';
+import { emptyCommunityFormat } from '@/lib/community-format';
 import { normalizeDraftForApi } from "@/lib/custom-card-draft";
 import SandboxPanel from "./SandboxPanel";
 import MechanicsPanel from "./MechanicsPanel";
@@ -12,7 +14,8 @@ import {
 } from "@/lib/card-glint/printing-choices.mjs";
 import CustomCardsButton from "./CustomCardsButton";
 import { customCardImageUrl } from "@/lib/custom-card-assets";
-import { saveCustomCard, previewCustomDraft, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
+import { tokenKey } from "@/lib/custom-tokens";
+import { CUSTOM_TOKENS_CHANGED, deleteCustomToken, listCustomTokens, saveCustomCard, saveCustomToken, previewCustomDraft, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, Copy, Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
@@ -238,6 +241,8 @@ function counterShowcaseDraft(preset) {
 function cloneDraft(draft) {
   return {
     customMechanics: structuredClone(draft?.customMechanics || []),
+    ...(draft?.customTokens?.length ? { customTokens: structuredClone(draft.customTokens) } : {}),
+    ...(draft?.token === true ? { token: true } : {}),
     layout: draft?.layout || "single",
     frameLayout: draft?.frameLayout,
     hasFuse: draft?.hasFuse === true,
@@ -443,7 +448,7 @@ function layoutLabel(layout) {
   return "Single-face";
 }
 
-function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceArrayValue, layoutControls }) {
+function InlineFaceEditor({ face, layout, hasFuse, token = false, busy, updateFace, toggleFaceArrayValue, layoutControls }) {
   const ui = useUiText();
   return (
     <section className="card-forge-inline-editor">
@@ -458,19 +463,21 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
               onChange={(event) => updateFace({ name: event.target.value })}
             />
             <div className="card-forge-preview-layout">
-              {ui(layoutLabel(layout))}
+              {token ? ui("Token") : ui(layoutLabel(layout))}
               {hasFuse ? ui(" • Fuse") : ""}
               {busy ? ui(" • compiling") : ""}
             </div>
           </div>
           <div className="card-forge-inline-header-side">
-            <input
-              className="card-forge-inline-cost"
-              aria-label={ui("Mana cost")}
-              placeholder="{2}{W}{U}"
-              value={face.manaCost}
-              onChange={(event) => updateFace({ manaCost: event.target.value })}
-            />
+            {token ? null : (
+              <input
+                className="card-forge-inline-cost"
+                aria-label={ui("Mana cost")}
+                placeholder="{2}{W}{U}"
+                value={face.manaCost}
+                onChange={(event) => updateFace({ manaCost: event.target.value })}
+              />
+            )}
           </div>
         </div>
 
@@ -582,6 +589,8 @@ export default function CreateCardForgeSheet({
   const { game, state, refresh, runWasmInteraction, setStatus, semanticThreshold, setSemanticThreshold, cardsMeetingThreshold } = useGame();
   const [open, setOpen] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState("card");
+  const [customSetDraft, setCustomSetDraft] = useState(emptyCommunityFormat);
+  const [customFormatDraft, setCustomFormatDraft] = useState(emptyCommunityFormat);
   const [sandboxBusy, setSandboxBusy] = useState(false);
   const [catalogCard, setCatalogCard] = useState(null);
   const [seedLoading, setSeedLoading] = useState(false);
@@ -599,6 +608,8 @@ export default function CreateCardForgeSheet({
   const [printingName, setPrintingName] = useState(null);
   const [currentPrinting, setCurrentPrinting] = useState(null);
   const selectionRequest = useRef(0);
+  const [savedTokens, setSavedTokens] = useState([]);
+  const isToken = draft.token === true;
 
   const cancelSelection = useCallback(() => {
     selectionRequest.current++;
@@ -696,6 +707,57 @@ export default function CreateCardForgeSheet({
     }
   }, [game, seedDraft, setStatus]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    let active = true;
+    const load = () => listCustomTokens()
+      .then((tokens) => { if (active) setSavedTokens(tokens); })
+      .catch(() => {});
+    load();
+    globalThis.addEventListener?.(CUSTOM_TOKENS_CHANGED, load);
+    return () => { active = false; globalThis.removeEventListener?.(CUSTOM_TOKENS_CHANGED, load); };
+  }, [open]);
+
+  // A token is a single face with no mana cost; turning it off restores a card.
+  const handleTokenToggle = useCallback((checked) => {
+    cancelSelection();
+    setCatalogCard(null);
+    setDraft((current) => {
+      if (!checked) {
+        const { token: _token, ...card } = current;
+        return card;
+      }
+      return {
+        ...current,
+        token: true,
+        layout: "single",
+        hasFuse: false,
+        faces: [{ ...current.faces[0], manaCost: "" }],
+      };
+    });
+    setActiveFace("face-0");
+  }, [cancelSelection]);
+
+  const loadSavedToken = useCallback((token) => {
+    cancelSelection();
+    const next = cloneDraft({ layout: "single", token: true, faces: [token.face] });
+    setDraft(next);
+    setSeedDraft(next);
+    setCatalogCard(null);
+    setPrintingName(null);
+    setActiveFace("face-0");
+    setSaveMessage("");
+  }, [cancelSelection]);
+
+  const removeSavedToken = useCallback(async (token) => {
+    try {
+      await deleteCustomToken(token.name);
+      setSaveMessage(`Deleted token ${token.name}. Cards that already create it keep their copy.`);
+    } catch (error) {
+      setSaveMessage(`Delete failed: ${String(error?.message || error)}`);
+    }
+  }, []);
+
   const handleOpenChange = useCallback((nextOpen) => {
     if (sandboxBusy) return;
     cancelSelection();
@@ -774,6 +836,12 @@ export default function CreateCardForgeSheet({
       // Validate this exact snapshot, even if the debounced preview is stale.
       // Printing choices are saved with the card but never sent to the engine.
       savedDraft.presentation = draft.presentation;
+      if (savedDraft.token) {
+        const token = await saveCustomToken(savedDraft, { compile: input => game.previewCustomCard(input) });
+        setCustomCardArtUrls([{ name: token.name, artUrl: draft.faces[0].artUrl }]);
+        setSaveMessage(`Saved token ${token.name}. Other cards can now create it by name, for example "Create two ${token.name} tokens." Saved on this browser; saving the same name updates it.`);
+        return;
+      }
       await saveCustomCard(savedDraft, { compile: input => game.previewCustomCard(input) });
       setSaveMessage(`Saved ${savedDraft.faces[0].name}. Find it with Include custom cards in Build. Saved on this browser; saving the same name updates it.`);
     } catch (error) {
@@ -806,15 +874,18 @@ export default function CreateCardForgeSheet({
         const objectId = await game.createCustomCard({
           draft: prepared.input,
           playerIndex: selectedPlayer,
-          zoneName: zone,
+          // A token only exists on the battlefield (CR 111.7).
+          zoneName: isToken ? "battlefield" : zone,
           skipTriggers,
         });
         setCardPresentation(objectId, [draft.faces.map((face) => face.name).join(" // "), ...draft.faces.map((face) => face.name)],
           draft.presentation, { existing, builderCreated: true });
-        setCustomCardArtUrls(draft.faces.map((face) => ({
-          name: face.name,
-          artUrl: face.artUrl,
-        })));
+        setCustomCardArtUrls([
+          ...draft.faces.map((face) => ({ name: face.name, artUrl: face.artUrl })),
+          // Tokens this card creates show the art saved with them.
+          ...(prepared.draft.customTokens || []).filter((token) => token.face.artUrl)
+            .map((token) => ({ name: token.name, artUrl: token.face.artUrl })),
+        ]);
         // The compiled card owns its text from here on, whatever printing its
         // name resolves to.
         setCompiledCardNames(draft.faces.map((face) => face.name));
@@ -826,7 +897,7 @@ export default function CreateCardForgeSheet({
         setSubmitting(false);
       }
     });
-  }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone, unchangedCatalogCard, catalogCard, state]);
+  }, [draft, game, isToken, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone, unchangedCatalogCard, catalogCard, state]);
 
   const handleCounterShowcase = useCallback(async () => {
     const result = await runWasmInteraction(async () => {
@@ -943,7 +1014,35 @@ export default function CreateCardForgeSheet({
   const layoutControls = (
     <section className="card-forge-layout-controls">
       <div className="card-forge-panel-title">{ui("Card Layout")}</div>
-      <LayoutPicker value={draft.layout} onChange={handleLayoutChange} />
+      {isToken ? null : <LayoutPicker value={draft.layout} onChange={handleLayoutChange} />}
+      <label className="toolbar-checkbox mt-2 flex items-center gap-2 text-[13px] uppercase tracking-wide">
+        <Checkbox
+          checked={isToken}
+          onCheckedChange={(checked) => handleTokenToggle(checked === true)}
+          className="h-3.5 w-3.5"
+        />{ui("Token")}</label>
+      {isToken ? (
+        <p className="text-xs text-muted-foreground">{ui("Save a named token and other cards can create it by name, for example “Create two {0} tokens.” Tokens have no mana cost and are added to the battlefield.", { 0: draft.faces[0]?.name || "Bobble" })}</p>
+      ) : null}
+      {isToken && savedTokens.length ? (
+        <div className="mt-2 flex flex-wrap gap-1.5" aria-label={ui("Saved tokens")}>
+          {savedTokens.map((token) => (
+            <span key={token.key} className="inline-flex items-center gap-0.5">
+              <button
+                type="button"
+                className={cn("card-forge-chip", tokenKey(draft.faces[0]?.name) === token.key && "is-active")}
+                onClick={() => loadSavedToken(token)}
+              >{token.name}</button>
+              <button
+                type="button"
+                className="card-forge-chip"
+                aria-label={ui("Delete token {0}", { 0: token.name })}
+                onClick={() => void removeSavedToken(token)}
+              >×</button>
+            </span>
+          ))}
+        </div>
+      ) : null}
       {draft.layout === "meld" ? (
         <p className="text-xs text-muted-foreground">{ui("Edit both cards and their meld result. Add a meld ability to a component’s rules text using the exact partner and result names. Adding creates both component cards in the selected zone.")}</p>
       ) : null}
@@ -984,15 +1083,23 @@ export default function CreateCardForgeSheet({
         >
           <SheetHeader className="fantasy-sheet-header card-forge-header pr-12">
             <SheetTitle>{ui("Build")}</SheetTitle>
-            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Find an existing card, edit its details, or start a new card. Preview the result and add it to your game.")}</SheetDescription>
+            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Create cards and mechanics, collect cards into sets, and design custom formats for your games.")}</SheetDescription>
           </SheetHeader>
 
           <Tabs value={workspaceTab} onValueChange={setWorkspaceTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <TabsList variant="line" className="shrink-0 px-4">
+            <TabsList variant="line" className="shrink-0 max-w-full justify-start overflow-x-auto px-4">
               <TabsTrigger value="card" disabled={sandboxBusy}>{ui("Card")}</TabsTrigger>
               <TabsTrigger value="mechanics" disabled={sandboxBusy}>{ui("Mechanics")}</TabsTrigger>
+              <TabsTrigger value="sets" disabled={sandboxBusy}>{ui("Sets")}</TabsTrigger>
+              <TabsTrigger value="formats" disabled={sandboxBusy}>{ui("Formats")}</TabsTrigger>
               <TabsTrigger value="sandbox" disabled={submitting}>{ui("Sandbox")}</TabsTrigger>
             </TabsList>
+            <TabsContent forceMount value="sets" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
+              <CommunityFormatEditor kind="set" active={open && workspaceTab === 'sets'} value={customSetDraft} onChange={setCustomSetDraft} />
+            </TabsContent>
+            <TabsContent forceMount value="formats" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
+              <CommunityFormatEditor active={open && workspaceTab === 'formats'} value={customFormatDraft} onChange={setCustomFormatDraft} />
+            </TabsContent>
             <TabsContent value="mechanics" className="min-h-0 flex-1 overflow-y-auto">
               <MechanicsPanel />
             </TabsContent>
@@ -1041,7 +1148,8 @@ export default function CreateCardForgeSheet({
                     <span className="card-forge-section-label">{ui("Zone")}</span>
                     <select
                       className="card-forge-input"
-                      value={zone}
+                      value={isToken ? "battlefield" : zone}
+                      disabled={isToken}
                       onChange={(event) => onZoneChange?.(event.target.value)}
                     >
                       {ZONE_OPTIONS.map(([value, label]) => (
@@ -1175,6 +1283,7 @@ export default function CreateCardForgeSheet({
                     layout={draft.layout}
                     layoutControls={layoutControls}
                     hasFuse={draft.hasFuse}
+                    token={draft.token === true}
                     busy={previewLoading}
                     updateFace={(patch) => updateFace(0, patch)}
                     toggleFaceArrayValue={(key, value) => toggleFaceArrayValue(0, key, value)}

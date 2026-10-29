@@ -1237,10 +1237,10 @@ pub(super) fn attach_compiler_trigger_facts(
 fn dispatch_line_family_registry(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
-    // Sticker-sheet ticket rows are presentation data even when the text to
-    // the right of the dash looks like a trigger, activation, or keyword.
-    // Claim them before every ordinary line-family rule.
-    if let Some(dispatch) = super::line_family_handlers::sticker_sheet_ticket_marker_result(ctx) {
+    // A power/toughness sticker row (CR 123.8) has no ability grammar of its
+    // own; claim it before every ordinary line-family rule. Ability rows are
+    // ordinary lines whose ticket cost is a line fact.
+    if let Some(dispatch) = super::line_family_handlers::sticker_power_toughness_row_result(ctx) {
         return ParseOutcome::matched(dispatch, span_from_tokens(&ctx.line.tokens));
     }
 

@@ -3,11 +3,11 @@ import { useGame } from "@/context/GameContext";
 import useUiText from "@/i18n/useUiText";
 import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions } from "@/lib/custom-card-library";
 
-export default function BuildCardSearch({ onSelect, disabled, actions, secondaryControls }) {
+export default function BuildCardSearch({ onSelect, disabled, actions, secondaryControls, defaultIncludeCustom = false }) {
   const { game, semanticThreshold } = useGame();
   const ui = useUiText();
   const [query, setQuery] = useState("");
-  const [includeCustom, setIncludeCustom] = useState(false);
+  const [includeCustom, setIncludeCustom] = useState(defaultIncludeCustom);
   const [cards, setCards] = useState([]);
   const [options, setOptions] = useState([]);
   const [error, setError] = useState("");

@@ -872,6 +872,19 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if let Some(comparison) = &filter.creature_type_count {
+        let count = object_subtypes
+            .iter()
+            .enumerate()
+            .filter(|(index, subtype)| {
+                subtype.is_creature_type() && !object_subtypes[..*index].contains(subtype)
+            })
+            .count() as i32;
+        if !comparison.satisfies_with_context(count, game, ctx, stack_entry) {
+            return false;
+        }
+    }
+
     if let Some(comparison) = &filter.card_type_count {
         let count = object_card_types
             .iter()

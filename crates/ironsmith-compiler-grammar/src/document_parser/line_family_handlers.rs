@@ -96,9 +96,6 @@ pub(super) fn run_trailing_keyword_activation_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("trailing-keyword-activation");
-    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
-        return line_family_match(ctx, result);
-    }
     match try_parse_trailing_keyword_activation_dispatch(&ctx.preprocessed.card, ctx.idx, ctx.line)
     {
         Ok(Some(result)) => line_family_match(ctx, result),
@@ -111,9 +108,6 @@ pub(super) fn run_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("labeled-line");
-    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
-        return line_family_match(ctx, result);
-    }
     if split_label_prefix_lexed(&ctx.line.info.source_tokens).is_none()
         && split_label_prefix_lexed(&ctx.line.tokens).is_none()
     {
@@ -132,52 +126,28 @@ pub(super) fn run_labeled_line_family(
     }
 }
 
-pub(super) fn sticker_sheet_ticket_marker_result(
+/// A power/toughness-sticker row (CR 123.8) on a sticker sheet: its body is
+/// exactly "P/T"; the ticket cost was typed when the row was preprocessed.
+pub(super) fn sticker_power_toughness_row_result(
     ctx: &LineDispatchContext<'_>,
 ) -> Option<LineDispatchResult> {
-    is_sticker_sheet_ticket_marker_line(ctx).then(|| {
-        LineDispatchResult::single(
-            RecognizedLine::Static(sticker_sheet_ticket_marker_static_line(ctx)),
-            ctx.idx + 1,
-        )
-    })
-}
-
-fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> RecognizedStaticLine {
-    let marker = render_token_slice(&ctx.line.info.source_tokens).trim().to_string();
-    RecognizedStaticLine {
-        info: ctx.line.info.clone(),
-        parse_tokens: ctx.line.tokens.clone(),
-        chosen_option: None,
-        // Ticket-threshold rows on a sticker sheet are presentation entries,
-        // not abilities of the sticker-sheet card itself. Lower the complete
-        // row directly so trigger-shaped and keyword-shaped bodies cannot be
-        // reclassified after the `Stickers` metadata line has identified it.
-        parsed: Some(Box::new(LineAst::StaticAbility(
-            crate::cards::builders::StaticAbilityAst::KeywordAction(
-                crate::payload::KeywordAction::StaticMarkerText(marker),
-            ),
-        ))),
-    }
-}
-
-fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
-    let is_sticker_sheet = ctx.preprocessed.items.iter().any(|item| {
-        matches!(
-            item,
-            PreprocessedItem::Metadata(metadata)
-                if matches!(
-                    &metadata.value,
-                    crate::model::facts::MetadataLine::TypeLine(value)
-                        if value.eq_ignore_ascii_case("Stickers")
-                )
-        )
-    });
-    if !is_sticker_sheet {
-        return false;
-    }
-    line_grammar::parse_sticker_ticket_marker(&ctx.line.info.source_tokens).is_some()
-        || line_grammar::parse_sticker_ticket_marker(&ctx.line.tokens).is_some()
+    let tickets = ctx.line.info.semantic_facts.sticker_ticket_cost?;
+    let (power, toughness) = line_grammar::parse_sticker_power_toughness(&ctx.line.tokens)?;
+    Some(LineDispatchResult::single(
+        RecognizedLine::Static(RecognizedStaticLine {
+            info: ctx.line.info.clone(),
+            parse_tokens: ctx.line.tokens.clone(),
+            chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbility(
+                crate::cards::builders::StaticAbilityAst::from(
+                    crate::model::CompilerStaticAbilityCore::ticket_power_toughness_sticker(
+                        tickets, power, toughness,
+                    ),
+                ),
+            ))),
+        }),
+        ctx.idx + 1,
+    ))
 }
 
 pub(super) fn run_triggered_line_family(
@@ -185,9 +155,6 @@ pub(super) fn run_triggered_line_family(
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("triggered-line");
     if crate::keyword_static::parse_descriptive_reminder_line(&ctx.line.tokens).is_some() { return ParseOutcome::NoMatch; }
-    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
-        return line_family_match(ctx, result);
-    }
     if !line_starts_with_trigger_intro_tokens(&ctx.line.tokens) {
         return ParseOutcome::NoMatch;
     }
@@ -1370,9 +1337,6 @@ pub(super) fn run_keyword_line_family(
         }
     }
 
-    if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
-        return line_family_match(ctx, result);
-    }
     if super::super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
         &ctx.line.tokens,
     )
@@ -2179,7 +2143,7 @@ fn is_lose_game_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
 
 fn has_specialized_document_line_shape(ctx: &LineDispatchContext<'_>) -> bool {
     let tokens = &ctx.line.tokens;
-    sticker_sheet_ticket_marker_result(ctx).is_some()
+    sticker_power_toughness_row_result(ctx).is_some()
         || normalize_trailing_keyword_activation_sentence_lexed(tokens).is_some()
         || line_grammar::parse_max_speed_line(tokens).is_some()
         // A cost keyword's own dash ("Suspend 4—{1}{R}") is not a presentation
@@ -2809,9 +2773,12 @@ fn parse_keyword_activation_prefix_static_or_rewrite(
 mod ticket_marker_tests {
     use super::*;
     use ironsmith_compiler_lowering::CardDefinitionBuilder;
-    use ironsmith_core::card::CardBuilder;
+    use ironsmith_core::StaticAbilityPayload as P;
 
-    fn compiled_sticker_marker_labels(name: &str, text: &str) -> Vec<String> {
+    /// Each sheet row as (tickets, sticker): `Ok(kinds)` for an ability
+    /// sticker's granted ability kinds, `Err((power, toughness))` for a
+    /// power/toughness sticker.
+    fn compiled_sticker_rows(name: &str, text: &str) -> Vec<(u32, Result<Vec<&'static str>, (i32, i32)>)> {
         let compiled = crate::compile_card_text(
             CardDefinitionBuilder::new(crate::ids::CardId::new(), name),
             text,
@@ -2829,17 +2796,31 @@ mod ticket_marker_tests {
             .abilities
             .iter()
             .map(|ability| match &ability.kind {
-                crate::ability::AbilityKind::Static(static_ability) => {
-                    static_ability.display().to_ascii_lowercase()
-                }
-                other => panic!("sticker-sheet row became a runtime ability: {other:#?}"),
+                crate::ability::AbilityKind::Static(static_ability) => match &static_ability.payload {
+                    P::TicketAbilitySticker { tickets, abilities } => (
+                        *tickets,
+                        Ok(abilities
+                            .iter()
+                            .map(|granted| match &granted.kind {
+                                crate::ability::AbilityKind::Static(_) => "static",
+                                crate::ability::AbilityKind::Triggered(_) => "triggered",
+                                crate::ability::AbilityKind::Activated(_) => "activated",
+                            })
+                            .collect()),
+                    ),
+                    P::TicketPowerToughnessSticker { tickets, power, toughness } => {
+                        (*tickets, Err((*power, *toughness)))
+                    }
+                    other => panic!("sticker-sheet row is not a typed sticker: {other:#?}"),
+                },
+                other => panic!("sticker-sheet row became the sheet's own ability: {other:#?}"),
             })
             .collect()
     }
 
     #[test]
-    fn sticker_ticket_keyword_rows_keep_their_threshold_header() {
-        let labels = compiled_sticker_marker_labels(
+    fn sticker_ticket_rows_type_their_ticket_cost_and_sticker() {
+        let rows = compiled_sticker_rows(
             "Trendy Circus Pirate",
             "Type: Stickers\n\
              {TK}{TK} — Deathtouch\n\
@@ -2848,14 +2829,20 @@ mod ticket_marker_tests {
              {TK}{TK}{TK} — 3/6",
         );
 
-        assert_eq!(labels.len(), 4, "{labels:#?}");
-        assert_eq!(labels[0], "{tk}{tk} — deathtouch");
-        assert!(labels[1].starts_with("{tk}{tk}{tk}{tk}{tk} — whenever "));
+        assert_eq!(
+            rows,
+            vec![
+                (2, Ok(vec!["static"])),
+                (5, Ok(vec!["triggered"])),
+                (2, Err((5, 1))),
+                (3, Err((3, 6))),
+            ]
+        );
     }
 
     #[test]
-    fn sticker_ticket_double_labeled_trigger_stays_one_presentation_row() {
-        let labels = compiled_sticker_marker_labels(
+    fn sticker_ticket_labeled_trigger_row_is_one_triggered_sticker() {
+        let rows = compiled_sticker_rows(
             "Werewolf Lightning Mage",
             "Type: Stickers\n\
              {TK}{TK} — Landfall — Whenever a land enters under your control, put a +1/+1 counter on this permanent.\n\
@@ -2864,9 +2851,14 @@ mod ticket_marker_tests {
              {TK}{TK}{TK} — 3/5",
         );
 
-        assert_eq!(labels.len(), 4, "{labels:#?}");
-        assert!(labels[0].starts_with("{tk}{tk} — landfall — whenever "));
-        assert!(labels[0].ends_with("put a +1/+1 counter on this permanent."));
-        assert!(labels[1].starts_with("{tk}{tk}{tk}{tk} — whenever "));
+        assert_eq!(
+            rows,
+            vec![
+                (2, Ok(vec!["triggered"])),
+                (4, Ok(vec!["triggered"])),
+                (2, Err((4, 1))),
+                (3, Err((3, 5))),
+            ]
+        );
     }
 }

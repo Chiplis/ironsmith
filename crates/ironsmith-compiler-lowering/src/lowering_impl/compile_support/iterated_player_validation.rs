@@ -239,6 +239,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_mentions_iterated_player(spec),
@@ -452,6 +453,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_contains_pending_effect_metric(spec),

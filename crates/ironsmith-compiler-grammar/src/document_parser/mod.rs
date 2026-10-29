@@ -4324,6 +4324,31 @@ pub fn recognize_document_with_context(
                     source_line: line.info.display_line_index,
                 });
                 let _line_references = line_context.reference_scope();
+                // A sticker-sheet row's body is read as an ordinary line; a
+                // body no reader supports stays the row's unverified marker
+                // rather than failing the whole sheet.
+                if line.info.semantic_facts.sticker_ticket_cost.is_some() {
+                    let recognized_before = lines.len();
+                    match dispatch_remaining_preprocessed_line(
+                        line_context,
+                        preprocessed,
+                        idx,
+                        line,
+                        allow_unsupported,
+                        &mut lines,
+                    ) {
+                        Ok(next_idx) => idx = next_idx,
+                        Err(error) => {
+                            parse_trace::event(format!(
+                                "sticker row body unsupported, kept as marker: {error:?}"
+                            ));
+                            lines.truncate(recognized_before);
+                            lines.push(sticker_row_marker_from_info(&line.info));
+                            idx += 1;
+                        }
+                    }
+                    continue;
+                }
                 // CR 309.4: a dungeon's lines are its rooms (and, for
                 // Undercity, its entry restriction), never ordinary abilities.
                 if try_push_dungeon_line(preprocessed, line, &mut lines)? {
@@ -4469,7 +4494,7 @@ fn dispatch_remaining_preprocessed_line(
     if let Some(next_idx) = try_push_modal_bullet_block(preprocessed, idx, line, lines)? {
         return Ok(next_idx);
     }
-    if let Some(next_idx) = try_push_sticker_sheet_ticket_marker_result(
+    if let Some(next_idx) = try_push_sticker_power_toughness_row(
         line_context,
         preprocessed,
         idx,
@@ -4970,7 +4995,45 @@ fn try_push_chosen_abilities_grant_line(
     Ok(true)
 }
 
-fn try_push_sticker_sheet_ticket_marker_result(
+/// The unverified marker kept for a sticker-sheet row whose body has no
+/// supported reading: the printed row, not an ability of the sheet.
+fn sticker_row_marker_from_info(info: &crate::line_info::LineInfo) -> RecognizedLine {
+    let tickets = info.semantic_facts.sticker_ticket_cost.unwrap_or_default();
+    let mut info = info.clone();
+    info.semantic_facts.sticker_ticket_cost = None;
+    let marker = format!(
+        "{} \u{2014} {}",
+        ironsmith_core::static_ability_model::ticket_cost_symbols(tickets),
+        render_token_slice(&info.source_tokens).trim()
+    );
+    let parse_tokens = info.source_tokens.clone();
+    RecognizedLine::Static(RecognizedStaticLine {
+        info,
+        parse_tokens,
+        chosen_option: None,
+        parsed: Some(Box::new(LineAst::StaticAbility(
+            crate::cards::builders::StaticAbilityAst::KeywordAction(
+                crate::payload::KeywordAction::StaticMarkerText(marker),
+            ),
+        ))),
+    })
+}
+
+/// The line info of a recognized sticker-sheet row, if `line` is one.
+fn recognized_sticker_row_info(line: &RecognizedLine) -> Option<&crate::line_info::LineInfo> {
+    let info = match line {
+        RecognizedLine::Keyword(line) => &line.info,
+        RecognizedLine::Activated(line) => &line.info,
+        RecognizedLine::Triggered(line) => &line.info,
+        RecognizedLine::Static(line) => &line.info,
+        RecognizedLine::Statement(line) => &line.info,
+        RecognizedLine::Unsupported(line) => &line.info,
+        _ => return None,
+    };
+    info.semantic_facts.sticker_ticket_cost.is_some().then_some(info)
+}
+
+fn try_push_sticker_power_toughness_row(
     line_context: ParseContextView<'_>,
     preprocessed: &PreprocessedDocument,
     idx: usize,
@@ -4985,7 +5048,7 @@ fn try_push_sticker_sheet_ticket_marker_result(
         line,
         allow_unsupported,
     };
-    let dispatch = line_family_handlers::sticker_sheet_ticket_marker_result(&ticket_ctx)?;
+    let dispatch = line_family_handlers::sticker_power_toughness_row_result(&ticket_ctx)?;
     for recognized in &dispatch.lines {
         trace_recognized_line(recognized);
     }
@@ -6107,7 +6170,34 @@ fn assemble_document_with_symbols(
             }
             other => {
                 let _references = line_reference_scope(&symbols, &other);
-                items.push(assemble_non_metadata_line(other, allow_unsupported)?);
+                // A sticker-sheet row whose body has no supported reading, or
+                // reads as a spell instruction rather than a sticker's
+                // ability, keeps its unverified marker (see recognition).
+                let sticker_fallback = recognized_sticker_row_info(&other).map(|info| {
+                    (
+                        matches!(other, RecognizedLine::Statement(_)),
+                        sticker_row_marker_from_info(info),
+                    )
+                });
+                match (sticker_fallback, other) {
+                    (Some((true, marker)), _) => {
+                        items.push(assemble_non_metadata_line(marker, allow_unsupported)?);
+                    }
+                    (Some((false, marker)), other) => {
+                        match assemble_non_metadata_line(other, allow_unsupported) {
+                            Ok(item) => items.push(item),
+                            Err(error) => {
+                                parse_trace::event(format!(
+                                    "sticker row body unsupported, kept as marker: {error:?}"
+                                ));
+                                items.push(assemble_non_metadata_line(marker, allow_unsupported)?);
+                            }
+                        }
+                    }
+                    (None, other) => {
+                        items.push(assemble_non_metadata_line(other, allow_unsupported)?);
+                    }
+                }
             }
         }
     }

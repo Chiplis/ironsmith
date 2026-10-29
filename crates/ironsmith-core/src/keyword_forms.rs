@@ -204,6 +204,59 @@ pub const OFFICIAL_KEYWORD_FORMS: &[KeywordForms] = &[
     k("beam me up").participle(BEAMED_UP).costed(),
 ];
 
+/// Every CR 702 keyword ability name, lowercase, in rule order, as the parser
+/// sees its words (punctuation such as "!" dropped). "Daybound and
+/// Nightbound" lists its two keywords separately; "∞" has no name to write.
+pub const OFFICIAL_KEYWORD_ABILITIES: &[&str] = &[
+    "deathtouch", "defender", "double strike", "enchant", "equip", "first strike", "flash",
+    "flying", "haste", "hexproof", "indestructible", "intimidate", "landwalk", "lifelink",
+    "protection", "reach", "shroud", "trample", "vigilance", "ward", "banding", "rampage",
+    "cumulative upkeep", "flanking", "phasing", "buyback", "shadow", "cycling", "echo",
+    "horsemanship", "fading", "kicker", "flashback", "madness", "fear", "morph", "amplify",
+    "provoke", "storm", "affinity", "entwine", "modular", "sunburst", "bushido", "soulshift",
+    "splice", "offering", "ninjutsu", "epic", "convoke", "dredge", "transmute", "bloodthirst",
+    "haunt", "replicate", "forecast", "graft", "recover", "ripple", "split second", "suspend",
+    "vanishing", "absorb", "aura swap", "delve", "fortify", "frenzy", "gravestorm", "poisonous",
+    "transfigure", "champion", "changeling", "evoke", "hideaway", "prowl", "reinforce",
+    "conspire", "persist", "wither", "retrace", "devour", "exalted", "unearth", "cascade",
+    "annihilator", "level up", "rebound", "umbra armor", "infect", "battle cry",
+    "living weapon", "undying", "miracle", "soulbond", "overload", "scavenge", "unleash",
+    "cipher", "evolve", "extort", "fuse", "bestow", "tribute", "dethrone", "hidden agenda",
+    "outlast", "prowess", "dash", "exploit", "menace", "renown", "awaken", "devoid", "ingest",
+    "myriad", "surge", "skulk", "emerge", "escalate", "melee", "crew", "fabricate", "partner",
+    "undaunted", "improvise", "aftermath", "embalm", "eternalize", "afflict", "ascend",
+    "assist", "jump-start", "mentor", "afterlife", "riot", "spectacle", "escape", "companion",
+    "mutate", "encore", "boast", "foretell", "demonstrate", "daybound", "nightbound",
+    "disturb", "decayed", "cleave", "training", "compleated", "reconfigure", "blitz",
+    "casualty", "enlist", "read ahead", "ravenous", "squad", "space sculptor", "visit",
+    "prototype", "living metal", "more than meets the eye", "for mirrodin", "toxic", "backup",
+    "bargain", "craft", "disguise", "solved", "plot", "saddle", "spree", "freerunning", "gift",
+    "offspring", "impending", "exhaust", "max speed", "start your engines", "harmonize",
+    "mobilize", "job select", "tiered", "station", "warp", "mayhem", "web-slinging",
+    "firebending", "sneak", "increment", "paradigm", "power-up", "teamwork", "storied",
+];
+
+/// The official keyword ability whose name is exactly `words`. Hyphens and
+/// spaces are interchangeable, since the lexer splits "jump-start".
+pub fn official_keyword_ability(words: &[&str]) -> Option<&'static str> {
+    let spelled = words.join(" ").replace('-', " ");
+    OFFICIAL_KEYWORD_ABILITIES
+        .iter()
+        .copied()
+        .find(|name| name.replace('-', " ").eq_ignore_ascii_case(&spelled))
+}
+
+/// The official keyword ability a printed keyword line starts with ("Echo
+/// {2}{R}" → echo, "Level up {1}" → level up), longest name first.
+pub fn official_keyword_ability_prefix(text: &str) -> Option<&'static str> {
+    let words = text
+        .split(|ch: char| ch.is_whitespace() || ch == '—')
+        .map(|word| word.trim_matches(|ch: char| !(ch.is_alphanumeric() || ch == '-')))
+        .take_while(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    (1..=words.len().min(5)).rev().find_map(|len| official_keyword_ability(&words[..len]))
+}
+
 /// Official participles the custom-keyword rule cannot produce. Every other
 /// table participle must equal [`derive_participle`] of its name.
 pub const IRREGULAR_PARTICIPLES: &[&str] =

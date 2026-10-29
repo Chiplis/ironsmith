@@ -6094,6 +6094,20 @@ fn filter_matches_layered_fast(
         return Some(false);
     }
 
+    if let Some(comparison) = &filter.creature_type_count {
+        let count = chars
+            .subtypes
+            .iter()
+            .enumerate()
+            .filter(|(index, subtype)| {
+                subtype.is_creature_type() && !chars.subtypes[..*index].contains(subtype)
+            })
+            .count() as i32;
+        if !comparison.satisfies_with_context(count, game, filter_ctx, None) {
+            return Some(false);
+        }
+    }
+
     if let Some(comparison) = &filter.card_type_count {
         let count = chars
             .card_types

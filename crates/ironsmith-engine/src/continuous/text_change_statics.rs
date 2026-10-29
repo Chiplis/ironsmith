@@ -117,6 +117,9 @@ pub(crate) fn rewrite_static_model_words(
     match &mut rewritten.payload {
         // Keyword names are identities, not color/type words in rules text.
         P::CustomKeywordIdentity { .. } => {},
+        // Sticker-sheet rows are inert on the sheet (CR 123.2).
+        P::TicketAbilitySticker { abilities, .. } => abilities_words(abilities, change)?,
+        P::TicketPowerToughnessSticker { .. } => {}
         P::DevotionIncrease { .. } => {}
         P::CommanderPairing { .. } => {}
         P::DeckConstructionCopyLimit { .. } => {}

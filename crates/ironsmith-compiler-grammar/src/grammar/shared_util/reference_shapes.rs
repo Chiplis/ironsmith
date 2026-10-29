@@ -463,7 +463,7 @@ pub fn parse_filter_keyword_constraint_words(
     if permission_shapes::prefix_words(words, &["basic", "landcycling"]) {
         return Some((FilterKeywordConstraint::Marker("cycling"), 2));
     }
-    let max_len = words.len().min(4);
+    let max_len = words.len().min(5);
     for len in (1..=max_len).rev() {
         if let Some(constraint) = filter_keyword_constraint_for_words(&words[..len]) {
             return Some((constraint, len));

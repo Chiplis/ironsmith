@@ -1311,6 +1311,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
@@ -3734,6 +3735,13 @@ fn build_creature_token_definition(
 }
 
 pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefinition> {
+    let custom_shape = shape.clone();
+    let definition = lower_token_definition_shape_inner(shape)?;
+    // A custom token is authored as its own card; the reference only names it.
+    Some(crate::custom_tokens::custom_token_for(&custom_shape, &definition).unwrap_or(definition))
+}
+
+fn lower_token_definition_shape_inner(shape: TokenDefinitionSpec) -> Option<CardDefinition> {
     match shape {
         // Prototype references must be resolved from the authored AST before
         // lowering. Never infer their blueprint from runtime token objects.

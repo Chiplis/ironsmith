@@ -1282,6 +1282,43 @@ fn push_semantic_clauses(line: &str, clauses: &mut Vec<String>) {
     }
 }
 
+/// "deals X damage divided as you choose among ..., where X is its power"
+/// and "deals damage equal to its power divided as you choose among ..."
+/// are both printed (Vampire Champion Fury, Orca); read them as one form.
+fn normalize_divided_power_damage(clause: &str) -> String {
+    // "N or more cards are in your graveyard" is "there are N or more cards
+    // in your graveyard" (threshold's two Oracle templates).
+    let clause = match clause.split_once(" or more cards are in your graveyard") {
+        Some((head, tail)) => match head.rsplit_once(' ') {
+            Some((lead, count)) if !lead.ends_with(" there are") => format!(
+                "{lead} there are {count} or more cards in your graveyard{tail}"
+            ),
+            _ => clause.to_string(),
+        },
+        None => clause.to_string(),
+    };
+    // "this creature gets +4/+0 and this permanent has trample": a second
+    // self-reference subject repeats the first one.
+    let clause = match clause.split_once(" gets ") {
+        Some((head, _))
+            if head.ends_with("this creature") || head.ends_with("this permanent") =>
+        {
+            clause
+                .replace(" and this permanent has ", " and has ")
+                .replace(" and this creature has ", " and has ")
+        }
+        _ => clause,
+    };
+    let body = clause.trim_end_matches('.');
+    if let Some(head) = body.strip_suffix(", where X is its power")
+        && let Some((subject, rest)) = head.split_once(" X damage divided as ")
+        && !rest.contains(" X ")
+    {
+        return format!("{subject} damage equal to its power divided as {rest}");
+    }
+    clause.to_string()
+}
+
 /// "If the chosen option is <mode>, ..." is the renderer's gate for a modal
 /// static; oracle's bullet form loses its mode label to the ability-word
 /// strip, so drop this scaffold symmetrically.
@@ -1301,6 +1338,7 @@ fn strip_chosen_option_gate_prefix(clause: &str) -> &str {
 fn push_normalized_semantic_clause(trimmed: &str, clauses: &mut Vec<String>) {
     let clause = strip_ability_word_prefix(strip_chosen_option_gate_prefix(trimmed));
     let clause = strip_redundant_duration_tail(&clause);
+    let clause = normalize_divided_power_damage(&clause);
     // Oracle sometimes joins the top-of-library pair into one sentence and
     // sometimes keeps two lines; compare them as two clauses either way.
     if let Some(head) = clause
@@ -1690,6 +1728,16 @@ fn is_chapter_style_prefix(prefix: &str) -> bool {
 
 fn strip_ability_word_prefix(clause: &str) -> String {
     let trimmed = clause.trim();
+    // A sticker-sheet row's ticket cost ("{TK}{TK} — ", CR 123.4) strips
+    // like a label; an ability word after it strips too, so a labeled row
+    // compares like an unlabeled one.
+    if let Some((cost, body)) = trimmed.split_once('—')
+        && !cost.trim().is_empty()
+        && cost.trim().split("{TK}").all(str::is_empty)
+        && body.contains('—')
+    {
+        return strip_ability_word_prefix(body);
+    }
     let Some((prefix, tail)) = trimmed.split_once('—') else {
         return trimmed.to_string();
     };
@@ -7820,7 +7868,11 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     // ", then" sentence split below.
     normalized = normalized
         .replace(", then sacrifices the rest", " and sacrifices the rest")
-        .replace(", then sacrifice the rest", " and sacrifice the rest");
+        .replace(", then sacrifice the rest", " and sacrifice the rest")
+        // "roll that many dice plus one, then you choose one of those rolls
+        // to ignore" (Squid Fire Knight) is Bamboozling Beeble's "... plus
+        // one and you choose ..." extra-die replacement.
+        .replace(" dice plus one, then you choose ", " dice plus one and you choose ");
     normalized = carry_subject_through_then_splits(&normalized);
     normalized = demote_repeated_player_subjects(&normalized);
     normalized = normalized

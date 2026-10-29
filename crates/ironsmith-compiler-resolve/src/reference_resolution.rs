@@ -1741,6 +1741,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
@@ -10947,6 +10948,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => bind_unresolved_it_in_choose_spec(spec, seed_tag),

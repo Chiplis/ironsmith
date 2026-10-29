@@ -5224,6 +5224,15 @@ struct CustomCardInput {
     layout: CustomCardLayoutInput,
     #[serde(default)]
     has_fuse: bool,
+    /// This draft is itself a custom token: it compiles as a token and is
+    /// added to a zone as a token object.
+    #[serde(default)]
+    token: bool,
+    /// Custom tokens the faces may create by name ("create two Bobble
+    /// tokens", authored as "... tokens named Bobble"). Each compiles strictly
+    /// as its own token and replaces the named token shape it is referenced by.
+    #[serde(default)]
+    custom_token_faces: Vec<CustomCardFaceInput>,
     #[serde(default)]
     faces: Vec<CustomCardFaceInput>,
 }

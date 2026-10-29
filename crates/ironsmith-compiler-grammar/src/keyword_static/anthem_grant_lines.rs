@@ -3422,8 +3422,16 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     }
     // A named permanent can be the grammatical source of a static ability
     // even when no card definition has installed a source-reference alias for
-    // the name yet (for example, "Balan has double strike ...").
+    // the name yet (for example, "Balan has double strike ..."). A set of
+    // objects ("creatures without blorp") is never a name, even when the
+    // filter grammar could not read it.
     if tokens.iter().all(|token| token.as_word().is_some())
+        && !subject_words.iter().any(|word| {
+            matches!(*word, "with" | "without")
+                || word.strip_suffix('s').is_some_and(|noun| {
+                    crate::util::parse_card_type(noun).is_some() || noun == "permanent"
+                })
+        })
         && !subject_words.iter().any(|word| {
             matches!(
                 *word,

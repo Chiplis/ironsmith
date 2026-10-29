@@ -604,6 +604,9 @@ pub enum StaticAbilityId {
     /// each attachment records one craft material (CR 702.167c) as this
     /// source's chosen object; appended for wire compatibility.
     ChooseCraftMaterialAsBecomesAttached,
+    /// A sticker-sheet row (CR 123.7, 123.8) and its ticket cost; inert on
+    /// the sheet itself (CR 123.2). Appended for wire compatibility.
+    TicketSticker,
 }
 
 impl StaticAbilityId {
@@ -822,6 +825,7 @@ impl StaticAbilityId {
             | ChooseColorAsBecomesAttached
             | ChooseCreatureCardNameAndTypeAsBecomesAttached
             | ChooseCraftMaterialAsBecomesAttached
+            | TicketSticker
             | ChoosePlayerAsEnters
             | NoteLifeTotalAsEnters
             | DiscardHandAsEnters

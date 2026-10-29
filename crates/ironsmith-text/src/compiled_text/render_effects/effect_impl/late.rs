@@ -7741,9 +7741,11 @@
         return text;
     }
     if let Some(rule) = effect.downcast_ref::<crate::effects::RegisterExtraDieReplacementEffect>() {
-        return format!("The next time {} would roll one or more dice this turn, instead they roll that many dice plus {} and {} chooses {} of those rolls to ignore",
-            describe_choose_spec(&rule.player), small_number_word(rule.additional).unwrap_or_else(|| rule.additional.to_string()),
-            describe_player_filter(&rule.chooser), small_number_word(rule.additional).unwrap_or_else(|| rule.additional.to_string()));
+        let additional = small_number_word(rule.additional).unwrap_or_else(|| rule.additional.to_string());
+        let chooser = describe_player_filter(&rule.chooser);
+        let choose = player_verb(&chooser, "choose", "chooses");
+        return format!("The next time {} would roll one or more dice this turn, instead they roll that many dice plus {additional} and {chooser} {choose} {additional} of those rolls to ignore",
+            describe_choose_spec(&rule.player));
     }
     if effect.downcast_ref::<crate::effects::NoteActivationManaPaymentEffect>().is_some() {
         return "Note the type and amount of mana spent to pay this activation cost".to_string();

@@ -5038,3 +5038,115 @@ fn numeric_result_keeps_loyalty_and_followup_inside_the_same_branch() {
         else { panic!("both actions must stay ordered in the row: {effects:?}"); };
     assert_eq!(effects.len(), 2);
 }
+
+#[test]
+fn delayed_sacrifice_trailing_if_keeps_timing_in_clause_and_document() {
+    use crate::cards::builders::DelayedEffectAst;
+    let text = "Sacrifice this creature at the beginning of the next end step if it has a charge counter on it.";
+    let tokens = lex_line(text, 0).unwrap();
+    let effect = parse_effect_clause_with_trailing_if_lexed(&tokens).unwrap();
+    let EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. }) = effect
+    else {
+        panic!("timing must surround the condition: {effect:#?}");
+    };
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [EffectAst::Conditionals(
+                ConditionalEffectAst::TrailingIf { .. }
+            )]
+        ),
+        "the condition must remain inside the schedule: {effects:#?}"
+    );
+
+    for prefix in [
+        "Draw a card.",
+        "If this creature doesn't have a charge counter on it, put a charge counter on it and it gets +2/+2 until this creature leaves the battlefield.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Delayed Counter Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text(&format!(
+                "{{1}}: {prefix} {}",
+                text.replace("Sacrifice this creature", "Sacrifice it")
+            ))
+            .unwrap();
+        let AbilityKind::Activated(ability) = &definition.abilities[0].kind else {
+            panic!("expected activation")
+        };
+        let effects = ability.effects.flattened_default_effects();
+        assert_eq!(
+            effects.len(),
+            2,
+            "immediate action then delayed registration: {effects:#?}"
+        );
+        let delayed = effects[1]
+            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            .expect("the second instruction must schedule, not sacrifice immediately");
+        assert!(matches!(
+            delayed.trigger,
+            ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(PlayerFilter::Any)
+        ));
+        assert!(delayed.one_shot);
+        assert_eq!(delayed.effects.len(), 1);
+        let conditional = delayed.effects[0]
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+            .expect("the counter check belongs inside the delayed body");
+        assert!(!conditional.capture_condition_result);
+        assert!(conditional.if_false.is_empty());
+        assert_eq!(conditional.if_true.len(), 1);
+        let sacrifice = conditional.if_true[0]
+            .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+            .expect("sacrifice the referenced creature rather than choosing a permanent");
+        assert!(matches!(
+            sacrifice.target.base(),
+            crate::target::ChooseSpec::Source
+        ));
+    }
+}
+
+#[test]
+fn delayed_trailing_if_supports_other_steps_and_preserves_untimed_conditions() {
+    use crate::cards::builders::DelayedEffectAst;
+    for (timing, upkeep) in [
+        ("at the beginning of the next upkeep", true),
+        ("at end of combat", false),
+    ] {
+        let tokens = lex_line(
+            &format!("Sacrifice this creature {timing} if it has a charge counter on it."),
+            0,
+        )
+        .unwrap();
+        let effect = parse_effect_clause_with_trailing_if_lexed(&tokens).unwrap();
+        let body =
+            match &effect {
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
+                    effects, ..
+                }) if upkeep => effects,
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
+                    if !upkeep =>
+                {
+                    effects
+                }
+                _ => panic!("wrong timing for {timing}: {effect:#?}"),
+            };
+        assert!(
+            matches!(
+                body.as_slice(),
+                [EffectAst::Conditionals(
+                    ConditionalEffectAst::TrailingIf { .. }
+                )]
+            ),
+            "the condition must remain inside the schedule: {body:#?}"
+        );
+    }
+    let tokens = lex_line(
+        "Sacrifice this creature if it has a charge counter on it.",
+        0,
+    )
+    .unwrap();
+    let effect = parse_effect_clause_with_trailing_if_lexed(&tokens).unwrap();
+    assert!(matches!(
+        effect,
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
+    ));
+}

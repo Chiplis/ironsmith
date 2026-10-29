@@ -190,6 +190,8 @@ pub(super) fn retain_token_description_roles(
     shape_ability_count: usize,
 ) -> Result<Option<ironsmith_core::TokenTextRoles>, CardTextError> {
     use crate::model::token_definition::TokenDefinitionSpec;
+    // A custom token's words are its own card's, not the reference's shape.
+    if crate::custom_tokens::custom_token_for(source, token).is_some() { return Ok(None); }
     let Some(roles) = source.text_roles() else { return Ok(None); };
     let fixed_name = match source {
         TokenDefinitionSpec::Builtin(template) => template.fixed_name(),
@@ -523,7 +525,8 @@ fn spec_is_it_tag(spec: &ChooseSpec) -> bool {
 /// Whether a value reads a characteristic of the pronoun `it` ("its power").
 fn value_names_it_characteristic(value: &Value) -> bool {
     match value {
-        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) | Value::TypeCountOf(spec) => {
+        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec) => {
             spec_is_it_tag(spec)
         }
         Value::SurfaceHinted { value, .. }
@@ -550,6 +553,7 @@ fn bind_it_characteristic_to_spec(value: &Value, target: &ChooseSpec) -> Value {
         Value::ToughnessOf(spec) => Value::ToughnessOf(bind(spec)),
         Value::ManaValueOf(spec) => Value::ManaValueOf(bind(spec)),
         Value::TypeCountOf(spec) => Value::TypeCountOf(bind(spec)),
+        Value::GenericManaInManaCostOf(spec) => Value::GenericManaInManaCostOf(bind(spec)),
         Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
             value: Box::new(bind_it_characteristic_to_spec(value, target)),
             hints: hints.clone(),

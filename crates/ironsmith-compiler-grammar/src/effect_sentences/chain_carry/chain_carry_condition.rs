@@ -107,6 +107,38 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::ExactComparison);
     }
 
+    // Read timing before handing the leading action to the clause parser.
+    // The sacrifice leaf can otherwise accept the object reference while
+    // losing "at the beginning of the next end step". The sentence reader
+    // preserves the schedule and any immediate siblings (such as a hoisted
+    // target announcement). Attach the condition only to the delayed body,
+    // retaining the ordinary trailing-if reference-binding path.
+    if let Some(mut effects) =
+        super::super::subject_verb_primitives::parse_sentence_delayed_timing_suffix(
+            super::super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(
+                trailing_if.leading_tokens,
+            ),
+        )?
+    {
+        let mut attached = false;
+        for effect in &mut effects {
+            if let Ok(delayed) = sink_trailing_if_into_delayed_timing(effect.clone(), &predicate) {
+                *effect = delayed;
+                attached = true;
+            }
+        }
+        if !attached {
+            return Err(CardTextError::ParseError(
+                "unsupported trailing condition on delayed timing".into(),
+            ));
+        }
+        return Ok(if effects.len() == 1 {
+            effects.remove(0)
+        } else {
+            EffectAst::Sequence { effects }
+        });
+    }
+
     let base_effect = if let Ok(effect) = parse_effect_clause_lexed(trailing_if.leading_tokens) {
         effect
     } else if let Some(effect) = parse_simple_lose_ability_clause_lexed(trailing_if.leading_tokens)?
@@ -165,6 +197,8 @@ fn delayed_timing_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>
         EffectAst::Delayed(
             DelayedEffectAst::DelayedUntilNextEndStep { effects, .. }
             | DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. }
+            | DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. }
+            | DelayedEffectAst::DelayedUntilNextCleanupStep { effects, .. }
             | DelayedEffectAst::DelayedUntilEndOfCombat { effects },
         ) => Some(effects),
         _ => None,
@@ -178,6 +212,8 @@ fn is_delayed_timing(effect: &EffectAst) -> bool {
         EffectAst::Delayed(
             DelayedEffectAst::DelayedUntilNextEndStep { .. }
                 | DelayedEffectAst::DelayedUntilNextUpkeep { .. }
+                | DelayedEffectAst::DelayedUntilNextDrawStep { .. }
+                | DelayedEffectAst::DelayedUntilNextCleanupStep { .. }
                 | DelayedEffectAst::DelayedUntilEndOfCombat { .. }
         )
     )

@@ -426,6 +426,10 @@ fn split_source_line_static_runs(
         let NormalizedCardItem::Line(line) = item else {
             return None;
         };
+        // Each sticker-sheet row is its own sticker; rows never merge.
+        if line.semantic_facts.sticker_ticket_cost.is_some() {
+            return None;
+        }
         let ability = match line.chunks.as_slice() {
             [super::super::effect_pipeline::NormalizedLineChunk::StaticAbility(ability)] => ability,
             [super::super::effect_pipeline::NormalizedLineChunk::StaticAbilities(abilities)]

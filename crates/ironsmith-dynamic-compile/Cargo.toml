@@ -7,6 +7,7 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 ironsmith-registry = { path = "../ironsmith-registry", default-features = false }
 ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
+ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
 
 [features]
 default = []

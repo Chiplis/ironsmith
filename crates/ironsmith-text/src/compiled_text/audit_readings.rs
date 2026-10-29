@@ -2338,6 +2338,11 @@ pub(crate) fn audit_payload_reading(
             "As its owner creates their deck, they choose {count} different colors for this card"
         ),
         P::Toxic { amount } => format!("Toxic {amount}"),
+        // CR 123.8: a power/toughness sticker row and its ticket cost.
+        P::TicketPowerToughnessSticker { tickets, power, toughness } => format!(
+            "{} \u{2014} {power}/{toughness}",
+            ironsmith_core::static_ability_model::ticket_cost_symbols(*tickets)
+        ),
         P::MustAttackDraftNotedPlayers { card_name } => format!(
             "This creature attacks a player you noted for cards named {card_name} each combat if able"
         ),

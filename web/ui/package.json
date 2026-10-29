@@ -17,7 +17,7 @@
     "test:lan": "node --test tests/lan-service.test.mjs tests/lan-browser.test.mjs tests/sha256.test.mjs",
     "test:deck-catalog": "node --test tests/catalog-client.test.js tests/deck-catalog-import.test.js tests/card-name-resolution.test.js",
     "prebuild": "node ./scripts/sync-deck-catalog-assets.mjs",
-    "build": "pnpm assets:card-glint && node ../relay/scripts/ensure-witness.mjs && pnpm assets:mana && node ./scripts/build-scryfall-i18n.mjs --if-changed --locale es && pnpm assets:random-pool && vite build",
+    "build": "pnpm assets:card-glint && node ../relay/scripts/ensure-witness.mjs && pnpm assets:mana && node ./scripts/build-scryfall-i18n.mjs --if-changed --locale es && pnpm assets:random-pool && vite build && pnpm verify:deployment",
     "preview": "vite preview",
     "lint": "eslint .",
     "i18n:extract-static": "node ./scripts/extract-i18n-static.mjs",
@@ -38,7 +38,8 @@
     "test:sandbox": "node --test tests/sandbox.test.js tests/sandbox.browser.test.mjs tests/sandbox-worker.browser.test.mjs",
     "test:startup": "node --test tests/default-startup.browser.test.js",
     "assets:card-glint": "node ./scripts/card-glint/sync.mjs",
-    "test:card-glint": "node --test tests/card-print-order.test.mjs tests/card-glint.test.mjs tests/card-glint-preparation.test.mjs tests/card-glint.browser.test.mjs tests/card-glint-build.browser.test.mjs"
+    "test:card-glint": "node --test tests/card-print-order.test.mjs tests/card-glint.test.mjs tests/card-glint-preparation.test.mjs tests/card-glint.browser.test.mjs tests/card-glint-build.browser.test.mjs",
+    "verify:deployment": "node ./scripts/verify-deployment.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

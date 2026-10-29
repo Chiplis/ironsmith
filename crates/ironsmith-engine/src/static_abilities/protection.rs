@@ -425,7 +425,39 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     if let Some(pluralized) = pluralize_permanent_counter_phrase(description.as_str()) {
         return pluralized;
     }
-    description
+    pluralize_protection_head_noun(&description).unwrap_or(description)
+}
+
+/// A protection quality names a class of objects in the plural ("protection
+/// from noncreature permanents", "from legendary creatures"). The filter's
+/// description renders its head noun in the singular; pluralize the last
+/// word of the leading object-noun run.
+fn pluralize_protection_head_noun(description: &str) -> Option<String> {
+    const HEAD_NOUNS: &[(&str, &str)] = &[
+        ("permanent", "permanents"),
+        ("creature", "creatures"),
+        ("artifact", "artifacts"),
+        ("enchantment", "enchantments"),
+        ("land", "lands"),
+        ("planeswalker", "planeswalkers"),
+        ("battle", "battles"),
+        ("spell", "spells"),
+        ("card", "cards"),
+        ("instant", "instants"),
+        ("sorcery", "sorceries"),
+        ("source", "sources"),
+    ];
+    let plural_of =
+        |word: &str| HEAD_NOUNS.iter().find(|(singular, _)| *singular == word).map(|(_, p)| *p);
+    let words = description.split(' ').collect::<Vec<_>>();
+    let start = words.iter().position(|word| plural_of(word).is_some())?;
+    let mut end = start;
+    while words.get(end + 1).is_some_and(|word| plural_of(word).is_some()) {
+        end += 1;
+    }
+    let mut words = words.into_iter().map(str::to_string).collect::<Vec<_>>();
+    words[end] = plural_of(&words[end])?.to_string();
+    Some(words.join(" "))
 }
 
 fn pluralize_permanent_counter_phrase(description: &str) -> Option<String> {

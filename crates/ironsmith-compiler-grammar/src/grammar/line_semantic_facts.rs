@@ -282,6 +282,26 @@ fn has_leading_unless_resolution_surface(tokens: &[OwnedLexToken]) -> bool {
         .is_some()
 }
 
+/// The official keyword ability a keyword line prints: its leading words
+/// name the keyword and what follows is the keyword's parameter (a cost, a
+/// number, "from"/"for"/"with" quality, an em dash) or nothing. "Flying
+/// creatures you control get +1/+1" is not a keyword line.
+fn parse_keyword_line_identity(tokens: &[OwnedLexToken]) -> Option<&'static str> {
+    let leading = tokens
+        .iter()
+        .map_while(|token| token.as_word().filter(|_| token.kind == crate::lexer::TokenKind::Word))
+        .take(6)
+        .collect::<Vec<_>>();
+    (1..=leading.len().min(5)).rev().find_map(|len| {
+        let keyword = crate::keyword_forms::official_keyword_ability(&leading[..len])?;
+        let parameter = leading.get(len).is_none_or(|next| {
+            matches!(*next, "from" | "for" | "with" | "a" | "an" | "x")
+                || crate::util::parse_number_word_u32(next).is_some()
+        });
+        parameter.then_some(keyword)
+    })
+}
+
 pub fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> LineSemanticFacts {
     parse_line_semantic_facts_tokens_with_optional_context(None, tokens)
 }
@@ -306,6 +326,8 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
         intrinsic_basic_land_mana_reminder: None,
         station_creature_threshold: None,
         supported_sneak_form: false,
+        keyword_identity: parse_keyword_line_identity(tokens),
+        sticker_ticket_cost: None,
         static_ability: StaticLineSemanticFacts {
             leading_as_long_as_your_turn: {
                 let words = crate::lexer::token_word_refs(tokens);

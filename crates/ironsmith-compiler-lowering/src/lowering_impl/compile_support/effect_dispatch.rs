@@ -3776,6 +3776,7 @@ pub(super) fn collect_value_player_target_choices(value: &Value, choices: &mut V
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
@@ -3870,6 +3871,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {

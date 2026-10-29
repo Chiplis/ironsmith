@@ -1821,6 +1821,23 @@ impl StaticAbility {
         }
     }
 
+    /// A sticker-sheet ability-sticker row (CR 123.7): its ticket cost and
+    /// the abilities the sticker grants.
+    pub fn ticket_ability_sticker(&self) -> Option<(u32, Vec<crate::ability::Ability>)> {
+        match &self.compiled_model()?.payload {
+            ironsmith_core::StaticAbilityPayload::TicketAbilitySticker { tickets, abilities } => {
+                Some((
+                    *tickets,
+                    abilities
+                        .iter()
+                        .map(StaticAbilityModelInterpreter::ability_from_model)
+                        .collect(),
+                ))
+            }
+            _ => None,
+        }
+    }
+
     pub fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
         self.0.color_choice_as_enters()
     }

@@ -26,6 +26,45 @@ pub(in super::super) fn parse_object_filter_inner(
     other: bool,
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let filter = parse_object_filter_inner_unchecked(tokens, other, strict)?;
+    if strict && let Some(word) = ignored_filter_word(tokens, other, &filter) {
+        return Err(CardTextError::ParseError(format!(
+            "object filter does not understand '{word}' (full input: '{}')",
+            crate::lexer::token_word_refs(tokens).join(" "),
+        )));
+    }
+    Ok(filter)
+}
+
+/// A trailing "with X" / "without X" whose removal leaves the parsed filter
+/// unchanged was never read, so the phrase means something other than what
+/// it says ("creatures you control without blorp" would mean every creature
+/// you control). Pronoun tails ("exiled with it") are links the caller reads,
+/// not qualities of the object.
+fn ignored_filter_word(
+    tokens: &[OwnedLexToken],
+    other: bool,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    let [.., introducer, quality] = tokens else {
+        return None;
+    };
+    let word = quality.as_word().filter(|_| quality.kind == crate::lexer::TokenKind::Word)?;
+    if !introducer.is_any_word(&["with", "without"])
+        || matches!(word, "it" | "this" | "them" | "that" | "those")
+    {
+        return None;
+    }
+    parse_object_filter_inner_unchecked(&tokens[..tokens.len() - 2], other, false)
+        .is_ok_and(|reduced| &reduced == filter)
+        .then(|| format!("{} {word}", introducer.as_word().unwrap_or_default()))
+}
+
+fn parse_object_filter_inner_unchecked(
+    tokens: &[OwnedLexToken],
+    other: bool,
+    strict: bool,
+) -> Result<ObjectFilter, CardTextError> {
     // Own the complete union before any relation, attachment, source reference,
     // or qualifier is peeled off. Returning a freshly parsed union after those
     // passes would silently discard their accumulated semantic constraints.
@@ -2762,6 +2801,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.exactly_two_colors.is_some()
         || filter.color_count.is_some()
         || filter.card_type_count.is_some()
+        || filter.creature_type_count.is_some()
         || filter.historic
         || filter.nonhistoric
         || filter.has_basic_land_type
@@ -2842,6 +2882,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.exactly_two_colors.is_some()
         || filter.color_count.is_some()
         || filter.card_type_count.is_some()
+        || filter.creature_type_count.is_some()
         || filter.historic
         || filter.nonhistoric
         || filter.power.is_some()

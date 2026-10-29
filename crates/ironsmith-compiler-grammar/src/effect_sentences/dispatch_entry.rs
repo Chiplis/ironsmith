@@ -8539,16 +8539,28 @@ fn parse_effect_sentences_lexed_unfinalized(
     {
         return Ok(vec![EffectAst::CastFaceDownUsingActivationMana { player: PlayerFilter::You, filter: ObjectFilter::creature(), turn_face_up_before_action: true }]);
     }
+    // "The next time target player would roll one or more dice this turn,
+    // instead they roll that many dice plus N {and|, then} you choose N of
+    // those rolls to ignore." (Bamboozling Beeble, Squid Fire Knight): a
+    // one-shot, this-turn replacement of that player's next roll whose
+    // ignored rolls are chosen by the ability's controller.
     if words.starts_with(&["the", "next", "time"])
         && let Some(would) = words.iter().position(|word| *word == "would")
-        && words[would..] == ["would", "roll", "one", "or", "more", "dice", "this", "turn", "instead", "they", "roll", "that", "many", "dice", "plus", "one", "and", "you", "choose", "one", "of", "those", "rolls", "to", "ignore"]
+        && let [
+            "would", "roll", "one", "or", "more", "dice", "this", "turn", "instead", "they", "roll",
+            "that", "many", "dice", "plus", extra, "and" | "then", "you", "choose", ignored, "of",
+            "those", "rolls", "to", "ignore",
+        ] = &words[would..]
+        && let Some(additional) = crate::util::parse_number_word_u32(extra)
+        && additional > 0
+        && crate::util::parse_number_word_u32(ignored) == Some(additional)
         && let Some(range) = view.token_span_for_words(3, would)
     {
         let player = parse_target_phrase(&tokens[range])?;
         if !matches!(player, TargetAst::Player(..)) {
             return Err(CardTextError::ParseError("a die-roll replacement needs a player subject".into()));
         }
-        return Ok(vec![EffectAst::RegisterExtraDieReplacement { player, chooser: PlayerFilter::You, additional: 1 }]);
+        return Ok(vec![EffectAst::RegisterExtraDieReplacement { player, chooser: PlayerFilter::You, additional }]);
     }
 
     // A following keyword price defines the granted keyword in the preceding

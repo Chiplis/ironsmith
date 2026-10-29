@@ -1128,6 +1128,11 @@ pub enum Value {
     /// and {2}{B} differ while symbol order never matters; objects with no
     /// mana cost don't contribute, but {0} does. Appended.
     DistinctManaCosts(ObjectFilter),
+    /// The amount of generic mana in the referenced object's mana cost
+    /// ("where X is the amount of generic mana in that spell's mana cost",
+    /// Misunderstood Trapeze Elf; CR 107.4b). On the stack, each {X} counts
+    /// as the value chosen for X (CR 107.3). Appended.
+    GenericManaInManaCostOf(Box<ChooseSpec>),
 }
 
 impl Value {

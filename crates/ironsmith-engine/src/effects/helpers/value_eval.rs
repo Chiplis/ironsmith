@@ -770,6 +770,52 @@ pub(crate) fn resolve_wide(
             }
             Err(ExecutionError::ObjectNotFound(id))
         }
+        // "the amount of generic mana in that spell's mana cost": the
+        // generic-only pips of the current mana cost (CR 107.4b); on the
+        // stack each {X} is the value chosen for X (CR 107.3).
+        Value::GenericManaInManaCostOf(target_spec) => {
+            let generic = |cost: &crate::mana::ManaCost, x_value: Option<u32>| -> i64 {
+                let x_pips = cost
+                    .pips()
+                    .iter()
+                    .filter(|pip| pip.len() == 1 && matches!(pip[0], crate::mana::ManaSymbol::X))
+                    .count() as i64;
+                i64::from(cost.generic_mana_total())
+                    + x_pips * i64::from(x_value.unwrap_or(0))
+            };
+            if let Some(total) = context.linked_exile_characteristic_sum(target_spec, |chars| {
+                chars.mana_cost.as_ref().map_or(0, |cost| generic(cost, None))
+            })? {
+                return Ok(total);
+            }
+            let ctx = context.require_execution(
+                value,
+                "generic mana amounts require a resolving context",
+            );
+            let id = resolve_primary_object_from_value_spec(game, target_spec, ctx)?;
+            if let Some(object) = game.object(id) {
+                let x_value = (object.zone == crate::zone::Zone::Stack)
+                    .then_some(object.x_value)
+                    .flatten();
+                let cost = game
+                    .calculated_characteristics_arc(id)
+                    .and_then(|chars| chars.mana_cost.clone())
+                    .or_else(|| object.mana_cost.as_deref().cloned());
+                return Ok(cost.as_ref().map_or(0, |cost| generic(cost, x_value)));
+            }
+            if let ChooseSpec::Tagged(tag) = target_spec.base()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                let x_value = (snapshot.zone == crate::zone::Zone::Stack)
+                    .then_some(snapshot.x_value)
+                    .flatten();
+                return Ok(snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map_or(0, |cost| generic(cost, x_value)));
+            }
+            Err(ExecutionError::ObjectNotFound(id))
+        }
         Value::ManaSymbolsInManaCostOf {
             spec: target_spec,
             color,

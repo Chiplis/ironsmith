@@ -2753,6 +2753,15 @@ pub fn preprocess_document_with_provenance(
         full_name.lexable() || (short_name.text != full_name.text && short_name.lexable());
     let mut annotations = ParseAnnotations::default();
     let mut items = Vec::new();
+    // CR 123.2: a sticker sheet is not a card; each of its rules lines is a
+    // ticket-cost row whose body is one sticker (CR 123.7, 123.8).
+    let is_sticker_sheet = cst.lines.iter().any(|line| {
+        matches!(
+            &line.kind,
+            crate::front_end::CstLineKind::Metadata(crate::front_end::MetadataLine::TypeLine(value))
+                if value.trim().eq_ignore_ascii_case("Stickers")
+        )
+    });
 
     for (line_index, raw_line) in text.lines().enumerate() {
         let structural_line = cst.line(line_index);
@@ -2812,7 +2821,20 @@ pub fn preprocess_document_with_provenance(
             continue;
         }
 
-        let line_tokens = stage_tokens(line).unwrap_or_default();
+        let mut line_tokens = stage_tokens(line).unwrap_or_default();
+        // A sticker row's ticket cost is typed here; its body is read as the
+        // line's text, so the body parses as the ability it grants.
+        let mut sticker_ticket_cost = None;
+        let mut line = line;
+        if is_sticker_sheet
+            && let Some(shape) = super::grammar::line_families::parse_sticker_ticket_marker(&line_tokens)
+            && let Some(body_start) = line_tokens.get(shape.body_start).map(|token| token.span.start)
+            && let Some(body) = line.get(body_start..)
+        {
+            sticker_ticket_cost = Some(shape.tickets);
+            line = body.trim();
+            line_tokens = stage_tokens(line).unwrap_or_default();
+        }
         let variants = reminder_actions::expand_attachment_pair(line)
             .or_else(|| reminder_actions::expand_counter_threshold_activation(line))
             .or_else(|| expand_do_all_of_the_above_line(line, text.lines().take(line_index)))
@@ -2914,6 +2936,8 @@ pub fn preprocess_document_with_provenance(
                 &mut annotations,
                 &mut provenance,
             )? {
+                let mut parsed_line = parsed_line;
+                parsed_line.info.semantic_facts.sticker_ticket_cost = sticker_ticket_cost;
                 items.push(PreprocessedItem::Line(parsed_line));
             }
         }
@@ -2923,11 +2947,26 @@ pub fn preprocess_document_with_provenance(
         .iter()
         .any(|item| matches!(item, PreprocessedItem::Line(_)))
     {
+        // A sticker row's body is its line; its ticket cost is typed. The
+        // card's text keeps the row as printed: ticket symbols, dash, body.
+        let mut previous_display_line = None;
         let oracle_text = items
             .iter()
             .filter_map(|item| match item {
                 PreprocessedItem::Metadata(_) => None,
-                PreprocessedItem::Line(line) => Some(line.info.raw_line.as_str()),
+                PreprocessedItem::Line(line) => {
+                    let starts_row =
+                        previous_display_line.replace(line.info.display_line_index)
+                            != Some(line.info.display_line_index);
+                    Some(match line.info.semantic_facts.sticker_ticket_cost {
+                        Some(tickets) if starts_row => format!(
+                            "{} \u{2014} {}",
+                            ironsmith_core::static_ability_model::ticket_cost_symbols(tickets),
+                            line.info.raw_line
+                        ),
+                        _ => line.info.raw_line.clone(),
+                    })
+                }
             })
             .collect::<Vec<_>>()
             .join("\n");

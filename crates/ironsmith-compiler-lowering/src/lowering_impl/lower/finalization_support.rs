@@ -325,12 +325,16 @@ fn apply_pending_backup_abilities(
         {
             let backup = pending_backups[next_backup];
             let granted_abilities = original_abilities[boundary..].to_vec();
-            abilities.push(Ability::triggered(
+            let mut ability = Ability::triggered(
                 crate::triggers::Trigger::this_enters_battlefield(),
                 vec![crate::effect::Effect::new(crate::effects::BackupEffect {
                     amount: backup.amount, granted_abilities, descriptive: backup.descriptive,
                 })],
-            ));
+            );
+            if !backup.descriptive {
+                crate::keyword_actions::stamp_keyword_identity(&mut ability, "backup");
+            }
+            abilities.push(ability);
             next_backup += 1;
         }
 

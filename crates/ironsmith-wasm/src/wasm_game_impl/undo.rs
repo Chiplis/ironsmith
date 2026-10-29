@@ -1297,6 +1297,19 @@ impl WasmGame {
         {
             return Err(JsValue::from_str("the meld result cannot have a mana cost"));
         }
+        if draft.token && draft.layout != CustomCardLayoutInput::Single {
+            return Err(JsValue::from_str("a custom token must be a single-face card"));
+        }
+        // Each token sees the tokens defined before it, so one token can create
+        // another. Card faces then see every token the draft carries.
+        let mut tokens = Vec::with_capacity(draft.custom_token_faces.len());
+        for token in &draft.custom_token_faces {
+            let compiled = ironsmith_dynamic_compile::with_custom_tokens(tokens.clone(), || {
+                Self::compile_custom_token_face(token)
+            })
+            .map_err(|err| JsValue::from_str(&format!("token {} parse failed: {err}", token.name.trim())))?;
+            tokens.push(compiled.0);
+        }
         let mut definitions = Vec::with_capacity(expected_faces);
         for (index, face) in draft.faces.iter().enumerate() {
             let name = face.name.trim();
@@ -1307,22 +1320,33 @@ impl WasmGame {
                 )));
             }
 
-            let mut builder =
-                ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), name);
-            for identity in &face.custom_keyword_identities {
-                builder = builder.with_custom_keyword(identity.clone());
-            }
-            if let Some(colors) = Self::parse_custom_color_indicator(&face.color_indicator)? {
-                builder = builder.color_indicator(colors);
-            }
-
-            let parse_block = Self::build_custom_face_parse_block(face)?;
-            let mut definition = ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
-                builder,
-                parse_block,
-                false,
-            )
-            .map_err(|err| JsValue::from_str(&format!("face {} parse failed: {err}", index + 1)))?;
+            let compiled = ironsmith_dynamic_compile::with_custom_tokens(tokens.clone(), || {
+                if draft.token {
+                    return Self::compile_custom_token_face(face).map(|(_, runtime)| runtime);
+                }
+                let mut builder = ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(
+                    CardId::new(),
+                    name,
+                );
+                for identity in &face.custom_keyword_identities {
+                    builder = builder.with_custom_keyword(identity.clone());
+                }
+                if let Some(colors) = Self::parse_custom_color_indicator(&face.color_indicator)
+                    .map_err(|err| err.as_string().unwrap_or_default())?
+                {
+                    builder = builder.color_indicator(colors);
+                }
+                let parse_block = Self::build_custom_face_parse_block(face)
+                    .map_err(|err| err.as_string().unwrap_or_default())?;
+                ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
+                    builder,
+                    parse_block,
+                    false,
+                )
+                .map_err(|err| err.to_string())
+            });
+            let mut definition = compiled
+                .map_err(|err| JsValue::from_str(&format!("face {} parse failed: {err}", index + 1)))?;
             for keyword in &face.custom_keyword_payments {
                 definition.attribute_custom_keyword_payment(keyword);
             }
@@ -1370,6 +1394,38 @@ impl WasmGame {
         }
 
         Ok(definitions)
+    }
+
+    /// A custom token face, compiled strictly as a token: its compiler-level
+    /// definition for references, and its runtime definition.
+    #[cfg(feature = "dynamic-compile")]
+    fn compile_custom_token_face(
+        face: &CustomCardFaceInput,
+    ) -> Result<
+        (ironsmith_dynamic_compile::CompilerCardDefinition, CardDefinition),
+        String,
+    > {
+        let name = face.name.trim();
+        if name.is_empty() {
+            return Err("a custom token must include a name".to_string());
+        }
+        if face.mana_cost.as_deref().is_some_and(|cost| !cost.trim().is_empty()) {
+            return Err(format!("{name} is a token and cannot have a mana cost"));
+        }
+        let mut builder =
+            ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), name);
+        for identity in &face.custom_keyword_identities {
+            builder = builder.with_custom_keyword(identity.clone());
+        }
+        // CR 111.4: a token's colors are stated by its creator, never a cost.
+        if let Some(colors) = Self::parse_custom_color_indicator(&face.color_indicator)
+            .map_err(|err| err.as_string().unwrap_or_default())?
+        {
+            builder = builder.color_indicator(colors);
+        }
+        let parse_block = Self::build_custom_face_parse_block(face)
+            .map_err(|err| err.as_string().unwrap_or_default())?;
+        ironsmith_dynamic_compile::compile_builder_to_token_definitions(builder, parse_block)
     }
 
     #[cfg(not(feature = "dynamic-compile"))]
@@ -1458,6 +1514,9 @@ impl WasmGame {
             .collect::<Vec<_>>();
 
         let mut line = left.join(" ");
+        if definition.card.is_token {
+            line = if line.is_empty() { "Token".to_string() } else { format!("Token {line}") };
+        }
         if !right.is_empty() {
             if !line.is_empty() {
                 line.push_str(" — ");
@@ -1739,10 +1798,12 @@ impl WasmGame {
         definition: &CardDefinition,
         player_id: PlayerId,
         zone: Zone,
+        token: bool,
     ) -> Result<ObjectId, JsValue> {
         self.game.clear_pending_decision_controllers();
         let checkpoint = self.capture_replay_checkpoint();
-        let result = self.add_definition_to_zone_with_triggers_inner(definition, player_id, zone);
+        let result =
+            self.add_definition_to_zone_with_triggers_inner(definition, player_id, zone, token);
         if result.is_err() {
             self.restore_execution_replay_checkpoint(&checkpoint, false);
         }
@@ -1754,16 +1815,25 @@ impl WasmGame {
         definition: &CardDefinition,
         player_id: PlayerId,
         zone: Zone,
+        token: bool,
     ) -> Result<ObjectId, JsValue> {
         self.game
             .register_linked_face_family_from_catalog(definition, &self.registry);
         // Create in Command zone first, then move to target zone so that
         // zone-change triggers (ETB, etc.) fire naturally.
-        let temp_id = self.game.create_object_from_definition(
-            definition,
-            player_id,
-            ironsmith::zone::Zone::Command,
-        );
+        let temp_id = if token {
+            self.game.create_token_object_from_definition(
+                definition,
+                player_id,
+                ironsmith::zone::Zone::Command,
+            )
+        } else {
+            self.game.create_object_from_definition(
+                definition,
+                player_id,
+                ironsmith::zone::Zone::Command,
+            )
+        };
         let object_id = if zone == ironsmith::zone::Zone::Battlefield {
             let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
             let receipt = self.game.move_object_with_etb_processing_with_dm(

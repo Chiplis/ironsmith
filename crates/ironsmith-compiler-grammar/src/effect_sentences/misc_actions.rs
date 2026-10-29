@@ -759,9 +759,20 @@ pub fn parse_get(
         .count();
     if ticket_count > 0 {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+        // A numeric amount before a single ticket symbol ("you get seven
+        // {TK}") counts that many tickets; repeated symbols count themselves.
+        let count = match crate::util::parse_number(tokens) {
+            Some((amount, used))
+                if ticket_count == 1
+                    && tokens.get(used).is_some_and(ticket_symbol_token) =>
+            {
+                amount as i32
+            }
+            _ => ticket_count as i32,
+        };
         return Ok(EffectAst::subject_verb_ticket_counters(
             player,
-            Value::Fixed(ticket_count as i32),
+            Value::Fixed(count),
         ));
     }
 

@@ -687,7 +687,18 @@ pub fn parse_sacrifice(
     // real filter ("its controller sacrifices a land of their choice") the
     // target would silently replace the filter at lowering.
     let target = if object_shape.tagged_reference.is_some() {
-        target
+        target.or_else(|| {
+            // A singular back-reference names an existing object; it must
+            // not become a fresh sacrifice choice when a delayed body has
+            // no local object-result tag. Keep it in the reference resolver's
+            // target path, which can bind it to the registering source.
+            (count == 1 && !one_of_referenced_set && !all_of_referenced_set).then(|| {
+                TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind().into(),
+                    span_from_tokens(filter_tokens),
+                )
+            })
+        })
     } else {
         None
     };

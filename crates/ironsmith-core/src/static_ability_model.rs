@@ -2252,6 +2252,27 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// Identity of a user-defined keyword. Its executable rules are separate
     /// abilities, not an alias for an official keyword with similar behavior.
     CustomKeywordIdentity { name: String },
+    /// One ability-sticker row of an Unfinity sticker sheet (CR 123.7): the
+    /// row's ticket cost (CR 107.17a, one per {TK} symbol) and the abilities
+    /// the sticker gives the permanent it is put on. A sticker sheet is not a
+    /// card (CR 123.2), so the row has no effect of its own. Appended.
+    TicketAbilitySticker {
+        tickets: u32,
+        abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
+    },
+    /// One power/toughness-sticker row of a sticker sheet (CR 123.8) and its
+    /// ticket cost (CR 107.17a). Appended.
+    TicketPowerToughnessSticker {
+        tickets: u32,
+        power: i32,
+        toughness: i32,
+    },
+}
+
+/// The printed ticket cost of a sticker-sheet row: one {TK} per ticket
+/// (CR 107.17a).
+pub fn ticket_cost_symbols(tickets: u32) -> String {
+    "{TK}".repeat(tickets as usize)
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2666,6 +2687,26 @@ where
             StaticAbilityPayload::CustomKeywordIdentity { name } => {
                 StaticAbilityPayload::CustomKeywordIdentity { name }
             }
+            StaticAbilityPayload::TicketAbilitySticker { tickets, abilities } => {
+                StaticAbilityPayload::TicketAbilitySticker {
+                    tickets,
+                    abilities: abilities
+                        .into_iter()
+                        .map(|ability| {
+                            map_ability(ability, map_trigger, map_effect, map_cost, map_intervening)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                }
+            }
+            StaticAbilityPayload::TicketPowerToughnessSticker {
+                tickets,
+                power,
+                toughness,
+            } => StaticAbilityPayload::TicketPowerToughnessSticker {
+                tickets,
+                power,
+                toughness,
+            },
             StaticAbilityPayload::None => StaticAbilityPayload::None,
             StaticAbilityPayload::SelfSubjectSurface { surface } => {
                 StaticAbilityPayload::SelfSubjectSurface { surface }
@@ -4833,6 +4874,31 @@ impl<
                 payload: StaticAbilityPayload::KeywordMarkerMechanic { mechanic },
             },
             None => Self::identified(StaticAbilityId::KeywordMarker, text),
+        }
+    }
+
+    /// An ability-sticker row of a sticker sheet (CR 123.7).
+    pub fn ticket_ability_sticker(
+        tickets: u32,
+        abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::TicketSticker),
+            label: format!("{} \u{2014} ability sticker", ticket_cost_symbols(tickets)),
+            payload: StaticAbilityPayload::TicketAbilitySticker { tickets, abilities },
+        }
+    }
+
+    /// A power/toughness-sticker row of a sticker sheet (CR 123.8).
+    pub fn ticket_power_toughness_sticker(tickets: u32, power: i32, toughness: i32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::TicketSticker),
+            label: format!("{} \u{2014} {power}/{toughness}", ticket_cost_symbols(tickets)),
+            payload: StaticAbilityPayload::TicketPowerToughnessSticker {
+                tickets,
+                power,
+                toughness,
+            },
         }
     }
 

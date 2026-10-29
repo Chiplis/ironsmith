@@ -2,6 +2,7 @@ import { expandKnownReminderDefinition } from './official-reminder-definitions.j
 import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefinition, bindExileCastObject, hasNextUntapCostDefinition, nextUntapCostText, hasReminderCardParameter, bindReminderCard, isActivationReminder, bindActivationReminder, bindReminderCost, hasReminderCostReference, bindReminderActivationLabel, bindReminderValueFromDeclaration, hasRepeatedCopyPayment, expandRepeatedCopyPayment, bindReminderCostFromDeclaration, hasReminderParameters, parseParameterDeclaration, bindReminderParameters, parameterExample, reminderParameters, templateParameters } from './reminder-costs.js';
 import { MTG_KEYWORD_RULES } from './mtg-keyword-rules.generated.js';
 import { OFFICIAL_KEYWORD_FORMS, officialSurfaceForms, customKeywordForms, normalizeFormOverrides, surfaceForms } from './keyword-forms.js';
+import { applyCustomTokens, draftTokens } from './custom-tokens.js';
 
 export const mechanicKey = value => String(value || '').normalize('NFKC').replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
 export const reminderKey = value => mechanicKey(value).replace(/[“”]/g, '"');
@@ -444,14 +445,19 @@ function otherDeclarations(draft, definitions) {
   return candidates;
 }
 
-export async function prepareCustomCard(draft, compile, { known = [], reserve = async () => {} } = {}) {
+export async function prepareCustomCard(draft, compile, { known = [], reserve = async () => {}, knownTokens = [] } = {}) {
   let definitions = draftMechanics(draft, known);
+  // Custom tokens the card names travel with it, like its mechanics.
+  const tokens = draftTokens(draft, knownTokens);
+  const { customTokens: _carried, ...rest } = draft;
+  const prepared = { ...rest, ...(tokens.length ? { customTokens: tokens } : {}) };
+  const compilerInput = defs => applyCustomTokens(compileDraftInput(prepared, defs), tokens);
   await reserve(definitions);
   for (let attempts = 0; attempts < 16; attempts++) {
     try {
-      const preview = await compile(compileDraftInput(draft, definitions));
+      const preview = await compile(compilerInput(definitions));
       if (!preview?.canCreate) throw new Error('This card must compile completely before it can be saved.');
-      return { draft: { ...draft, customMechanics: definitions }, input: compileDraftInput(draft, definitions), preview };
+      return { draft: { ...prepared, customMechanics: definitions }, input: compilerInput(definitions), preview };
     } catch (error) {
       const keyword = mechanicKey(String(error?.message || error).match(/could not find verb in effect clause \(clause: '([^']+)'/)?.[1]);
       if (!keyword || definitions.some(def => def.keyword === keyword) || official.has(keyword) || !/^[a-z][a-z '-]{0,63}$/.test(keyword)) {

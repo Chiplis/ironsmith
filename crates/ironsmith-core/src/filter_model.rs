@@ -2666,6 +2666,10 @@ pub struct ObjectFilter {
     /// supertypes and subtypes.
     #[cfg_attr(feature = "serde", serde(default))]
     pub card_type_count: Option<Comparison>,
+    /// Number of distinct creature types on the candidate ("creatures with
+    /// two or more creature types").
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub creature_type_count: Option<Comparison>,
     pub excluded_card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
     /// Every listed subtype must be present. This represents compound
@@ -3779,6 +3783,7 @@ impl ObjectFilter {
             || self.exactly_two_colors.is_some()
             || self.color_count.is_some()
             || self.card_type_count.is_some()
+            || self.creature_type_count.is_some()
             || self.historic
             || self.nonhistoric
             || self.modified
@@ -5032,6 +5037,11 @@ impl ObjectFilter {
                     quality
                 );
             }
+        }
+        if any_of_keyword_clause.is_none()
+            && let Some(description) = describe_same_power_or_toughness_as_union(self)
+        {
+            return description;
         }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let explicit_branch_articles = self.has_explicit_union_branch_articles();
@@ -7297,6 +7307,19 @@ impl ObjectFilter {
                 _ => format!("with card type count {}", describe_comparison(count)),
             });
         }
+        if let Some(ref count) = self.creature_type_count {
+            parts.push(match count {
+                Comparison::GreaterThanOrEqual(minimum @ 2..=9) => format!(
+                    "with {} or more creature types",
+                    ["two", "three", "four", "five", "six", "seven", "eight", "nine"]
+                        [(*minimum - 2) as usize]
+                ),
+                Comparison::GreaterThanOrEqual(minimum) => {
+                    format!("with {minimum} or more creature types")
+                }
+                _ => format!("with creature type count {}", describe_comparison(count)),
+            });
+        }
         if let Some(ref color_count) = self.color_count {
             parts.push(match color_count {
                 Comparison::Equal(count @ 2..=5) => format!(
@@ -9511,6 +9534,53 @@ fn describe_extremum_filter_comparison(
     Some(description)
 }
 
+/// "creature with the same power and/or toughness as this creature": two
+/// branches identical except that one requires power equal to an object's
+/// power and the other toughness equal to that object's toughness.
+fn describe_same_power_or_toughness_as_union(filter: &ObjectFilter) -> Option<String> {
+    let [power_branch, toughness_branch] = filter.any_of.as_slice() else {
+        return None;
+    };
+    if (ObjectFilter {
+        any_of: Vec::new(),
+        union_surface: Default::default(),
+        ..filter.clone()
+    }) != ObjectFilter::default()
+    {
+        return None;
+    }
+    let Some(Comparison::EqualExpr(power)) = &power_branch.power else {
+        return None;
+    };
+    let Some(Comparison::EqualExpr(toughness)) = &toughness_branch.toughness else {
+        return None;
+    };
+    let (Value::PowerOf(power_spec), Value::ToughnessOf(toughness_spec)) =
+        (power.unhinted(), toughness.unhinted())
+    else {
+        return None;
+    };
+    if power_spec != toughness_spec || power_branch.toughness.is_some() || toughness_branch.power.is_some() {
+        return None;
+    }
+    let mut base = power_branch.clone();
+    base.power = None;
+    let mut other = toughness_branch.clone();
+    other.toughness = None;
+    if base != other {
+        return None;
+    }
+    let connective = match filter.union_connective() {
+        ObjectFilterUnionConnective::AndOr => "and/or same",
+        ObjectFilterUnionConnective::Or => "or",
+    };
+    Some(format!(
+        "{} with the same power {connective} toughness as {}",
+        base.description(),
+        describe_counter_holder(power_spec)
+    ))
+}
+
 fn describe_counter_holder(spec: &ChooseSpec) -> String {
     if let Some(surface) = spec.source_reference_surface() {
         return surface.display_text();
@@ -9827,6 +9897,17 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 "the number of times you chose a mode for that spell".to_string()
             }
             Value::ManaSpentToCast(_) => "the amount of mana spent to cast it".to_string(),
+            Value::GenericManaInManaCostOf(spec) => {
+                if let ChooseSpec::Tagged(tag) = spec.base()
+                    && tag.as_str() == "triggering"
+                {
+                    return "the amount of generic mana in that spell's mana cost".to_string();
+                }
+                format!(
+                    "the amount of generic mana in {} mana cost",
+                    describe_value_choose_spec_possessive(spec)
+                )
+            }
             Value::ManaValueOf(spec) => {
                 if let ChooseSpec::Tagged(tag) = spec.base() {
                     if tag.as_str() == "triggering" {

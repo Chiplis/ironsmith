@@ -1,5 +1,6 @@
 import { normalizeCommunityFormat } from './community-format.js';
 import { mergeMechanics } from './custom-mechanics.js';
+import { validateToken } from './custom-tokens.js';
 
 export const COMMUNITY_FILE_MAX_BYTES = 4_000_000;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -37,6 +38,13 @@ function cards(value) {
       // Validate without replacing the originals: retain parameters, forms,
       // expansion and any additional authoring metadata exactly as exported.
       mergeMechanics([], card.draft.customMechanics);
+    }
+    if (card.draft.customTokens != null) {
+      array(card.draft.customTokens, 'custom tokens');
+      requireValue(card.draft.customTokens.every(object), 'token definitions must be objects.');
+      for (const token of card.draft.customTokens) {
+        try { validateToken(token); } catch (error) { requireValue(false, error.message); }
+      }
     }
   }
 }

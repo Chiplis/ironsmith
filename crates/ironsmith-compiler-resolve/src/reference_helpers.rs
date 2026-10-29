@@ -2893,6 +2893,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::TypeCountOf(spec) => Ok(Value::TypeCountOf(Box::new(
             resolve_choose_spec_it_tag(spec, refs)?,
         ))),
+        Value::GenericManaInManaCostOf(spec) => Ok(Value::GenericManaInManaCostOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::KicksPaidOf(spec) => Ok(Value::KicksPaidOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

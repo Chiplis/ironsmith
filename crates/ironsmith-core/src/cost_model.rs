@@ -1107,6 +1107,37 @@ pub enum OptionalCostKind {
 }
 
 impl OptionalCostKind {
+    /// The official keyword ability this cost belongs to, if any. Descriptive
+    /// and custom payments have none, so they never count as the keyword.
+    pub fn official_keyword(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Kicker => "kicker",
+            Self::Multikicker => "multikicker",
+            Self::Replicate => "replicate",
+            Self::Buyback => "buyback",
+            Self::Entwine => "entwine",
+            Self::Squad => "squad",
+            Self::Teamwork => "teamwork",
+            Self::Offspring => "offspring",
+            Self::Bargain => "bargain",
+            Self::Conspire | Self::GrantedConspire => "conspire",
+            Self::Casualty | Self::GrantedCasualty => "casualty",
+            Self::Gift => "gift",
+            Self::Offering => "offering",
+            Self::Escape => "escape",
+            Self::Blitz => "blitz",
+            Self::Evoke => "evoke",
+            Self::Madness => "madness",
+            Self::Suspend => "suspend",
+            Self::Prototype => "prototype",
+            Self::Tribute => "tribute",
+            Self::Surge => "surge",
+            Self::Spectacle => "spectacle",
+            Self::Dash => "dash",
+            _ => return None,
+        })
+    }
+
     pub fn sacrifice_reduces_mana_cost_and_grants_timing(&self) -> bool {
         matches!(self, Self::Offering | Self::SacrificeManaCostReduction)
     }

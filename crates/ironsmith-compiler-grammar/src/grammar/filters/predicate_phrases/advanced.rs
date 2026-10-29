@@ -7448,12 +7448,44 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     };
     match predicate_readings::read(&input) {
         ParseOutcome::Match(matched) => return Ok(matched.value.value),
-        ParseOutcome::NoMatch => predicate_readings::diagnose(&input)?,
+        ParseOutcome::NoMatch => {
+            if let Some(predicate) = parse_independent_source_type_conjunction(predicate_tokens) {
+                return Ok(predicate);
+            }
+            predicate_readings::diagnose(&input)?
+        }
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
     Err(CardTextError::ParseError(
         render_unsupported_predicate_message(predicate_tokens),
     ))
+}
+
+/// "if a creature died this turn and this permanent is a creature" (an
+/// intervening-if whose last conjunct tests the source's own type): two
+/// complete predicates joined by a single "and". Only a right conjunct that
+/// is itself a source-identity test is split off, so a conjunction inside one
+/// predicate ("you control a Forest and an Island") is never torn apart.
+fn parse_independent_source_type_conjunction(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let and_index = tokens.iter().rposition(|token| token.is_word("and"))?;
+    if and_index == 0 || tokens[..and_index].iter().any(|token| token.is_word("and")) {
+        return None;
+    }
+    let right = crate::util::trim_edge_punctuation_tokens(&tokens[and_index + 1..]);
+    let right = crate::grammar::primitives::probe_shape(parse_predicate(right))?;
+    let is_source_identity = match &right {
+        PredicateAst::Source(SourcePredicateAst::SourceMatches(_)) => true,
+        PredicateAst::Not(inner) => {
+            matches!(inner.as_ref(), PredicateAst::Source(SourcePredicateAst::SourceMatches(_)))
+        }
+        _ => false,
+    };
+    if !is_source_identity {
+        return None;
+    }
+    let left = crate::util::trim_edge_punctuation_tokens(&tokens[..and_index]);
+    let left = crate::grammar::primitives::probe_shape(parse_predicate(left))?;
+    Some(PredicateAst::And(Box::new(left), Box::new(right)))
 }
 
 #[cfg(test)]

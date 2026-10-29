@@ -37,8 +37,13 @@ pub struct KickerBranchShape<'a> {
     pub second_cost: &'a [OwnedLexToken],
 }
 
+/// A sticker-sheet row "{TK}{TK} — body": the row's ticket cost (CR 107.17a,
+/// one per ticket symbol) and the token index where its body begins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StickerTicketMarkerShape;
+pub struct StickerTicketMarkerShape {
+    pub tickets: u32,
+    pub body_start: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RemoveCounterPreventionThenTriggerShape<'a> {
@@ -140,12 +145,28 @@ pub fn parse_sticker_ticket_marker(tokens: &[OwnedLexToken]) -> Option<StickerTi
         return None;
     }
     let mut input = LexStream::new(cost_tokens);
-    let _: Vec<()> = crate::grammar::primitives::take_leaf(
+    let symbols: Vec<()> = crate::grammar::primitives::take_leaf(
         &mut input,
         winnow::combinator::repeat(1.., ticket_symbol),
     )?;
     crate::grammar::primitives::take_leaf(&mut input, eof.void())?;
-    Some(StickerTicketMarkerShape)
+    Some(StickerTicketMarkerShape {
+        tickets: u32::try_from(symbols.len()).ok()?,
+        body_start: dash + 1,
+    })
+}
+
+/// The body of a power/toughness sticker row (CR 123.8): exactly "P/T",
+/// optionally followed by a period.
+pub fn parse_sticker_power_toughness(tokens: &[OwnedLexToken]) -> Option<(i32, i32)> {
+    let mut input = LexStream::new(tokens);
+    let pt = crate::grammar::primitives::take_leaf(&mut input, fixed_power_toughness)?;
+    let _: Option<()> = crate::grammar::primitives::take_leaf(
+        &mut input,
+        winnow::combinator::opt(primitives::token_kind(TokenKind::Period).void()),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, eof.void())?;
+    Some(pt)
 }
 
 pub fn parse_partner_variant(
@@ -241,6 +262,20 @@ fn station_creature_threshold(input: &mut LexStream<'_>) -> WResult<i32> {
     primitives::token_kind(TokenKind::Plus).parse_next(input)?;
     i32::try_from(threshold)
         .map_err(|_| primitives::backtrack_err("station threshold", "32-bit number"))
+}
+
+fn fixed_power_toughness(input: &mut LexStream<'_>) -> WResult<(i32, i32)> {
+    let raw = primitives::word_parser_text.parse_next(input)?;
+    let parsed = leaf::parse_leaf_power_toughness_complete(raw).map_err(|_| {
+        primitives::backtrack_err("sticker power/toughness", "fixed power/toughness value")
+    })?;
+    match (parsed.power, parsed.toughness) {
+        (crate::PtValue::Fixed(power), crate::PtValue::Fixed(toughness)) => Ok((power, toughness)),
+        _ => Err(primitives::backtrack_err(
+            "sticker power/toughness",
+            "fixed numeric power/toughness value",
+        )),
+    }
 }
 
 fn ticket_symbol(input: &mut LexStream<'_>) -> WResult<()> {

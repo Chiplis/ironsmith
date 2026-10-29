@@ -1725,6 +1725,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ChosenColorsOf(_)
         | Value::NotedCreatureTypeCount(_)
         | Value::TypeCountOf(_)
+        | Value::GenericManaInManaCostOf(_)
         | Value::TotalToxicValueOf(_)
         | Value::ManaSymbolsInManaCostOf { .. }
         | Value::NameStickerCharacterCountOnSource { .. }
@@ -2574,7 +2575,9 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::BasePowerOf(_)
         | Value::StationContributionOf(_)
         | Value::ToughnessOf(_) => pt_affected,
-        Value::ManaValueOf(_) | Value::ManaSymbolsInManaCostOf { .. } => {
+        Value::ManaValueOf(_)
+        | Value::GenericManaInManaCostOf(_)
+        | Value::ManaSymbolsInManaCostOf { .. } => {
             matches!(modification.layer(), Layer::Copy)
         }
         Value::ColorsOf(_) | Value::ChosenColorsOf(_) => {
@@ -2903,7 +2906,22 @@ fn filter_uses_type_characteristics(filter: &ObjectFilter) -> bool {
     !filter.card_types.is_empty()
         || !filter.all_card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
+        || filter.card_type_count.is_some()
         || !filter.subtypes.is_empty()
+        || !filter.all_subtypes.is_empty()
+        || filter.creature_type_count.is_some()
+        || filter.chosen_land_type
+        || filter.has_basic_land_type
+        || filter.has_nonbasic_land_type
+        || filter.chosen_creature_type
+        || filter.chosen_card_type
+        || filter.excluded_chosen_creature_type
+        || filter.excluded_any_chosen_creature_type
+        || filter.distinct_creature_types
+        || filter.shares_land_type
+        || !filter.no_shared_creature_types_with.is_empty()
+        || filter.shares_creature_type_with_source
+        || filter.shares_card_type
         || filter.type_or_subtype_union
         || !filter.excluded_subtypes.is_empty()
         || !filter.supertypes.is_empty()

@@ -177,10 +177,10 @@ test('lobby UI selects public formats, constrains settings, searches and selects
   await page.waitForTimeout(2000);
   await page.screenshot({ path: '/private/tmp/ironsmith-relay-create.png', fullPage: true });
   await page.getByLabel('Connection', { exact: true }).selectOption('websocket');
-  assert.equal(await page.getByLabel('Format', { exact: true }).inputValue(), 'modern');
+  assert.equal(await page.getByLabel('Official', { exact: true }).inputValue(), 'modern');
   assert.equal(await page.getByLabel('Starting Life', { exact: true }).isDisabled(), true);
   assert.equal(await page.getByLabel('Players', { exact: true }).isDisabled(), true);
-  await page.getByLabel('Format', { exact: true }).selectOption('commander');
+  await page.getByLabel('Official', { exact: true }).selectOption('commander');
   assert.equal(await page.getByLabel('Starting Life', { exact: true }).inputValue(), '40');
   assert.equal(await page.getByLabel('Players', { exact: true }).isDisabled(), false);
   await page.getByLabel('Players', { exact: true }).selectOption('4');

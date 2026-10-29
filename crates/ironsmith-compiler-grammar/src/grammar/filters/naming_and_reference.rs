@@ -838,7 +838,20 @@ pub(super) fn try_apply_card_type_count_phrase(
                 .then_some((index, count, used + 2))
         });
     let Some((index, count, consumed)) = found else {
-        return false;
+        // "creatures with two or more creature types": a per-candidate count
+        // of distinct creature types (CR 205.3m).
+        let found = all_words.iter().enumerate().find_map(|(index, _)| {
+            let (count, used) = parse_min_color_count_quantity_prefix(&all_words[index..])?;
+            (all_words.get(index + used..index + used + 2) == Some(&["creature", "types"][..]))
+                .then_some((index, count, used + 2))
+        });
+        let Some((index, count, consumed)) = found else {
+            return false;
+        };
+        filter.creature_type_count =
+            Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
+        all_words.drain(index..index + consumed);
+        return true;
     };
     // "any number of cards ... with four or more card types among them"
     // (Winter, Cynical Opportunist) constrains the chosen set as a whole

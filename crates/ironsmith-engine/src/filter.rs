@@ -6907,6 +6907,19 @@ impl ObjectFilterExt for ObjectFilter {
                 _ => format!("with card type count {}", describe_comparison(count)),
             });
         }
+        if let Some(ref count) = self.creature_type_count {
+            parts.push(match count {
+                Comparison::GreaterThanOrEqual(minimum @ 2..=9) => format!(
+                    "with {} or more creature types",
+                    ["two", "three", "four", "five", "six", "seven", "eight", "nine"]
+                        [(*minimum - 2) as usize]
+                ),
+                Comparison::GreaterThanOrEqual(minimum) => {
+                    format!("with {minimum} or more creature types")
+                }
+                _ => format!("with creature type count {}", describe_comparison(count)),
+            });
+        }
         if let Some(ref color_count) = self.color_count {
             parts.push(format!(
                 "with color count {}",

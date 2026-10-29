@@ -1289,6 +1289,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::ChosenColorsOf(spec)
         | Value::NotedCreatureTypeCount(spec)
         | Value::TypeCountOf(spec)
+        | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. } => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),

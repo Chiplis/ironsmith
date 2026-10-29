@@ -693,6 +693,23 @@ pub(super) fn custom_keyword_payment_marker(marker: &str) -> Option<&str> {
     marker.trim().strip_prefix("using ").map(str::trim).filter(|keyword| !keyword.is_empty())
 }
 
+/// Whether a keyword that lowers only to a way of casting ("buyback",
+/// "escape", "warp") is among an object's alternative or optional costs.
+fn casting_costs_have_keyword(
+    alternative_casts: &[crate::alternative_cast::AlternativeCastingMethod],
+    optional_costs: &[crate::cost::OptionalCost],
+    marker: &str,
+) -> bool {
+    let words = marker.split_whitespace().collect::<Vec<_>>();
+    let Some(keyword) = ironsmith_core::keyword_forms::official_keyword_ability(&words) else {
+        return false;
+    };
+    alternative_casts.iter().any(|method| {
+        ironsmith_core::keyword_forms::official_keyword_ability_prefix(method.name())
+            == Some(keyword)
+    }) || optional_costs.iter().any(|cost| cost.kind.official_keyword() == Some(keyword))
+}
+
 pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     object_has_ability_marker_in_view(object, None, marker)
 }
@@ -746,6 +763,9 @@ fn object_has_ability_marker_in_view(
         });
     }
     if aura_attachment_has_ability_marker(enchant_filter, marker) {
+        return true;
+    }
+    if casting_costs_have_keyword(&object.alternative_casts, &object.optional_costs, marker) {
         return true;
     }
     if marker.trim().eq_ignore_ascii_case("disturb")
@@ -1018,6 +1038,13 @@ pub(super) fn snapshot_has_ability_marker(
     if aura_attachment_has_ability_marker(snapshot.aura_attach_filter.as_ref(), marker) {
         return true;
     }
+    if casting_costs_have_keyword(
+        &snapshot.copiable_values.alternative_casts,
+        &snapshot.copiable_values.optional_costs,
+        marker,
+    ) {
+        return true;
+    }
     if matches!(
         normalized_marker.as_str(),
         "mana ability" | "mana abilities"
@@ -1179,6 +1206,26 @@ pub(super) fn ability_text_has_marker(ability: &crate::ability::Ability, marker:
             .presentation_label
             .as_ref()
             .is_some_and(|label| label.is_keyword(&marker))
+    {
+        return true;
+    }
+    // A keyword's lowered triggered or activated ability records the
+    // official keyword it implements, whatever shape it took.
+    let program = match &ability.kind {
+        crate::ability::AbilityKind::Triggered(triggered) => Some(&triggered.effects),
+        crate::ability::AbilityKind::Activated(activated) => Some(&activated.effects),
+        _ => None,
+    };
+    let activated_keyword = match &ability.kind {
+        crate::ability::AbilityKind::Activated(activated) => {
+            activated.keyword.and_then(|keyword| keyword.official_keyword())
+        }
+        _ => None,
+    };
+    if program
+        .and_then(|program| program.keyword.as_deref())
+        .or(activated_keyword)
+        .is_some_and(|keyword| keyword.replace('-', " ") == marker.replace('-', " "))
     {
         return true;
     }

@@ -83,6 +83,7 @@ test('Build edits and adds baked cards while art is stalled, and ignores stale s
   await search.fill('Light');
   assert.equal(await name.inputValue(),'Edited while art loads');
   await dialog.getByRole('button',{name:'Add',exact:true}).click();
+  await page.waitForFunction(() => window.lastAdded?.custom);
   assert.equal((await page.evaluate(()=>window.lastAdded)).custom.draft.faces[0].name,'Edited while art loads');
   assert.deepEqual(sourceRequests,[],'baked card rules never fetch card JSON');
   assert.ok(artRequests.length,'art dependencies remain pending during editing and adding');
@@ -99,4 +100,37 @@ test('Build edits and adds baked cards while art is stalled, and ignores stale s
   await page.waitForTimeout(250);
   assert.equal(await name.inputValue(),'Keep my newer edit','late selection cannot overwrite edits');
  } finally {await browser.close();await vite.close();}
+});
+
+test('Build shares its card search with Sets and keeps separate set and format drafts', { timeout: 60000 }, async t => {
+ const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+ await vite.listen(); t.after(() => vite.close());
+ const browser = await chromium.launch(); t.after(() => browser.close());
+ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+ await page.route('https://**', r => r.abort());
+ await page.route('**/custommagic/pool.json', r => r.fulfill({ json: { cards: [{ id: 'mage', draft: { faces: [{ name: 'Community Mage' }] } }] } }));
+ await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/build-workspace.html`, { waitUntil: 'domcontentloaded' });
+ await page.getByRole('button', { name: 'Build', exact: true }).click();
+ await page.getByRole('tab', { name: 'Sets', exact: true }).click();
+ await page.getByLabel('Custom set name', { exact: true }).fill('Friday cards');
+ await page.getByPlaceholder('Find a card to add or edit').fill('Lightning');
+ await page.getByRole('button', { name: 'Lightning Bolt', exact: true }).click();
+ await page.getByRole('button', { name: 'Remove Lightning Bolt', exact: true }).waitFor();
+ await page.getByPlaceholder('Find a card to add or edit').fill('Community Mage');
+ await page.getByRole('button', { name: 'Community Mage · Custom', exact: true }).click();
+ await page.getByRole('button', { name: 'Save set', exact: true }).click();
+ await page.getByRole('status').filter({ hasText: 'Set saved.' }).waitFor();
+ await page.getByRole('tab', { name: 'Formats', exact: true }).click();
+ await page.getByLabel('Community format name').fill('Friday format');
+ await page.getByLabel('Add custom set', { exact: true }).selectOption('0');
+ await page.getByRole('button', { name: 'Save format', exact: true }).click();
+ await page.getByRole('status').filter({ hasText: 'Format saved.' }).waitFor();
+ await page.screenshot({ path: '/tmp/build-formats.png' });
+ await page.getByRole('tab', { name: 'Sets', exact: true }).click();
+ assert.equal(await page.getByLabel('Custom set name', { exact: true }).inputValue(), 'Friday cards');
+ await page.getByRole('button', { name: 'Remove Community Mage', exact: true }).waitFor();
+ await page.screenshot({ path: '/tmp/build-sets.png' });
+ await page.setViewportSize({ width: 390, height: 844 });
+ await page.screenshot({ path: '/tmp/build-sets-mobile.png' });
+ assert.equal(await page.locator('.community-format-editor:visible').evaluate(el => el.scrollWidth <= el.clientWidth), true);
 });

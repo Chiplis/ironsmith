@@ -1,7 +1,9 @@
 import { prepareCustomCard, mergeMechanics, installCustomMechanics, uninstallCustomMechanic, validateMechanic, probeMechanic } from "./custom-mechanics.js";
+import { installCustomTokens, uninstallCustomToken, validateToken, tokenKey } from "./custom-tokens.js";
 import { cardSearchKey } from "./card-search.js";
 export const CUSTOM_CARD_LIBRARY_CHANGED = "custom-card-library-changed";
 export const CUSTOM_MECHANICS_CHANGED = "custom-mechanics-changed";
+export const CUSTOM_TOKENS_CHANGED = "custom-tokens-changed";
 let connection;
 let bundled;
 const normalize = value => String(value || "").trim().toLowerCase();
@@ -10,10 +12,11 @@ function database() {
   if (!connection) {
     connection = new Promise((resolve, reject) => {
       if (!globalThis.indexedDB) return reject(new Error("IndexedDB is unavailable in this browser"));
-      const request = indexedDB.open("ironsmith-custom-cards-v1", 2);
+      const request = indexedDB.open("ironsmith-custom-cards-v1", 3);
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains("cards")) request.result.createObjectStore("cards", { keyPath: "id" });
         if (!request.result.objectStoreNames.contains("mechanics")) request.result.createObjectStore("mechanics", { keyPath: "keyword" });
+        if (!request.result.objectStoreNames.contains("tokens")) request.result.createObjectStore("tokens", { keyPath: "key" });
       };
       request.onerror = () => reject(request.error);
       request.onblocked = () => reject(new Error("Close other Ironsmith tabs to open your card library"));
@@ -105,8 +108,55 @@ export async function deleteCustomMechanic(keyword) {
   globalThis.dispatchEvent?.(new Event(CUSTOM_MECHANICS_CHANGED));
 }
 
+export async function listCustomTokens() {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("tokens", "readonly");
+    const request = tx.objectStore("tokens").getAll();
+    tx.oncomplete = () => { installCustomTokens(request.result); resolve(request.result); };
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error("Could not load custom tokens"));
+  });
+}
+
+// A token draft from the Card tab, compiled as a token before it is saved.
+// Saving the same name updates the token; cards that create it pick up the
+// new version the next time they compile here.
+export async function saveCustomToken(draft, { compile } = {}) {
+  if (typeof compile !== "function") throw new Error("Saving a custom token requires compiler validation.");
+  if (!draft?.token || draft.faces?.length !== 1) throw new Error("A custom token is a single-face card marked as a token.");
+  await database();
+  const prepared = await prepareCustomDraftForCreation(draft, compile);
+  const token = validateToken({ face: prepared.draft.faces[0], input: prepared.input.faces[0] });
+  const db = await database();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("tokens", "readwrite");
+    tx.objectStore("tokens").put(token);
+    tx.oncomplete = resolve;
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error("Could not save the custom token"));
+  });
+  installCustomTokens([token]);
+  globalThis.dispatchEvent?.(new Event(CUSTOM_TOKENS_CHANGED));
+  return token;
+}
+
+// Cards keep their own copy of each token they create, so deleting a token
+// never breaks an existing card; it only frees the name.
+export async function deleteCustomToken(name) {
+  const db = await database();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("tokens", "readwrite");
+    tx.objectStore("tokens").delete(tokenKey(name));
+    tx.oncomplete = resolve;
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error("Could not delete the custom token"));
+  });
+  uninstallCustomToken(name);
+  globalThis.dispatchEvent?.(new Event(CUSTOM_TOKENS_CHANGED));
+}
+
 export async function previewCustomDraft(draft, compile) {
-  const prepared = await prepareCustomCard(draft, compile, { known: await listCustomMechanics().catch(() => []) });
+  const prepared = await prepareCustomCard(draft, compile, {
+    known: await listCustomMechanics().catch(() => []), knownTokens: await listCustomTokens().catch(() => []),
+  });
   installCustomMechanics(prepared.draft.customMechanics);
   prepared.preview.customMechanics = prepared.draft.customMechanics;
   for (const face of prepared.preview.faces || []) face.customMechanics = prepared.draft.customMechanics;
@@ -116,6 +166,7 @@ export async function previewCustomDraft(draft, compile) {
 export async function prepareCustomDraftForCreation(draft, compile) {
   const prepared = await prepareCustomCard(draft, compile, {
     known: await listCustomMechanics().catch(() => []), reserve: reserveCustomMechanics,
+    knownTokens: await listCustomTokens().catch(() => []),
   });
   installCustomMechanics(prepared.draft.customMechanics);
   prepared.preview.customMechanics = prepared.draft.customMechanics;

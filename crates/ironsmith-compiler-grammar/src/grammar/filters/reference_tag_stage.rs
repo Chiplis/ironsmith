@@ -1279,6 +1279,12 @@ pub fn parse_object_filter_with_grammar_entrypoint_lexed(
     if let Some(result) = super::live_name_relations::parse_live_name_relation(tokens, other) {
         return result;
     }
+    // "creature ... with the same power and/or same toughness as this
+    // creature": the coordinated characteristics belong to one relation
+    // phrase, never to a noun-list union.
+    if let Some(filter) = crate::object_filters::parse_same_power_toughness_as_source_filter(tokens, other) {
+        return filter;
+    }
     if let Some(union) = parse_serial_mixed_permanent_union(tokens, other)? {
         return Ok(union);
     }

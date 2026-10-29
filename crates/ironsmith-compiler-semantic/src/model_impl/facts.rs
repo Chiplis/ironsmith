@@ -31,6 +31,14 @@ pub struct LineSemanticFacts {
     /// Extracted before reminder text is removed from authored rules tokens.
     pub station_creature_threshold: Option<i32>,
     pub supported_sneak_form: bool,
+    /// The official keyword ability this line prints ("Equip {2}",
+    /// "Cumulative upkeep {1}", "Max speed — …"). Every ability the line
+    /// lowers to carries it as identity.
+    pub keyword_identity: Option<&'static str>,
+    /// The ticket cost (CR 107.17a) of a sticker-sheet row, read from its
+    /// "{TK}{TK} —" prefix; the row's body is this line's text. The line's
+    /// abilities are the row's sticker (CR 123.7), not the sheet's own.
+    pub sticker_ticket_cost: Option<u32>,
     pub static_ability: StaticLineSemanticFacts,
     pub statement: StatementLineSemanticFacts,
     pub triggered_ability: TriggeredLineSemanticFacts,

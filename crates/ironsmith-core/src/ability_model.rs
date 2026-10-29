@@ -730,6 +730,24 @@ pub enum ActivatedAbilityKeyword {
     Fortify,
 }
 
+impl ActivatedAbilityKeyword {
+    /// The official keyword ability this identity names (CR 702), if any.
+    pub fn official_keyword(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Equip => "equip",
+            Self::PowerUp => "power-up",
+            Self::ClassLevel(_) => return None,
+            Self::Cycling => "cycling",
+            Self::Ninjutsu => "ninjutsu",
+            Self::Boast => "boast",
+            Self::Exhaust => "exhaust",
+            Self::Craft => "craft",
+            Self::Encore => "encore",
+            Self::Fortify => "fortify",
+        })
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 /// An activated ability, over whatever vocabulary the phase using it speaks.

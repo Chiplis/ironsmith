@@ -55,6 +55,11 @@ pub struct ResolutionProgram<E> {
     pub source_number_pair: Option<LinkedExilePair>,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub champion: Option<ChampionRole>,
+    /// The official keyword ability this program implements ("echo"), so
+    /// "creatures with echo" can recognize it whatever shape it lowered to.
+    /// Identity only: it never changes what the program does.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub keyword: Option<String>,
     /// Immutable authored activation occurrence, including its face and costs.
     /// Kept separately from runtime acquisition and from an activation ordinal.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -122,6 +127,7 @@ impl<E> Default for ResolutionProgram<E> {
             unavailable_trigger_definition: false,
             source_number_pair: None,
             champion: None,
+            keyword: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -139,6 +145,7 @@ impl<E: Clone> ResolutionProgram<E> {
             unavailable_trigger_definition: false,
             source_number_pair: None,
             champion: None,
+            keyword: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -248,6 +255,7 @@ impl<E: Clone> ResolutionProgram<E> {
             self.linked_exile_pair = other.linked_exile_pair;
             self.source_number_pair = other.source_number_pair;
             self.champion = other.champion;
+            self.keyword = other.keyword.clone();
             self.activation_definition = other.activation_definition;
         } else if !other.segments.is_empty()
             && self.linked_exile_pair != other.linked_exile_pair
@@ -275,6 +283,7 @@ impl<E: Clone> ResolutionProgram<E> {
             self.unavailable_trigger_definition = true;
         }
         if !self.segments.is_empty() && !other.segments.is_empty() && self.champion != other.champion { self.champion = None; }
+        if !self.segments.is_empty() && !other.segments.is_empty() && self.keyword != other.keyword { self.keyword = None; }
         if !self.segments.is_empty() && !other.segments.is_empty()
             && self.source_number_pair != other.source_number_pair
         {
@@ -346,6 +355,7 @@ impl<E> ResolutionProgram<E> {
         mapped.unavailable_trigger_definition = self.unavailable_trigger_definition;
         mapped.source_number_pair = self.source_number_pair;
         mapped.champion = self.champion;
+        mapped.keyword = self.keyword;
         mapped.activation_definition = self.activation_definition;
         mapped.unavailable_copied_definition = self.unavailable_copied_definition;
         Ok(mapped)
@@ -478,6 +488,8 @@ impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
         if self.ability_cant_be_countered { debug.field("ability_cant_be_countered", &true); }
         // Historical runtime trigger identities still use Debug for unstamped
         // definitions. Omitted identity metadata must not change their input.
+        // `keyword` is left out for the same reason: stamping identity on
+        // existing keyword abilities must not change their trigger identities.
         if self.champion.is_some() { debug.field("champion", &self.champion); }
         if self.source_number_pair.is_some() { debug.field("source_number_pair", &self.source_number_pair); }
         if self.trigger_definition.is_some() { debug.field("trigger_definition", &self.trigger_definition); }

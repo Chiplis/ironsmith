@@ -402,7 +402,7 @@ impl WasmGame {
     }
     pub(super) fn manual_entry_undo_for_test(&mut self, definition: &CardDefinition,
         player: PlayerId, zone: Zone) -> Result<ObjectId, JsValue> {
-        self.add_definition_to_zone_with_triggers(definition, player, zone)
+        self.add_definition_to_zone_with_triggers(definition, player, zone, false)
     }
 }
 
@@ -4962,17 +4962,29 @@ impl WasmGame {
         self.validate_commander_manual_zone_addition(zone)
             .map_err(|error| JsValue::from_str(&error))?;
 
+        if payload.draft.token && zone != Zone::Battlefield {
+            return Err(JsValue::from_str("a token can only be put onto the battlefield"));
+        }
         let compiled = self.compile_custom_card_faces(&payload.draft)?;
-        for definition in &compiled {
-            self.registry.register(definition.clone());
-            self.game.register_linked_face_definition(definition);
+        // A token is not a card: it never joins the card catalog.
+        if !payload.draft.token {
+            for definition in &compiled {
+                self.registry.register(definition.clone());
+                self.game.register_linked_face_definition(definition);
+            }
         }
         let Some(front) = compiled.first() else {
             return Err(JsValue::from_str("custom card draft produced no faces"));
         };
 
         let counter_seed = payload.counter_seed;
-        let object_id = if payload.skip_triggers {
+        let object_id = if payload.draft.token && payload.skip_triggers {
+            let object_id = self.game.create_token_object_from_definition(front, player_id, zone);
+            self.recompute_ui_decision()?;
+            object_id
+        } else if payload.draft.token {
+            self.add_definition_to_zone_with_triggers(front, player_id, zone, true)?
+        } else if payload.skip_triggers {
             let object_id = self.game.create_object_from_catalog_definition(
                 front,
                 &self.registry,
@@ -4985,7 +4997,7 @@ impl WasmGame {
             self.recompute_ui_decision()?;
             object_id
         } else {
-            let object_id = self.add_definition_to_zone_with_triggers(front, player_id, zone)?;
+            let object_id = self.add_definition_to_zone_with_triggers(front, player_id, zone, false)?;
             if zone == Zone::Command {
                 self.game.set_as_commander(object_id, player_id);
             }
@@ -4998,7 +5010,7 @@ impl WasmGame {
                 self.game.create_object_from_catalog_definition(partner, &self.registry, player_id, zone);
                 self.recompute_ui_decision()?;
             } else {
-                self.add_definition_to_zone_with_triggers(partner, player_id, zone)?;
+                self.add_definition_to_zone_with_triggers(partner, player_id, zone, false)?;
             }
         }
 

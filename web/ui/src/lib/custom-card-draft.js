@@ -1,6 +1,8 @@
 export function normalizeDraftForApi(draft) {
   return {
     customMechanics: structuredClone(draft.customMechanics || []),
+    ...(draft.customTokens?.length ? { customTokens: structuredClone(draft.customTokens) } : {}),
+    ...(draft.token === true ? { token: true } : {}),
     layout: draft.layout || "single",
     hasFuse: draft.hasFuse === true,
     faces: draft.faces.map((face) => ({

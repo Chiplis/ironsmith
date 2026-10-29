@@ -17,6 +17,9 @@ pub struct RewriteLoweredCardState {
     /// Used only to retain authored line boundaries when adjacent spell
     /// instructions are appended to one resolution program.
     pub latest_statement_line_index: Option<usize>,
+    /// Display line of the last sticker-sheet row wrapped into an ability
+    /// sticker; a row split into several parse lines stays one sticker.
+    pub latest_sticker_row_line_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -529,6 +532,7 @@ pub fn lower_line_ast(
         semantic_facts,
     } = line;
     let mut handled_restrictions_for_new_ability = false;
+    let line_abilities_start = builder.abilities.len();
 
     for parsed in chunks {
         if let NormalizedLineChunk::Statement { effects_ast, .. } = &parsed
@@ -585,7 +589,74 @@ pub fn lower_line_ast(
         apply_pending_restrictions_to_ability(&mut builder.abilities[index], &mut restrictions)?;
     }
 
+    if let Some(keyword) = semantic_facts.keyword_identity {
+        for ability in &mut builder.abilities[line_abilities_start..] {
+            crate::keyword_actions::stamp_keyword_identity(ability, keyword);
+        }
+    }
+
+    if let Some(tickets) = semantic_facts.sticker_ticket_cost {
+        wrap_sticker_row_abilities(
+            builder,
+            state,
+            line_abilities_start,
+            tickets,
+            info.display_line_index,
+            last_restrictable_ability,
+        );
+    }
+
     Ok(())
+}
+
+/// A sticker-sheet row's abilities belong to the ability sticker the row
+/// offers (CR 123.7), not to the sheet (CR 123.2): replace what this line
+/// lowered with one ticket-cost sticker holding it. A power/toughness row
+/// is already typed, and an unsupported body stays visible as itself.
+fn wrap_sticker_row_abilities(
+    builder: &mut CardDefinitionBuilder,
+    state: &mut RewriteLoweredCardState,
+    start: usize,
+    tickets: u32,
+    display_line_index: usize,
+    last_restrictable_ability: &mut Option<usize>,
+) {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let row = &builder.abilities[start..];
+    let is_typed_or_unsupported = |ability: &Ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if matches!(static_ability.payload, P::TicketPowerToughnessSticker { .. })
+                    || static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::UnsupportedParserLine
+        )
+    };
+    if row.is_empty() || row.iter().any(is_typed_or_unsupported) {
+        return;
+    }
+    let abilities = builder.abilities.split_off(start);
+    // A row split into several parse lines continues the same sticker.
+    if state.latest_sticker_row_line_index == Some(display_line_index)
+        && let Some(AbilityKind::Static(previous)) =
+            builder.abilities.last_mut().map(|ability| &mut ability.kind)
+        && let P::TicketAbilitySticker {
+            tickets: previous_tickets,
+            abilities: previous_abilities,
+        } = &mut previous.payload
+        && *previous_tickets == tickets
+    {
+        previous_abilities.extend(abilities);
+    } else {
+        builder.abilities.push(Ability::static_ability(
+            StaticAbility::ticket_ability_sticker(tickets, abilities),
+        ));
+    }
+    state.latest_sticker_row_line_index = Some(display_line_index);
+    // The row's abilities are no longer the sheet's own to restrict.
+    if last_restrictable_ability.is_some_and(|index| index >= builder.abilities.len() - 1) {
+        *last_restrictable_ability = None;
+    }
 }
 
 #[cfg(test)]

@@ -131,7 +131,9 @@ pub(super) fn filter_keyword_constraint_for_words(
     } else if permission_shapes::exact_words(words, &["plainswalk"]) {
         Some(Marker("plainswalk"))
     } else {
-        None
+        // Every other official keyword ability is matched by its identity
+        // in the engine, so its name alone is the marker.
+        crate::keyword_forms::official_keyword_ability(words).map(Marker)
     }
 }
 

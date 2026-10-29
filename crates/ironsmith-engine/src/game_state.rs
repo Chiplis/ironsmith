@@ -10770,23 +10770,51 @@ impl GameState {
         }
         self.add_object(object);
         if zone == Zone::Battlefield {
-            // Seed battlefield objects with an entry timestamp so static ability
-            // effects use proper timestamp order in layers.
-            self.effect_store.continuous_effects.record_entry(id);
-            self.handle_day_night_object_entered(id);
-            self.initialize_intrinsic_battle_state(id);
-            if self.object(id).is_some_and(|object| {
-                object.abilities.iter().any(|ability| match &ability.kind {
-                    crate::ability::AbilityKind::Static(static_ability) => {
-                        static_ability.life_total_note_as_enters().is_some()
-                    }
-                    _ => false,
-                })
-            }) {
-                self.note_life_total_for_source(id, owner);
-            }
+            self.seed_manual_battlefield_entry(id, owner);
         }
         id
+    }
+
+    /// Put a token made from `def` directly into `zone` as a setup action,
+    /// outside any effect: no creation event, replacement or trigger.
+    pub fn create_token_object_from_definition(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        controller: PlayerId,
+        zone: Zone,
+    ) -> ObjectId {
+        let id = self.new_object_id();
+        let mut object = self.object_from_token_definition(id, def, controller);
+        object.zone = zone;
+        if zone == Zone::Battlefield
+            && let Some(loyalty) = object.base_loyalty
+            && loyalty > 0
+        {
+            object.add_counters(crate::object::CounterType::Loyalty, loyalty);
+        }
+        self.add_object(object);
+        if zone == Zone::Battlefield {
+            self.seed_manual_battlefield_entry(id, controller);
+        }
+        id
+    }
+
+    fn seed_manual_battlefield_entry(&mut self, id: ObjectId, owner: PlayerId) {
+        // Seed battlefield objects with an entry timestamp so static ability
+        // effects use proper timestamp order in layers.
+        self.effect_store.continuous_effects.record_entry(id);
+        self.handle_day_night_object_entered(id);
+        self.initialize_intrinsic_battle_state(id);
+        if self.object(id).is_some_and(|object| {
+            object.abilities.iter().any(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Static(static_ability) => {
+                    static_ability.life_total_note_as_enters().is_some()
+                }
+                _ => false,
+            })
+        }) {
+            self.note_life_total_for_source(id, owner);
+        }
     }
 
     pub(crate) fn object_from_token_definition(

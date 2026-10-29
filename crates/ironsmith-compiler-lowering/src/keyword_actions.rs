@@ -14,7 +14,38 @@ use crate::types::CardType;
 ///
 /// A keyword names an ability the card has; turning that name into the ability
 /// itself is lowering, which is why this lives here rather than on the builder.
+/// Every triggered or activated ability the keyword adds records which
+/// official keyword it implements, so filters such as "creatures without
+/// echo" can recognize it.
 pub fn apply_keyword_action(
+    builder: CardDefinitionBuilder,
+    action: KeywordAction,
+) -> CardDefinitionBuilder {
+    let keyword = ironsmith_core::keyword_forms::official_keyword_ability_prefix(
+        &action.display_text(),
+    );
+    let first_new = builder.abilities.len();
+    let mut builder = expand_keyword_action(builder, action);
+    if let Some(keyword) = keyword {
+        for ability in &mut builder.abilities[first_new..] {
+            stamp_keyword_identity(ability, keyword);
+        }
+    }
+    builder
+}
+
+/// Record `keyword` as the identity of a triggered or activated keyword
+/// ability that does not already carry one.
+pub(crate) fn stamp_keyword_identity(ability: &mut crate::ability::Ability, keyword: &str) {
+    let program = match &mut ability.kind {
+        crate::ability::AbilityKind::Triggered(triggered) => &mut triggered.effects,
+        crate::ability::AbilityKind::Activated(activated) => &mut activated.effects,
+        _ => return,
+    };
+    program.keyword.get_or_insert_with(|| keyword.to_string());
+}
+
+fn expand_keyword_action(
     mut builder: CardDefinitionBuilder,
     action: KeywordAction,
 ) -> CardDefinitionBuilder {

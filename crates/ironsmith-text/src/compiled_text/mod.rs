@@ -203,6 +203,30 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 single.aura_attach_filter = None;
                 // Static abilities read through the engine's audit-aware
                 // display: many text renderers here key on retained strings.
+                if let AbilityKind::Static(static_ability) = &ability.kind
+                    && let Some((tickets, row_abilities)) = static_ability.ticket_ability_sticker()
+                {
+                    // CR 123.7: an ability-sticker row reads as its ticket
+                    // cost (CR 107.17a), then the abilities it grants, read
+                    // as one printed line of their own.
+                    let mut row = single.clone();
+                    row.ability_labels = vec![String::new(); row_abilities.len()];
+                    row.abilities = row_abilities;
+                    let body = semantic_audit_lines(&row)
+                        .into_iter()
+                        .map(|line| line.trim().to_string())
+                        .filter(|line| !line.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    lines.push((
+                        AuditLine::Rendered,
+                        format!(
+                            "{} \u{2014} {body}",
+                            ironsmith_core::static_ability_model::ticket_cost_symbols(tickets)
+                        ),
+                    ));
+                    continue;
+                }
                 if let AbilityKind::Static(static_ability) = &ability.kind {
                     // Abilities parsed from one printed line share a group,
                     // keyed only by label equality, so adjacent readings are
@@ -5121,6 +5145,12 @@ fn audit_static_subject_surface(line: &str, subject: &str, attached: Option<&str
 }
 
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
+    if def.abilities.iter().any(|ability| {
+        matches!(&ability.kind, AbilityKind::Static(static_ability)
+            if static_ability.ticket_ability_sticker().is_some())
+    }) {
+        return sticker_sheet_compiled_text_lines(def);
+    }
     let oracle_short = oracle_short_self_name(def);
     let lines = normalize_ast_surface_lines(debug_compiled_surface_lines(def))
         .into_iter()
@@ -5145,6 +5175,46 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
         .collect();
     let lines = preserve_as_long_as_its_your_turn_surface(def, lines);
     prefix_attraction_visit_surface(def, append_typed_standard_reminder_lines(def, lines))
+}
+
+/// A sticker sheet (CR 123.2) prints one row per sticker: an ability-sticker
+/// row (CR 123.7) is its ticket cost, then the abilities it grants rendered
+/// as their own printed line; every other ability renders alone.
+fn sticker_sheet_compiled_text_lines(def: &CardDefinition) -> Vec<String> {
+    let mut lines = Vec::new();
+    for ability in &def.abilities {
+        let mut row = def.clone();
+        row.spell_effect = None;
+        row.alternative_casts.clear();
+        row.optional_costs.clear();
+        row.additional_cost = Default::default();
+        let sticker = match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.ticket_ability_sticker(),
+            _ => None,
+        };
+        match sticker {
+            Some((tickets, abilities)) => {
+                row.ability_labels = vec![String::new(); abilities.len()];
+                row.abilities = abilities;
+                let body = compiled_text_lines(&row)
+                    .into_iter()
+                    .map(|line| line.trim().to_string())
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                lines.push(format!(
+                    "{} \u{2014} {body}",
+                    ironsmith_core::static_ability_model::ticket_cost_symbols(tickets)
+                ));
+            }
+            None => {
+                row.ability_labels.clear();
+                row.abilities = vec![ability.clone()];
+                lines.extend(compiled_text_lines(&row));
+            }
+        }
+    }
+    lines
 }
 
 /// "That creature gains \"Cumulative upkeep {2}.\"" (Dreams of the Dead,
@@ -9188,6 +9258,41 @@ mod tests {
         ])
         .build();
         assert_source_poison_does_not_change_compiled_text(repeat);
+    }
+
+    #[test]
+    fn sticker_sheet_rows_read_as_ticket_cost_then_typed_sticker() {
+        use crate::static_abilities::{CompiledStaticAbility, StaticAbility};
+        let flying = ironsmith_core::Ability {
+            kind: ironsmith_core::AbilityKind::Static(CompiledStaticAbility::flying()),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Sticker Sheet Probe",
+        )
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::ticket_ability_sticker(3, vec![flying]),
+        )))
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::from_model(
+            CompiledStaticAbility::ticket_power_toughness_sticker(2, 1, 4),
+        )))
+        .build();
+
+        assert_eq!(
+            semantic_audit_lines(&definition),
+            vec![
+                "{TK}{TK}{TK} \u{2014} Flying".to_string(),
+                "{TK}{TK} \u{2014} 1/4.".to_string(),
+            ]
+        );
+        assert_eq!(
+            compiled_text_lines(&definition),
+            vec![
+                "{TK}{TK}{TK} \u{2014} Flying".to_string(),
+                "{TK}{TK} \u{2014} 1/4.".to_string(),
+            ]
+        );
     }
 
     #[test]

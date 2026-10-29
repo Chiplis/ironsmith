@@ -189,6 +189,7 @@ pub mod front_end {
 
 pub mod card_builders;
 pub mod card_tokens;
+pub mod custom_tokens;
 pub mod keyword_actions;
 
 #[path = "lowering_impl/battlefield_entry_counter_fusion.rs"]
@@ -222,5 +223,6 @@ pub mod cards {
 }
 
 pub use card_builders::CardDefinitionBuilder;
+pub use custom_tokens::with_custom_tokens;
 pub use ironsmith_compiler_semantic::cards::CardDefinition;
 

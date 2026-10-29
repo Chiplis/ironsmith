@@ -7940,6 +7940,20 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 )
             }
         }
+        Value::GenericManaInManaCostOf(spec) => {
+            if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == "triggering"
+            {
+                "the amount of generic mana in that spell's mana cost".to_string()
+            } else if matches!(spec.base(), ChooseSpec::Tagged(_)) {
+                "the amount of generic mana in its mana cost".to_string()
+            } else {
+                format!(
+                    "the amount of generic mana in {} mana cost",
+                    describe_possessive_choose_spec(spec)
+                )
+            }
+        }
         Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
         Value::StationContributionOf(spec) => format!("{} power", describe_possessive_choose_spec(spec)),
         Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),

@@ -1,5 +1,6 @@
-import CommunityFormatEditor, { CommunityFormatSummary } from "./CommunityFormatEditor";
-import { normalizeCommunityFormat, validateCommunityDeck, emptyCommunityFormat } from "@/lib/community-format";
+import { loadCommunityLibrary } from '@/lib/community-library';
+import { CommunityFormatSummary } from "./CommunityFormatEditor";
+import { normalizeCommunityFormat, validateCommunityDeck } from "@/lib/community-format";
 import SaveLobbyDeck from "./SaveLobbyDeck";
 import useUiText from "@/i18n/useUiText";
 import SocialLinks from "./SocialLinks";
@@ -218,20 +219,30 @@ export default function LobbyOverlay({
       ? MATCH_FORMAT_COMMANDER
       : initialCreateFormat ? normalizeMatchFormat(initialCreateFormat) : "";
   const storedPlayerName = useMemo(() => readStoredPlayerName(), []);
-  const [communityFormat, setCommunityFormat] = useState(emptyCommunityFormat);
-  const [communityBusy, setCommunityBusy] = useState(false);
+  const [communityFormat, setCommunityFormat] = useState(null);
+  const [customFormats, setCustomFormats] = useState([]);
+  const [customFormatsReady, setCustomFormatsReady] = useState(false);
+  const [customFormatsError, setCustomFormatsError] = useState('');
+  const isCustomFormat = Boolean(communityFormat);
+  useEffect(() => {
+    let active = true;
+    loadCommunityLibrary().then(library => {
+      if (active) { setCustomFormats(library.formats); setCustomFormatsReady(true); }
+    }).catch(error => { if (active) setCustomFormatsError(error.message); });
+    return () => { active = false; };
+  }, []);
   const [transport, setTransport] = useState('peerjs');
   const [advertise, setAdvertise] = useState(true);
   const [relayOnly, setRelayOnly] = useState(() => readRelayOnlyPreference());
   const tournamentCertificates = useMemo(() => listTournamentCertificates(), []);
   const [createTournamentId, setCreateTournamentId] = useState(() => tournamentCertificates[0]?.tournamentId || "");
   const [mode, setMode] = useState(
-    ["join", "tournaments", "goldfish", "community"].includes(initialMode) ? initialMode : "create"
+    ["join", "tournaments", "goldfish"].includes(initialMode) ? initialMode : "create"
   );
   // Tournament matches ride the relay room in Verified mode.
   const relayTransport = transport === 'websocket' || transport === 'tournament';
   const [createFormat, setCreateFormat] = useState(
-    initialMode === "community" ? MATCH_FORMAT_NORMAL : resolvedInitialCreateFormat
+    resolvedInitialCreateFormat
   );
   const [createName, setCreateName] = useState(
     String(initialCreateName || storedPlayerName || defaultName)
@@ -315,7 +326,7 @@ export default function LobbyOverlay({
     [shareLobbyCode]
   );
 
-  const createFormatChosen = Boolean(createFormat);
+  const createFormatChosen = Boolean(createFormat) || isCustomFormat;
   const lobbyChecksLegality = lobbyActive && (isLegalityFormat(activeFormat) || Boolean(multiplayer.communityFormat));
   // Any deck being edited also needs the catalog: it tells which legal cards
   // still need deck-list configuration (circled colors), in every format.
@@ -340,7 +351,7 @@ export default function LobbyOverlay({
     ? deckConfigurationProblems(parseDeckList(createDeckText), parseCommanderList(createCommanderText),
       parseSideboardList(createDeckText))
     : null;
-  const createDeckStatus = mode === 'community' && createDeckCount > 0
+  const createDeckStatus = isCustomFormat && createDeckCount > 0
     ? validateCommunityDeck(communityFormat, parseDeckList(createDeckText), [], parseSideboardList(createDeckText))
     : !lobbyActive && isLegalityFormat(createFormat) && catalogReady && createDeckCount > 0
     ? validateFormatDeck(createFormat, parseDeckList(createDeckText), parseCommanderList(createCommanderText),
@@ -358,6 +369,7 @@ export default function LobbyOverlay({
   const handleCreateFormatChange = (nextFormat) => {
     if (!nextFormat) return;
     const normalized = normalizeMatchFormat(nextFormat);
+    setCommunityFormat(null);
     setCreateFormat(normalized);
     if (PUBLIC_FORMATS[normalized]) {
       setStartingLife(PUBLIC_FORMATS[normalized].startingLife);
@@ -390,28 +402,27 @@ export default function LobbyOverlay({
       setStatus("Redeem a tournament invite in the Tournaments tab first", true);
       return;
     }
-    if (mode === 'community') {
-      if (communityBusy) { setStatus('Wait for the card pool to finish loading', true); return; }
+    if (isCustomFormat) {
       try { normalizeCommunityFormat(communityFormat); }
       catch (error) { setStatus(error.message, true); return; }
     }
     if (transport !== 'tournament') writeStoredPlayerName(createName);
     createLobby({
-      communityFormat: mode === 'community' ? communityFormat : null,
-      transport: mode === 'community' ? 'peerjs' : relayTransport ? 'websocket' : transport,
+      communityFormat: isCustomFormat ? communityFormat : null,
+      transport: isCustomFormat ? 'peerjs' : relayTransport ? 'websocket' : transport,
       advertise,
       allowUnreleased: isLegalityFormat(createFormat) && allowUnreleased,
       ...(transport === 'tournament' ? { tournamentId: createTournamentId } : {}),
       name: createName,
       desiredPlayers,
       startingLife,
-      format: mode === "community" ? MATCH_FORMAT_NORMAL : createFormat,
+      format: isCustomFormat ? MATCH_FORMAT_NORMAL : createFormat,
       securityMode:
-        (mode === "community" || createFormat === MATCH_FORMAT_PLANECHASE)
+        (isCustomFormat || createFormat === MATCH_FORMAT_PLANECHASE)
           ? MULTIPLAYER_SECURITY_TRUSTED
           : createSecurityMode,
       deckText: createDeckText,
-      commanderText: mode === "community" ? "" : createCommanderText,
+      commanderText: isCustomFormat ? "" : createCommanderText,
       deckOptions: initialCreateDeckOptions,
     });
   };
@@ -465,7 +476,7 @@ export default function LobbyOverlay({
         <SheetHeader className="fantasy-sheet-header pr-12">
           <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Play")}</div>
           <SheetTitle>
-            {lobbyActive ? ui("Multiplayer Lobby") : mode === "community" ? ui("Community") : mode === "join" ? ui("Join Lobby") : mode === "tournaments" ? ui("Tournaments") : mode === "goldfish" ? ui("Goldfish") : ui("Create Lobby")}
+            {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : mode === "tournaments" ? ui("Tournaments") : mode === "goldfish" ? ui("Goldfish") : ui("Create Lobby")}
           </SheetTitle>
           <SheetDescription className={lobbyActive ? "sr-only" : "max-w-[46ch] text-[13px] leading-5"}>{mode === "goldfish" && !lobbyActive
             ? ui("Practice locally: load decks for each seat and start the game right away.")
@@ -519,35 +530,45 @@ export default function LobbyOverlay({
                   aria-pressed={mode === "goldfish"}
                   onClick={() => setMode("goldfish")}
                 >{ui("Goldfish")}</button>
-                <button type="button" className={`${modeTabClass} ${mode === 'community' ? 'brightness-125' : 'opacity-70'}`}
-                  aria-pressed={mode === 'community'} onClick={() => {
-                    setMode('community'); setCreateFormat(MATCH_FORMAT_NORMAL); setTransport('peerjs');
-                    setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED); setStartingLife(20);
-                  }}>{ui('Community')}</button>
+
               </div>
 
               {mode === "goldfish" ? (
                 <DeckLoadingView embedded onTestDecks={onStartGoldfish} onCancel={handleClose} />
-              ) : mode === "tournaments" ? <TournamentPanel /> : (mode === "create" || mode === "community") ? (
+              ) : mode === "tournaments" ? <TournamentPanel /> : mode === "create" ? (
                 <div className="play-setup-grid">
                   <div className="play-session-controls">
                     <div className="lobby-sheet-setup-fields grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                      <label className={labelClass}>{ui("Format")}<select
+                      <label className={`${labelClass} col-span-full`}>{ui("Official")}<select
                           className={inputClass}
-                          aria-label={ui("Format")}
-                          disabled={mode === 'community'}
+                          aria-label={ui("Official")}
                           aria-invalid={!createFormatChosen}
-                          value={createFormat}
+                          value={isCustomFormat ? "" : createFormat}
                           onChange={(event) => handleCreateFormatChange(event.target.value)}
                         >
-                          {!createFormatChosen ? <option value="" disabled>{ui("Choose a format…")}</option> : null}
+                          <option value="" disabled>{ui("Choose an official format…")}</option>
                           {Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>)}
                           {!relayTransport ? <>
-                            <option value={MATCH_FORMAT_NORMAL}>{ui(mode === "community" ? "Community constructed" : "Freeform (no card legality)")}</option>
+                            <option value={MATCH_FORMAT_NORMAL}>{ui("Freeform (no card legality)")}</option>
                             <option value={MATCH_FORMAT_PLANECHASE}>{ui("Planechase")}</option>
                           </> : null}
                         </select>
                       </label>
+                      <label className={`${labelClass} col-span-full`}>{ui("Custom")}<select
+                        className={inputClass} aria-label={ui("Custom")} value={communityFormat?.name || ""}
+                        disabled={!customFormatsReady || !customFormats.length}
+                        onChange={event => {
+                          const selected = customFormats.find(format => format.name === event.target.value);
+                          if (!selected) return;
+                          setCommunityFormat(structuredClone(selected)); setCreateFormat(MATCH_FORMAT_NORMAL);
+                          setTransport('peerjs'); setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED);
+                          setStartingLife(20); setCreateCommanderText('');
+                        }}>
+                        <option value="" disabled>{ui(customFormatsError ? "Library unavailable" : !customFormatsReady ? "Loading formats…" : customFormats.length ? "Choose a custom format…" : "No saved custom formats")}</option>
+                        {customFormats.map(format => <option key={format.name} value={format.name}>{format.name}</option>)}
+                      </select></label>
+                      <p className="text-xs text-muted-foreground col-span-full">{ui("Choose one format: Official or Custom. Create and import custom formats in Build → Formats.")}</p>
+                      {customFormatsError && <p role="alert" className="text-sm text-red-300 col-span-full">{customFormatsError}</p>}
                       <label className={labelClass}>{ui("Your Name")}<input
                           className={inputClass}
                           disabled={transport === 'tournament'}
@@ -581,7 +602,7 @@ export default function LobbyOverlay({
                         </select>
                       </label>
                       {isLegalityFormat(createFormat) ? (
-                        <label className="lobby-sheet-unreleased flex items-center gap-2 text-sm md:col-span-2 lg:col-span-4"
+                        <label className="lobby-sheet-unreleased flex items-center gap-2 text-sm col-span-full"
                           title={ui("Cards previewed on Scryfall that no format lists yet. Every other format rule still applies.")}>
                           <input type="checkbox" checked={allowUnreleased} onChange={(event) => setAllowUnreleased(event.target.checked)} />
                           {ui("Allow unreleased cards")}
@@ -589,7 +610,7 @@ export default function LobbyOverlay({
                       ) : null}
                     </div>
               <div className={`${panelClass} lobby-sheet-connection-panel`}>
-                <label className={labelClass}>{ui("Connection")}<select disabled={mode === 'community'} aria-label={ui("Connection")} className={inputClass} value={transport} onChange={event => {
+                <label className={labelClass}>{ui("Connection")}<select disabled={isCustomFormat} aria-label={ui("Connection")} className={inputClass} value={transport} onChange={event => {
                     const value = event.target.value;
                     setTransport(value);
                     if (value === 'websocket' || value === 'tournament') {
@@ -623,7 +644,7 @@ export default function LobbyOverlay({
                   <legend className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">{ui("Multiplayer Mode")}</legend>
                   <div className="grid gap-2 md:grid-cols-2">
                     {securityModeOptions.map((option) => {
-                      if (mode === 'community' && option.value === MULTIPLAYER_SECURITY_VERIFIED) return null;
+                      if (isCustomFormat && option.value === MULTIPLAYER_SECURITY_VERIFIED) return null;
                       if (transport === 'websocket' && option.value === MULTIPLAYER_SECURITY_VERIFIED) return null;
                       if (
                         createFormat === MATCH_FORMAT_PLANECHASE
@@ -664,7 +685,10 @@ export default function LobbyOverlay({
               </div>
                   </div>
                   <div className="play-deck-discovery">
-                    {mode === 'community' ? <CommunityFormatEditor value={communityFormat} onChange={setCommunityFormat} onBusyChange={setCommunityBusy} /> : createFormatChosen ? (
+                    {isCustomFormat ? <div className="grid min-h-0 content-start gap-3 overflow-auto">
+                      <p className="text-sm text-muted-foreground">{ui('This saved card pool applies to every player. Custom formats use Trusted peer-to-peer rooms. Paste your deck to check its legality.')}</p>
+                      <CommunityFormatSummary format={communityFormat} />
+                    </div> : createFormatChosen ? (
                       <CompetitiveDeckPicker
                         format={createFormat === MATCH_FORMAT_NORMAL || createFormat === MATCH_FORMAT_PLANECHASE ? "modern" : createFormat}
                         lockFormat={isLegalityFormat(createFormat)}
@@ -711,7 +735,7 @@ export default function LobbyOverlay({
                       </label>
                     ) : null}                  <div className={panelClass}>
                     <div className={infoTextClass}>
-                      <span>{ui("Format:") + " "}{mode === "community" ? communityFormat.name || ui("Community constructed") : createFormatChosen ? ui(formatName(createFormat)) : ui("not chosen")}</span>
+                      <span>{ui("Format:") + " "}{isCustomFormat ? communityFormat.name || ui("Community constructed") : createFormatChosen ? ui(formatName(createFormat)) : ui("not chosen")}</span>
                       {createDeckStatus ? (
                         <span className={createDeckStatus.ready ? "" : "text-[#f0a9a0]"}>
                           {createDeckStatus.ready ? ui("Your deck meets the format restrictions.") : createDeckStatus.errors.slice(0, 4).join(" ")}
@@ -741,7 +765,7 @@ export default function LobbyOverlay({
                       <Button
                         variant="secondary"
                         className={`${pill} ui-primary-action`}
-                        disabled={!createFormatChosen || (mode === "community" && communityBusy)}
+                        disabled={!createFormatChosen}
                         title={createFormatChosen ? undefined : ui("Choose a format first")}
                         onClick={handleCreate}
                       >{ui("Create Lobby")}</Button>

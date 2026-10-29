@@ -1762,6 +1762,124 @@ fn apply_same_controller_suffix(filter: &mut ObjectFilter, opponent: bool) {
     }
 }
 
+/// "with the same power and/or same toughness as this creature": each named
+/// characteristic of the candidate equals the source's. Several
+/// characteristics joined by "and" must all match; joined by "or" or
+/// "and/or", any one suffices.
+struct SamePowerToughnessAsSource {
+    power: bool,
+    toughness: bool,
+    disjunctive: bool,
+    and_or: bool,
+    source: crate::target::ChooseSpec,
+}
+
+pub(crate) fn parse_same_power_toughness_as_source_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Option<Result<ObjectFilter, CardTextError>> {
+    let (base, relation) = split_same_power_toughness_as_source_suffix(tokens)?;
+    Some(
+        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(base, other)
+            .map(|filter| apply_same_power_toughness_as_source(filter, &relation)),
+    )
+}
+
+fn split_same_power_toughness_as_source_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], SamePowerToughnessAsSource)> {
+    let words = crate::lexer::TokenWordView::new(tokens);
+    let refs = words.to_word_refs();
+    let with_index = refs.iter().rposition(|word| *word == "with")?;
+    let mut rest = &refs[with_index + 1..];
+    if rest.first() == Some(&"the") {
+        rest = &rest[1..];
+    }
+    if rest.first() != Some(&"same") {
+        return None;
+    }
+    rest = &rest[1..];
+    let axis = |word: &str| match word {
+        "power" => Some(true),
+        "toughness" => Some(false),
+        _ => None,
+    };
+    let first_is_power = axis(rest.first()?)?;
+    rest = &rest[1..];
+    let mut second_is_power = None;
+    let mut disjunctive = false;
+    let mut and_or = false;
+    // The word view splits "and/or" into "and", "or".
+    if let Some(connective @ ("and" | "or" | "and/or")) = rest.first().copied() {
+        and_or = connective == "and/or" || (connective == "and" && rest.get(1) == Some(&"or"));
+        disjunctive = connective != "and" || and_or;
+        rest = &rest[if and_or && connective == "and" { 2 } else { 1 }..];
+        if rest.first() == Some(&"the") {
+            rest = &rest[1..];
+        }
+        if rest.first() == Some(&"same") {
+            rest = &rest[1..];
+        }
+        let second = axis(rest.first()?)?;
+        if second == first_is_power {
+            return None;
+        }
+        second_is_power = Some(second);
+        rest = &rest[1..];
+    }
+    if rest.first() != Some(&"as") {
+        return None;
+    }
+    let surface = crate::util::source_reference_surface_for_words(&rest[1..])?;
+
+    let token_end = *words.token_start_indices().get(with_index)?;
+    if token_end == 0 {
+        return None;
+    }
+    let both = second_is_power.is_some();
+    Some((
+        &tokens[..token_end],
+        SamePowerToughnessAsSource {
+            power: first_is_power || both,
+            toughness: !first_is_power || both,
+            disjunctive: both && disjunctive,
+            and_or,
+            source: crate::util::source_choose_spec_for_surface(surface),
+        },
+    ))
+}
+
+fn apply_same_power_toughness_as_source(
+    mut filter: ObjectFilter,
+    relation: &SamePowerToughnessAsSource,
+) -> ObjectFilter {
+    let power =
+        || crate::filter::Comparison::EqualExpr(Box::new(crate::effect::Value::PowerOf(Box::new(relation.source.clone()))));
+    let toughness =
+        || crate::filter::Comparison::EqualExpr(Box::new(crate::effect::Value::ToughnessOf(Box::new(relation.source.clone()))));
+    if !relation.disjunctive {
+        if relation.power {
+            filter.power = Some(power());
+        }
+        if relation.toughness {
+            filter.toughness = Some(toughness());
+        }
+        return filter;
+    }
+    // Mirrors "power or toughness N or less": one branch per characteristic,
+    // each carrying the whole candidate filter.
+    let mut power_branch = filter.clone();
+    power_branch.power = Some(power());
+    let mut toughness_branch = filter;
+    toughness_branch.toughness = Some(toughness());
+    let mut disjunction = ObjectFilter::default();
+    disjunction.any_of = vec![power_branch, toughness_branch];
+    if relation.and_or {
+        disjunction.set_union_connective(ObjectFilterUnionConnective::AndOr);
+    }
+    disjunction
+}
+
 fn apply_source_relation_phrases(filter: &mut ObjectFilter, split: &SourceRelationPhraseSplit) {
     filter.attacking_same_defender_as_source |= split.attacking_same_defender_as_source;
     filter.could_be_enchanted_by_source |= split.could_be_enchanted_by_source;
@@ -1892,6 +2010,10 @@ pub fn parse_object_filter(
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
     if let Some(rewritten) = without_characteristic_list_commas(tokens) {
         return parse_object_filter(&rewritten, other);
+    }
+    if let Some((base, relation)) = split_same_power_toughness_as_source_suffix(tokens) {
+        let filter = parse_object_filter(base, other)?;
+        return Ok(apply_same_power_toughness_as_source(filter, &relation));
     }
     if let Some(filter) = parse_status_flag_union(tokens, other)? {
         return Ok(filter);
@@ -2215,6 +2337,10 @@ fn parse_object_filter_inner(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some((base, relation)) = split_same_power_toughness_as_source_suffix(tokens) {
+        let filter = parse_object_filter_inner(base, other)?;
+        return Ok(apply_same_power_toughness_as_source(filter, &relation));
+    }
     let input = filter_shape_readings::FilterPhrase {
         tokens,
         other,
@@ -2430,6 +2556,10 @@ pub fn parse_object_filter_lexed(
         let mut filter = parse_object_filter_lexed(&split.tokens, other)?;
         apply_source_relation_phrases(&mut filter, &split);
         return Ok(filter);
+    }
+    if let Some((base, relation)) = split_same_power_toughness_as_source_suffix(tokens) {
+        let filter = parse_object_filter_lexed(base, other)?;
+        return Ok(apply_same_power_toughness_as_source(filter, &relation));
     }
     if let Some((base, opponent)) = split_same_controller_suffix(tokens) {
         let mut filter = parse_object_filter_lexed(base, other)?;

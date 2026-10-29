@@ -239,6 +239,18 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_where_x_is_colored_mana_symbols_value(input)),
     },
     Reading {
+        id: RuleId::new("where-x-generic-mana-in-mana-cost"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_where_x_generic_mana_in_mana_cost(input)),
+    },
+    Reading {
+        id: RuleId::new("where-x-type-line-type-count"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_where_x_type_line_type_count(input)),
+    },
+    Reading {
         id: RuleId::new("attractions-visited-this-turn"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -264,6 +276,7 @@ const READINGS: &[Reading] = &[
                 // named X" (Cogwork Grinder) is a draft count, not a count of
                 // objects named X.
                 && !input.read_by("where-x-known-value")
+                && !input.read_by("where-x-type-line-type-count")
         },
         read: |input| input.outcome(read_where_x_is_number_of_filter_value(input)),
     },
@@ -622,6 +635,62 @@ fn read_where_x_is_colored_mana_symbols_value(input: &BindingClause<'_>) -> Opti
         return Some(value);
     }
     None
+}
+/// The object a where-X binding's possessive or subject reference names:
+/// "that spell" is the triggering spell, "it" the ambient referent, and
+/// "this <noun>" the source.
+fn where_x_object_reference(words: &[&str]) -> Option<ChooseSpec> {
+    let words: Vec<&str> = words
+        .iter()
+        .map(|word| {
+            word.trim_end_matches("'s")
+                .trim_end_matches("\u{2019}s")
+                .trim_end_matches('\'')
+        })
+        .filter(|word| !word.is_empty() && *word != "s")
+        .collect();
+    match words.as_slice() {
+        // The word view drops the possessive apostrophe ("that spells mana
+        // cost").
+        ["that", "spell" | "spells"] => Some(ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::Triggering.bind().into(),
+        )),
+        ["it"] | ["its"] => Some(ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind().into(),
+        )),
+        [
+            "this",
+            "creature" | "creatures" | "permanent" | "permanents" | "card" | "cards" | "spell"
+            | "spells" | "artifact" | "artifacts" | "enchantment" | "enchantments",
+        ] => {
+            Some(ChooseSpec::Source)
+        }
+        _ => None,
+    }
+}
+/// "where X is the amount of generic mana in <object>'s mana cost".
+fn read_where_x_generic_mana_in_mana_cost(input: &BindingClause<'_>) -> Option<Value> {
+    let tail = input.words.strip_prefix(&["where", "x", "is"][..])?;
+    let tail = tail.strip_prefix(&["the"][..]).unwrap_or(tail);
+    let tail = tail.strip_prefix(&["amount", "of", "generic", "mana", "in"][..])?;
+    let reference = tail.strip_suffix(&["mana", "cost"][..])?;
+    let spec = where_x_object_reference(reference)?;
+    Some(Value::GenericManaInManaCostOf(Box::new(spec)))
+}
+/// "where X is the number of supertypes, card types, and subtypes <object>
+/// has".
+fn read_where_x_type_line_type_count(input: &BindingClause<'_>) -> Option<Value> {
+    let tail = input.words.strip_prefix(&["where", "x", "is"][..])?;
+    let tail = tail.strip_prefix(&["the"][..]).unwrap_or(tail);
+    let tail = tail.strip_prefix(&["number", "of", "supertypes"][..])?;
+    let tail = tail.strip_prefix(&["card", "types"][..])?;
+    let tail = tail.strip_prefix(&["and"][..]).unwrap_or(tail);
+    let tail = tail.strip_prefix(&["subtypes"][..])?;
+    let reference = tail
+        .strip_suffix(&["has"][..])
+        .or_else(|| tail.strip_suffix(&["have"][..]))?;
+    let spec = where_x_object_reference(reference)?;
+    Some(Value::TypeCountOf(Box::new(spec)))
 }
 fn read_attractions_visited_this_turn(input: &BindingClause<'_>) -> Option<Value> {
     let words = input.words;
