@@ -25,10 +25,11 @@ test('main decision advance labels translate every destination and the prefix', 
   assert.equal(priorityAdvanceButtonLabel('FirstMain', null, 0, translator('en')), 'Go to Combat');
 });
 
-test('Go To follows selected phase and combat stops; running transitions say Skipping', async () => {
+test('Go To follows every-time phase and combat stops; running transitions say Skipping', async () => {
   const { nextSelectedPriorityStop, selectedPriorityAdvanceLabel } = await import('../src/lib/priority-stops.js');
   const state = { phase: 'FirstMain', step: null };
-  const stops = { 'phase:Main': 'always', 'phase:Main2': 'once' };
+  // "I can act" (the default) depends on the board, so it never names a destination.
+  const stops = { 'phase:Main': 'always', 'phase:Main2': 'always', 'phase:End': 'can_act' };
   assert.deepEqual(nextSelectedPriorityStop(state, stops), ['Main2']);
   assert.equal(selectedPriorityAdvanceLabel(state, stops, false, translator('en')), 'Go to Main II');
   assert.equal(selectedPriorityAdvanceLabel(state, {}, false, translator('en')), 'Go to Next Turn');
@@ -36,6 +37,20 @@ test('Go To follows selected phase and combat stops; running transitions say Ski
   assert.equal(selectedPriorityAdvanceLabel(state, stops, false, translator('es')), 'Ir a Principal II');
   assert.deepEqual(nextSelectedPriorityStop(state, {'step:DeclareAttackers':'always'}), ['Combat','DeclareAttackers']);
   assert.equal(selectedPriorityAdvanceLabel(state, {'step:DeclareAttackers':'always'}, false, translator('en')), 'Declare Attackers');
-  assert.equal(selectedPriorityAdvanceLabel({phase:'Combat',step:'DeclareAttackers'}, {'step:DeclareBlockers':'once'}, false, translator('en')), 'Declare Blockers');
-  assert.deepEqual(nextSelectedPriorityStop({phase:'Combat',step:'DeclareAttackers'}, {'step:DeclareAttackers':'always','step:DeclareBlockers':'once'}), ['Combat','DeclareBlockers']);
+  assert.equal(selectedPriorityAdvanceLabel({phase:'Combat',step:'DeclareAttackers'}, {'step:DeclareBlockers':'always'}, false, translator('en')), 'Declare Blockers');
+  assert.deepEqual(nextSelectedPriorityStop({phase:'Combat',step:'DeclareAttackers'}, {'step:DeclareAttackers':'always','step:DeclareBlockers':'always'}), ['Combat','DeclareBlockers']);
+});
+
+test('Go To names your own attack declaration when you control a creature that can attack', async () => {
+  const { selectedPriorityAdvanceLabel } = await import('../src/lib/priority-stops.js');
+  const board = (cards, active = 0) => ({ phase: 'FirstMain', step: null, active_player: active, perspective: 0,
+    players: [{ id: 0, battlefield: cards }, { id: 1, battlefield: [] }] });
+  const creature = { card_types: ['creature'], tapped: false, summoning_sick: false };
+  const stops = { 'phase:Main2': 'always' };
+  assert.equal(selectedPriorityAdvanceLabel(board([creature]), stops, false, translator('en')), 'Declare Attackers');
+  for (const cards of [[], [{ ...creature, summoning_sick: true }], [{ ...creature, tapped: true }], [{ ...creature, card_types: ['land'] }]]) {
+    assert.equal(selectedPriorityAdvanceLabel(board(cards), stops, false, translator('en')), 'Go to Main II');
+  }
+  assert.equal(selectedPriorityAdvanceLabel(board([creature], 1), stops, false, translator('en')), 'Go to Main II',
+    "an opponent's creatures never stop your advance");
 });

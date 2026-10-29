@@ -6730,8 +6730,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         // Handle name
-        if let Some(ref name) = self.name {
-            let name = self.name_surface().unwrap_or(name);
+        if self.name.is_some() {
+            let name_display = self.name_display().unwrap_or_default();
+            let name = name_display.as_str();
             match (&controller_suffix, &owner_suffix) {
                 (Some(controller), Some(owner)) => {
                     if controller == "you control" && owner == "you own" {

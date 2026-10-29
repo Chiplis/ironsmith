@@ -4146,6 +4146,22 @@ pub fn parse_damage_source_filter_words(words: &[&str]) -> Option<ObjectFilter> 
         return Some(filter);
     }
 
+    // "a red or artifact source": the color and the card type are
+    // alternatives, not a conjunction of characteristics.
+    if let [color, "or", card_type] = words.as_slice()
+        && let (Some(color), Some(card_type)) = (parse_color(color), parse_card_type(card_type))
+    {
+        filter.any_of = vec![
+            ObjectFilter {
+                colors: Some(color),
+                ..ObjectFilter::default()
+            },
+            ObjectFilter::default().with_type(card_type),
+        ];
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::Or);
+        return Some(filter);
+    }
+
     let mut colors: Option<ColorSet> = None;
     for word in words {
         if matches!(word, "and" | "or") {

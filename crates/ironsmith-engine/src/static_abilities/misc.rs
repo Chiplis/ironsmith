@@ -775,6 +775,53 @@ impl StaticAbilityKind for DayNightStartsDayAsEnters {
     }
 }
 
+/// A morph cost whose choice step only names the objects the next cost
+/// returns ("Morph—Return a Bird you control to its owner's hand"): the
+/// choice and the return read as the one return cost.
+fn morph_cost_display(cost: &crate::cost::TotalCost) -> String {
+    use crate::effects::EffectExecutor as _;
+    let Some(costs) = cost.as_all() else {
+        return cost.display();
+    };
+    let mut parts = Vec::new();
+    let mut idx = 0;
+    while idx < costs.len() {
+        let choose = costs[idx]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>());
+        let returned = costs
+            .get(idx + 1)
+            .and_then(|cost| cost.effect_ref())
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ReturnToHandEffect>());
+        if let (Some(choose), Some(returned)) = (choose, returned)
+            && let crate::target::ChooseSpec::Object(filter) = returned.spec.base()
+            && filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag == choose.tag)
+        {
+            let mut merged = returned.clone();
+            merged.spec = crate::target::ChooseSpec::Object(choose.filter.clone())
+                .with_count(choose.count.clone());
+            if let Some(text) = merged.cost_description() {
+                parts.push(text);
+                idx += 2;
+                continue;
+            }
+        }
+        let text = costs[idx].display();
+        if !text.trim().is_empty() {
+            parts.push(text);
+        }
+        idx += 1;
+    }
+    if parts.is_empty() {
+        "Free".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
 /// Morph keyword ability (turn face up by paying morph cost as a special action).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Morph {
@@ -793,6 +840,15 @@ impl StaticAbilityKind for Morph {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            // A non-mana morph cost prints after an em dash (CR 702.37a).
+            let cost = morph_cost_display(&self.cost);
+            return if self.cost.as_all().is_some_and(|costs| costs.iter().any(|cost| cost.is_mana_cost())) {
+                format!("Morph {cost}")
+            } else {
+                format!("Morph\u{2014}{cost}")
+            };
+        }
         format!("Morph {}", self.cost.display())
     }
 
@@ -4553,7 +4609,7 @@ impl StaticAbilityKind for PreventDamageToOtherCreatureYouControlPutCountersInst
 
     fn display(&self) -> String {
         if ironsmith_core::semantic_audit::semantic_audit_active() {
-            return format!("If damage would be dealt to another creature you control, prevent it and put that many {} counters on that creature", self.counter_type.description());
+            return format!("If damage would be dealt to another creature you control, prevent that damage. Put a {} counter on that creature for each 1 damage prevented this way", self.counter_type.description());
         }
         self.display.clone()
     }
@@ -5900,7 +5956,7 @@ impl StaticAbilityKind for ProtectionDoesntRemoveAuras {
 
     fn display(&self) -> String {
         if ironsmith_core::semantic_audit::semantic_audit_active() {
-            return format!("Protection doesn't remove {}", if self.all_auras { "Auras" } else { "this Aura" });
+            return format!("This effect doesn't remove {}", if self.all_auras { "Auras" } else { "this Aura" });
         }
         self.display.clone()
     }

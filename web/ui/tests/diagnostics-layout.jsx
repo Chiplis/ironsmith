@@ -45,7 +45,7 @@ function Fixture(){
  const [holdRule,setHoldRule]=useState('never');
  const [autoResolveEnabled,setAutoResolveEnabled]=useState(false);
  const [phasePassing,setPhasePassing]=useState(false);
- const [priorityStops,setPriorityStops]=useState({"phase:Main2":"once"});
+ const [priorityStops,setPriorityStops]=useState({"phase:Main2":"always"});
  const [expanded,setExpanded]=useState(true);
  const [targeting,setTargeting]=useState(true);
  const kind = new URLSearchParams(location.search).get('kind') || 'targets';
@@ -118,7 +118,7 @@ function Fixture(){
    options: [0,1].map(index=>({index,description:`Object ${index}\nWhenever you cast a noncreature spell, this ability triggers.`,related_object_ids:[index+1],legal:true})),
  };
  const effectOrderingState = stackOrder ? {key:buildEffectOrderingKey(state.decision),order:[0,1]} : null;
- return <I18nProvider><GameContext.Provider value={{state,effectOrderingState,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,cancelDecision:async()=>{window.__cancelled=true;},holdRule,setHoldRule,autoResolveEnabled,setAutoResolveEnabled,phasePassing,priorityStops,cyclePriorityStop:(key)=>setPriorityStops(stops=>({...stops,[key]:stops[key]?undefined:"once"})),startPhaseAdvance:()=>{window.__phaseAdvance=true;setPhasePassing(true);},togglePhasePassing:()=>setPhasePassing(value=>!value),dispatch:async(action)=>{window.__dispatched=action;},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+ return <I18nProvider><GameContext.Provider value={{state,effectOrderingState,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,cancelDecision:async()=>{window.__cancelled=true;},holdRule,setHoldRule,autoResolveEnabled,setAutoResolveEnabled,phasePassing,priorityStops,cyclePriorityStop:(key)=>setPriorityStops(stops=>({...stops,[key]:stops[key]?undefined:"always"})),startPhaseAdvance:()=>{window.__phaseAdvance=true;setPhasePassing(true);},togglePhasePassing:()=>setPhasePassing(value=>!value),dispatch:async(action)=>{window.__dispatched=action;},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
  {sizingParams.has("stackLaneTest") && <StackFixture />}
  <main style={{height:"96vh"}}><button onClick={()=>setExpanded(value=>!value)}>Toggle decision</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore onChangePerspective={id=>{window.selectedPerspective=id;}} legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} middleUtilityControls={<TopbarUtilityControls />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;

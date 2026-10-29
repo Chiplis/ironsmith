@@ -532,6 +532,16 @@ export default function TopbarMenuSheet({
                   <option value="standard">{ui("Match battlefield cards")}</option>
                 </select>
               </label>
+              <label className={labelClass}>
+                {ui("Card finishes")}
+                <select className={inputClass} aria-label={ui("Card finishes")}
+                  value={battlefieldAppearance.cardFinishEffects ? "live" : "static"}
+                  onChange={event => setBattlefieldAppearance("cardFinishEffects", event.target.value === "live")}>
+                  <option value="static">{ui("Static")}</option>
+                  <option value="live">{ui("Live foil and print effects")}</option>
+                </select>
+                <span>{ui("Live effects animate custom card finishes in the inspector and use more graphics resources.")}</span>
+              </label>
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <label className={labelClass}>
                   {t("settings.interfaceFont")}

@@ -1827,6 +1827,26 @@ if filter.zone == Some(Zone::Hand)
                 }
                 return rendered;
             }
+            // "For each nonland card revealed this way" (Parley): the public
+            // reveal tag carries no tagged-constraint provenance, so fold the
+            // gate's typed card filter into the "revealed this way" subject.
+            if this_way_action_from_tag(&for_each_tagged.tag) == Some("revealed") {
+                let mut noun_filter = filter.clone();
+                noun_filter.zone = None;
+                let description = noun_filter.description();
+                let noun = strip_indefinite_article(description.trim()).trim().to_string();
+                if noun.ends_with("card")
+                    && !noun.contains("this way")
+                    && !noun.contains(" that ")
+                    && !noun.contains(" it")
+                {
+                    let body = describe_effect_list(&conditional.if_true);
+                    return format!(
+                        "For each {noun} revealed this way, {}",
+                        lowercase_first(&body)
+                    );
+                }
+            }
         }
         if for_each_tagged.tag.as_str().starts_with("searched")
             && for_each_tagged.effects.len() == 1
@@ -11861,6 +11881,12 @@ if filter.zone == Some(Zone::Hand)
             } else {
                 format!("a copy of {}", describe_choose_spec(&spec))
             }
+        } else if tag == crate::tag::SOURCE_EXILED_TAG
+            && ironsmith_core::semantic_audit::semantic_audit_active()
+        {
+            // The card linked to this source by its exile ability (Hideaway,
+            // Collector's Cage): "the exiled card".
+            "the exiled card".to_string()
         } else if helper_tag {
             "that card".to_string()
         } else {

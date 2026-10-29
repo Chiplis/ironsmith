@@ -31,7 +31,7 @@ function Fixture(){
  const [appearance,setAppearance]=useBattlefieldAppearance();
  const [result,setResult]=useState('none');
  const [holdRule,setHoldRule]=useState('never');
- const [priorityController]=useState(()=>createPriorityStops({initialStops:{'phase:Main':'always','phase:Main2':'always'}}));
+ const [priorityController]=useState(()=>createPriorityStops());
  const prioritySnapshot=useSyncExternalStore(priorityController.subscribe,priorityController.getSnapshot);
  const [perspective,setPerspective]=useState(Number(new URLSearchParams(location.search).get("perspective") || 0));
  const multiplayer = new URLSearchParams(location.search).has('multiplayer') ? {mode:'in_match',role:'client'} : {mode:'idle'};

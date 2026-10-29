@@ -102,7 +102,7 @@ function outputText(source) {
 
 export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null, quickControls = null, footerHost = undefined }) {
   const ui = useUiText();
-  const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision } = useGame();
+  const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, requestResolveAfterPayment } = useGame();
   const { setPreviewLinkedObjects, clearPreviewLinkedObjects, showAnchoredCardPreview } = useHover();
   const payment = state?.mana_payment || null;
   const rolloutRef = useDecisionRollout(`${decision?.source_id ?? ''}|${Boolean(payment)}`, true);
@@ -129,7 +129,26 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
   }, [editor.edited, confirming, canAct, dispatchInBackground, payment]);
   // Confirmation always waits for the authoritative acknowledgement of edits.
   const payDisabled = !canAct || !payment || payment.can_confirm !== true || dirty || confirming;
-  const submitAction = useMemo(() => ({ label: 'Pay', disabled: payDisabled, onSubmit: editor.confirm }), [payDisabled, editor.confirm]);
+  // A second press on Pay (it disables while confirming, so watch the pointer)
+  // also resolves the spell or ability once it is on the stack.
+  const sourceId = decision?.source_id;
+  const pay = useCallback(event => {
+    const button = event?.currentTarget;
+    if (event?.detail >= 2) requestResolveAfterPayment?.(sourceId);
+    else if (button && typeof window !== 'undefined') {
+      const rect = button.getBoundingClientRect();
+      const onPointerDown = press => {
+        if (press.clientX >= rect.left && press.clientX <= rect.right && press.clientY >= rect.top && press.clientY <= rect.bottom) {
+          requestResolveAfterPayment?.(sourceId);
+          window.removeEventListener('pointerdown', onPointerDown, true);
+        }
+      };
+      window.addEventListener('pointerdown', onPointerDown, true);
+      setTimeout(() => window.removeEventListener('pointerdown', onPointerDown, true), 450);
+    }
+    if (!(event?.detail >= 2)) editor.confirm();
+  }, [editor, requestResolveAfterPayment, sourceId]);
+  const submitAction = useMemo(() => ({ label: 'Pay', disabled: payDisabled, onSubmit: () => pay(), onSubmitEvent: pay }), [payDisabled, pay]);
   useEffect(() => { onSubmitActionChange?.(submitAction); return () => onSubmitActionChange?.(null); }, [onSubmitActionChange, submitAction]);
   const cancel = () => { closeMenu(); cancelBackgroundDispatch?.(); cancelDecision({ waitForPaymentReady: true }); };
   const pickAction = action => {
@@ -194,7 +213,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
         {inlineSubmit ? quickControls : null}
       </div>
       {inlineSubmit && <div className="mana-payment-pay-region">
-        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title={`${ui('Pay')} (SPACE)`} disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
+        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title={`${ui('Pay')} (SPACE)`} disabled={payDisabled} onClick={pay}>{ui('Pay')}</Button>
         {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
       </div>}
       </div>

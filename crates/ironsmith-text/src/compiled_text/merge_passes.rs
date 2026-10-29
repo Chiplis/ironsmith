@@ -367,7 +367,10 @@ fn subtype_addition_predicate(predicate: &str) -> Option<String> {
     let lower = trimmed.to_ascii_lowercase();
     // "Creatures you control are the chosen type. The same is true for ..."
     // (Conspiracy): a replacing chosen-type change shares the same surface.
-    if lower == "the chosen type" {
+    // The audit names the chosen kind ("the chosen creature type"); Maskwood
+    // Nexus: "Creatures you control are every creature type. The same is
+    // true for ...".
+    if matches!(lower.as_str(), "the chosen type" | "the chosen creature type" | "every creature type") {
         return Some(lower);
     }
     for suffix in [
@@ -2303,6 +2306,16 @@ pub(super) fn merge_lose_all_transform_lines(lines: Vec<String>) -> Vec<String> 
                 break;
             };
             let rest = rest.trim();
+            // A joined "is an artifact creature and has base power and
+            // toughness each equal to its mana value" is not a descriptor
+            // list (Titania's Song): its "has" clause would be title-cased
+            // into a creature type.
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && rest.contains(" has ")
+                && rest.contains(" each equal to ")
+            {
+                break;
+            }
             if let Some(name) = rest.strip_prefix("named ") {
                 named = Some(title_case_transform_phrase(name.trim()));
                 consumed += 1;
@@ -2423,12 +2436,35 @@ fn collect_transform_descriptor_parts(
         while let Some(rest) = remainder.strip_prefix("is ") {
             remainder = rest.trim().to_string();
         }
-        let lower = trim_transform_connector(&remainder).to_ascii_lowercase();
+        let mut lower = trim_transform_connector(&remainder).to_ascii_lowercase();
         if lower.is_empty() {
             continue;
         }
+        let audit = ironsmith_core::semantic_audit::semantic_audit_active();
+        // "is an artifact creature": the article and the card types are not
+        // a creature type (Darksteel Mutation).
+        if audit
+            && let Some(rest) = lower.strip_prefix("an ").or_else(|| lower.strip_prefix("a "))
+        {
+            lower = rest.to_string();
+        }
         if let Some((subtype, card_type)) = split_transform_subtype_card_type(&lower) {
-            if !subtype.is_empty() {
+            let is_card_type_word = |word: &str| {
+                matches!(word, "artifact" | "enchantment" | "land" | "planeswalker" | "battle")
+            };
+            if audit && !subtype.is_empty() && subtype.split(' ').any(is_card_type_word) {
+                let mut kept = Vec::new();
+                for word in subtype.split(' ') {
+                    if is_card_type_word(word) {
+                        push_unique_lower(card_types, word);
+                    } else {
+                        kept.push(word);
+                    }
+                }
+                if !kept.is_empty() {
+                    push_unique_lower(subtypes, &kept.join(" "));
+                }
+            } else if !subtype.is_empty() {
                 push_unique_lower(subtypes, &subtype);
             }
             push_unique_lower(card_types, &card_type);

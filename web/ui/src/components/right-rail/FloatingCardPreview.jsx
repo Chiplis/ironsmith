@@ -24,6 +24,7 @@ import { canHoverInspectorObject, objectExistsInState, resolveStackInspectObject
 import { requestInspectorDetails } from "@/lib/inspector-details-cache";
 import { stackFramePreview, visibleFrameCards } from "@/lib/stack-frame-preview";
 import useCardStackMode from "@/hooks/useCardStackMode";
+import { ComicTooltipHostVisible } from "@/components/ui/comic-tooltip";
 
 const PREVIEW_OPEN_DELAY_MS = 500;
 const PREVIEW_CLOSE_DELAY_MS = 240;
@@ -690,6 +691,7 @@ function CardPreviewSurface({
         if (anchoredObjectId != null) clearAnchoredCardPreview();
       }}
     >
+      <ComicTooltipHostVisible.Provider value={visible}>
       {renderedObjectId != null && faceDownIdentity ? (
         <div className="floating-card-preview__frames">
           <div className="floating-card-preview__frame">
@@ -727,6 +729,7 @@ function CardPreviewSurface({
           onInteractiveAction={triggerInteractiveAction}
         />
       ) : null}
+      </ComicTooltipHostVisible.Provider>
     </aside>
   );
 }

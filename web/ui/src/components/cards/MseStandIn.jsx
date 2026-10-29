@@ -1,6 +1,7 @@
 import {useLayoutEffect,useRef} from 'react';
 import {ManaCostIcons,SymbolText} from '@/lib/mana-symbols';
 import {cardArtCropUrl} from '@/lib/card-image-variants';
+import {capitalizeSentences} from '@/lib/sentence-case';
 
 // While a card's own frame renders, show the blank frame for its colors with
 // the card's art and text laid into the frame's measured boxes. It is a
@@ -58,7 +59,7 @@ export default function MseStandIn({frame,card,imageUrl,faceIndex=0,placeholder,
       <ManaCostIcons cost={face.mana_cost} size={12}/></div>}
     {(face.type_line_display??face.type_line)&&fields.type&&<div className="mse-stand-in__line" style={box('type')}>{face.type_line_display??face.type_line}</div>}
     {face.oracle_text&&fields.text&&<FittedText style={box('text')}>
-      {String(face.oracle_text).split('\n').map((line,index)=><p key={index}><SymbolText text={line} symbolSize={12} keywordHelpers={false}/></p>)}
+      {capitalizeSentences(String(face.oracle_text)).split('\n').map((line,index)=><p key={index}><SymbolText text={line} symbolSize={12} keywordHelpers={false}/></p>)}
     </FittedText>}
     {pt!=null&&pt!==''&&fields.pt&&<div className="mse-stand-in__pt" style={box('pt')}>{pt}</div>}
   </div>;

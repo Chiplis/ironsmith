@@ -1146,6 +1146,8 @@ export const ui = {
   "Load": "Cargar",
   "Load Decks": "Cargar mazos",
   "Goldfish": "Goldfish",
+  "Goldfish: let this player pass and answer its own choices automatically.": "Goldfish: este jugador pasa y responde sus propias decisiones automáticamente.",
+  "Goldfish: this player passes and answers its own choices. Click to control it yourself.": "Goldfish: este jugador pasa y responde sus propias decisiones. Haz clic para controlarlo tú.",
   "commander": "comandante",
   "Add a Commander section to at least one deck.": "Agrega una sección Commander a al menos un mazo.",
   "Practice locally: load decks for each seat and start the game right away.": "Practica en local: carga mazos para cada asiento y empieza la partida al instante.",
@@ -2036,6 +2038,10 @@ export const ui = {
   "Let the planner choose for {0}": "Dejar que el planificador elija para {0}",
   "Library ({0})": "Biblioteca ({0})",
   "Loading...": "Cargando...",
+  "Card finishes": "Acabados de cartas",
+  "Static": "Estáticos",
+  "Live foil and print effects": "Efectos de foil e impresión en vivo",
+  "Live effects animate custom card finishes in the inspector and use more graphics resources.": "Los efectos en vivo animan los acabados de las cartas personalizadas en el inspector y usan más recursos gráficos.",
   "Match battlefield cards": "Igual que las cartas del campo de batalla",
   "Message…": "Mensaje…",
   "Noncreature lands": "Tierras que no son criaturas",
@@ -2159,7 +2165,8 @@ export const ui = {
   "Blink": "Destello",
   "Timed exile": "Exilio temporizado",
   "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.": "Escribe {Number} donde va una cantidad. Cada carta indica la cantidad y su precio después de la palabra clave, como Suspender: \"Prever 3—{1}{U}\". Sirve cualquier nombre de contador, y \"o cada vez que …\" añade más formas de quitar uno.",
-  "Write {Number} where an amount goes; the card then writes the amount before its price, as in \"Suspend 3—{1}{U}\".": "Escribe {Number} donde va una cantidad; la carta escribe entonces la cantidad antes de su precio, como en \"Suspender 3—{1}{U}\".",
+  "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".": "Escribe {Number} donde va una cantidad y {Type} donde va un tipo de carta; la carta los indica entonces después de la palabra clave, como en \"Suspender 3—{1}{U}\" o \"Contemplar un Trasgo\".",
+  "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.": "Para fijar cómo escriben las cartas sus parámetros, pon su disposición después del nombre, como \"Forjar {Number} {Cost}\" o \"Heraldo un {Type}\". Sin disposición, una carta puede darlos en cualquier orden, separados por un guion o un espacio.",
 };
 
 export { rules } from './es.rules.js';

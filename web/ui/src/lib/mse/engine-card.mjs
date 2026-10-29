@@ -1,4 +1,5 @@
 import {MseError} from './document.mjs';
+import {capitalizeSentences} from '../sentence-case.js';
 
 // Engine/printing snapshots are plain text. Escape literal markup before adding
 // MSE symbol tags so a card description cannot inject template formatting.
@@ -19,7 +20,7 @@ export function engineSymbolToMse(symbol){
   return symbol;
 }
 export function engineRulesToMse(value){
-  return plain(value).replace(/\{([^{}\n]+)\}/g,(_,symbol)=>`<sym>${engineSymbolToMse(symbol)}</sym>`);
+  return plain(capitalizeSentences(value)).replace(/\{([^{}\n]+)\}/g,(_,symbol)=>`<sym>${engineSymbolToMse(symbol)}</sym>`);
 }
 export function engineManaToMse(value){
   return plain(value).replace(/\{([^{}\n]+)\}/g,(_,symbol)=>engineSymbolToMse(symbol));

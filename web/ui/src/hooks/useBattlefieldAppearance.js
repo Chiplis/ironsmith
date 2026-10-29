@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'ironsmith.battlefieldAppearance';
-const defaults = Object.freeze({ compactCards: true, compactLands: true });
+// Live card finishes run a WebGL renderer that can stall weak GPUs, so they
+// are opt-in, like the Build window's finish preview.
+const defaults = Object.freeze({ compactCards: true, compactLands: true, cardFinishEffects: false });
 let snapshot;
 const listeners = new Set();
 function read() {

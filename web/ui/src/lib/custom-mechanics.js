@@ -1,5 +1,5 @@
 import { expandKnownReminderDefinition } from './official-reminder-definitions.js';
-import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefinition, bindExileCastObject, hasNextUntapCostDefinition, nextUntapCostText, hasReminderCardParameter, bindReminderCard, isActivationReminder, bindActivationReminder, bindReminderCost, hasReminderCostReference, bindReminderActivationLabel, bindReminderValueFromDeclaration, hasRepeatedCopyPayment, expandRepeatedCopyPayment, bindReminderCostFromDeclaration, hasReminderParameters, parseParameterDeclaration, bindReminderParameters, parameterExample } from './reminder-costs.js';
+import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefinition, bindExileCastObject, hasNextUntapCostDefinition, nextUntapCostText, hasReminderCardParameter, bindReminderCard, isActivationReminder, bindActivationReminder, bindReminderCost, hasReminderCostReference, bindReminderActivationLabel, bindReminderValueFromDeclaration, hasRepeatedCopyPayment, expandRepeatedCopyPayment, bindReminderCostFromDeclaration, hasReminderParameters, parseParameterDeclaration, bindReminderParameters, parameterExample, reminderParameters, templateParameters } from './reminder-costs.js';
 import { MTG_KEYWORD_RULES } from './mtg-keyword-rules.generated.js';
 import { OFFICIAL_KEYWORD_FORMS, officialSurfaceForms, customKeywordForms, normalizeFormOverrides, surfaceForms } from './keyword-forms.js';
 
@@ -25,8 +25,39 @@ export function mechanicExpansion(reminder, declaration = '') {
   );
 }
 
+// The name may carry the card line's layout after the keyword ("Behold a
+// {Type}", "Forge {Number} {Cost}"): the keyword is the text before the first
+// placeholder, less an article that belongs to the layout; the rest is its
+// declaration template.
+export function splitMechanicName(name) {
+  const text = String(name || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+  const brace = text.indexOf('{');
+  if (brace < 0) return { keyword: mechanicKey(text), template: null };
+  const head = text.slice(0, brace).replace(/[\s—–-]+$/, '').replace(/\s+an?$/i, '');
+  return { keyword: mechanicKey(head), template: text.slice(head.length).trim() || null };
+}
+
+function validateTemplate(keyword, template, reminder) {
+  const named = templateParameters(template);
+  const unknown = String(template).match(/\{(?!(?:cost|number|type)\})([^{}]*)\}/i);
+  if (unknown) throw new Error(`"{${unknown[1]}}" is not a parameter. Use {Cost}, {Number} or {Type} in "${keyword}"'s layout.`);
+  const repeated = named.find((name, index) => named.indexOf(name) !== index);
+  if (repeated) throw new Error(`"${keyword}"'s layout names {${repeated[0].toUpperCase()}${repeated.slice(1)}} more than once.`);
+  if (/[^a-z{}\s—–-]/i.test(String(template).replace(/\{[a-z]+\}/gi, ''))) throw new Error(`"${keyword}"'s layout may hold only its parameters, words, spaces and dashes.`);
+  const gaps = String(template).split(/\{(?:cost|number|type)\}/i).slice(1, -1);
+  if (gaps.some(gap => !gap)) throw new Error(`"${keyword}"'s layout needs a space or a dash between two parameters.`);
+  const used = reminderParameters(reminder);
+  const missing = used.find(name => !named.includes(name));
+  if (missing) throw new Error(`The reminder uses {${missing[0].toUpperCase()}${missing.slice(1)}}, so "${keyword}"'s layout must place it.`);
+  // A price may also be named as "its <keyword> cost".
+  const unused = named.find(name => !used.includes(name) && !(name === 'cost' && hasReminderCostReference(reminder, keyword)));
+  if (unused) throw new Error(`"${keyword}"'s layout places {${unused[0].toUpperCase()}${unused.slice(1)}}, but the reminder never uses it.`);
+}
+
 export function validateMechanic(definition) {
-  const keyword = mechanicKey(definition.keyword);
+  const split = splitMechanicName(definition.keyword);
+  const keyword = split.keyword;
+  const template = split.template || (definition.template ? String(definition.template).trim() : null);
   if (!/^[a-z][a-z '-]{0,63}$/.test(keyword) || official.has(keyword)) {
     throw new Error(`"${keyword}" cannot be defined as a custom mechanic. Use a distinct custom keyword; official keywords cannot be redefined.`);
   }
@@ -34,9 +65,10 @@ export function validateMechanic(definition) {
   if (!reminder || reminder.length > 2000 || /[()]/.test(reminder)) {
     throw new Error(`"${keyword}" needs one unambiguous parenthetical reminder explaining its action.`);
   }
-  // Braces hold mana symbols or the two declaration parameters.
-  const unknown = reminder.match(/\{(?!(?:cost|number)\})([a-z][a-z ]{2,})\}/i);
-  if (unknown) throw new Error(`"{${unknown[1]}}" is not a parameter. Use {Cost} for a price and {Number} for an amount, as in "${keyword} 3—{1}{U}".`);
+  // Braces hold mana symbols or the declaration parameters.
+  const unknown = reminder.match(/\{(?!(?:cost|number|type)\})([a-z][a-z ]{2,})\}/i);
+  if (unknown) throw new Error(`"{${unknown[1]}}" is not a parameter. Use {Cost} for a price, {Number} for an amount and {Type} for a card type, as in "${keyword} 3—{1}{U}".`);
+  if (template) validateTemplate(keyword, template, reminder);
   const overrides = normalizeFormOverrides(definition.forms);
   const forms = customKeywordForms({ keyword, forms: overrides });
   for (const form of [forms.participle, forms.designation, forms.costNoun, ...forms.variants]) {
@@ -44,7 +76,7 @@ export function validateMechanic(definition) {
       throw new Error(`"${keyword}" cannot use "${form}" as one of its forms; it belongs to an official keyword. Override it in the mechanic's forms.`);
     }
   }
-  return { keyword, reminder, expansion: mechanicExpansion(bindReminderActivationLabel(reminder, keyword)), sourceCard: String(definition.sourceCard || 'an earlier card'), version: 1, ...(overrides ? { forms: overrides } : {}) };
+  return { keyword, reminder, expansion: mechanicExpansion(bindReminderActivationLabel(reminder, keyword)), sourceCard: String(definition.sourceCard || 'an earlier card'), version: 1, ...(template ? { template } : {}), ...(overrides ? { forms: overrides } : {}) };
 }
 
 // Every word or phrase that names a mechanic: its name and each form.
@@ -108,7 +140,7 @@ function selfCostPattern(keyword) {
 }
 
 function mechanicPattern(definition) {
-  if (hasReminderParameters(definition.reminder)) return costedPattern(definition.keyword);
+  if (hasReminderParameters(definition.reminder, definition.template)) return costedPattern(definition.keyword);
   if (hasExileCastDefinition(definition.reminder)) return exileObjectPattern(definition.keyword);
   if (hasNextUntapCostDefinition(definition.reminder)) return selfCostPattern(definition.keyword);
   if (hasReminderCardParameter(definition.reminder)) return cardParameterPattern(definition.keyword);
@@ -180,11 +212,11 @@ export function compileDraftInput(draft, definitions) {
     text = displayOracleText;
     for (const def of used) {
       let before = text;
-      if (hasReminderParameters(def.reminder)) {
+      if (hasReminderParameters(def.reminder, def.template)) {
         text = text.replace(costedPattern(def.keyword), (match, prefix, keyword, rest, offset) => {
           if (!outsideQuotation(before, offset)) return match;
-          const values = parseParameterDeclaration(def.reminder, keyword, `${keyword} ${rest}`);
-          if (!values) throw new Error(`"${keyword}" needs its parameters, for example "${parameterExample(def.reminder, keyword)}".`);
+          const values = parseParameterDeclaration(def.reminder, keyword, `${keyword} ${rest}`, def.template);
+          if (!values) throw new Error(`"${keyword}" needs its parameters, for example "${parameterExample(def.reminder, keyword, def.template)}".`);
           return prefix + mechanicExpansion(bindReminderParameters(def.reminder, keyword, values, customKeywordForms(def)));
         });
         continue;
@@ -271,14 +303,22 @@ const OPTIONAL_ADDITIONAL_COST = /\b(?:As an additional cost to cast this spell,
 // "You may pay {R} rather than pay this spell's mana cost."
 const ALTERNATIVE_PRICE = /\bYou may (?:cast this (?:spell|card)\b[^.]*?\bfor|pay) ((?:\{[^{}]+\})+)(?=[ .,])(?:(?<=\bfor (?:\{[^{}]+\})+)|(?= rather than pay this (?:spell|card)'s mana cost))/gi;
 const ALTERNATIVE_DEFINITION = /\bYou may (?:cast this (?:spell|card)\b[^.]*?\bfor\b|pay\b[^.]*?\brather than pay this (?:spell|card)'s mana cost\b)/i;
+// A timed exile's expanded special action, the described form of Suspend
+// ("Forge 4—{B}{B}"), and the reminder shape that defines one.
+const TIMED_EXILE = /\bIf you could begin to cast this card from your hand, you may pay (?:\{[^{}]+\})+ and exile it with \S+ [a-z][a-z -]* counters on it\. This action doesn't use the stack\b/gi;
+const TIMED_EXILE_DEFINITION = /\bRather than cast this card from your hand, you may pay \S+ and exile it with \S+ [a-z][a-z -]* counters on it\b/i;
 const PARTICIPLE_SUBJECTS = '(it|this spell|this creature|this permanent|this card)';
 
 // The single generic payment a definition creates on an expanded face: an
-// optional additional cost, or an alternative price in mana. Anything else
-// (repeatable, ambiguous, non-mana) has no payment a form can name.
+// optional additional cost, an alternative price in mana, or a timed exile.
+// Anything else (repeatable, ambiguous, non-mana) has no payment a form can name.
 export function definitionPayment(text, def) {
   const optional = text.match(OPTIONAL_ADDITIONAL_COST) || [];
   const alternatives = [...text.matchAll(ALTERNATIVE_PRICE)];
+  if (TIMED_EXILE_DEFINITION.test(def.reminder)) {
+    if ((text.match(TIMED_EXILE) || []).length !== 1 || alternatives.length || optional.length) return null;
+    return { kind: 'timed-exile' };
+  }
   if (def.expansion.match(OPTIONAL_ADDITIONAL_COST)) {
     if (optional.length !== 1 || alternatives.length || /\bany number of times\b/i.test(optional[0])) return null;
     return { kind: 'additional' };
@@ -300,7 +340,8 @@ function bindParticipleReferences(text, def) {
   const pattern = () => new RegExp(`\\b${PARTICIPLE_SUBJECTS}\\s+(was|wasn't|was not)\\s+(?:${words})\\b`, 'gi');
   if (!pattern().test(text)) return text;
   const payment = definitionPayment(text, def);
-  if (!payment) return text;
+  // A timed exile's later free cast has no price a participle could test.
+  if (!payment || payment.kind === 'timed-exile') return text;
   const before = text;
   return text.replace(pattern(), (match, subject, verb, offset) => {
     if (!outsideQuotation(before, offset)) return match;
@@ -368,12 +409,21 @@ function otherDeclarations(draft, definitions) {
         if (hasReminderMaterialParameter(declaration.reminder)) candidates.push(declaration);
       }
     }
-    // A parameterized declaration: "Keyword 3—{1}{U}" or "Keyword 3".
-    for (const match of semantic.matchAll(/^[ \t]*([a-z][a-z '-]*?)[ \t]+(?:\d+|X)(?:[ \t]*[—–][ \t]*[^\n]+)?$/gim)) {
-      const keyword = mechanicKey(match[1]);
-      if (official.has(keyword) || definitions.some(def => def.keyword === keyword)) continue;
-      for (const declaration of definingReminders(face, keyword)) {
-        if (hasReminderParameters(declaration.reminder) && parseParameterDeclaration(declaration.reminder, keyword, match[0])) candidates.push(declaration);
+    // A parameterized declaration: "Keyword 3—{1}{U}", "Keyword 3 {1}{U}",
+    // "Keyword a Goblin" or "Keyword 3". The keyword is one of the line's
+    // leading words, proven by a reminder that reads the rest as its values.
+    for (const line of semantic.split('\n')) {
+      const words = line.trim().split(/\s+/);
+      // The shortest such keyword: "Rally an Elf" names "rally", not "rally an".
+      for (let count = 1, found = false; !found && count < Math.min(words.length, 5); count++) {
+        const keyword = mechanicKey(words.slice(0, count).join(' '));
+        if (!/^[a-z][a-z '-]*$/.test(keyword) || official.has(keyword) || definitions.some(def => def.keyword === keyword)) continue;
+        for (const declaration of definingReminders(face, keyword)) {
+          if (hasReminderParameters(declaration.reminder) && parseParameterDeclaration(declaration.reminder, keyword, line.trim())) {
+            candidates.push(declaration);
+            found = true;
+          }
+        }
       }
     }
     // A costed declaration has an explicit dash or starts its price with mana.
@@ -471,7 +521,7 @@ function probeUsage(def) {
   if (/^You may cast this spell with different mana cost/i.test(reminder) || hasReminderMaterialParameter(reminder)
     || hasExileCastDefinition(reminder) || hasNextUntapCostDefinition(reminder) || isActivationReminder(reminder)
     || /\b[XYZ]\b/.test(reminder)) return null;
-  if (hasReminderParameters(reminder)) return parameterExample(reminder, name).replace('{1}{U}', PROBE_COST);
+  if (hasReminderParameters(reminder, def.template)) return parameterExample(reminder, name, def.template).replace('{1}{U}', PROBE_COST);
   if (hasReminderCardParameter(reminder)) return `${name} the top card of your library.`;
   if (hasReminderCostReference(reminder, keyword, customKeywordForms(def)) || hasRepeatedCopyPayment(reminder)) return `${name} ${PROBE_COST}`;
   return `${name}.`;

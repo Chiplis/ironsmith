@@ -5,6 +5,7 @@ import { manaSymbolUrl } from './mana-assets.js';
 import { createContext, useContext } from "react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
 import { getMtgKeywordHelp, splitTextWithMtgKeywordRules } from "@/lib/mtg-keywords";
+import { capitalizeSentences } from "@/lib/sentence-case";
 
 // Preserve unsupported symbols and arbitrary generic costs as readable text.
 function fallbackCircle(label, size) {
@@ -277,7 +278,7 @@ export function ManaCostIcons({ cost, size = 12 }) {
 }
 
 export function SymbolText({
-  text,
+  text: rawText,
   className,
   style,
   symbolSize = 14,
@@ -286,7 +287,8 @@ export function SymbolText({
 }) {
   const { locale } = useI18n({ optional: true });
   const contextKeywordHelpersEnabled = useContext(KeywordHelpersEnabledContext);
-  if (!text) return null;
+  if (!rawText) return null;
+  const text = capitalizeSentences(rawText);
   const keywordHelpersEnabled = keywordHelpers ?? contextKeywordHelpersEnabled;
   const parts = [];
   let last = 0;

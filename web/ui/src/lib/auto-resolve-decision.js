@@ -9,6 +9,11 @@ export function tryBuildAutoResolveCommand(decision) {
     return { cmd: { type: "declare_blockers", declarations: [] }, label: "Auto: no legal blockers" };
   }
 
+  // Likewise, an attack declaration with no creature able to attack.
+  if (decision.kind === "attackers" && Array.isArray(decision.attacker_options) && decision.attacker_options.length === 0) {
+    return { cmd: { type: "declare_attackers", declarations: [] }, label: "Auto: no possible attackers" };
+  }
+
   if (
     decision.kind === "select_options" &&
     decision.min === 1 &&

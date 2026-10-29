@@ -442,6 +442,8 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         for (subtype, state) in [
             (crate::types::Subtype::Equipment, "equipped"),
             (crate::types::Subtype::Fortification, "fortified"),
+            // CR 303.4e: an object with an Aura attached is "enchanted".
+            (crate::types::Subtype::Aura, "enchanted"),
         ] {
             let mut probe = ObjectFilter::default();
             probe.subtypes = vec![subtype];
@@ -1758,6 +1760,24 @@ pub(crate) fn describe_attachment_count_structurally(
     host: &ironsmith_core::AttachmentConditionHost,
     comparison: &Comparison,
 ) -> String {
+    // "this creature is enchanted by exactly two Auras" (Timber Paladin).
+    if matches!(host, ironsmith_core::AttachmentConditionHost::Source)
+        && attachment.subtypes == [crate::types::Subtype::Aura]
+        && attachment.card_types.is_empty()
+        && attachment.controller.is_none()
+    {
+        let quantity = match comparison {
+            Comparison::Equal(n @ 1..) => Some((format!("exactly {}", number_word_u32(*n as u32).unwrap_or_else(|| n.to_string())), *n != 1)),
+            Comparison::GreaterThanOrEqual(n @ 1..) => Some((format!("{} or more", number_word_u32(*n as u32).unwrap_or_else(|| n.to_string())), true)),
+            _ => None,
+        };
+        if let Some((quantity, plural)) = quantity {
+            return format!(
+                "this permanent is enchanted by {quantity} {}",
+                if plural { "Auras" } else { "Aura" }
+            );
+        }
+    }
     let host = match host {
         ironsmith_core::AttachmentConditionHost::Source => "this permanent".to_string(),
         ironsmith_core::AttachmentConditionHost::SourceAttachedObject => {
@@ -1767,6 +1787,27 @@ pub(crate) fn describe_attachment_count_structurally(
             format!("a {}", filter.description())
         }
     };
+    // "two or more Equipment are attached to it" (Raiyuu's Equipment
+    // doublers): a threshold reads in words.
+    if let Comparison::GreaterThanOrEqual(n @ 2..) = comparison
+        && let Some(word) = number_word_u32(*n as u32)
+    {
+        return format!(
+            "{word} or more {} are attached to {host}",
+            pluralized_subject_text(attachment)
+        );
+    }
+    // "as long as an Equipment named Bride's Gown is attached to a creature
+    // you control", "another Aura is attached to enchanted creature".
+    if let Comparison::GreaterThanOrEqual(1) = comparison {
+        let described = attachment.description();
+        let described = if described.starts_with("another ") {
+            described
+        } else {
+            with_indefinite_article_unless_present(described)
+        };
+        return format!("{described} is attached to {host}");
+    }
     format!(
         "there are {} {} attached to {host}",
         comparison_display(comparison),
@@ -1929,6 +1970,56 @@ fn describe_static_value_threshold_condition(
             Op::GreaterThanOrEqual,
             Value::Fixed(1),
         ) => Some("an opponent is poisoned".to_string()),
+        // "As long as you've put one or more +1/+1 counters on a creature
+        // this turn" (Sigardian Paladin, Beast, Erudite Aerialist).
+        (
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CountersPutOn {
+                source_controller: Some(PlayerFilter::You),
+                counter_type: Some(counter_type),
+                filter,
+            }),
+            Op::GreaterThanOrEqual,
+            Value::Fixed(count),
+        ) if *count >= 1 => {
+            let mut objects = filter.clone();
+            objects.zone = None;
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!(
+                "you've put {count_text} or more {} counters on {} this turn",
+                counter_type.description(),
+                with_indefinite_article_unless_present(objects.description())
+            ))
+        }
+        // "as long as two or more creatures died under your control this
+        // turn" (Gimli, Mournful Avenger).
+        (Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You), Op::GreaterThanOrEqual, Value::Fixed(count))
+            if *count >= 2 =>
+        {
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!("{count_text} or more creatures died under your control this turn"))
+        }
+        // "as long as you've lost life this turn" (Essence Channeler) /
+        // "as long as an opponent lost life this turn".
+        (Value::LifeLostThisTurn(PlayerFilter::You), Op::GreaterThanOrEqual, Value::Fixed(1)) => {
+            Some("you've lost life this turn".to_string())
+        }
+        (Value::LifeLostThisTurn(PlayerFilter::Opponent), Op::GreaterThanOrEqual, Value::Fixed(1)) => {
+            Some("an opponent lost life this turn".to_string())
+        }
+        // "as long as an opponent was dealt noncombat damage this turn"
+        // (Whiplash Wordsmith).
+        (
+            Value::NoncombatDamageDealtToPlayersThisTurn(PlayerFilter::Opponent),
+            Op::GreaterThanOrEqual,
+            Value::Fixed(1),
+        ) => Some("an opponent was dealt noncombat damage this turn".to_string()),
+        // "as long as you have six or more unspent mana" (Ozai).
+        (Value::UnspentMana(PlayerFilter::You), Op::GreaterThanOrEqual, Value::Fixed(count))
+            if *count >= 1 =>
+        {
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!("you have {count_text} or more unspent mana"))
+        }
         (Value::DistinctManaValues(filter), Op::GreaterThanOrEqual, Value::Fixed(count))
             if *count >= 1 =>
         {
@@ -2747,6 +2838,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 crate::target::PlayerFilter::Any => "a player's".to_string(),
                 _ => "that player's".to_string(),
             };
+            // Oracle spells the threshold out ("four or more card types").
+            let count = if ironsmith_core::semantic_audit::semantic_audit_active() {
+                ironsmith_core::cardinal_word(*count).unwrap_or_else(|| count.to_string())
+            } else {
+                count.to_string()
+            };
             format!(
                 "as long as there are {count} or more card types among cards in {graveyard_owner} graveyard"
             )
@@ -2894,6 +2991,102 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     "as long as {}",
                     ironsmith_core::semantic_audit::audited_condition("StaticCondition", condition)
                 );
+            }
+            // A count of the source itself is a state of the source: "as
+            // long as it entered this turn", "as long as this card is in
+            // your graveyard" (a card is only ever in its owner's graveyard).
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && let AnthemCountExpression::MatchingFilter(filter) = count
+                && filter.source
+                && matches!(comparison, Comparison::GreaterThanOrEqual(1))
+            {
+                let mut rest = filter.clone();
+                rest.source = false;
+                rest.source_surface = None;
+                rest.union_surface = Default::default();
+                if rest.entered_battlefield_this_turn {
+                    rest.entered_battlefield_this_turn = false;
+                    rest.zone = None;
+                    if rest == ObjectFilter::default() {
+                        return "as long as it entered this turn".to_string();
+                    }
+                } else if filter.zone == Some(Zone::Graveyard) {
+                    rest.zone = None;
+                    rest.owner = None;
+                    rest.single_graveyard = false;
+                    if rest == ObjectFilter::default() {
+                        return "as long as this card is in your graveyard".to_string();
+                    }
+                }
+            }
+            // "as long as two or more creatures are blocking it" (Rampaging
+            // Cyclops).
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && matches!(count, AnthemCountExpression::BlockingSource)
+                && let Comparison::GreaterThanOrEqual(n @ 2..) = comparison
+                && let Some(word) = number_word_u32(*n as u32)
+            {
+                return format!("as long as {word} or more creatures are blocking it");
+            }
+            // Thresholds read in words: "as long as there are two or more
+            // ...", "as long as there is a Lesson card in your graveyard".
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && let AnthemCountExpression::MatchingFilter(filter) = count
+                && !filter.source
+                && let Comparison::GreaterThanOrEqual(n @ 1..) = comparison
+            {
+                let subject = describe_anthem_count_expression(count);
+                if *n == 1 {
+                    let singular = filter.description();
+                    // "as long as another Knight entered the battlefield
+                    // under your control this turn" (Swordsworn Cavalier).
+                    if filter.zone == Some(Zone::Battlefield)
+                        && filter.entered_battlefield_this_turn
+                        && let Some((noun, rest)) = singular.split_once(" that entered ")
+                    {
+                        let noun = noun.strip_prefix("other ").map_or(noun.to_string(), |rest| format!("another {rest}"));
+                        let noun = if noun.starts_with("a ") || noun.starts_with("an ") || noun.starts_with("another ") {
+                            noun
+                        } else if noun
+                            .chars()
+                            .next()
+                            .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+                        {
+                            format!("an {noun}")
+                        } else {
+                            format!("a {noun}")
+                        };
+                        return format!("as long as {noun} entered {rest}");
+                    }
+                    if !singular.contains(" all graveyards")
+                        && !subject.contains(" all graveyards")
+                        && filter.zone != Some(Zone::Battlefield)
+                    {
+                        let singular = if singular.starts_with("a ") || singular.starts_with("an ") {
+                            singular
+                        } else if singular
+                            .chars()
+                            .next()
+                            .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+                        {
+                            format!("an {singular}")
+                        } else {
+                            format!("a {singular}")
+                        };
+                        return format!("as long as there is {singular}");
+                    }
+                } else if let Some(word) = number_word_u32(*n as u32) {
+                    // "as long as two or more nonland permanents entered the
+                    // battlefield under your control this turn" (celebration).
+                    if filter.zone == Some(Zone::Battlefield)
+                        && filter.entered_battlefield_this_turn
+                        && let Some((noun, rest)) = subject.split_once(" that entered ")
+                        && !noun.is_empty()
+                    {
+                        return format!("as long as {word} or more {noun} entered {rest}");
+                    }
+                    return format!("as long as there are {word} or more {subject}");
+                }
             }
             format!(
                 "as long as there are {} {}",
@@ -4377,6 +4570,48 @@ fn anthem_sum_count_noun(text: &str) -> Option<String> {
     (!noun.is_empty() && noun.chars().all(|c| c.is_ascii_alphabetic())).then(|| noun.to_string())
 }
 
+/// During a semantic audit, a for-each-hinted count reads "+1/+1 for each
+/// color among permanents you control" from its typed count: "X, where X is
+/// the number of <things>" and "for each <thing>" are the same quantity.
+fn audit_anthem_for_each_basis(value: &Value) -> Option<(i32, String)> {
+    if !ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
+    let described = crate::runtime_display::describe_value(value);
+    let counted = described.strip_prefix("the number of ")?;
+    if counted.contains(" plus ") || counted.contains(" minus ") || counted.contains(" and ") {
+        return None;
+    }
+    let mut words: Vec<String> = counted.split(' ').map(str::to_string).collect();
+    let mut singularized = false;
+    for word in words.iter_mut().take(3) {
+        if ["among", "in", "on", "you", "your", "that", "with", "attached", "other"]
+            .contains(&word.as_str())
+        {
+            if word.as_str() == "other" {
+                continue;
+            }
+            break;
+        }
+        let singular = if let Some(stem) = word.strip_suffix("ies") {
+            format!("{stem}y")
+        } else if word.ends_with("ches") || word.ends_with("shes") || word.ends_with("sses") {
+            word[..word.len() - 2].to_string()
+        } else if let Some(stem) = word.strip_suffix('s') {
+            if stem.ends_with('s') {
+                continue;
+            }
+            stem.to_string()
+        } else {
+            continue;
+        };
+        *word = singular;
+        singularized = true;
+        break;
+    }
+    singularized.then(|| (1, words.join(" ")))
+}
+
 fn signed_dynamic_anthem_basis(value: &Value) -> (&'static str, &Value) {
     match value.unhinted() {
         Value::Scaled(inner, -1) => ("-", inner.as_ref()),
@@ -4497,6 +4732,7 @@ impl StaticAbilityKind for Anthem {
                         .or_else(|| {
                             crate::runtime_display::describe_for_each_multiplier_and_basis(value)
                         })
+                        .or_else(|| audit_anthem_for_each_basis(value))
                 })
                 .flatten()
         };
@@ -4790,29 +5026,34 @@ impl StaticAbilityKind for Anthem {
                 AnthemValue::Fixed(toughness),
             ) if *toughness == 0 => {
                 if self.count_uses_where_x {
+                    // "gets -X/-0" (Fear of Death): a negative power keeps
+                    // the printed minus on its zero toughness.
                     format!(
-                        "{subject} {verb} {}/+0, where X is {}",
+                        "{subject} {verb} {}/{}, where X is {}",
                         x_component(*power),
+                        signed_toughness(*power, 0),
                         describe_anthem_where_x_count_expression(count),
                     )
                 } else if let Some(count_subject) = describe_anthem_for_each_count_expression(count)
                 {
                     format!(
-                        "{subject} {verb} {}/+0 for each {count_subject}",
+                        "{subject} {verb} {}/{} for each {count_subject}",
                         signed(*power),
+                        signed_toughness(*power, 0),
                     )
                 } else if let Some(count_subject) =
                     describe_anthem_for_each_graveyard_count_expression(count)
                 {
                     format!(
-                        "{subject} {verb} {}/+0 for each {count_subject}",
+                        "{subject} {verb} {}/{} for each {count_subject}",
                         signed(*power),
+                        signed_toughness(*power, 0),
                     )
                 } else {
                     format!(
                         "{subject} {verb} {}/{}, where X is {}",
                         x_component(*power),
-                        signed(*toughness),
+                        signed_toughness(*power, *toughness),
                         describe_anthem_where_x_count_expression(count),
                     )
                 }
@@ -4826,7 +5067,7 @@ impl StaticAbilityKind for Anthem {
             ) => format!(
                 "{subject} {verb} {}/{}, where X is {}",
                 x_component(*power),
-                signed(*toughness),
+                signed_toughness(*power, *toughness),
                 describe_anthem_where_x_count_expression(count),
             ),
             (
@@ -5279,6 +5520,21 @@ impl StaticAbilityKind for SoulbondSharedBonus {
                 "As long as this creature is paired with another creature, both creatures have {}",
                 ability.display()
             ),
+            // The paired creatures' granted ability, read from its model.
+            SoulbondSharedMode::ObjectAbility(ability)
+                if ironsmith_core::semantic_audit::semantic_audit_active() =>
+            {
+                let text = match &ability.kind {
+                    AbilityKind::Static(static_ability) => static_ability.display(),
+                    _ => quote_granted_ability_reading(
+                        ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                    ),
+                };
+                format!(
+                    "As long as this creature is paired with another creature, each of those creatures has {}",
+                    text.trim().trim_end_matches('.')
+                )
+            }
             SoulbondSharedMode::ObjectAbility(ability) => {
                 let text = match &ability.kind {
                     AbilityKind::Static(static_ability) => static_ability.display(),
@@ -7169,6 +7425,15 @@ impl StaticAbilityKind for SetCreatureSubtypesForFilter {
         let mut text = if subtypes.is_empty() {
             let lose = if verb == "is" { "loses" } else { "lose" };
             format!("{subject} {lose} all creature types")
+        } else if ironsmith_core::semantic_audit::semantic_audit_active()
+            && verb == "is"
+            && self.subtypes.len() == 1
+        {
+            // A new creature type replaces the old ones (CR 205.1b): "Enchanted
+            // creature is a Turtle" (Retro-Mutation).
+            let subtype = self.subtypes[0].to_string();
+            let article = if subtype.starts_with(['A', 'E', 'I', 'O', 'U']) { "an" } else { "a" };
+            format!("{subject} is {article} {subtype}")
         } else {
             format!("{subject} {verb} {}", join_with_and(&subtypes))
         };
@@ -7941,6 +8206,53 @@ fn materialize_named_granting_source(ability: &Ability, source: ObjectId) -> Abi
     ability
 }
 
+/// A granted activated or triggered ability reads as a quoted ability
+/// (CR 113.1a): `has "{T}: Add {G}."`. Keyword readings ("equip {2}",
+/// "exalted") stay bare.
+/// A granted non-keyword static ability that reads as a whole sentence
+/// ("If this creature would untap ...", "Other creatures you control enter
+/// with ...") is a quoted ability, as Oracle prints every such grant.
+pub(crate) fn quote_granted_static_sentence_r5f(
+    granted: &crate::static_abilities::StaticAbility,
+    text: String,
+    creature_subject: bool,
+) -> String {
+    let body = text.trim().trim_end_matches('.');
+    if granted.is_keyword()
+        || body.starts_with('"')
+        || body.contains('"')
+        || body.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX)
+        || !["If ", "Enters the battlefield with ", "Other ", "Enchanted ", "Equipped "]
+            .iter()
+            .any(|prefix| body.starts_with(prefix))
+    {
+        return text;
+    }
+    let body = match body.strip_prefix("Enters the battlefield with ") {
+        Some(rest) if creature_subject => format!("This creature enters with {rest}"),
+        Some(rest) => format!("This permanent enters with {rest}"),
+        None => body.to_string(),
+    };
+    format!("\"{body}.\"")
+}
+
+pub(crate) fn quote_granted_ability_reading(text: String) -> String {
+    let body = text.trim().trim_end_matches('.');
+    let is_ability_text = body.contains(": ")
+        || body.starts_with("When ")
+        || body.starts_with("Whenever ")
+        || body.starts_with("At ");
+    // A marker for a model gap passes through untouched.
+    if !is_ability_text || body.starts_with('"') || body.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX) {
+        return text;
+    }
+    let body = match body.split_once(": ") {
+        Some((head, tail)) => format!("{head}: {}", capitalize_first(tail)),
+        None => body.to_string(),
+    };
+    format!("\"{body}.\"")
+}
+
 impl StaticAbilityKind for AttachedAbilityGrant {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AttachedAbilityGrant
@@ -7952,11 +8264,32 @@ impl StaticAbilityKind for AttachedAbilityGrant {
             let abilities = std::iter::once(&self.ability)
                 .chain(&self.additional_abilities)
                 .map(|ability| match &ability.kind {
-                    AbilityKind::Static(granted) => granted.display(),
-                    _ => ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                    AbilityKind::Static(granted) => {
+                        quote_granted_static_sentence_r5f(granted, granted.display(), true)
+                    }
+                    _ => quote_granted_ability_reading(
+                        ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                    ),
                 })
                 .collect::<Vec<_>>();
-            let mut text = format!("The object this is attached to has {}", abilities.join(" and "));
+            // A granted self-referential static ("this token gets +1/+1")
+            // applies to the object it is granted to: "The object this is
+            // attached to gets +1/+1".
+            let self_rule = |text: &str| {
+                ["this token ", "this creature ", "this permanent ", "this "]
+                    .iter()
+                    .find_map(|subject| text.strip_prefix(*subject))
+                    .filter(|rest| rest.starts_with("gets ") || rest.starts_with("get "))
+                    .map(str::to_string)
+            };
+            let self_rest = match abilities.as_slice() {
+                [only] => self_rule(only.as_str()),
+                _ => None,
+            };
+            let mut text = match self_rest {
+                Some(rest) => format!("The object this is attached to {rest}"),
+                None => format!("The object this is attached to has {}", abilities.join(" and ")),
+            };
             if let Some(condition) = &self.condition {
                 text.push(' ');
                 text.push_str(&describe_static_condition(condition));

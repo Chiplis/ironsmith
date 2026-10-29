@@ -15,7 +15,7 @@ test('turn controls follow selected phases and hide Auto-pass during payment', {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${base}/tests/diagnostics-layout.html?kind=priority&scenario=phase-controls`);
     await page.getByRole('button', {name:'Go to Main II', exact:true}).waitFor();
-    await page.getByRole('button', {name:/^Combat: No stop/}).click();
+    await page.getByRole('button', {name:/^Combat: Stop when I can act/}).first().click();
     await page.getByRole('button', {name:'Go to Combat', exact:true}).click();
     await page.getByRole('button', {name:'Skipping Main I', exact:true}).waitFor();
     assert.equal(await page.evaluate(() => window.__phaseAdvance), true);

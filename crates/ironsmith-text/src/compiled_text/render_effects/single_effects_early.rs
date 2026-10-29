@@ -3138,6 +3138,80 @@ pub(super) fn describe_permanent_keyword_choice(
     ))
 }
 
+/// "choose flying, first strike, or trample. This creature gains that ability
+/// until your next upkeep": modes that each grant one keyword to the same
+/// object for the same duration (Gabriel Angelfire).
+pub(super) fn describe_timed_keyword_choice(
+    choose: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if !matches!(choose.chooser, None | Some(PlayerFilter::You))
+        || choose.modes.len() < 2
+        || choose.min != Value::Fixed(1)
+        || choose.max != Value::Fixed(1)
+        || choose.choose_count != Value::Fixed(1)
+        || choose.min_choose_count != Value::Fixed(1)
+        || choose.random
+        || choose.allow_repeat
+        || choose.allow_repeated_modes
+        || choose.spree
+        || choose.tiered
+        || choose.disallow_previously_chosen_modes
+        || choose.disallow_previously_chosen_modes_this_turn
+        || choose.distinct_player_targets_per_mode || choose.optional_choice
+        || choose.conditional_mode_range.is_some()
+        || choose.presentation_label.is_some()
+        || !choose.common_prefix_effects.is_empty()
+        || choose.common_suffix_effect_count != 0
+        || !choose.mode_additional_mana_costs.is_empty()
+        || choose.mode_point_costs.iter().any(|cost| *cost != 1)
+    {
+        return None;
+    }
+    let mut until: Option<Until> = None;
+    let mut subject = None;
+    let mut abilities = Vec::new();
+    for mode in &choose.modes {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let apply = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if apply.until == Until::Forever
+            || apply.condition.is_some()
+            || !apply.additional_modifications.is_empty()
+            || !apply.runtime_modifications.is_empty()
+            || apply.require_creature_target
+            || until.as_ref().is_some_and(|previous| previous != &apply.until)
+        {
+            return None;
+        }
+        until = Some(apply.until.clone());
+        let mode_subject = describe_apply_continuous_target(apply);
+        if subject
+            .as_ref()
+            .is_some_and(|previous| previous != &mode_subject)
+        {
+            return None;
+        }
+        subject = Some(mode_subject);
+        let Some(crate::continuous::Modification::AddAbility(ability)) = &apply.modification else {
+            return None;
+        };
+        if ability.granted_inline_ability().is_some() {
+            return None;
+        }
+        abilities.push(ability.display().to_ascii_lowercase());
+    }
+    let (subject, plural) = subject?;
+    Some(format!(
+        "choose {}. {} {} that ability {}",
+        join_with_or(&abilities),
+        capitalize_first(&subject),
+        if plural { "gain" } else { "gains" },
+        describe_until(&until?)
+    ))
+}
+
 pub(super) fn describe_inline_action_choice(
     choose: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {

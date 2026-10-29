@@ -2,12 +2,13 @@ import {printedManaCost,printedTypeLine} from '../card-print-order.mjs';
 import {cardFlavorSource} from '../card-flavor-source.js';
 import {cardDisplayTypeLine} from '../card-display-type-line.js';
 import {cardArtCropUrl} from '../card-image-variants.js';
+import {capitalizeSentences} from '../sentence-case.js';
 import {cardIntrinsicManaColors} from '../land-mana-choices.js';
 import {cardPresentation,cardPrintingChoice,isBuilderCreatedCard} from './printing-choices.mjs';
 
 const rules = card => {
   const value = card.oracle_text ?? card.effect_text ?? card.ability_text ?? card.compiled_text ?? card.abilities ?? '';
-  return Array.isArray(value) ? value.join('\n') : String(value);
+  return capitalizeSentences(Array.isArray(value) ? value.join('\n') : String(value));
 };
 const colors = value => {
   const names = {white:'W',blue:'U',black:'B',red:'R',green:'G'};

@@ -207,14 +207,15 @@ impl DynamicManaCost {
         match self.display_hint {
             DynamicManaDisplayHint::ManaEqualTo => {
                 if let Some(value) = self.additional_generic.as_ref() {
-                    return format!("mana equal to {value:?}");
+                    return format!("mana equal to {}", audit_value_text(value));
                 }
             }
             DynamicManaDisplayHint::ReducedForEach => {
                 if let Some((printed, per, count)) = self.reduced_for_each_parts() {
                     return format!(
-                        "{}. This cost is reduced by {{{per}}} for each {count:?}",
-                        printed.to_oracle()
+                        "{}. This cost is reduced by {{{per}}} for each {}",
+                        printed.to_oracle(),
+                        audit_for_each_text(count)
                     );
                 }
             }
@@ -227,16 +228,52 @@ impl DynamicManaCost {
             self.base.to_oracle()
         };
         if let Some(value) = self.x_value.as_ref() {
-            text.push_str(&format!(", where X is {value:?}"));
+            text.push_str(&format!(", where X is {}", audit_value_text(value)));
         }
         if let Some(value) = self.additional_generic.as_ref() {
             text.push_str(&format!(" plus an additional {{{value:?}}}"));
         }
         if let Some(value) = self.multiplier.as_ref() {
-            text.push_str(&format!(" for each {value:?}"));
+            text.push_str(&format!(" for each {}", audit_for_each_text(value)));
         }
         text
     }
+}
+
+/// A dynamic cost's value in words during a semantic audit (the installed
+/// structural value reader); its Debug form otherwise, as before.
+fn audit_value_text(value: &Value) -> String {
+    crate::semantic_audit::described_value(value).unwrap_or_else(|| format!("{value:?}"))
+}
+
+/// "for each card in your hand": a counted value read as the counted noun
+/// ("the number of cards in your hand" -> "card in your hand").
+fn audit_for_each_text(value: &Value) -> String {
+    let Some(described) = crate::semantic_audit::described_value(value) else {
+        return format!("{value:?}");
+    };
+    let Some(counted) = described.strip_prefix("the number of ") else {
+        return described;
+    };
+    // Singular nouns up to the first relative or prepositional word.
+    const STOP: [&str; 12] = [
+        "in", "on", "you", "your", "with", "that", "among", "an", "the", "from", "attached", "an",
+    ];
+    let mut in_head = true;
+    counted
+        .split(' ')
+        .map(|word| {
+            if STOP.contains(&word) {
+                in_head = false;
+            }
+            if in_head && word.len() > 3 && word.ends_with('s') && !word.ends_with("ss") {
+                word[..word.len() - 1].to_string()
+            } else {
+                word.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

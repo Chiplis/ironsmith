@@ -616,7 +616,15 @@ impl TriggerMatcher for SpellCastTrigger {
                 (Zone::Exile, _) => "among cards in exile",
                 _ => "the specified zone",
             };
-            suffix.push_str(" that has the same name as a card in ");
+            // Oracle: "an instant or sorcery spell that has the same name as
+            // a card in your graveyard" (Pyromancer Ascension) but "a
+            // creature or planeswalker spell with the same name as a card in
+            // their graveyard" (Dragonlord Kolaghan).
+            if matches!(owner, PlayerFilter::You) {
+                suffix.push_str(" that has the same name as a card in ");
+            } else {
+                suffix.push_str(" with the same name as a card in ");
+            }
             suffix.push_str(zone_text);
         }
         let mana_source = self
@@ -846,7 +854,18 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         let mut plain = filter.clone();
         plain.static_abilities.clear();
         let labels = labels.join(" and ");
-        return format!("{} that has {labels}", describe_spell_filter(&plain));
+        // Oracle: "a spell with cascade", "a creature spell with flying"
+        // (Aurora Phoenix, Hidden Spider, Hand of the Praetors), but "a
+        // spell that has convoke" / "another spell that has flash"
+        // (Joyful Stormsculptor, Slitherwisp).
+        let relative = filter.static_abilities.iter().all(|id| {
+            matches!(
+                id,
+                ironsmith_core::StaticAbilityId::Convoke | ironsmith_core::StaticAbilityId::Flash
+            )
+        });
+        let joiner = if relative { "that has" } else { "with" };
+        return format!("{} {joiner} {labels}", describe_spell_filter(&plain));
     }
 
     // The surrounding trigger renders this matching ordinal and its caster.

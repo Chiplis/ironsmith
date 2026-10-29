@@ -1070,14 +1070,26 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         // An audit reads the subject, the granted abilities and the gate,
         // never the quoted text.
         if ironsmith_core::semantic_audit::semantic_audit_active() {
+            let creature_subject = self.filter.card_types.contains(&crate::types::CardType::Creature);
             let granted = std::iter::once(&self.ability)
                 .chain(&self.additional_abilities)
                 .map(|ability| match &ability.kind {
-                    AbilityKind::Static(granted) => granted.display(),
-                    _ => ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                    AbilityKind::Static(granted) => super::quote_granted_static_sentence_r5f(
+                        granted,
+                        granted.display(),
+                        creature_subject,
+                    ),
+                    _ => super::quote_granted_ability_reading(
+                        ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                    ),
                 })
                 .collect::<Vec<_>>();
-            let mut text = format!("{} has {}", self.filter.description(), granted.join(" and "));
+            // A spell subject reads from its typed filter ("instant and
+            // sorcery spells you cast from your hand").
+            let mut text = match super::spell_grant_subject_text(&self.filter) {
+                Some(spells) => format!("{spells} have {}", granted.join(" and ")),
+                None => format!("{} has {}", self.filter.description(), granted.join(" and ")),
+            };
             if let Some(condition) = &self.condition {
                 text.push(' ');
                 text.push_str(&describe_static_condition(condition));

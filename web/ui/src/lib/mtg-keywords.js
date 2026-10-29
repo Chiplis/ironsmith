@@ -5,6 +5,7 @@ import { MTG_KEYWORD_RULES } from "./mtg-keyword-rules.generated.js";
 import { officialKeywordForms, customKeywordForms, surfaceForms } from "./keyword-forms.js";
 
 import { MTG_KEYWORD_REMINDERS } from "./mtg-keyword-reminders.generated.js";
+import { reminderParameters, parseParameterDeclaration, bindReminderParameters } from "./reminder-costs.js";
 
 const WORD_BOUNDARY_CLASS = "\\p{L}\\p{N}_";
 
@@ -41,7 +42,7 @@ function keywordIndex(locale) {
   if (indexes.has(cacheKey)) return indexes.get(cacheKey);
   indexes.clear();
   const localized = localeCatalogs[locale]?.rules || {};
-  const customRules = activeCustomMechanics().map(def => ({ id: `custom:${def.keyword}`, title: def.keyword, aliases: surfaceForms(customKeywordForms(def)), summary: def.reminder, custom: true }));
+  const customRules = activeCustomMechanics().map(def => ({ id: `custom:${def.keyword}`, title: def.keyword, aliases: surfaceForms(customKeywordForms(def)), summary: def.reminder, definition: def, custom: true }));
   const entries = [...customRules, ...MTG_KEYWORD_RULES].flatMap(rule => {
     const lexicon = rule.custom ? [] : [rule.title, ...(rule.aliases || [])].map(officialKeywordForms).filter(Boolean).flatMap(surfaceForms);
     const aliases = new Set([rule.title, ...(rule.aliases || []), ...lexicon, localized[rule.id]?.title, ...(localized[rule.id]?.aliases || [])]);
@@ -127,11 +128,21 @@ export function splitTextWithMtgKeywordRules(text, locale = "en") {
 
 export { MTG_KEYWORD_RULES };
 
+// A parameterized definition reads with the values this card declares
+// ("Forge 4—{B}{B}"), not its "{Number}", "{Cost}" and "{Type}" placeholders.
+function customKeywordDescription(alias, rule, context) {
+  const reminder = rule.summary;
+  if (!reminderParameters(reminder).length || !rule.definition) return reminder;
+  const declaration = `${alias}${String(context || "").split("\n")[0].replace(/\s*\(.*$/, "")}`;
+  const values = parseParameterDeclaration(reminder, alias, declaration, rule.definition.template);
+  return values ? bindReminderParameters(reminder, alias, values, customKeywordForms(rule.definition)) : reminder;
+}
+
 // Reminder text is English source material; other locales retain their localized
 // CR summaries until a translated reminder catalog is available. Match the actual
 // keyword, not the shared CR id (cycling, landcycling, etc. differ).
 export function getMtgKeywordHelp(alias, rule, locale = "en", context = "") {
-  if (rule?.custom) return { title: rule.title, description: rule.summary, reminder: null };
+  if (rule?.custom) return { title: rule.title, description: customKeywordDescription(alias, rule, context), reminder: null };
   const localizedRule = localeCatalogs[locale]?.rules?.[rule?.id] || rule;
   const key = normalizeAlias(alias);
   const reminder = locale === "en"

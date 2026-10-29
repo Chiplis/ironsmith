@@ -22,7 +22,7 @@ const SHORTCUTS = [
 ];
 
 const TIPS = [
-  "Click a phase on the turn track to add a stop: once, every time, or off. Each player has a separate track. By default a pass stops at both main phases on every player’s turn.",
+  "Click a phase on the turn track to cycle its stop: when I can act, every time, or off. Each player has a separate track. By default every step stops only when you can do something besides pass.",
   "In local games the table follows the active player, so you can play both sides. Turn this off in Settings.",
 ];
 

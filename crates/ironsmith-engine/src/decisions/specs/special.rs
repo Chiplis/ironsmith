@@ -381,9 +381,27 @@ pub struct ManaColorsSpec {
     pub distinct_colors: bool,
     /// Available colors (None = all five colors).
     pub available_colors: Option<Vec<Color>>,
+    /// Total mana the instruction adds. Equals `count` unless one color is
+    /// picked for several mana (Black Lotus picks one color for three);
+    /// `None` when the colors are chosen for something other than mana.
+    pub mana_amount: Option<u32>,
 }
 
 impl ManaColorsSpec {
+    /// State the total mana being added when it differs from the number of
+    /// colors picked.
+    pub fn with_mana_amount(mut self, mana_amount: u32) -> Self {
+        self.mana_amount = Some(mana_amount);
+        self
+    }
+
+    /// Colors chosen for something other than adding mana ("As this enters,
+    /// choose a color").
+    pub fn without_mana(mut self) -> Self {
+        self.mana_amount = None;
+        self
+    }
+
     /// Create a new ManaColorsSpec for any color.
     pub fn any_color(source: ObjectId, count: u32, same_color: bool) -> Self {
         Self {
@@ -392,6 +410,7 @@ impl ManaColorsSpec {
             same_color,
             distinct_colors: false,
             available_colors: None,
+            mana_amount: Some(count),
         }
     }
 
@@ -403,6 +422,7 @@ impl ManaColorsSpec {
             same_color: false,
             distinct_colors: true,
             available_colors: None,
+            mana_amount: Some(count),
         }
     }
 
@@ -419,6 +439,7 @@ impl ManaColorsSpec {
             same_color,
             distinct_colors: false,
             available_colors: Some(available_colors),
+            mana_amount: Some(count),
         }
     }
 
@@ -434,6 +455,7 @@ impl ManaColorsSpec {
             same_color: false,
             distinct_colors: true,
             available_colors: Some(available_colors),
+            mana_amount: Some(count),
         }
     }
 }
@@ -442,13 +464,19 @@ impl DecisionSpec for ManaColorsSpec {
     type Response = Vec<Color>;
 
     fn description(&self) -> String {
-        if self.same_color {
-            format!("Choose a color for {} mana", self.count)
-        } else if self.distinct_colors {
-            format!("Choose {} different mana color(s)", self.count)
-        } else {
-            format!("Choose {} mana color(s)", self.count)
-        }
+        let Some(mana_amount) = self.mana_amount else {
+            return crate::decisions::context::plain_colors_description(
+                self.count,
+                self.same_color,
+                self.distinct_colors,
+            );
+        };
+        crate::decisions::context::mana_colors_description(
+            mana_amount,
+            self.same_color,
+            self.distinct_colors,
+            self.available_colors.as_deref(),
+        )
     }
 
     fn primitive(&self) -> DecisionPrimitive {
@@ -484,7 +512,7 @@ impl DecisionSpec for ManaColorsSpec {
         _source: Option<ObjectId>,
         _game: &GameState,
     ) -> DecisionContext {
-        let ctx = if let Some(colors) = &self.available_colors {
+        let mut ctx = if let Some(colors) = &self.available_colors {
             ColorsContext::restricted(
                 player,
                 Some(self.source),
@@ -502,6 +530,7 @@ impl DecisionSpec for ManaColorsSpec {
                 self.distinct_colors,
             )
         };
+        ctx.description = self.description();
 
         DecisionContext::Colors(ctx)
     }
@@ -715,9 +744,14 @@ mod tests {
         let source = ObjectId::from_raw(1);
         let spec = ManaColorsSpec::any_color(source, 2, false);
 
-        assert!(spec.description().contains("2 mana color"));
+        assert_eq!(spec.description(), "Add two mana in any combination of colors");
         let response = spec.default_response(FallbackStrategy::FirstOption);
         assert_eq!(response.len(), 2);
+
+        // One color picked for three mana still states all three.
+        let lotus = ManaColorsSpec::any_color(source, 1, true).with_mana_amount(3);
+        assert_eq!(lotus.description(), "Add three mana of any one color");
+        assert_eq!(lotus.default_response(FallbackStrategy::FirstOption).len(), 1);
     }
 
     #[test]

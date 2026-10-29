@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import useUiText from '@/i18n/useUiText';
 import { useGame } from '@/context/GameContext';
 import { CUSTOM_MECHANICS_CHANGED, deleteCustomMechanic, listCustomMechanics, saveCustomMechanic } from '@/lib/custom-card-library';
-import { mechanicFormClash, probeMechanic, validateMechanic } from '@/lib/custom-mechanics';
+import { mechanicFormClash, probeMechanic, splitMechanicName, validateMechanic } from '@/lib/custom-mechanics';
 import { FORM_FIELDS, REMINDER_TEMPLATES, customMechanicEntry, defaultForms, mechanicEntries } from '@/lib/mechanics-catalog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -122,7 +122,8 @@ const titleCase = keyword => keyword.replace(/^./, letter => letter.toUpperCase(
 
 // A template's card line, written with the keyword being defined.
 const templateUsage = (template, keyword) => {
-  const name = keyword.trim() ? titleCase(keyword.trim()) : titleCase(template.keyword);
+  const typed = splitMechanicName(keyword).keyword;
+  const name = typed ? titleCase(typed) : titleCase(template.keyword);
   return template.usage.replace(new RegExp(`^${titleCase(template.keyword)}`), name);
 };
 
@@ -131,7 +132,7 @@ function TemplatePicker({ selected, keyword, onPick }) {
   const template = REMINDER_TEMPLATES.find(candidate => candidate.kind === selected);
   return <section className="space-y-3 border border-white/10 p-3" data-testid="mechanic-templates">
     <div className="card-forge-section-label">{ui('Start from a template')}</div>
-    <p className="text-sm text-muted-foreground">{ui('Pick the kind of mechanic to fill in its reminder, then edit the effect. Write {Cost} where the price goes: each card sets its own price after the keyword, and that price replaces {Cost} when the card compiles.')} {ui('Write {Number} where an amount goes; the card then writes the amount before its price, as in "Suspend 3—{1}{U}".')}</p>
+    <p className="text-sm text-muted-foreground">{ui('Pick the kind of mechanic to fill in its reminder, then edit the effect. Write {Cost} where the price goes: each card sets its own price after the keyword, and that price replaces {Cost} when the card compiles.')} {ui('Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in "Suspend 3—{1}{U}" or "Behold a Goblin".')}</p>
     <div className="flex flex-wrap gap-2" role="group" aria-label={ui('Mechanic templates')}>
       {REMINDER_TEMPLATES.map(candidate => <Button key={candidate.kind} type="button" size="sm"
         variant={candidate.kind === selected ? 'default' : 'secondary'} aria-pressed={candidate.kind === selected}
@@ -151,7 +152,7 @@ function MechanicForm({ saved, onSaved }) {
   const [saveError, setSaveError] = useState('');
   const [template, setTemplate] = useState(null);
   const set = field => event => { setSaveError(''); setDraft(current => ({ ...current, [field]: event.target.value })); };
-  const defaults = defaultForms(draft.keyword);
+  const defaults = defaultForms(splitMechanicName(draft.keyword).keyword);
   // Live validation uses exactly the checks saving will apply.
   const { definition, problem } = useMemo(() => {
     if (!draft.keyword.trim()) return { problem: ui('Name the mechanic.') };
@@ -179,7 +180,8 @@ function MechanicForm({ saved, onSaved }) {
       <p className="text-sm text-muted-foreground">{ui('Custom mechanics compile from their reminder text and keep their own identity: a custom keyword never counts as an official one.')}</p>
     </header>
     <label className="card-forge-field"><span className="card-forge-section-label">{ui('Keyword')}</span>
-      <input className="card-forge-input" value={draft.keyword} onChange={set('keyword')} placeholder={ui("Blink")} maxLength={64} autoComplete="off" />
+      <input className="card-forge-input" value={draft.keyword} onChange={set('keyword')} placeholder={ui("Blink")} maxLength={96} autoComplete="off" />
+      <span className="text-xs text-muted-foreground">{ui('To fix how cards write its parameters, follow the name with their layout, such as "Forge {Number} {Cost}" or "Herald a {Type}". Without a layout, a card may give them in any order, separated by a dash or a space.')}</span>
     </label>
     <TemplatePicker selected={template} keyword={draft.keyword} onPick={picked => {
       setSaveError(''); setTemplate(picked.kind);

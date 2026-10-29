@@ -14,6 +14,23 @@ const combatIcons = {
   FirstStrikeDamage: Zap, CombatDamage: Sword, EndCombat: CircleCheck,
 };
 
+// Lucide's hand is open strokes, so a fill leaves gaps between them. The
+// closed silhouette underneath carries the stop color across the whole hand.
+const HAND_OUTLINE = [
+  'M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2',
+  'M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2',
+  'M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8',
+  'M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15',
+];
+const HAND_SILHOUETTE = 'M6 14V6a2 2 0 0 1 4 0V4a2 2 0 0 1 4 0v2a2 2 0 0 1 4 0v2a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82Z';
+function StopHand({ className, size = 24 }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className || ''} phase-track-stop-hand`} aria-hidden="true">
+    <path className="phase-track-stop-fill" d={HAND_SILHOUETTE} />
+    {HAND_OUTLINE.map(d => <path key={d} d={d} />)}
+  </svg>;
+}
+
 export default function PhaseTrack({ compact = false, reserveCombatSpace = false }) {
   const { state, priorityStops = DEFAULT_PRIORITY_STOPS, cyclePriorityStop } = useGame();
   const { t } = useI18n();
@@ -32,16 +49,16 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
 
   const renderStop = (entry, kind, player, shared = false) => {
     const key = `${kind}:${entry}`;
-    const Icon = kind === 'step' ? combatIcons[entry] : Hand;
+    const Icon = kind === 'step' ? combatIcons[entry] : StopHand;
     const mode = priorityStopMode(priorityStops, key, player.id);
     const disabled = !state || entry === 'Untap';
     const label = phaseLabel(entry, kind);
-    const status = mode === 'always' ? 'Stop every time' : mode === 'once' ? 'Stop once' : 'No stop';
+    const status = mode === 'always' ? 'Stop every time' : mode ? 'Stop when I can act' : 'No stop';
     return <button type="button" className="phase-track-stop-button" disabled={disabled}
       data-stop-player={player.id} data-stop-phase={entry} data-stop={mode || 'off'}
       data-opponent-stop={shared && Number(player.id) !== Number(self.id) ? 'true' : undefined}
       aria-label={`${shared ? `${playerName(player)}: ` : ''}${label}: ${disabled ? 'No priority during untap' : status}`}
-      aria-pressed={Boolean(mode)} title={`${playerName(player)} — ${label}: ${disabled ? 'No priority during untap' : `${status}. Click to cycle once, every time, off.`}`}
+      aria-pressed={Boolean(mode)} title={`${playerName(player)} — ${label}: ${disabled ? 'No priority during untap' : `${status}. Click to cycle when I can act, every time, off.`}`}
       onClick={() => cyclePriorityStop?.(key, state?.players?.length ? player.id : undefined)}>
       {!disabled && <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />}
       {!shared && <span className="phase-track-step-label">{label}</span>}

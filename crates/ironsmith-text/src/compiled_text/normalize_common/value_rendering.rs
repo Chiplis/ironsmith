@@ -7721,6 +7721,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::PlayersBeingAttacked => "the number of players being attacked".to_string(),
         Value::CountPlayers(filter) => match filter {
             PlayerFilter::Any => "the number of players".to_string(),
+            // Oracle names the controller's opponent count "opponents you have".
+            PlayerFilter::Opponent if ironsmith_core::semantic_audit::semantic_audit_active() => {
+                "the number of opponents you have".to_string()
+            }
             PlayerFilter::Opponent => "the number of opponents".to_string(),
             PlayerFilter::NotYou => "the number of players other than you".to_string(),
             PlayerFilter::You => "the number of you".to_string(),

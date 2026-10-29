@@ -166,6 +166,13 @@ where
 
 /// Generic payment shapes produced from a custom keyword's reminder text.
 pub const GENERIC_ALTERNATIVE_COST_NAME: &str = "Parsed alternative cost";
+/// The described form of a timed exile ("exile it with N progress counters
+/// on it"), which a custom keyword such as "Forge 4—{B}{B}" may define.
+pub const GENERIC_TIMED_EXILE_NAME: &str = "Parsed timed exile";
+
+fn is_generic_alternative_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case(GENERIC_ALTERNATIVE_COST_NAME) || name.eq_ignore_ascii_case(GENERIC_TIMED_EXILE_NAME)
+}
 
 impl<A, E, C, Cond> CardDefinition<A, E, C, crate::AlternativeCastingMethod<E, C, Cond>, crate::OptionalCost<C>>
 where
@@ -182,7 +189,7 @@ where
         let generic_alternatives = self
             .alternative_casts
             .iter()
-            .filter(|method| method.name().eq_ignore_ascii_case(GENERIC_ALTERNATIVE_COST_NAME))
+            .filter(|method| is_generic_alternative_name(method.name()))
             .count();
         let generic_additional = self
             .optional_costs
@@ -194,7 +201,7 @@ where
                 for method in &mut self.alternative_casts {
                     if let crate::AlternativeCastingMethod::Composed { name, .. }
                     | crate::AlternativeCastingMethod::FromZone { name, .. } = method
-                        && name.eq_ignore_ascii_case(GENERIC_ALTERNATIVE_COST_NAME)
+                        && is_generic_alternative_name(name)
                     {
                         *name = keyword.to_string().into();
                         return true;

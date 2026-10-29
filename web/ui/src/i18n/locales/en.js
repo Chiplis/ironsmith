@@ -1020,6 +1020,8 @@ export const ui = {
   "Load": "Load",
   "Load Decks": "Load Decks",
   "Goldfish": "Goldfish",
+  "Goldfish: let this player pass and answer its own choices automatically.": "Goldfish: let this player pass and answer its own choices automatically.",
+  "Goldfish: this player passes and answers its own choices. Click to control it yourself.": "Goldfish: this player passes and answers its own choices. Click to control it yourself.",
   "commander": "commander",
   "Add a Commander section to at least one deck.": "Add a Commander section to at least one deck.",
   "Practice locally: load decks for each seat and start the game right away.": "Practice locally: load decks for each seat and start the game right away.",
@@ -1861,6 +1863,10 @@ export const ui = {
   "Let the planner choose for {0}": "Let the planner choose for {0}",
   "Library ({0})": "Library ({0})",
   "Loading...": "Loading...",
+  "Card finishes": "Card finishes",
+  "Static": "Static",
+  "Live foil and print effects": "Live foil and print effects",
+  "Live effects animate custom card finishes in the inspector and use more graphics resources.": "Live effects animate custom card finishes in the inspector and use more graphics resources.",
   "Match battlefield cards": "Match battlefield cards",
   "Message…": "Message…",
   "Noncreature lands": "Noncreature lands",
@@ -1984,7 +1990,8 @@ export const ui = {
   "Blink": "Blink",
   "Timed exile": "Timed exile",
   "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.": "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.",
-  "Write {Number} where an amount goes; the card then writes the amount before its price, as in \"Suspend 3—{1}{U}\".": "Write {Number} where an amount goes; the card then writes the amount before its price, as in \"Suspend 3—{1}{U}\".",
+  "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".": "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".",
+  "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.": "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.",
 };
 
 export const optionalMarkers = /\byou\s+may\b|\bmay\b/iu;

@@ -5,6 +5,10 @@ import { Popover as PopoverPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+// A surface that fades away (a card preview) closes the tooltips it opened,
+// whose portaled content would otherwise outlive it on screen.
+const ComicTooltipHostVisible = React.createContext(true);
+
 function ComicTooltip({
   children,
   title,
@@ -19,10 +23,11 @@ function ComicTooltip({
   ...props
 }) {
   const [open, setOpen] = React.useState(false);
+  const closed = disabled || !React.useContext(ComicTooltipHostVisible);
 
   React.useEffect(() => {
-    if (disabled && open) setOpen(false);
-  }, [disabled, open]);
+    if (closed && open) setOpen(false);
+  }, [closed, open]);
 
   // `disabled` keeps the wrapper mounted (so the trigger child never remounts
   // when the tooltip toggles availability) while preventing it from opening.
@@ -32,8 +37,8 @@ function ComicTooltip({
 
   return (
     <PopoverPrimitive.Root
-      open={open && !disabled}
-      onOpenChange={(next) => setOpen(disabled ? false : next)}
+      open={open && !closed}
+      onOpenChange={(next) => setOpen(closed ? false : next)}
       {...props}
     >
       <PopoverPrimitive.Trigger asChild className={className}>
@@ -78,4 +83,4 @@ function ComicTooltip({
   );
 }
 
-export { ComicTooltip }
+export { ComicTooltip, ComicTooltipHostVisible }

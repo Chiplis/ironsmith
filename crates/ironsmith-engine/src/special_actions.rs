@@ -547,6 +547,20 @@ fn suspend_spec(
     })
 }
 
+/// The keyword a timed-exile special action is announced as: Suspend, or the
+/// custom keyword whose definition described it ("Forge 4—{B}{B}").
+pub fn suspend_action_keyword(game: &GameState, card_id: ObjectId) -> String {
+    let custom = game.object(card_id).and_then(|object| {
+        object.alternative_casts.iter().find(|method| method.suspend_spec().is_some())
+    }).filter(|method| {
+        matches!(method, crate::alternative_cast::AlternativeCastingMethod::FromZone { .. })
+            && !method.name().eq_ignore_ascii_case(ironsmith_core::definition_model::GENERIC_TIMED_EXILE_NAME)
+    }).map(|method| method.name());
+    let Some(keyword) = custom else { return "Suspend".to_string() };
+    let mut letters = keyword.chars();
+    letters.next().map_or_else(String::new, |first| first.to_uppercase().chain(letters).collect())
+}
+
 fn adjust_total_cost_mana_components_for_reason(
     game: &GameState,
     payer: PlayerId,

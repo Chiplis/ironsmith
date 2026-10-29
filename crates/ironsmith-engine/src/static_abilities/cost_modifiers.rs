@@ -1031,6 +1031,16 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 )),
             )
         }
+        // "{1} less to cast for each 1 life your opponents have lost this
+        // turn" (Bloodsoaked Insight).
+        Value::LifeLostThisTurn(PlayerFilter::Opponent) => (
+            "{1}".to_string(),
+            Some("for each 1 life your opponents have lost this turn".to_string()),
+        ),
+        Value::LifeLostThisTurn(PlayerFilter::You) => (
+            "{1}".to_string(),
+            Some("for each 1 life you've lost this turn".to_string()),
+        ),
         Value::LifeGainedThisTurn(player) => {
             let phrase = match player {
                 PlayerFilter::You => "the amount of life you gained this turn".to_string(),
@@ -1179,6 +1189,14 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 "{1}".to_string(),
                 Some("for each {E} you've paid or lost this turn".to_string()),
             )
+        }
+        // "costs {1} less to cast for each opponent you have" (undaunted,
+        // CR 702.125a).
+        Value::CountPlayers(PlayerFilter::Opponent) => {
+            ("{1}".to_string(), Some("for each opponent you have".to_string()))
+        }
+        Value::CountPlayers(PlayerFilter::Any) => {
+            ("{1}".to_string(), Some("for each player".to_string()))
         }
         _ => ("{X}".to_string(), None),
     }
@@ -2211,6 +2229,32 @@ pub enum ActivatedAbilityCostCondition {
     FirstTargetingActivationDuringYourTurn { filter: ObjectFilter },
 }
 
+/// "Activated abilities of a permanent cost {2} less to activate if it's a
+/// cycling ability and if you activate it" names the keyword abilities:
+/// "Cycling abilities you activate cost {2} less to activate"; another
+/// permanent you control: "Exhaust abilities of other permanents you control
+/// cost {2} less to activate".
+fn keyword_ability_cost_line(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("Activated abilities of ")?;
+    let (objects, rest) = rest.split_once(" cost ")?;
+    let (amount, condition) = rest.split_once(" less to activate if it's a")?;
+    let condition = condition.strip_prefix('n').unwrap_or(condition);
+    let (keyword, tail) = condition.trim_start().split_once(" ability")?;
+    if keyword.contains(' ') || !keyword.starts_with(|ch: char| ch.is_ascii_alphabetic()) {
+        return None;
+    }
+    let keyword = format!("{}{}", keyword[..1].to_ascii_uppercase(), &keyword[1..]);
+    match (objects, tail) {
+        ("permanent" | "a permanent" | "permanents", " and if you activate it") => {
+            Some(format!("{keyword} abilities you activate cost {amount} less to activate"))
+        }
+        ("another permanent you control" | "other permanents you control", "") => Some(format!(
+            "{keyword} abilities of other permanents you control cost {amount} less to activate"
+        )),
+        _ => None,
+    }
+}
+
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
     fn count_word(count: usize) -> String {
         match count {
@@ -2292,6 +2336,7 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
             };
             format!("if it's the first {keyword} ability activated {turn}")
         }
+        ActivatedAbilityCostCondition::Activator(PlayerFilter::You) => "if you activate it".to_string(),
         ActivatedAbilityCostCondition::Activator(player) => {
             format!("if {} activates it", player.description())
         }
@@ -2560,6 +2605,11 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
             // each +1/+1 counter on creatures you control", "{X} less ...,
             // where X is the number of differently named lands you control".
             let (amount, tail) = describe_cost_modifier_amount(multiplier);
+            // No dedicated phrasing: the value itself names X.
+            let tail = match tail {
+                None if amount == "{X}" => Some(format!("where X is {}", describe_value(multiplier))),
+                tail => tail,
+            };
             let amount = if self.reduction == 1 {
                 amount
             } else {
@@ -2610,6 +2660,11 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         {
             line.push(' ');
             line.push_str(&describe_activated_ability_cost_condition(condition));
+        }
+        if ironsmith_core::semantic_audit::semantic_audit_active()
+            && let Some(keyworded) = keyword_ability_cost_line(&line)
+        {
+            line = keyworded;
         }
         if let Some(minimum) = self.minimum_total_mana
             && minimum == 1

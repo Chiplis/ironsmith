@@ -1,4 +1,5 @@
 import useUiText from "@/i18n/useUiText";
+import { Fish } from "lucide-react";
 import PlayerZonePiles from "./PlayerZonePiles";
 import { PILE_ZONES, pileZonesFor } from "@/lib/zone-piles";
 import OpponentHandFan from "./OpponentHandFan";
@@ -285,8 +286,11 @@ function OpponentSlot({
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { clearAnchoredCardPreview, clearHover } = useHoverActions();
   const { combatModeRef, combatMode, dragArrow } = useCombatArrows();
-  const { playerAccentOverrides } = useGame();
+  const { playerAccentOverrides, multiplayer, automatedSeats, toggleAutomatedSeat } = useGame();
   const castIntent = useCastTargeting();
+  // Local games only: a goldfished seat answers its own decisions.
+  const canGoldfish = !multiplayer?.matchStarted && !multiplayer?.role && typeof toggleAutomatedSeat === "function";
+  const goldfished = Boolean(automatedSeats?.has(Number(player?.id)));
   const playerAccent = getPlayerAccent(
     state?.players || [],
     player?.id,
@@ -539,6 +543,15 @@ function OpponentSlot({
                 {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
               </span>
             </span>
+            {canGoldfish && <button type="button" className="player-goldfish-toggle"
+              aria-pressed={goldfished} aria-label={ui("Goldfish")}
+              title={ui(goldfished
+                ? "Goldfish: this player passes and answers its own choices. Click to control it yourself."
+                : "Goldfish: let this player pass and answer its own choices automatically.")}
+              onPointerDown={event => event.stopPropagation()}
+              onClick={event => { event.stopPropagation(); toggleAutomatedSeat(player.id); }}>
+              <Fish size={16} aria-hidden="true" />
+            </button>}
             {!soleOpponent && <OpponentHandFan player={player} />}
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
               {headerControls}

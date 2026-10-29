@@ -30,6 +30,16 @@ test('ordinary play still follows turns without following off-turn priority', ()
   assert.equal(hotseatFollowTarget(state(2, 0, 'pass_priority')), null);
 });
 
+test('goldfished seats and blocker steps with no legal blocker are never handed over', () => {
+  assert.equal(hotseatFollowTarget(state(0, 2, 'pass_priority'), new Set([2])), null);
+  assert.equal(hotseatFollowTarget(state(0, 2, 'pass_priority'), new Set([1])), 2);
+  const blockers = valid => ({ perspective: 0, active_player: 0,
+    decision: { kind: 'blockers', player: 1, blocker_options: [{ attacker: 7, valid_blockers: valid }] } });
+  assert.equal(hotseatFollowTarget(blockers([])), null);
+  assert.equal(hotseatFollowTarget(blockers([{ id: 9 }])), 1);
+  assert.equal(hotseatFollowTarget(blockers([{ id: 9 }]), new Set([1])), null);
+});
+
 
 test('empty opening steps skip every seat, including the viewed seat and final Begin Game', () => {
   const follow = createPregameFollower();

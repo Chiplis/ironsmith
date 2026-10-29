@@ -461,6 +461,9 @@
         if let Some((_, compact)) = describe_permanent_keyword_choice(choose_mode) {
             return compact;
         }
+        if let Some(compact) = describe_timed_keyword_choice(choose_mode) {
+            return compact;
+        }
         if let Some(compact) = describe_choose_card_type_reveal_partition(choose_mode) {
             return compact;
         }
@@ -680,7 +683,9 @@
         {
             header = format!("{} — {header}", label.trim());
         }
-        let use_mode_source_text = choose_mode.modes.iter().all(|mode| {
+        // A mode's source text is authored prose; an audit reads the effects.
+        let use_mode_source_text = !ironsmith_core::semantic_audit::semantic_audit_active()
+            && choose_mode.modes.iter().all(|mode| {
             let source = mode.source_text.trim();
             !source.is_empty()
                 && !source.eq_ignore_ascii_case("POISON")
@@ -2981,12 +2986,15 @@
             return format!("The controller of {} draws {}, then discards that many cards. Put a +1/+1 counter on that permanent for each nonland card discarded this way", describe_choose_spec(&connive.target), describe_value(&connive.count));
         }
         let target = describe_choose_spec(&connive.target);
-        let subject = if connive.target.count().is_single() {
+        // "up to one target creature you control connives": at most one
+        // object, so it reads in the singular.
+        let single = connive.target.count().is_single() || target.starts_with("up to one ");
+        let subject = if single {
             target
         } else {
             format!("Each of {target}")
         };
-        let verb = if connive.target.count().is_single() {
+        let verb = if single {
             "connives"
         } else {
             "connive"
@@ -3828,10 +3836,13 @@
                 describe_count_filter_value_subject(filter)
             );
         }
+        // Oracle sets a life total to a player's starting total with "becomes
+        // equal to" (Exquisite Archangel, Long Rest).
+        let amount = describe_value(&set_life.amount);
+        let equal_to = if amount.ends_with(" starting life total") { "equal to " } else { "" };
         return format!(
-            "{} life total becomes {}",
+            "{} life total becomes {equal_to}{amount}",
             describe_possessive_player_filter(&set_life.player),
-            describe_value(&set_life.amount)
         );
     }
     if effect
@@ -5110,7 +5121,17 @@
                     .strip_prefix("all damage from ")
                     .and_then(|rest| rest.strip_suffix(" sources"))
                 {
-                    if source_phrase.starts_with("non-") {
+                    // "by red or artifact sources": the color and type are
+                    // alternative adjectives on the shared source noun.
+                    let color_or_type_union = prevent_all
+                        .damage_filter
+                        .from_source
+                        .as_ref()
+                        .is_some_and(|source| {
+                            ironsmith_core::filter_model::describe_color_or_card_type_union(source)
+                                .is_some()
+                        });
+                    if source_phrase.starts_with("non-") || color_or_type_union {
                         return format!(
                             "Prevent all damage that would be dealt this turn by {source_phrase} sources"
                         );
@@ -7708,7 +7729,12 @@
         return devour.keyword_text();
     }
     if let Some(rule) = effect.downcast_ref::<crate::effects::CastFaceDownUsingActivationManaEffect>() {
-        let mut text = format!("{} may choose a card matching {} in their hand whose mana cost could be paid by some amount of, or all of, the mana spent on this activation. They may cast that card face down as a 2/2 creature spell without paying its mana cost", describe_player_filter(&rule.player), rule.filter.description());
+        let player = describe_player_filter(&rule.player);
+        let (pronoun, spent) = if player == "you" { ("you", "you spent") } else { ("they", "they spent") };
+        let mut card = rule.filter.description();
+        if !card.split_whitespace().any(|word| word == "card" || word == "cards") { card.push_str(" card"); }
+        let mut text = format!("{player} may choose {} in {} hand whose mana cost could be paid by some amount of, or all of, the mana {spent} on this activation. If {pronoun} do, {pronoun} may cast that card face down as a 2/2 creature spell without paying its mana cost",
+            with_indefinite_article(&card), describe_possessive_player_filter(&rule.player));
         if rule.turn_face_up_before_action {
             text.push_str(". If the creature that spell becomes as it resolves has not been turned face up and would assign or deal damage, be dealt damage, or become tapped, instead it's turned face up and assigns or deals damage, is dealt damage, or becomes tapped");
         }

@@ -98,12 +98,28 @@ pub fn parse_prevent_damage_to_source_put_counters_line(
                 Some(false),
             ),
         ),
+        // "If a creature would deal combat damage to this creature, prevent
+        // that damage and put a +1/+1 counter on this creature" (Ironscale
+        // Hydra): one counter per prevention, not one per damage.
         attached_grammar::PutCounterPreventionSpec::CreatureCombat => StaticAbilityAst::Static(
-            StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
-                crate::object::CounterType::PlusOnePlusOne,
-                display,
-                Some(ObjectFilter::creature()),
-                Some(true),
+            StaticAbility::prevent_matching_damage_with_follow_up(
+                ironsmith_core::StaticDamagePreventionFollowUp {
+                    source_filter: ObjectFilter::creature(),
+                    target_player_filter: None,
+                    target_object_filter: Some(ObjectFilter::source()),
+                    combat_only: true,
+                    noncombat_only: false,
+                    damage_source_tag: None,
+                    effects: vec![crate::cards::builders::EffectAst::subject_verb_put_counters(
+                        crate::object::CounterType::PlusOnePlusOne,
+                        Value::Fixed(1),
+                        crate::cards::builders::TargetAst::Source(None),
+                        None,
+                        false,
+                    )],
+                    display,
+                    amount_basis: ironsmith_core::PreventionFollowUpAmount::Prevented,
+                },
             ),
         ),
     }))

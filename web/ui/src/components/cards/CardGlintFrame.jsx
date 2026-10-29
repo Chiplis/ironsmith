@@ -6,6 +6,7 @@ import CardGlintInteractions from './CardGlintInteractions';
 import {cardGlintRegions,cardGlintActionsCovered,cardGlintRulesFontSize} from '@/lib/card-glint/interactions.mjs';
 import {cardPresentation} from '@/lib/card-glint/printing-choices.mjs';
 import useCardGlintLive from './useCardGlintLive';
+import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 
 // In the inspector, a card with Build choices is drawn by the WebGL renderer
 // over its static face, which still provides the interaction regions.
@@ -53,7 +54,8 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
   // before the layout effect paints this cache hit needlessly runs its fitter.
   const result = finished?.face === face ? finished.result : peekCardGlintFrame(face);
   const presentation = inspector ? cardPresentation(card) : null;
-  const [liveCanvas,live] = useCardGlintLive(face,presentation,{enabled:Boolean(presentation)});
+  const [{cardFinishEffects}] = useBattlefieldAppearance();
+  const [liveCanvas,live] = useCardGlintLive(face,presentation,{enabled:Boolean(presentation)&&cardFinishEffects});
   const foil = live.mode === 'live' && live.current;
   const onPointerMove = event => {
     const box = event.currentTarget.getBoundingClientRect();

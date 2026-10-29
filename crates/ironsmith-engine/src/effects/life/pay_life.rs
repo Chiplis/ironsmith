@@ -22,6 +22,11 @@ pub(crate) fn life_payment_cost_description(amount: &Value) -> Option<String> {
     match amount.unhinted() {
         Value::Fixed(amount) => Some(format!("Pay {} life", (*amount).max(0))),
         Value::X => Some("Pay X life".into()),
+        // Ward—Pay life equal to this creature's power (Phyrexian
+        // Fleshgorger, Raubahn).
+        Value::PowerOf(spec) if matches!(spec.unhinted(), ChooseSpec::Source) => {
+            Some("Pay life equal to this creature's power".into())
+        }
         _ => per_card(amount).map(|amount| format!("Pay {amount} life for each card in your hand")),
     }
 }

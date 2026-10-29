@@ -2581,7 +2581,8 @@ impl GameState {
                             old_id,
                             spec.count,
                             options.clone(),
-                        );
+                        )
+                        .without_mana();
                     let chosen = crate::decisions::make_decision(
                         self,
                         decision_maker,
@@ -2613,7 +2614,8 @@ impl GameState {
                         1,
                         true,
                         options.clone(),
-                    );
+                    )
+                    .without_mana();
                     let mut chosen = crate::decisions::make_decision(
                         self,
                         decision_maker,

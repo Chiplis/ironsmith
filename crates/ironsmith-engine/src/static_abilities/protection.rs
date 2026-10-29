@@ -452,6 +452,7 @@ fn pluralize_subtype_for_protection(subtype: crate::types::Subtype) -> String {
         "Dwarf" => "Dwarves".to_string(),
         "Human" => "Humans".to_string(),
         "Wolf" => "Wolves".to_string(),
+        "Werewolf" => "Werewolves".to_string(),
         "Zombie" => "Zombies".to_string(),
         _ if name.ends_with('s') => name,
         _ => format!("{name}s"),

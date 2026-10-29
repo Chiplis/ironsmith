@@ -100,6 +100,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_subtype_or_colored_permanent_disjunction(input)),
     },
     Reading {
+        id: RuleId::new("color-or-card-type-disjunction"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_color_or_card_type_disjunction(input)),
+    },
+    Reading {
         id: RuleId::new("repeated-selector-domain-union"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -219,6 +225,11 @@ fn read_explicit_card_filter_disjunction(
         return Ok(Some(filter));
     }
     Ok(None)
+}
+fn read_color_or_card_type_disjunction(
+    input: &FilterPhrase<'_>,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    parse_color_or_card_type_disjunction(input.tokens, input.other, parse_object_filter)
 }
 fn read_subtype_or_colored_permanent_disjunction(
     input: &FilterPhrase<'_>,

@@ -938,7 +938,11 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
                 )
             }
             ironsmith::special_actions::SpecialAction::Suspend { card_id } => {
-                format!("Suspend {}", object_name(game, *card_id))
+                format!(
+                    "{} {}",
+                    ironsmith::special_actions::suspend_action_keyword(game, *card_id),
+                    object_name(game, *card_id)
+                )
             }
             ironsmith::special_actions::SpecialAction::Foretell { card_id } => {
                 format!("Foretell {}", object_name(game, *card_id))

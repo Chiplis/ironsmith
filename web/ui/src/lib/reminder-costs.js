@@ -235,44 +235,109 @@ export function bindReminderMaterials(reminder, declaration) {
 }
 
 // Named parameters a custom definition leaves for its declaration to fill,
-// as Suspend's reminder does for N and its cost: "{Cost}" and "{Number}".
-const PARAMETER = /\{(cost|number)\}/gi;
+// as Suspend's reminder does for N and its cost: "{Cost}", "{Number}" and
+// "{Type}" (a card type or subtype, as in "Behold a Goblin").
+const PARAMETER = /\{(cost|number|type)\}/gi;
 export const reminderParameters = reminder => [...new Set([...String(reminder).matchAll(PARAMETER)].map(match => match[1].toLowerCase()))];
-// {Cost} alone is bound by bindReminderCost; a {Number} brings the declaration
-// form "Keyword N—price" (or "Keyword N").
-export const hasReminderParameters = reminder => reminderParameters(reminder).includes('number');
+// {Cost} alone is bound by bindReminderCost unless a declaration template
+// spells out other words; a {Number} or {Type} always needs a declaration.
+export const hasReminderParameters = (reminder, template) => reminderParameters(reminder).some(name => name !== 'cost')
+  || Boolean(template && String(template).replace(PARAMETER, '').trim());
 
-// The values a declaration gives: "Keyword 3—{1}{U}", "Keyword {1}{U}—3",
-// "Keyword {1}{U}" or "Keyword 3". Null when it does not supply each one.
-export function parseParameterDeclaration(reminder, keyword, declaration) {
+// The card line a definition expects after its keyword, such as
+// "{Number}—{Cost}" or "a {Type}". A dash between two parameters is
+// decoration: "Keyword 3—{1}{U}" and "Keyword 3 {1}{U}" give the same values.
+const SEPARATOR = '(?:[ \\t]*[—–-][ \\t]*|[ \\t]+)';
+const ARTICLE = /^(?:an?|An?)$/;
+const CAPTURE = {
+  number: '(\\d+|X)',
+  cost: '(.+?)',
+  // One to three type words; a leading article belongs to the line, not the type.
+  type: "(?!an?\\b)([A-Za-z][A-Za-z'-]*(?:[ \\t]+[A-Za-z][A-Za-z'-]*){0,2}?)",
+};
+const price = value => /^(?:\{|(?:pay|exile|discard|sacrifice|return|tap|remove)\b|\d+\s+life\b)/i.test(value) && !/[()\n]/.test(value);
+
+export function templateParameters(template) {
+  return [...String(template).matchAll(PARAMETER)].map(match => match[1].toLowerCase());
+}
+
+function templatePattern(template) {
+  const parts = String(template).trim().split(/(\{(?:cost|number|type)\})/i).filter(part => part !== '');
+  let source = '', names = [];
+  parts.forEach((part, index) => {
+    const name = part.match(/^\{(cost|number|type)\}$/i)?.[1].toLowerCase();
+    if (name) {
+      // "{Type}" reads with or without its article unless the template names one.
+      const previous = parts[index - 1]?.trim().split(/\s+/).pop() || '';
+      if (name === 'type' && !ARTICLE.test(previous)) source += '(?:an?[ \\t]+)?';
+      source += CAPTURE[name];
+      names.push(name);
+      return;
+    }
+    const words = part.trim().split(/\s+/).filter(word => word && !/^[—–-]+$/.test(word));
+    const between = index > 0 && index < parts.length - 1;
+    if (!words.length) { source += between ? SEPARATOR : (index === 0 ? '(?:[—–-][ \\t]*)?' : ''); return; }
+    const literal = words.map(word => ARTICLE.test(word) ? 'an?' : escape(word)).join('[ \\t]+');
+    source += `${index === 0 ? '(?:[—–-][ \\t]*)?' : '[ \\t]*(?:[—–-][ \\t]*)?'}${literal}${index < parts.length - 1 ? '[ \\t]+' : ''}`;
+  });
+  return { pattern: new RegExp(`^${source}$`, 'i'), names };
+}
+
+// Each order of the reminder's parameters, for a definition without a
+// template: the declaration may give them in any order, dashed or spaced.
+const permutations = list => list.length <= 1 ? [list] : list.flatMap((item, index) => permutations([...list.slice(0, index), ...list.slice(index + 1)]).map(rest => [item, ...rest]));
+const defaultTemplates = parameters => permutations(['number', 'type', 'cost'].filter(name => parameters.includes(name))).map(order => order.map(name => `{${name}}`).join(' '));
+
+// The values a declaration gives: "Keyword 3—{1}{U}", "Keyword 3 {1}{U}",
+// "Keyword {1}{U}—3", "Keyword a Goblin" or "Keyword 3". Null when it does
+// not supply each one.
+export function parseParameterDeclaration(reminder, keyword, declaration, template) {
   const parameters = reminderParameters(reminder);
   const rest = String(declaration).trim().replace(new RegExp(`^${escape(keyword)}(?![a-z])`, 'i'), '').trim().replace(/\.$/, '').trim();
-  const price = value => /^(?:\{|(?:pay|exile|discard|sacrifice|return|tap|remove)\b|\d+\s+life\b)/i.test(value) && !/[()\n]/.test(value);
-  if (parameters.includes('cost') && parameters.includes('number')) {
-    let match = rest.match(/^(\d+|X)\s*[—–-]\s*(.+)$/i);
-    if (match && price(match[2])) return { number: match[1], cost: match[2].trim() };
-    match = rest.match(/^(.+?)\s*[—–-]\s*(\d+|X)$/i);
-    if (match && price(match[1])) return { cost: match[1].trim(), number: match[2] };
-    return null;
+  if (!template && !parameters.some(name => name !== 'cost')) {
+    const cost = rest.replace(/^[—–-]\s*/, '');
+    return price(cost) ? { cost } : null;
   }
-  if (parameters.includes('number')) {
-    const match = rest.match(/^(?:[—–-]\s*)?(\d+|X)$/i);
-    return match ? { number: match[1] } : null;
+  for (const candidate of template ? [template] : defaultTemplates(parameters)) {
+    const { pattern, names } = templatePattern(candidate);
+    const match = rest.match(pattern);
+    if (!match) continue;
+    const values = Object.fromEntries(names.map((name, index) => [name, match[index + 1].trim()]));
+    if (values.cost !== undefined && !price(values.cost)) continue;
+    return values;
   }
-  const cost = rest.replace(/^[—–-]\s*/, '');
-  return price(cost) ? { cost } : null;
+  return null;
 }
 
-// Fill {Number}, then the price through the same binder as a {Cost}-only
-// reminder, so "pay {Cost}" reads correctly for mana and non-mana prices.
+const article = word => /^[aeiou]/i.test(word) ? 'an' : 'a';
+// Fill {Number} and {Type}, then the price through the same binder as a
+// {Cost}-only reminder, so "pay {Cost}" reads correctly for mana and non-mana
+// prices. "a {Type}" takes the article its type needs ("an Elf").
 export function bindReminderParameters(reminder, keyword, values, forms) {
-  const counted = String(reminder).replace(/\{number\}/gi, values.number);
-  return values.cost === undefined ? counted : bindReminderCost(counted, keyword, values.cost, forms);
+  let text = String(reminder);
+  if (values.number !== undefined) text = text.replace(/\{number\}/gi, values.number);
+  if (values.type !== undefined) {
+    text = text.replace(/\b([Aa])n? \{[Tt]ype\}/g, (_, a) => {
+      const chosen = article(values.type);
+      return `${a === 'A' ? chosen[0].toUpperCase() + chosen.slice(1) : chosen} ${values.type}`;
+    }).replace(/\{type\}/gi, values.type);
+  }
+  return values.cost === undefined ? text : bindReminderCost(text, keyword, values.cost, forms);
 }
 
-// An example declaration for a definition's parameters.
-export function parameterExample(reminder, keyword) {
+const EXAMPLE_VALUES = { number: '3', cost: '{1}{U}', type: 'Goblin' };
+// An example declaration for a definition's parameters, in its template's
+// own layout when it has one.
+export function parameterExample(reminder, keyword, template) {
+  if (template) {
+    const line = String(template).trim().replace(/\b([Aa])n? (\{[Tt]ype\})/g, (_, a, slot) => `${a} ${slot}`)
+      .replace(PARAMETER, (_, name) => EXAMPLE_VALUES[name.toLowerCase()]);
+    return `${keyword}${/^[—–-]/.test(line) ? '' : ' '}${line}`;
+  }
   const parameters = reminderParameters(reminder);
-  if (parameters.includes('cost') && parameters.includes('number')) return `${keyword} 3—{1}{U}`;
-  return parameters.includes('number') ? `${keyword} 3` : `${keyword} {1}{U}`;
+  const typed = parameters.includes('type') ? ` a ${EXAMPLE_VALUES.type}` : '';
+  if (parameters.includes('cost') && parameters.includes('number')) return `${keyword} 3${typed}—{1}{U}`;
+  if (parameters.includes('number')) return `${keyword} 3${typed}`;
+  if (parameters.includes('cost') && typed) return `${keyword}${typed}—{1}{U}`;
+  return typed ? `${keyword}${typed}` : `${keyword} {1}{U}`;
 }

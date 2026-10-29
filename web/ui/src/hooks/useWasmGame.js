@@ -66,6 +66,7 @@ const WORKER_METHODS = [
   "lastManaPaymentPerf",
   "lastSnapshotPerf",
   "lastWorkCounters",
+  "getPriorityCanAct",
   "getSemanticThreshold",
   "injectTranscriptRandomSeeds",
   "loadDecks",

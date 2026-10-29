@@ -19,6 +19,26 @@ struct PriorityCandidate {
     presentation_checked: bool,
 }
 
+/// Passing and making mana never count as something to do at a stop.
+pub(super) fn priority_action_is_meaningful(action: &LegalAction) -> bool {
+    !matches!(action, LegalAction::PassPriority | LegalAction::ActivateManaAbility { .. })
+}
+
+/// Whether the priority player can do anything besides pass or make mana.
+/// None while the payment analysis could still change the answer, including a
+/// pass-only placeholder whose eligibility was never computed.
+pub(super) fn priority_can_act(ctx: &ironsmith::decisions::context::PriorityContext) -> Option<bool> {
+    let proven = |action: &LegalAction| ctx.payment_proven_actions.as_ref()
+        .is_none_or(|proven| proven.contains(action));
+    if ctx.actions.iter().any(|action| priority_action_is_meaningful(action) && proven(action)) {
+        return Some(true);
+    }
+    if ctx.analysis_complete { return Some(false); }
+    ctx.payment_proven_actions.as_ref()?;
+    let eligible = ctx.actions.iter().chain(&ctx.presentation_actions).any(priority_action_is_meaningful);
+    (!eligible).then_some(false)
+}
+
 impl WasmGame {
     fn advance_priority_analysis(&mut self, token: &str, budget: usize) -> Result<Option<bool>, ironsmith::game_loop::GameLoopError> {
         let Some(mut job) = self.priority_analysis_job.take() else {
@@ -139,7 +159,9 @@ impl WasmGame {
         if self.priority_analysis_job.is_some() || ctx.actions.as_ref() != [LegalAction::PassPriority] { return Ok(()); }
         let mut key = self.priority_analysis_key();
         key.pending_decision_hash = 0;
-        if self.priority_affordability_seed_key.as_ref() == Some(&key) { return Ok(()); }
+        // The key ignores the decision, so priority moving to another seat on an
+        // unchanged board keeps it; only a menu already seeded may skip.
+        if self.priority_affordability_seed_key.as_ref() == Some(&key) && ctx.payment_proven_actions.is_some() { return Ok(()); }
         // Publish every currently eligible source before payment searches start.
         // A newly drawn/created card has no previous affordability cache entry.
         let counters = snapshot_id_counters();
@@ -268,6 +290,40 @@ impl WasmGame {
         self.inspector_analysis_job = None;
     }
 
+    /// "I can act" stops for automation snapshots, whose pass-only menu never
+    /// computed eligibility. False only when no announcement is eligible even
+    /// with mana assumed; null leaves the answer to the payment analysis.
+    #[wasm_bindgen(js_name = getPriorityCanAct)]
+    pub fn get_priority_can_act(&self) -> Result<JsValue, JsValue> {
+        let Some(DecisionContext::Priority(ctx)) = self.pending_decision.as_ref() else {
+            return Ok(JsValue::NULL);
+        };
+        if self.pregame.is_some() { return Ok(JsValue::NULL); }
+        if let Some(known) = priority_can_act(ctx) { return Ok(JsValue::from_bool(known)); }
+        if ctx.payment_proven_actions.is_some() { return Ok(JsValue::NULL); }
+        let counters = snapshot_id_counters();
+        let eligible = (|| {
+            let mut eligible = Vec::new();
+            for actor in self.game.priority_team_players() {
+                eligible.extend(ironsmith::decision::compute_actions_assuming_mana_for_presentation(
+                    &self.game, actor, None,
+                )?);
+            }
+            Ok::<_, ironsmith::effects::ExecutionError>(eligible)
+        })();
+        restore_id_counters(counters);
+        let eligible = eligible.map_err(|error| JsValue::from_str(&format!("priority eligibility failed: {error}")))?;
+        Ok(if !eligible.iter().any(priority_action_is_meaningful) {
+            JsValue::FALSE
+        } else if eligible.iter().any(|action| matches!(action,
+            LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. })) {
+            // Land plays have no payment to prove.
+            JsValue::TRUE
+        } else {
+            JsValue::NULL
+        })
+    }
+
     #[wasm_bindgen(js_name = hasPriorityDecision)]
     pub fn has_priority_decision(&self) -> bool {
         matches!(self.pending_decision, Some(DecisionContext::Priority(_))) && self.pregame.is_none()
@@ -392,6 +448,58 @@ mod priority_analysis_tests {
             let presented = ironsmith::decision::compute_actions_assuming_mana_for_presentation(
                 &wasm.game, alice, Some(source)).unwrap();
             assert!(presented.iter().any(activation), "presented: {presented:?}");
+        });
+    }
+
+    #[test]
+    fn can_act_waits_for_payment_proof_and_ignores_mana_abilities() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let alice = PlayerId::from_index(0);
+            main_phase_with(&mut wasm, "Red source", "Type: Artifact\n{T}: Add {R}.", ironsmith::Zone::Battlefield);
+            let can_act = |wasm: &mut WasmGame| {
+                wasm.pending_decision = Some(DecisionContext::Priority(
+                    ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap(),
+                ));
+                let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else { panic!() };
+                let placeholder = priority_can_act(ctx);
+                wasm.refresh_priority_presentation_unless_automating().unwrap();
+                let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else { panic!() };
+                let seeded = priority_can_act(ctx);
+                assert!(wasm.begin_priority_analysis("can-act".into()));
+                while wasm.advance_priority_analysis("can-act", 64).unwrap() == Some(false) {}
+                let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else { panic!() };
+                (placeholder, seeded, priority_can_act(ctx))
+            };
+            assert_eq!(can_act(&mut wasm), (None, Some(false), Some(false)),
+                "a mana ability alone is not something to do");
+            main_phase_with(&mut wasm, "Tapping draw stone",
+                "Mana cost: {2}\nType: Artifact\n{2}, {T}: Draw a card.", ironsmith::Zone::Battlefield);
+            assert_eq!(can_act(&mut wasm), (None, None, Some(false)),
+                "an eligible activation waits for its payment search, which fails with one source");
+            wasm.game.player_mut(alice).unwrap().mana_pool.red = 2;
+            assert_eq!(can_act(&mut wasm).2, Some(true));
+        });
+    }
+
+    #[test]
+    fn priority_passing_to_another_seat_on_an_unchanged_board_is_still_seeded() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let seat = |wasm: &mut WasmGame, index| {
+                let player = PlayerId::from_index(index);
+                wasm.game.turn.priority_player = Some(player);
+                wasm.pending_decision = Some(DecisionContext::Priority(
+                    ironsmith::game_loop::priority_context(&wasm.game, player).unwrap(),
+                ));
+                wasm.refresh_priority_presentation_unless_automating().unwrap();
+                let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else { panic!() };
+                priority_can_act(ctx)
+            };
+            assert_eq!(seat(&mut wasm, 1), Some(false));
+            assert_eq!(seat(&mut wasm, 0), Some(false), "the new seat's pass-only menu is seeded too");
         });
     }
 

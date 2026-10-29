@@ -6731,3 +6731,25 @@ fn reminder_identity_custom_timed_exile_uses_its_counter_events_and_no_haste() {
     let creature = *game.battlefield.iter().find(|id| game.object(**id).unwrap().name == "Foreseen").unwrap();
     assert!(!game.current_has_static_ability_id(creature, StaticAbilityId::Haste));
 }
+
+/// A custom timed exile ("Forge 4—{B}{B}") is announced by its own keyword,
+/// never as Suspend; an unattributed or native one still reads Suspend.
+#[test]
+fn reminder_identity_custom_timed_exile_action_is_named_by_its_keyword() {
+    use ironsmith::special_actions::suspend_action_keyword;
+    let text = "If you could begin to cast this card from your hand, you may pay {B}{B} and exile it with 4 progress counters on it. This action doesn't use the stack. At the beginning of your upkeep, if this card is exiled with a progress counter on it, remove a progress counter from it. When the last progress counter is removed from this card, if it's exiled, you may play it without paying its mana cost.\nWhenever an artifact or creature you control enters, if this card is exiled with a progress counter on it, remove a progress counter from it.";
+    let mut forged = definition("Forged", text, Some("forge"));
+    let unattributed = forged.clone();
+    assert!(forged.attribute_custom_keyword_payment("forge"));
+    assert_eq!(forged.alternative_casts[0].name(), "forge");
+    let mut native = definition("Suspended", "Suspend 4—{B}{B}", None);
+    assert!(!native.attribute_custom_keyword_payment("forge"));
+
+    let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+    let a = PlayerId::from_index(0);
+    let [forged, unattributed, native] = [&forged, &unattributed, &native]
+        .map(|card| game.create_object_from_definition(card, a, Zone::Hand));
+    assert_eq!(suspend_action_keyword(&game, forged), "Forge");
+    assert_eq!(suspend_action_keyword(&game, unattributed), "Suspend");
+    assert_eq!(suspend_action_keyword(&game, native), "Suspend");
+}

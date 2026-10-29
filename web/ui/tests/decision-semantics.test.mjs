@@ -58,3 +58,11 @@ test('empty blocker choices auto-confirm but any legal blocker remains manual', 
   assert.equal(tryBuildAutoResolveCommand({ kind: 'blockers', blocker_options: [{ valid_blockers: [{ id: 12 }] }] }), null);
   assert.equal(tryBuildAutoResolveCommand({ kind: 'blockers' }), null);
 });
+
+test('empty attack and block declarations answer themselves; real choices do not', () => {
+  assert.deepEqual(tryBuildAutoResolveCommand({ kind: 'attackers', player: 0, attacker_options: [] })?.cmd,
+    { type: 'declare_attackers', declarations: [] });
+  assert.equal(tryBuildAutoResolveCommand({ kind: 'attackers', player: 0, attacker_options: [{ creature: 3, valid_targets: [] }] }), null);
+  assert.deepEqual(tryBuildAutoResolveCommand({ kind: 'blockers', player: 1, blocker_options: [{ attacker: 3, valid_blockers: [] }] })?.cmd,
+    { type: 'declare_blockers', declarations: [] });
+});

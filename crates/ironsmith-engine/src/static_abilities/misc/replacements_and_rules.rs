@@ -1925,12 +1925,7 @@ impl StaticAbilityKind for ThisSpellCastRestriction {
                 }) => {
                     let spells = crate::static_abilities::cost_modifiers::describe_spell_filter(spell_filter);
                     let quantity = if *count == 1 {
-                        let spell = spells.replacen("spells", "spell", 1);
-                        if spell.starts_with(['a', 'e', 'i', 'o', 'u']) {
-                            format!("another {spell}")
-                        } else {
-                            format!("another {spell}")
-                        }
+                        format!("another {}", spells.replacen("spells", "spell", 1))
                     } else {
                         let amount = ironsmith_core::cardinal_word(*count)
                             .unwrap_or_else(|| count.to_string());
@@ -4471,8 +4466,16 @@ fn render_reveal_from_opening_hand_pregame(
         lowercase_first(&schedule.trigger.display())
     };
 
-    let mut consequence =
-        crate::runtime_display::compile_effect_list(schedule.effects.flattened_default_effects());
+    let delayed_effects = schedule.effects.flattened_default_effects();
+    // An audit reads the delayed program through the full effect renderer
+    // (installed above this crate), not the terse runtime summary.
+    let audited = if ironsmith_core::semantic_audit::semantic_audit_active() {
+        ironsmith_core::semantic_audit::described_value(&delayed_effects.to_vec())
+    } else {
+        None
+    };
+    let mut consequence = audited
+        .unwrap_or_else(|| crate::runtime_display::compile_effect_list(delayed_effects));
     if first_opponent_spell {
         consequence = contextualize_delayed_spell_consequence(&consequence);
     }

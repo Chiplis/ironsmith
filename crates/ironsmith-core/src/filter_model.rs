@@ -89,6 +89,35 @@ pub fn describe_shared_combat_history_union(filter: &ObjectFilter) -> Option<Str
     description.contains(from).then(|| description.replacen(from, to, 1))
 }
 
+/// Title-case an all-lowercase card name, keeping short function words
+/// lowercase after the first word ("crown of empires" -> "Crown of Empires").
+/// A name that already carries capitals is returned unchanged.
+pub fn title_case_card_name(name: &str) -> String {
+    // Runtime placeholders ("{chosen name}") are not card names.
+    if name.starts_with('{') || name.chars().any(|ch| ch.is_uppercase()) {
+        return name.to_string();
+    }
+    name.split(' ')
+        .enumerate()
+        .map(|(index, word)| {
+            let minor = matches!(
+                word,
+                "of" | "the" | "a" | "an" | "and" | "or" | "to" | "in" | "on" | "at" | "from"
+                    | "for" | "with" | "by" | "into" | "upon"
+            );
+            if index > 0 && minor {
+                return word.to_string();
+            }
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn ensure_indefinite_article(text: String) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -4506,6 +4535,16 @@ impl ObjectFilter {
         (normalized(surface) == normalized(semantic)).then_some(surface)
     }
 
+    /// The name this filter requires as a card name reads: the validated
+    /// spelling when one is kept, otherwise the semantic (lowercased) name in
+    /// title case ("tower worker" -> "Tower Worker").
+    pub fn name_display(&self) -> Option<String> {
+        if let Some(surface) = self.name_surface() {
+            return Some(surface.to_string());
+        }
+        self.name.as_deref().map(title_case_card_name)
+    }
+
     pub fn not_named(mut self, name: impl Into<String>) -> Self {
         let name = name.into();
         self.excluded_name_surface = ExcludedNameSurface::new(name.clone());
@@ -4917,6 +4956,9 @@ impl ObjectFilter {
             return description;
         }
         if let Some(description) = describe_characteristic_or_mana_production_union(self) {
+            return description;
+        }
+        if let Some(description) = describe_color_or_card_type_union(self) {
             return description;
         }
         if let Some(description) = describe_branch_scoped_card_type_union(self) {
@@ -6982,8 +7024,9 @@ impl ObjectFilter {
             parts.push("with at most one card of each card type".to_string());
         }
 
-        if let Some(ref name) = self.name {
-            let name = self.name_surface().unwrap_or(name);
+        if self.name.is_some() {
+            let name_display = self.name_display().unwrap_or_default();
+            let name = name_display.as_str();
             match (&controller_suffix, &owner_suffix) {
                 (Some(controller), Some(owner)) => {
                     if controller == "you control" && owner == "you own" {
@@ -8348,6 +8391,65 @@ pub fn describe_relative_characteristic_list_filter(filter: &ObjectFilter) -> Op
     Some(format!(
         "{base_description} {relation} {selector_description}"
     ))
+}
+
+/// "black or artifact creature", "red or artifact source you control": a
+/// shared outer selector narrowed by one color arm and one card-type arm.
+/// The alternatives render in place of the shared color adjective.
+pub fn describe_color_or_card_type_union(filter: &ObjectFilter) -> Option<String> {
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
+    let color_only = |branch: &ObjectFilter| {
+        let color = branch.colors?;
+        (*branch
+            == ObjectFilter {
+                colors: Some(color),
+                ..ObjectFilter::default()
+            })
+        .then_some(color)
+    };
+    let type_only = |branch: &ObjectFilter| match branch.card_types.as_slice() {
+        [card_type] if *branch == ObjectFilter::default().with_type(*card_type) => {
+            Some(*card_type)
+        }
+        _ => None,
+    };
+    let (color, card_type) = match (color_only(first), type_only(second)) {
+        (Some(color), Some(card_type)) => (color, card_type),
+        _ => (color_only(second)?, type_only(first)?),
+    };
+    if filter.colors.is_some() || filter.union_connective() != ObjectFilterUnionConnective::Or {
+        return None;
+    }
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    let plain = outer.description();
+    outer.colors = Some(color);
+    let colored = outer.description();
+    let plain_words = plain.split(' ').collect::<Vec<_>>();
+    let colored_words = colored.split(' ').collect::<Vec<_>>();
+    if colored_words.len() <= plain_words.len() {
+        return None;
+    }
+    let prefix = plain_words
+        .iter()
+        .zip(&colored_words)
+        .take_while(|(left, right)| left == right)
+        .count();
+    let inserted = colored_words.len() - plain_words.len();
+    if colored_words[prefix + inserted..] != plain_words[prefix..] {
+        return None;
+    }
+    let card_type_name = card_type.name().to_ascii_lowercase();
+    let mut words = colored_words[..prefix + inserted]
+        .iter()
+        .map(|word| word.to_string())
+        .collect::<Vec<_>>();
+    words.push("or".to_string());
+    words.push(card_type_name);
+    words.extend(plain_words[prefix..].iter().map(|word| word.to_string()));
+    Some(correct_leading_indefinite_article(words.join(" ")))
 }
 
 pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<String> {

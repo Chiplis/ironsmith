@@ -1846,6 +1846,22 @@ impl EffectExecutor for DiscardEffect {
             _ => return None,
         };
         if let Some(filter) = &self.card_filter {
+            // "Discard a card that shares a color with that spell" (Dream
+            // Halls): another card sharing a color with the source spell.
+            if count == 1 && !self.random && filter.card_types.is_empty() && filter.subtypes.is_empty() {
+                let mut rest = filter.clone();
+                rest.zone = None;
+                rest.other = false;
+                let relations = std::mem::take(&mut rest.characteristic_relations);
+                if rest == ObjectFilter::default()
+                    && let [relation] = relations.as_slice()
+                    && relation.kind == crate::filter::ObjectCharacteristicRelationKind::SharesAny
+                    && relation.characteristics == [crate::filter::ObjectCharacteristic::Color]
+                    && relation.comparison.is_source_only()
+                {
+                    return Some("Discard a card that shares a color with that spell".to_string());
+                }
+            }
             let mut unrendered = filter.clone();
             unrendered.zone = None;
             unrendered.card_types.clear();

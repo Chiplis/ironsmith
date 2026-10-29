@@ -58,8 +58,11 @@ const actions = [
 const priority = (snapshot_id, overrides = {}) => ({
   snapshot_id, turn_number: 1, active_player: 0, perspective: 0, priority_player: 0,
   phase: 'first main phase', step: null, stack_size: 0, stack_objects: [],
-  decision: { kind: 'priority', player: 0, analysis_complete: true, actions }, ...overrides,
+  // Default "I can act" stops stay quiet unless a scenario says the seat can act.
+  decision: { kind: 'priority', player: 0, analysis_complete: true, can_act: false, actions }, ...overrides,
 });
+const ALL_STOPS = ['phase:Upkeep', 'phase:Draw', 'phase:Main', 'phase:Combat', 'phase:Main2', 'phase:End', 'phase:Cleanup',
+  'step:BeginCombat', 'step:DeclareAttackers', 'step:DeclareBlockers', 'step:FirstStrikeDamage', 'step:CombatDamage', 'step:EndCombat'];
 
 test('real provider times only opponent phase stops and preserves stack priority', { timeout: 90000 }, async () => {
   const server = await createServer({ root, logLevel: 'error', server: { host: '127.0.0.1', port: 0, hmr: false }, plugins: [{
@@ -107,17 +110,21 @@ test('real provider times only opponent phase stops and preserves stack priority
 
     await load(priority(20));
     const upkeep = page.getByRole('button', { name: /^Upkeep:/ });
-    assert.equal(await upkeep.locator('svg').count(), 1, 'off stops remain discoverable');
+    assert.equal(await upkeep.locator('svg').count(), 1, 'stops remain discoverable');
     assert.equal(await upkeep.evaluate(el => getComputedStyle(el).pointerEvents), 'auto', 'stop controls override the HUD pointer-events guard');
+    assert.equal(await upkeep.getAttribute('data-stop'), 'can_act', 'I can act is the default');
+    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(255, 255, 255)');
+    assert.equal(await upkeep.locator('.phase-track-stop-fill').evaluate(el => getComputedStyle(el).fill), 'rgb(255, 255, 255)',
+      'the silhouette fills the whole hand');
     await upkeep.click();
-    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(189, 138, 255)');
+    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
+    assert.equal(await upkeep.locator('.phase-track-stop-fill').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
     await page.evaluate(state => window.publish(state), priority(21, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
     await page.waitForTimeout(150);
     assert.equal(await page.evaluate(() => window.submissions.length), 0, 'phase stop waits for the countdown');
     await hold.waitFor();
     await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
-    assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'off', 'one-time stop is consumed');
-    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'none');
+    assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'always', 'every-time stop is kept');
 
     // Concurrent arrivals keep both the deadline and visual drain unarmed
     // until the final landing completes.
@@ -217,7 +224,6 @@ test('real provider times only opponent phase stops and preserves stack priority
 
     await load(priority(30));
     await upkeep.click();
-    await upkeep.click();
     assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
     await upkeep.click();
     assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'off');
@@ -228,16 +234,14 @@ test('real provider times only opponent phase stops and preserves stack priority
     const combatIcons = await page.getByRole('navigation', { name: 'Combat steps' }).locator('svg').evaluateAll(nodes => nodes.map(node => node.getAttribute('class')));
     assert.equal(new Set(combatIcons).size, 6, 'each combat step has a dedicated icon');
     const blockers = page.getByRole('button', { name: /^Blockers:/ });
+    assert.equal(await blockers.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(255, 255, 255)');
     await blockers.click();
     assert.equal(await blockers.locator('svg').count(), 1);
-    assert.equal(await blockers.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(189, 138, 255)');
+    assert.equal(await blockers.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
     if (process.env.PRIORITY_STOP_SCREENSHOTS) {
-      await blockers.click();
-      assert.equal(await blockers.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
       await page.locator('.topbar-phase-shell').screenshot({ path: '/tmp/priority-stop-trackers.png' });
     }
     const firstStrike = page.getByRole('button', { name: /^First strike:/ });
-    await firstStrike.click();
     await firstStrike.click();
     await page.evaluate(state => window.publish(state), priority(32, {
       phase: 'combat phase', step: 'combat damage', combat_damage_step: 'first_strike',
@@ -290,7 +294,6 @@ test('real provider times only opponent phase stops and preserves stack priority
     assert.equal(await clock.getAttribute('data-resolve-mode'), 'safe', 'white survives reload');
     await load(priority(50));
     await upkeep.click();
-    await upkeep.click();
     await page.evaluate(() => window.context.setAutoResolveEnabled(true));
     const stoppedStack = priority(51, { active_player: 1, phase: 'beginning phase', step: 'upkeep',
       stack_size: 1, stack_objects: [{ id: 71, controller: 1 }] });
@@ -304,8 +307,21 @@ test('real provider times only opponent phase stops and preserves stack priority
     assert.equal(await page.evaluate(() => window.submissions.length), 1, 'recurring stop returns next turn');
     // Reproduce the multiplayer stall: no pause, opponent turn, unfinished analysis.
     await load(priority(60, { active_player: 1,
-      decision: { kind: 'priority', player: 0, analysis_complete: false, actions } }));
+      decision: { kind: 'priority', player: 0, analysis_complete: false, can_act: false, actions } }));
     await page.waitForFunction(() => window.submissions.length === 1);
+
+    // An I can act stop waits while the answer is unknown, passes once it is "no",
+    // and holds when it is "yes".
+    await load(priority(90, { active_player: 1, phase: 'beginning phase', step: 'upkeep',
+      decision: { kind: 'priority', player: 0, analysis_complete: false, can_act: null, actions } }));
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'unknown holds');
+    await page.evaluate(state => window.publish(state), priority(91, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await load(priority(92, { active_player: 1, phase: 'beginning phase', step: 'upkeep',
+      decision: { kind: 'priority', player: 0, analysis_complete: true, can_act: true, actions } }));
+    await hold.waitFor();
+    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'a seat that can act gets the countdown');
 
     // A stack-only hold must not strand empty-stack phases either. Keep
     // analysis unfinished across successive snapshots; no manual clicks.
@@ -315,7 +331,7 @@ test('real provider times only opponent phase stops and preserves stack priority
       [65, 'combat phase', 'begin combat'], [67, 'second main phase', null]]) {
       const before = await page.evaluate(() => window.submissions.length);
       await page.evaluate(state => window.publish(state), priority(id, { active_player: 1, phase, step,
-        decision: { kind: 'priority', player: 0, analysis_complete: false, actions } }));
+        decision: { kind: 'priority', player: 0, analysis_complete: false, can_act: false, actions } }));
       await page.waitForFunction(count => window.submissions.length === count + 1, before);
     }
 
@@ -327,7 +343,7 @@ test('real provider times only opponent phase stops and preserves stack priority
     });
     await page.waitForFunction(() => window.submissions.length === 1);
     assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {
-      type:'priority_yield', mode:'phases', stops:['step:DeclareBlockers'],
+      type:'priority_yield', mode:'phases', stops:ALL_STOPS,
     });
     await page.waitForTimeout(100);
     assert.equal(await page.evaluate(() => window.submissions.length), 1, 'never submits remote priority');
@@ -340,18 +356,34 @@ test('real provider times only opponent phase stops and preserves stack priority
     }));
     await page.waitForFunction(() => window.context.phasePassing === false);
     assert.equal(await page.evaluate(() => window.submissions.length), 2);
-    assert.equal(await page.evaluate(() => window.context.priorityStops['step:DeclareBlockers']), 'once');
+    assert.equal(await page.evaluate(() => window.context.priorityStops['step:DeclareBlockers']), 'always');
+
+    // The engine also stops at every I can act step; this client resumes the
+    // advance where its seat cannot act and keeps the stop where it can.
+    await load(priority(76));
+    await page.evaluate(() => window.context.startPhaseAdvance());
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.evaluate(state => window.publish(state), priority(77, { phase:'combat phase', step:'begin combat', pass_intents:[] }));
+    await page.waitForFunction(() => window.submissions.length === 2);
+    assert.equal(await page.evaluate(() => window.submissions[1].command.type), 'priority_yield', 'resumed, not a single pass');
+    await page.evaluate(state => window.publish(state), priority(78, { phase:'combat phase', step:'end combat', pass_intents:[],
+      decision: { kind: 'priority', player: 0, analysis_complete: true, can_act: true, actions } }));
+    await page.waitForFunction(() => window.context.phasePassing === false);
+    assert.equal(await page.evaluate(() => window.submissions.length), 2);
 
     // Per-player UI preferences are lowered to ordinary stops for this turn's consent.
     await load(priority(80));
     await page.evaluate(() => {
-      window.context.cyclePriorityStop('phase:Main2', 0);
-      window.context.cyclePriorityStop('phase:Upkeep', 1);
+      window.context.cyclePriorityStop('phase:End', 0);
+      window.context.cyclePriorityStop('phase:Upkeep', 0);
+      window.context.cyclePriorityStop('phase:Upkeep', 0);
+      window.context.cyclePriorityStop('phase:Draw', 1);
+      window.context.cyclePriorityStop('phase:Draw', 1);
       window.context.startPhaseAdvance();
     });
     await page.waitForFunction(() => window.submissions.length === 1);
     assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {
-      type:'priority_yield',mode:'phases',stops:['phase:Main2'],
+      type:'priority_yield',mode:'phases',stops:ALL_STOPS.filter(key => key !== 'phase:Upkeep'),
     });
 
     // Devourer's pregame reveal and acknowledged upkeep look must not strand

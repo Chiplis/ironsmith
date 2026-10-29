@@ -1,4 +1,4 @@
-import { normalizePhaseStep, normalizeStepKey, currentPriorityPhaseLabel } from './constants.js';
+import { normalizePhaseStep, normalizeStepKey, currentPriorityPhaseLabel, PHASE_TRACK } from './constants.js';
 
 export const PRIORITY_HOLD_WINDOW_MS = 2000;
 export const COMBAT_STEPS = ['BeginCombat', 'DeclareAttackers', 'DeclareBlockers', 'FirstStrikeDamage', 'CombatDamage', 'EndCombat'];
@@ -18,22 +18,49 @@ const TURN_STOPS = [
   ['Main2'], ['End'], ['Cleanup'],
 ];
 
+// Stops default to "I can act": they pause only when the player has something
+// to do besides pass or make mana. "always" pauses unconditionally, and is the
+// default for the two main phases.
+export const CAN_ACT_STOP = 'can_act';
+const DEFAULT_STOP_MODES = Object.freeze({ 'phase:Main': 'always', 'phase:Main2': 'always' });
+const defaultStopMode = key => DEFAULT_STOP_MODES[key.replace(/^player:\d+:/, '')] ?? CAN_ACT_STOP;
+export const PRIORITY_STOP_MODES = Object.freeze([CAN_ACT_STOP, 'always', 'off']);
+export const PRIORITY_STOP_KEYS = Object.freeze([
+  ...PHASE_TRACK.filter(phase => phase !== 'Untap').map(phase => `phase:${phase}`),
+  ...COMBAT_STEPS.map(step => `step:${step}`),
+]);
+export const CHECKING_PLAYABLE_ACTIONS = 'checking playable actions';
+
 // Unscoped preferences apply to every turn; a seat override can explicitly be off.
 export const playerPriorityStopKey = (key, player) => `player:${player}:${key}`;
 export function priorityStopMode(stops, key, player) {
-  const scoped = playerPriorityStopKey(key, player);
-  return (stops[scoped] ?? stops[key]) === 'off' ? undefined : (stops[scoped] ?? stops[key]);
+  const mode = stops[playerPriorityStopKey(key, player)] ?? stops[key] ?? defaultStopMode(key);
+  return mode === 'off' ? undefined : mode;
 }
 export function priorityStopsForPlayer(stops, player) {
-  const keys = new Set(Object.keys(stops).map(key => key.replace(/^player:\d+:/, '')));
-  return Object.fromEntries([...keys].flatMap(key => {
+  return Object.fromEntries(PRIORITY_STOP_KEYS.flatMap(key => {
     const mode = priorityStopMode(stops, key, player);
     return mode ? [[key, mode]] : [];
   }));
 }
 
+// An untapped creature without summoning sickness means the advance will stop
+// at your own attack declaration. Like the engine's decision, this is a hint
+// for the label only: an "always" stop or the declaration itself ends the advance.
+export function hasPotentialAttackers(state) {
+  if (state?.active_player == null || Number(state.active_player) !== Number(state.perspective)) return false;
+  const player = (state.players || []).find(entry => Number(entry?.id) === Number(state.active_player));
+  // Battlefield groups split by tapped state; card types are lowercase.
+  return (player?.battlefield || []).some(card => (card?.card_types || [])
+    .some(type => String(type).toLowerCase() === 'creature') && !card.summoning_sick && !card.tapped);
+}
+
+// "I can act" stops depend on the board when they arrive, so only "always"
+// stops name the destination of an advance.
 export function nextSelectedPriorityStop(state, stops = {}) {
-  stops = priorityStopsForPlayer(stops, state?.active_player);
+  stops = Object.fromEntries(Object.entries(priorityStopsForPlayer(stops, state?.active_player))
+    .filter(([, mode]) => mode === 'always'));
+  if (hasPotentialAttackers(state)) stops['step:DeclareAttackers'] = 'always';
   const phase = normalizePhaseStep(state?.phase, state?.step);
   const step = priorityStepKey(state);
   const current = TURN_STOPS.findIndex(([candidatePhase, candidateStep]) =>
@@ -44,11 +71,13 @@ export function nextSelectedPriorityStop(state, stops = {}) {
 }
 
 export function selectedPriorityAdvanceLabel(state, stops, passing, t) {
-  stops = priorityStopsForPlayer(stops || {}, state?.active_player);
+  stops = Object.fromEntries(Object.entries(priorityStopsForPlayer(stops || {}, state?.active_player))
+    .filter(([, mode]) => mode === 'always'));
   if (passing) return t('action.skippingPhase', {
     phase: currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t),
   });
   const target = nextSelectedPriorityStop(state, stops);
+  if (hasPotentialAttackers(state)) stops['step:DeclareAttackers'] = 'always';
   if (target && !stops?.[`phase:${target[0]}`]
     && ['DeclareAttackers', 'DeclareBlockers'].includes(target[1])) {
     return t(`game.step.${target[1]}`);
@@ -61,12 +90,10 @@ export function selectedPriorityAdvanceLabel(state, stops, passing, t) {
   return t('action.goToPhase', { phase: destination });
 }
 
-// Out of the box a pass stops at both main phases on every player’s turn. "Every time" stops are
-// remembered per browser; "once" stops only live for the current game.
-export const DEFAULT_PRIORITY_STOPS = Object.freeze({
-  'phase:Main': 'always',
-  'phase:Main2': 'always',
-});
+// Saved choices override the default modes above. They are remembered per browser.
+export const DEFAULT_PRIORITY_STOPS = Object.freeze({});
+// Version 2 had no "I can act" mode; its main-phase "always" stops were defaults.
+const LEGACY_DEFAULT_STOPS = new Set(['phase:Main', 'phase:Main2']);
 export const PRIORITY_STOPS_STORAGE_KEY = 'ironsmith.priorityStops';
 
 export function readStoredPriorityStops(storage = globalThis.localStorage) {
@@ -74,12 +101,17 @@ export function readStoredPriorityStops(storage = globalThis.localStorage) {
     const raw = storage?.getItem(PRIORITY_STOPS_STORAGE_KEY);
     if (raw == null) return { ...DEFAULT_PRIORITY_STOPS };
     const saved = JSON.parse(raw);
-    if (saved?.version === 2 && saved.stops && typeof saved.stops === 'object') {
+    const validKey = key => /^(player:\d+:)?(phase|step):\w+$/.test(key);
+    if (saved?.version === 3 && saved.stops && typeof saved.stops === 'object') {
       return Object.fromEntries(Object.entries(saved.stops).filter(([key, mode]) =>
-        /^(player:\d+:)?(phase|step):\w+$/.test(key) && ['always', 'off'].includes(mode)));
+        validKey(key) && PRIORITY_STOP_MODES.includes(mode)));
     }
-    return Object.fromEntries((Array.isArray(saved) ? saved : [])
-      .filter(key => typeof key === 'string' && /^(phase|step):\w+$/.test(key))
+    // Older saves only listed "always" stops; everything else becomes "I can act".
+    const legacy = saved?.version === 2 && saved.stops && typeof saved.stops === 'object'
+      ? Object.entries(saved.stops).filter(([, mode]) => mode === 'always').map(([key]) => key)
+      : (Array.isArray(saved) ? saved : []);
+    return Object.fromEntries(legacy
+      .filter(key => typeof key === 'string' && validKey(key) && !LEGACY_DEFAULT_STOPS.has(key))
       .map(key => [key, 'always']));
   } catch {
     return { ...DEFAULT_PRIORITY_STOPS };
@@ -89,8 +121,8 @@ export function readStoredPriorityStops(storage = globalThis.localStorage) {
 function storePriorityStops(storage, stops) {
   try {
     storage?.setItem(PRIORITY_STOPS_STORAGE_KEY,
-      JSON.stringify({ version: 2, stops: Object.fromEntries(Object.entries(stops)
-        .filter(([, mode]) => mode === 'always' || mode === 'off')) }));
+      JSON.stringify({ version: 3, stops: Object.fromEntries(Object.entries(stops)
+        .filter(([, mode]) => PRIORITY_STOP_MODES.includes(mode))) }));
   } catch { /* Stops still work for this session without storage. */ }
 }
 
@@ -133,7 +165,7 @@ export function createPriorityStops({
     if (heldKey && (!isLocalPriority(state) || heldKey !== priorityKey(state) || state.game_over)) heldKey = null;
     const timedStop = phaseStopsEnabled && resolveMode !== "all" && !state.game_over && isLocalPriority(state)
       && Number(state.active_player) !== Number(state.perspective)
-      && Number(state.stack_size || 0) === 0 && selectedStop(state);
+      && Number(state.stack_size || 0) === 0 && selectedStop(state, state.decision?.can_act ?? false);
     // White keeps spells manual even when abilities are above them.
     const hasSpell = (state.stack_objects || []).some(entry => !entry.ability_kind);
     const timedResolve = (resolveMode === 'off' || (resolveMode === 'safe' && !hasSpell))
@@ -161,32 +193,35 @@ export function createPriorityStops({
   ];
   const stopKey = (key, state) => Object.hasOwn(stops, playerPriorityStopKey(key, state?.active_player))
     ? playerPriorityStopKey(key, state.active_player) : key;
-  const selectedStop = state => candidates(state).map(([key, visit]) => [stopKey(key, state), visit, key])
-    .find(([key, visit, base]) => stops[key] && stops[key] !== 'off' && !consumed.has(`${key}|${visit}`)
-      && !(base === 'step:DeclareAttackers' && attackersDeclaredIn === phaseSerial));
-  const stopReason = state => {
+  const modeOf = key => stops[key] ?? defaultStopMode(key);
+  // canAct: true/false once known, null while the payment analysis is running.
+  // An unknown answer holds rather than risk skipping a response window. Other
+  // decisions (attackers, blockers) are required anyway, so only "always" holds them.
+  const selectedStop = (state, canAct) => candidates(state).map(([key, visit]) => [stopKey(key, state), visit, key])
+    .find(([key, visit, base]) => modeOf(key) !== 'off' && !consumed.has(`${key}|${visit}`)
+      && !(base === 'step:DeclareAttackers' && attackersDeclaredIn === phaseSerial)
+      && (modeOf(key) === 'always' || (state?.decision?.kind === 'priority' && canAct !== false)));
+  const stopReason = (state, canAct = state?.decision?.can_act ?? null) => {
     observe(state);
     if (!isLocalTurnDecision(state)) return null;
     if (heldKey) return 'priority held';
     if (window?.kind === 'stack-resolve') return 'timed stack resolve';
-    const stop = selectedStop(state);
-    return stop ? `stop at ${stop[0].split(':').at(-1)}` : null;
+    const stop = selectedStop(state, canAct);
+    if (!stop) return null;
+    return modeOf(stop[0]) !== 'always' && state?.decision?.kind === 'priority' && canAct == null
+      ? CHECKING_PLAYABLE_ACTIONS : `stop at ${stop[0].split(':').at(-1)}`;
   };
+  // Only an "I can act" stop needs the answer; "always" and no stop do not.
+  const awaitsCanAct = (state, canAct = state?.decision?.can_act ?? null) =>
+    canAct == null && stopReason(state, null) === CHECKING_PLAYABLE_ACTIONS;
   const releaseStops = state => {
     observe(state);
     if (state?.decision?.kind === 'attackers') attackersDeclaredIn = phaseSerial;
-    let changed = false;
     for (const [base, visit] of candidates(state)) {
       const key = stopKey(base, state);
-      if (!stops[key] || stops[key] === 'off') continue;
+      if (modeOf(key) === 'off') continue;
       consumed.add(`${key}|${visit}`);
-      if (stops[key] === 'once') {
-        if (key.startsWith('player:')) stops[key] = 'off';
-        else delete stops[key];
-        changed = true;
-      }
     }
-    if (changed) { if (storage) storePriorityStops(storage, stops); publish(); }
   };
   return {
     setResolveMode(mode) {
@@ -204,16 +239,17 @@ export function createPriorityStops({
     observe,
     windowFor: state => Boolean(window && isLocalPriority(state) && window.key === priorityKey(state)),
     stopReason,
+    awaitsCanAct,
     cycleStop(key, state, player) {
       observe(state);
       stops = { ...stops };
-      const mode = player == null ? stops[key] : priorityStopMode(stops, key, player);
+      const mode = player == null ? modeOf(key) : (priorityStopMode(stops, key, player) ?? 'off');
+      const next = { [CAN_ACT_STOP]: 'always', always: 'off', off: CAN_ACT_STOP }[mode] ?? CAN_ACT_STOP;
+      const inherited = player == null ? defaultStopMode(key) : modeOf(key);
       const base = key;
       if (player != null) key = playerPriorityStopKey(key, player);
-      if (!mode || mode === 'off') stops[key] = 'once';
-      else if (mode === 'once') stops[key] = 'always';
-      else if (player != null) stops[key] = 'off';
-      else delete stops[key];
+      if (next === inherited) delete stops[key];
+      else stops[key] = next;
       if (storage) storePriorityStops(storage, stops);
       // Setting a stop on the current step should take effect immediately.
       for (const [candidate, visit] of candidates(state)) {

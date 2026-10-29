@@ -3013,6 +3013,8 @@ pub struct ObjectSelectionAlternativeView {
 enum DecisionView {
     Priority {
         analysis_complete: bool,
+        /// None until the payment analysis can settle "I can act" stops.
+        can_act: Option<bool>,
         player: u8,
         actions: Vec<ActionView>,
     },
@@ -3390,6 +3392,7 @@ impl DecisionView {
                 }
                 DecisionView::Priority {
                     analysis_complete: priority.analysis_complete,
+                    can_act: wasm_game_impl::priority_can_act(priority),
                     player: decision_player.0,
                     actions,
                 }

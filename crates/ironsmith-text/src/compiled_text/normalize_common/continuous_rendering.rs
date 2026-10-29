@@ -6408,7 +6408,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::LoseUnspentMana(filter, color) => {
             let subject = describe_player_set_filter(filter);
-            let dont = if subject.eq_ignore_ascii_case("you") {
+            let dont = if subject.eq_ignore_ascii_case("you")
+                || subject.eq_ignore_ascii_case("players")
+                || subject.eq_ignore_ascii_case("your opponents")
+            {
                 "don't"
             } else {
                 "doesn't"
@@ -6436,11 +6439,19 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
-        crate::effect::Restriction::PlayLandsMatching(player, filter) => format!(
-            "{} can't play {}",
-            describe_player_set_filter(player),
-            filter.description()
-        ),
+        crate::effect::Restriction::PlayLandsMatching(player, filter) => {
+            // Only lands are played (CR 305.1): an unqualified filter is
+            // "lands", and a graveyard origin reads "from graveyards".
+            let lands = if *filter == ObjectFilter::default() {
+                "lands".to_string()
+            } else {
+                let description = filter.description();
+                pluralize_noun_phrase(strip_indefinite_article(description.trim()))
+                    .replace(" in a graveyard", " from graveyards")
+                    .replace(" in graveyards", " from graveyards")
+            };
+            format!("{} can't play {lands}", describe_player_set_filter(player))
+        }
         crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(filter) => format!(
             "loyalty abilities of {} can't be activated",
             filter.description()
@@ -6509,6 +6520,15 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             } else {
                 subject
             };
+            // A typeless filter with no zone matches every object that has
+            // abilities, as Oracle's "sources" (Phyrexian Revoker).
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && filter.zone.is_none()
+                && filter.card_types.is_empty()
+                && let Some(rest) = subject.strip_prefix("permanents with ")
+            {
+                return format!("activated abilities of sources with {rest} can't be activated");
+            }
             format!("activated abilities of {} can't be activated", subject)
         }
         crate::effect::Restriction::ActivateTapAbilitiesOf(filter) => {
@@ -6546,6 +6566,23 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             } else {
                 subject
             };
+            // An audit reads the printed exception: "Activated abilities of
+            // lands your opponents control can't be activated unless
+            // they're mana abilities."
+            if ironsmith_core::semantic_audit::semantic_audit_active() {
+                let subject = if ["enchanted ", "equipped ", "that ", "this "]
+                    .iter()
+                    .any(|determiner| subject.starts_with(determiner))
+                {
+                    subject.to_string()
+                } else {
+                    pluralize_relative_object_phrase(strip_indefinite_article(subject))
+                        .replace(" an opponent controls", " your opponents control")
+                };
+                return format!(
+                    "activated abilities of {subject} can't be activated unless they're mana abilities"
+                );
+            }
             format!(
                 "non-mana activated abilities of {} can't be activated",
                 subject
@@ -6553,7 +6590,15 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::CastMoreThanOneSpellEachTurn(filter, spell_filter) => format!(
             "{} can't cast more than one {} each turn",
-            describe_player_set_filter(filter),
+            // Oracle words the every-player limit "Each player can't cast
+            // more than one spell each turn" (Rule of Law, Arcane Laboratory).
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && *filter == PlayerFilter::Any
+            {
+                "Each player".to_string()
+            } else {
+                describe_player_set_filter(filter)
+            },
             describe_cast_limit_spell_filter(spell_filter)
         ),
         crate::effect::Restriction::CastMoreThanNSpellsEachTurn {
@@ -6585,8 +6630,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't draw cards", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::DrawExtraCards(filter) => {
+            // CR 121.2-style limit: an "extra" card is any after the first
+            // drawn that turn.
             format!(
-                "{} can't draw extra cards",
+                "{} can't draw more than one card each turn",
                 describe_player_set_filter(filter)
             )
         }
@@ -6945,6 +6992,24 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                     crate::compiled_text::pluralize_noun_phrase(&blockers.description())
                 );
             }
+            // "This creature can't be blocked except by creatures with
+            // defender" / "Enchanted creature can't be blocked except by
+            // artifact creatures and/or white creatures": blockers narrowed
+            // only by exclusions read as the exception those leave open.
+            if let Some(allowed) = describe_block_exception_allowed(blockers) {
+                let attacker_text = attacker.description();
+                let attacker_text = attacker_text.trim();
+                let bare = strip_indefinite_article(attacker_text);
+                let subject = if bare.len() != attacker_text.len() {
+                    pluralize_noun_phrase(bare)
+                } else {
+                    attacker_text.to_string()
+                };
+                return format!(
+                    "{} can't be blocked except by {allowed}",
+                    capitalize_first(&subject)
+                );
+            }
             format!(
                 "{} can't block {}",
                 blockers.description(),
@@ -6986,14 +7051,31 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 attacker.description()
             )
         }
-        crate::effect::Restriction::MustBlock(filter) => format!(
-            "{} block each combat if able",
-            crate::compiled_text::pluralize_noun_phrase(&filter.description()),
-        ),
-        crate::effect::Restriction::MustAttack(filter) => format!(
-            "{} attack each combat if able",
-            crate::compiled_text::pluralize_noun_phrase(&filter.description()),
-        ),
+        crate::effect::Restriction::MustBlock(filter)
+        | crate::effect::Restriction::MustAttack(filter) => {
+            let verb = if matches!(restriction, crate::effect::Restriction::MustBlock(_)) {
+                "block"
+            } else {
+                "attack"
+            };
+            // A definite subject names one object ("Enchanted creature
+            // attacks each combat if able"); a class reads in the plural.
+            let description = filter.description();
+            if ["enchanted ", "equipped ", "this ", "that "]
+                .iter()
+                .any(|determiner| description.starts_with(determiner))
+            {
+                let subject = description
+                    .replace(" with this Aura attached to it", "")
+                    .replace(" with this Equipment attached to it", "");
+                format!("{subject} {verb}s each combat if able")
+            } else {
+                format!(
+                    "{} {verb} each combat if able",
+                    crate::compiled_text::pluralize_noun_phrase(&description),
+                )
+            }
+        }
         crate::effect::Restriction::MustAttackPlayer { attackers, player } => {
             // A requirement over a live filter binds every matching creature
             // ("each creature they control attacks ...", The Brothers' War),
@@ -7174,7 +7256,11 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!(
                 "{} can't be blocked by more than {} {}",
                 filter.description(),
-                maximum,
+                if *maximum == 1 && ironsmith_core::semantic_audit::semantic_audit_active() {
+                    "one".to_string()
+                } else {
+                    maximum.to_string()
+                },
                 if *maximum == 1 {
                     "creature"
                 } else {
@@ -7217,6 +7303,27 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             )
         }
         crate::effect::Restriction::HaveCountersPlaced(filter) => {
+            if ironsmith_core::semantic_audit::semantic_audit_active() {
+                // "Counters can't be put on artifacts, creatures,
+                // enchantments, or lands" (Solemnity).
+                let description = filter.description();
+                let words = description
+                    .trim_start_matches("a ")
+                    .trim_start_matches("an ")
+                    .replace(", or ", ", ")
+                    .replace(" or ", ", ");
+                let words = words.split(", ").collect::<Vec<_>>();
+                if words.len() >= 2 && words.iter().all(|word| !word.is_empty() && !word.contains(' ')) {
+                    let plural = words.iter().map(|word| format!("{word}s")).collect::<Vec<_>>();
+                    let list = match plural.as_slice() {
+                        [first, second] => format!("{first} or {second}"),
+                        [init @ .., last] => format!("{}, or {last}", init.join(", ")),
+                        [] => String::new(),
+                    };
+                    return format!("counters can't be put on {list}");
+                }
+                return format!("counters can't be put on {description}");
+            }
             format!("counters can't be placed on {}", filter.description())
         }
         crate::effect::Restriction::HaveCounterTypePlaced(filter, counter_type) => {
@@ -7307,6 +7414,51 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                     filter.description()
                 );
             }
+            // A source filter scoped to spells or to abilities names that
+            // kind alone: "can't be the target of Aura spells", "... of
+            // abilities your opponents control", "... of abilities from
+            // artifact sources".
+            let mut scoped = source_filter.clone();
+            let kind = scoped.stack_kind.take();
+            if matches!(scoped.zone, Some(Zone::Stack)) {
+                scoped.zone = None;
+            }
+            let (subject, target) = if filter.has_plural_object_noun_surface() {
+                let mut subject = filter.clone();
+                subject.zone = None;
+                (pluralize_noun_phrase(strip_leading_article(&subject.description())), "targets")
+            } else {
+                (filter.description(), "target")
+            };
+            match kind {
+                Some(crate::filter::StackObjectKind::Spell) => {
+                    let spells = if scoped == crate::target::ObjectFilter::default() {
+                        "spells".to_string()
+                    } else {
+                        format!("{} spells", describe_hexproof_from_filter(&scoped))
+                    };
+                    return format!("{subject} can't be the {target} of {spells}");
+                }
+                Some(crate::filter::StackObjectKind::Ability) => {
+                    let controller = scoped.controller.take();
+                    if scoped == crate::target::ObjectFilter::default() {
+                        let who = match controller {
+                            Some(crate::target::PlayerFilter::Opponent) => " your opponents control".to_string(),
+                            Some(crate::target::PlayerFilter::You) => " you control".to_string(),
+                            Some(other) => format!(" {} controls", describe_player_filter(&other)),
+                            None => String::new(),
+                        };
+                        return format!("{subject} can't be the {target} of abilities{who}");
+                    }
+                    if controller.is_none() {
+                        return format!(
+                            "{subject} can't be the {target} of abilities from {} sources",
+                            describe_hexproof_from_filter(&scoped)
+                        );
+                    }
+                }
+                _ => {}
+            }
             let source_description = describe_hexproof_from_filter(source_filter);
             format!(
                 "{} can't be the target of {} spells or abilities from {} sources",
@@ -7359,6 +7511,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be countered by {}", filter.description(), sources)
         }
         crate::effect::Restriction::BeCountered(filter) => {
+            if let Some(spells) = describe_uncounterable_spells_subject(filter) {
+                return format!("{spells} can't be countered");
+            }
             format!("{} can't be countered", filter.description())
         }
         crate::effect::Restriction::TurnFaceUp(filter) => {
@@ -7380,6 +7535,126 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't attack or block alone", filter.description())
         }
     }
+}
+
+/// The blockers an evasion still allows when the restricted blockers are
+/// creatures narrowed only by exclusions: "creatures with flying or reach",
+/// "artifact creatures and/or white creatures", "Walls".
+fn describe_block_exception_allowed(blockers: &ObjectFilter) -> Option<String> {
+    let mut rest = blockers.clone();
+    if !matches!(rest.zone, None | Some(Zone::Battlefield))
+        || !matches!(rest.card_types.as_slice(), [] | [CardType::Creature])
+    {
+        return None;
+    }
+    rest.zone = None;
+    rest.card_types.clear();
+    rest.union_surface = Default::default();
+    let abilities = std::mem::take(&mut rest.excluded_static_abilities);
+    let colors = std::mem::take(&mut rest.excluded_colors);
+    let card_types = std::mem::take(&mut rest.excluded_card_types);
+    let subtypes = std::mem::take(&mut rest.excluded_subtypes);
+    if rest != ObjectFilter::default()
+        || (abilities.is_empty() && colors.is_empty() && card_types.is_empty() && subtypes.is_empty())
+    {
+        return None;
+    }
+    // A subtype-only exception ("except by Krakens, Leviathans, Octopuses,
+    // and Serpents") already reads through the audit's blocker-exception
+    // surface, which lists the attackers the same way.
+    if abilities.is_empty() && colors.is_empty() && card_types.is_empty() {
+        return None;
+    }
+    let creature_noun = |filter: ObjectFilter| {
+        let description = filter.description();
+        pluralize_noun_phrase(strip_indefinite_article(description.trim()))
+    };
+    let mut allowed = Vec::new();
+    for subtype in &subtypes {
+        allowed.push(pluralize_noun_phrase(&subtype.to_string()));
+    }
+    for card_type in &card_types {
+        allowed.push(creature_noun(ObjectFilter {
+            card_types: vec![*card_type, CardType::Creature],
+            ..ObjectFilter::default()
+        }));
+    }
+    for color in [
+        crate::color::Color::White,
+        crate::color::Color::Blue,
+        crate::color::Color::Black,
+        crate::color::Color::Red,
+        crate::color::Color::Green,
+    ] {
+        if colors.contains(color) {
+            allowed.push(creature_noun(ObjectFilter {
+                colors: Some(crate::color::ColorSet::from_color(color)),
+                card_types: vec![CardType::Creature],
+                ..ObjectFilter::default()
+            }));
+        }
+    }
+    if !abilities.is_empty() {
+        let mut labels = Vec::new();
+        for ability in &abilities {
+            let description = ObjectFilter {
+                static_abilities: vec![*ability],
+                card_types: vec![CardType::Creature],
+                ..ObjectFilter::default()
+            }
+            .description();
+            let label = strip_indefinite_article(description.trim())
+                .strip_prefix("creature with ")?
+                .to_string();
+            labels.push(label);
+        }
+        let labels = match labels.as_slice() {
+            [only] => only.clone(),
+            [first, second] => format!("{first} or {second}"),
+            [leading @ .., last] => format!("{}, or {last}", leading.join(", ")),
+            [] => return None,
+        };
+        allowed.push(format!("creatures with {labels}"));
+    }
+    Some(allowed.join(" and/or "))
+}
+
+/// "Human spells you control", "Spells with flash you cast": only spells can
+/// be countered, so a subtype- or keyword-qualified stack filter reads as
+/// those spells (CR 701.6a).
+fn describe_uncounterable_spells_subject(filter: &ObjectFilter) -> Option<String> {
+    if !matches!(filter.zone, None | Some(Zone::Stack))
+        || !matches!(filter.stack_kind, None | Some(crate::filter::StackObjectKind::Spell))
+    {
+        return None;
+    }
+    let mut base = filter.clone();
+    base.zone = None;
+    base.stack_kind = None;
+    // A spell filter's mana-cost marker and noun surface print nothing
+    // ("Human spells you control": Goldbug).
+    base.has_mana_cost = false;
+    base.union_surface = Default::default();
+    let tail = match (&base.controller, &base.cast_by) {
+        (Some(PlayerFilter::You), None) => " you control",
+        (None, Some(PlayerFilter::You)) => " you cast",
+        (None, None) => "",
+        _ => return None,
+    };
+    base.controller = None;
+    base.cast_by = None;
+    let with_flash =
+        base.static_abilities == [crate::static_abilities::StaticAbilityId::Flash];
+    if with_flash {
+        base.static_abilities.clear();
+    }
+    let subtypes = std::mem::take(&mut base.subtypes);
+    if base != ObjectFilter::default() || subtypes.len() > 1 || (subtypes.is_empty() && !with_flash) {
+        return None;
+    }
+    let kind = subtypes.first().map(|subtype| format!("{subtype} ")).unwrap_or_default();
+    let with = if with_flash { " with flash" } else { "" };
+    Some(capitalize_first(&format!("{kind}spells{with}{tail}")))
 }
 
 /// "spells or activated abilities": a source union of exactly the spell and
@@ -7414,6 +7689,9 @@ pub(crate) fn describe_spell_targeting_source_filter(
     let mut rest = source_filter.clone();
     rest.zone = None;
     rest.stack_kind = None;
+    // `has_mana_cost` marks the filter as naming spells (it is not matched
+    // against objects), which the stack kind above already says.
+    rest.has_mana_cost = false;
     if rest.subtypes == [crate::types::Subtype::Aura]
         && (rest.card_types.is_empty() || rest.card_types == [crate::types::CardType::Enchantment])
     {
@@ -7422,6 +7700,11 @@ pub(crate) fn describe_spell_targeting_source_filter(
         if rest == ObjectFilter::default() {
             return Some("Aura spells".to_string());
         }
+    }
+    // An unqualified spell source is every spell ("can't be the targets of
+    // spells": Dense Foliage, Lurker), not the filter's default noun.
+    if rest == ObjectFilter::default() {
+        return Some("spells".to_string());
     }
 
     let description = source_filter.description();

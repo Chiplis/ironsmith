@@ -258,6 +258,27 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         {
             "the other chosen player".to_string()
         }
+        // X minus (every player minus Y) is X restricted to Y: "an opponent
+        // who cast a spell this turn".
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(excluded.as_ref(), PlayerFilter::Excluding { base: inner, excluded: kept }
+                if matches!(inner.as_ref(), PlayerFilter::Any)
+                    && matches!(kept.as_ref(), PlayerFilter::Opponent))
+                && matches!(base.as_ref(), PlayerFilter::TurnHistory(_) | PlayerFilter::Any) =>
+        {
+            match base.as_ref() {
+                PlayerFilter::TurnHistory(history) => format!("an opponent {}", history.relative_clause()),
+                _ => "an opponent".to_string(),
+            }
+        }
+        // "Players other than the active player": the players whose turn it
+        // isn't.
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Any)
+                && matches!(excluded.as_ref(), PlayerFilter::Active) =>
+        {
+            "a player other than the active player".to_string()
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             strip_leading_article(&describe_player_filter(base)),
@@ -1019,6 +1040,8 @@ pub(super) fn repeated_energy_symbols(count: usize) -> String {
 pub(super) fn describe_energy_payment_amount(value: &Value) -> String {
     match value {
         Value::Fixed(amount) if *amount > 0 => repeated_energy_symbols(*amount as usize),
+        // "Pay X {E}" (Sphinx of the Revelation).
+        _ if matches!(value.unhinted(), Value::X) => "X {E}".to_string(),
         _ => format!("an amount of {{E}} equal to {}", describe_value(value)),
     }
 }
@@ -2556,7 +2579,8 @@ pub(super) fn normalize_trigger_colon_clause(line: &str) -> Option<String> {
     };
 
     let (head, tail) = body.split_once_lit(": ")?;
-    if head.contains('"') {
+    // An audit marker's own "Family: payload" colon is not a trigger colon.
+    if head.contains('"') || head.contains('\u{27e6}') {
         return None;
     }
     let normalized_head = if let Some(rest) = head.strip_prefix("You ") {
@@ -4200,6 +4224,9 @@ fn compact_split_damage_pair_once(line: &str, delimiter: &str) -> Option<String>
         };
         let second_target = if controller_followup {
             "that creature's controller"
+        } else if second_target.eq_ignore_ascii_case(second.source) {
+            // "deals 2 damage to any target and 3 damage to itself".
+            "itself"
         } else {
             normalize_joined_damage_target(second_target)
         };

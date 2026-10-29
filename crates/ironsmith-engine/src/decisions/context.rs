@@ -1168,13 +1168,7 @@ impl ColorsContext {
             context_text: None,
             player,
             source,
-            description: if same_color {
-                format!("Choose a color for {} mana", count)
-            } else if distinct_colors {
-                format!("Choose {} different mana color(s)", count)
-            } else {
-                format!("Choose {} mana color(s)", count)
-            },
+            description: mana_colors_description(count, same_color, distinct_colors, None),
             count,
             same_color,
             distinct_colors,
@@ -1195,18 +1189,104 @@ impl ColorsContext {
             context_text: None,
             player,
             source,
-            description: if same_color {
-                format!("Choose a color for {} mana", count)
-            } else if distinct_colors {
-                format!("Choose {} different mana color(s)", count)
-            } else {
-                format!("Choose {} mana color(s)", count)
-            },
+            description: mana_colors_description(
+                count,
+                same_color,
+                distinct_colors,
+                Some(&available_colors),
+            ),
             count,
             same_color,
             distinct_colors,
             available_colors: Some(available_colors),
         }
+    }
+}
+
+/// Prompt text for a mana color choice, stated in terms of the mana the
+/// instruction actually adds ("Add three mana of any one color", "Add {X}
+/// mana in any combination of {R} and/or {G}").
+///
+/// `mana_amount` is the total mana being added, which differs from the
+/// number of colors picked when every mana shares one color.
+pub fn mana_colors_description(
+    mana_amount: u32,
+    same_color: bool,
+    distinct_colors: bool,
+    available_colors: Option<&[Color]>,
+) -> String {
+    let restricted = available_colors
+        .filter(|colors| !colors.is_empty() && !Color::ALL.iter().all(|c| colors.contains(c)));
+    let symbols = |joiner: &str| {
+        let symbols = restricted
+            .unwrap_or_default()
+            .iter()
+            .map(|color| color_mana_symbol(*color))
+            .collect::<Vec<_>>();
+        match symbols.as_slice() {
+            [] => String::new(),
+            [only] => (*only).to_string(),
+            [init @ .., last] => format!("{} {joiner} {last}", init.join(", ")),
+        }
+    };
+    let amount = mana_amount_words(mana_amount);
+    if mana_amount == 1 || same_color {
+        let one = if mana_amount == 1 { "" } else { " one" };
+        match restricted {
+            Some([only]) => format!("Add {}", repeated_symbol(*only, mana_amount)),
+            Some(_) => format!("Add {amount} mana of any{one} color: {}", symbols("or")),
+            None => format!("Add {amount} mana of any{one} color"),
+        }
+    } else if distinct_colors {
+        match restricted {
+            Some(_) => format!("Add {amount} mana of different colors among {}", symbols("and")),
+            None => format!("Add {amount} mana of different colors"),
+        }
+    } else {
+        match restricted {
+            Some(_) => format!("Add {amount} mana in any combination of {}", symbols("and/or")),
+            None => format!("Add {amount} mana in any combination of colors"),
+        }
+    }
+}
+
+/// Prompt text for a color choice that does not add mana.
+pub fn plain_colors_description(count: u32, same_color: bool, distinct_colors: bool) -> String {
+    if count <= 1 || same_color {
+        "Choose a color".to_string()
+    } else if distinct_colors {
+        format!("Choose {} different colors", mana_amount_words(count))
+    } else {
+        format!("Choose {} colors", mana_amount_words(count))
+    }
+}
+
+fn mana_amount_words(amount: u32) -> String {
+    const WORDS: [&str; 11] = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    ];
+    WORDS
+        .get(amount as usize)
+        .map(|word| (*word).to_string())
+        .unwrap_or_else(|| amount.to_string())
+}
+
+fn color_mana_symbol(color: Color) -> &'static str {
+    match color {
+        Color::White => "{W}",
+        Color::Blue => "{U}",
+        Color::Black => "{B}",
+        Color::Red => "{R}",
+        Color::Green => "{G}",
+    }
+}
+
+fn repeated_symbol(color: Color, amount: u32) -> String {
+    let symbol = color_mana_symbol(color);
+    if amount <= 10 {
+        symbol.repeat(amount.max(1) as usize)
+    } else {
+        format!("{amount} {symbol}")
     }
 }
 
@@ -2234,6 +2314,29 @@ fn prompt_matches_follow_up_antecedent(prompt: &str, antecedent: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mana_colors_description_states_total_mana() {
+        // Black Lotus: one color picked for three mana.
+        assert_eq!(
+            mana_colors_description(3, true, false, None),
+            "Add three mana of any one color"
+        );
+        assert_eq!(mana_colors_description(1, true, false, None), "Add one mana of any color");
+        assert_eq!(
+            mana_colors_description(4, false, false, Some(&[Color::Red, Color::White])),
+            "Add four mana in any combination of {R} and/or {W}"
+        );
+        assert_eq!(
+            mana_colors_description(2, true, false, Some(&[Color::Black, Color::Green])),
+            "Add two mana of any one color: {B} or {G}"
+        );
+        assert_eq!(
+            mana_colors_description(2, false, true, None),
+            "Add two mana of different colors"
+        );
+        assert_eq!(mana_colors_description(12, true, false, Some(&[Color::Green])), "Add 12 {G}");
+    }
 
     #[test]
     fn test_boolean_context() {

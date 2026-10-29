@@ -2141,7 +2141,7 @@ function MobileBattleDecisionLayer({
             size="sm"
             className="mobile-decision-primary-button mobile-select-options-submit"
             disabled={!canSubmitFocused}
-            onClick={() => effectiveSubmitAction.onSubmit()}
+            onClick={event => effectiveSubmitAction.onSubmitEvent ? effectiveSubmitAction.onSubmitEvent(event) : effectiveSubmitAction.onSubmit()}
           >
             <span className="mobile-decision-primary-label">
               <SymbolText text={effectiveSubmitAction.label || t("decision.submitPlain")} style={{ whiteSpace: "inherit" }} />
@@ -2290,7 +2290,7 @@ function MobileBattleDecisionLayer({
           size="sm"
           className="mobile-decision-primary-button"
           disabled={!canSubmitFocused}
-          onClick={() => effectiveSubmitAction.onSubmit()}
+          onClick={event => effectiveSubmitAction.onSubmitEvent ? effectiveSubmitAction.onSubmitEvent(event) : effectiveSubmitAction.onSubmit()}
         >
           <span className="mobile-decision-primary-label">
             <SymbolText text={effectiveSubmitAction.label || t("decision.submitPlain")} style={{ whiteSpace: "inherit" }} />

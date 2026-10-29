@@ -240,6 +240,30 @@ fn materialize_static_abilities(
         builder = builder.with_ability(Ability::static_ability(marker));
     }
 
+    // "If X is 5 or more, this spell can't be countered and the damage can't
+    // be prevented" (Banefire) is one spell-protection group that works
+    // while the spell is on the stack; none of its members becomes a
+    // resolution effect.
+    let line_protects_this_spell = abilities.iter().any(|ability| {
+        let inner = match ability {
+            StaticAbilityAst::ConditionalStaticAbility { ability, .. }
+            | StaticAbilityAst::LabeledConditionalStaticAbility { ability, .. } => ability.as_ref(),
+            ability => ability,
+        };
+        matches!(
+            inner,
+            StaticAbilityAst::Static(model)
+                if model.id == Some(ironsmith_core::StaticAbilityId::CantBeCountered)
+        ) || matches!(
+            inner,
+            StaticAbilityAst::Static(model) if matches!(
+                &model.payload,
+                ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, additional_restrictions, .. }
+                    if std::iter::once(restriction).chain(additional_restrictions)
+                        .any(|restriction| matches!(restriction, crate::effect::Restriction::BeCountered(_)))
+            )
+        )
+    });
     let mut lowered_abilities = Vec::with_capacity(member_count);
     let mut turn_surface_recorded = false;
     for ability in abilities {
@@ -297,6 +321,47 @@ fn materialize_static_abilities(
                 let ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story } } = ability.payload else { unreachable!() };
                 let mut effects = builder.spell_effect.take().unwrap_or_default();
                 effects.push(crate::effect::Effect::new(ironsmith_core::AscendEffect::designation_if_permanent_count(minimum, historic_only, enduring_story)));
+                builder.spell_effect = Some(effects);
+            }
+            // "Creatures without flying can't block this turn" (Falter,
+            // Festival, Shadow of Doubt): an instant or sorcery has no
+            // battlefield life, so its rule restriction is a resolution effect
+            // lasting for the turn (CR 611.2a), not a static ability. A
+            // leading condition ("Ferocious — If you control a creature with
+            // power 4 or greater, damage can't be prevented this turn") is
+            // checked as the spell resolves. "This spell can't be countered"
+            // stays a static that functions on the stack.
+            ref ability
+                if builder.card_builder.card_types_ref().iter().any(|t| matches!(t, crate::types::CardType::Instant | crate::types::CardType::Sorcery))
+                    && !case_solved
+                    && !line_protects_this_spell
+                    && is_spell_rule_restriction_ast(ability) => {
+                let lowered = lower_static_ability_ast(ability.clone())?;
+                let Some((condition, restrictions)) = spell_rule_restriction_parts(&lowered.payload) else {
+                    // An unexpected lowered shape keeps the static reading.
+                    lowered_abilities.push(lowered);
+                    continue;
+                };
+                let cants = restrictions
+                    .into_iter()
+                    .map(|restriction| {
+                        crate::effect::Effect::new(crate::effects::CantEffect::new(
+                            restriction,
+                            crate::effect::Until::EndOfTurn,
+                        ))
+                    })
+                    .collect::<Vec<_>>();
+                let mut effects = builder.spell_effect.take().unwrap_or_default();
+                match condition {
+                    Some(condition) => effects.push(crate::effect::Effect::new(
+                        crate::effects::ConditionalEffect::if_only(condition, cants),
+                    )),
+                    None => {
+                        for cant in cants {
+                            effects.push(cant);
+                        }
+                    }
+                }
                 builder.spell_effect = Some(effects);
             }
             ability => {
@@ -364,6 +429,52 @@ fn materialize_static_abilities(
         builder = builder.with_ability(materialized);
     }
     Ok(builder)
+}
+
+/// A rule-restriction static, bare or under one leading condition.
+fn is_spell_rule_restriction_ast(ability: &StaticAbilityAst) -> bool {
+    match ability {
+        StaticAbilityAst::Static(ability) => spell_rule_restriction_parts(&ability.payload)
+            .is_some_and(|(condition, _)| condition.is_none()),
+        StaticAbilityAst::ConditionalStaticAbility { ability, .. }
+        | StaticAbilityAst::LabeledConditionalStaticAbility { ability, .. } => matches!(
+            ability.as_ref(),
+            StaticAbilityAst::Static(inner)
+                if spell_rule_restriction_parts(&inner.payload)
+                    .is_some_and(|(condition, _)| condition.is_none())
+        ),
+        _ => false,
+    }
+}
+
+/// The restrictions of an instant's or sorcery's rule-restriction line, with
+/// its optional leading condition. `None` for anything else, including
+/// "this spell can't be countered" (a static on the stack).
+fn spell_rule_restriction_parts<T, E, C, Cond, ICond: Clone>(
+    payload: &ironsmith_core::StaticAbilityPayload<T, E, C, Cond, ICond>,
+) -> Option<(Option<ICond>, Vec<crate::effect::Restriction>)> {
+    let (condition, payload) = match payload {
+        ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
+            (Some(condition.clone()), &ability.payload)
+        }
+        payload => (None, payload),
+    };
+    let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+        restriction,
+        additional_restrictions,
+        ..
+    } = payload
+    else {
+        return None;
+    };
+    let restrictions = std::iter::once(restriction)
+        .chain(additional_restrictions)
+        .cloned()
+        .collect::<Vec<_>>();
+    restrictions
+        .iter()
+        .all(|restriction| !matches!(restriction, crate::effect::Restriction::BeCountered(_)))
+        .then_some((condition, restrictions))
 }
 
 fn spell_only_functional_zones() -> Vec<Zone> {

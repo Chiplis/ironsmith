@@ -362,12 +362,18 @@ fn triggering_spell_ordinal_fragment(
         filter,
         exclude_source,
         before_triggering_spell: true,
-        ..
+        from_zone,
+        from_outside_hand,
     } = query
     else {
         return None;
     };
     if operator != crate::effect::ValueComparisonOperator::Equal {
+        return None;
+    }
+    let auditing = ironsmith_core::semantic_audit::semantic_audit_active();
+    // The ordinal prose has no words for an origin zone.
+    if auditing && (from_zone.is_some() || *from_outside_hand) {
         return None;
     }
     let Value::Fixed(prior_count) = right.unhinted() else {
@@ -385,7 +391,9 @@ fn triggering_spell_ordinal_fragment(
         spell.push_str(" spell");
     }
     if *exclude_source {
-        if let Some(surface) = filter.source_surface.as_ref() {
+        if !auditing
+            && let Some(surface) = filter.source_surface.as_ref()
+        {
             spell = format!("{spell} other than {}", surface.display_text());
         } else if !spell.starts_with("other ") {
             spell = format!("other {spell}");
@@ -403,6 +411,13 @@ fn describe_triggering_spell_ordinal_sentence(
 ) -> String {
     let categories = join_with_or(fragments);
     match player {
+        // Oracle words a single ordinal "it's the second creature spell you
+        // cast this turn" (Vengevine, Codespell Cleric).
+        PlayerFilter::You
+            if fragments.len() == 1 && ironsmith_core::semantic_audit::semantic_audit_active() =>
+        {
+            format!("it's {categories} you cast this turn")
+        }
         PlayerFilter::You => format!("it's {categories} you've cast this turn"),
         other => format!(
             "it was {categories} {} cast this turn",
@@ -453,6 +468,15 @@ fn describe_turn_history_value_comparison(
                 | (Equal, Value::Fixed(0))
         );
         let reads_every_field = match query {
+            // The ordinal prose ("it's the second creature spell you've cast
+            // this turn") reads the player, filter, source exclusion and
+            // event boundary; it has no words for an origin zone.
+            H::SpellsCast {
+                before_triggering_spell: true,
+                from_zone: None,
+                from_outside_hand: false,
+                ..
+            } if operator == Equal => true,
             H::SpellsCast { exclude_source, .. } => !*exclude_source && presence_only,
             H::KeywordActionsPerformed { .. } => presence_only,
             H::Died { .. }
@@ -1369,7 +1393,8 @@ fn describe_named_list_control_condition(condition: &Condition) -> Option<String
         }
     }
     let mut found = Vec::new();
-    if !leaves(condition, &mut found) || found.len() < 3 {
+    // Two names read "creatures named Mine Worker and Tower Worker".
+    if !leaves(condition, &mut found) || found.len() < 2 {
         return None;
     }
     let (player, first) = found[0];
@@ -1406,6 +1431,13 @@ fn describe_named_list_control_condition(condition: &Condition) -> Option<String
         .collect::<Vec<_>>();
     let (last, init) = names.split_last()?;
     let subject = describe_player_filter(player);
+    if let [only] = init {
+        return Some(format!(
+            "{} {} {noun} named {only} and {last}",
+            subject,
+            player_verb(&subject, "control", "controls"),
+        ));
+    }
     Some(format!(
         "{} {} {noun} named {}, and {last}",
         subject,
@@ -2061,6 +2093,54 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             && counted.subtypes.is_empty()
         {
             return "it's attacking alone".to_string();
+        }
+        // "you gained or lost life this turn" / "you gained and lost life
+        // this turn": a gained-life presence check paired with a lost-life
+        // one, both about you.
+        let you_life_change = |condition: &Condition, gained: bool| match condition {
+            Condition::ValueComparison { left, operator, right } => {
+                *operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                    && right.unhinted() == &Value::Fixed(1)
+                    && if gained {
+                        matches!(left.unhinted(), Value::LifeGainedThisTurn(PlayerFilter::You))
+                    } else {
+                        matches!(left.unhinted(), Value::LifeLostThisTurn(PlayerFilter::You))
+                    }
+            }
+            Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
+                gained && *player == PlayerFilter::You && *count <= 1
+            }
+            _ => false,
+        };
+        if let Condition::And(left, right) | Condition::Or(left, right) = condition
+            && ((you_life_change(left.as_ref(), true) && you_life_change(right.as_ref(), false))
+                || (you_life_change(right.as_ref(), true) && you_life_change(left.as_ref(), false)))
+        {
+            let connective = if matches!(condition, Condition::And(..)) { "and" } else { "or" };
+            return format!("you gained {connective} lost life this turn");
+        }
+        // "you control creatures named Mine Worker and Tower Worker": each
+        // conjunct is the same controls check differing only in the name.
+        if let Some(named_list) = describe_named_list_control_condition(condition) {
+            return named_list;
+        }
+        // "it's the first instant spell, the first sorcery spell, or the
+        // first Otter spell you've cast this turn": every disjunct is the
+        // same player's triggering-spell ordinal query.
+        if let Condition::Or(left, right) = condition {
+            let mut ordinal_fragments = Vec::new();
+            if let Some(left_player) =
+                collect_triggering_spell_ordinal_fragments(left, &mut ordinal_fragments)
+                && let Some(right_player) =
+                    collect_triggering_spell_ordinal_fragments(right, &mut ordinal_fragments)
+                && left_player == right_player
+                && ordinal_fragments.len() > 1
+            {
+                return describe_triggering_spell_ordinal_sentence(
+                    &left_player,
+                    &ordinal_fragments,
+                );
+            }
         }
         match condition {
             Condition::And(..) => return operand(condition, true),
@@ -3111,7 +3191,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             format!("{} is you", describe_player_filter(player))
         }
         Condition::PlayerIsMonarch { player } => {
-            format!("{} is the monarch", describe_player_filter(player))
+            let subject = describe_player_filter(player);
+            if subject == "you" {
+                "you're the monarch".to_string()
+            } else {
+                format!("{subject} is the monarch")
+            }
         }
         Condition::PlayerHasInitiative { player } => {
             let subject = describe_player_filter(player);
@@ -3153,6 +3238,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             dungeon_name,
         } => match dungeon_name {
             Some(name) => format!("{} completed {}", describe_player_filter(player), name),
+            // Oracle words the completion in the present perfect: "if
+            // you've completed a dungeon" (White Plume Adventurer).
+            None if *player == PlayerFilter::You => "you've completed a dungeon".to_string(),
             None => format!("{} completed a dungeon", describe_player_filter(player)),
         },
         Condition::PlayerRemovedDraftCardMatching {
@@ -3966,6 +4054,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 "it's a land card".to_string()
             } else if stripped == "creature" {
                 "it's a creature".to_string()
+            } else if ironsmith_core::semantic_audit::semantic_audit_active() {
+                // The tested object is the affected or targeted object, whichever
+                // the ability names: "as long as it's a Human" (Bonds of Faith).
+                format!("it's {}", ensure_indefinite_article(&desc))
             } else {
                 format!("the target is {}", ensure_indefinite_article(&desc))
             }
@@ -5675,6 +5767,24 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     base.controller = None;
                     base.zone = None;
                     let description = base.description();
+                    // The one enchanted / equipped object is definite: "you
+                    // control enchanted creature" (Mishra's Domination).
+                    let definite_attachment_tag = filter.tagged_constraints.len() == 1
+                        && filter.tagged_constraints.iter().all(|constraint| {
+                            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                                && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                        });
+                    if *n == 1
+                        && definite_attachment_tag
+                        && let Some(noun) = strip_indefinite_article(&description)
+                            .strip_prefix(&format!("{} ", filter.tagged_constraints[0].tag.as_str()))
+                            .filter(|noun| !noun.contains(' '))
+                    {
+                        return format!(
+                            "{controls} {} {noun}",
+                            filter.tagged_constraints[0].tag.as_str()
+                        );
+                    }
                     if *n == 1 {
                         let described = if description.starts_with("a ")
                             || description.starts_with("an ")
@@ -5692,6 +5802,69 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         "{controls} {amount} or more {}",
                         pluralize_relative_object_phrase(strip_indefinite_article(&description))
                     );
+                }
+                // "an artifact entered the battlefield under your control this
+                // turn" / "two or more nonland permanents entered ...": an
+                // entry-history count reads with the entry as its verb.
+                if filter.entered_battlefield_this_turn
+                    && let ironsmith_core::Comparison::GreaterThanOrEqual(n) = comparison
+                    && *n > 0
+                {
+                    let description = filter.description();
+                    let noun = strip_indefinite_article(&description);
+                    if let Some((head, tail)) = noun.split_once(" that entered ")
+                        && !head.is_empty()
+                    {
+                        if *n == 1 {
+                            let head = if head.starts_with("another ") {
+                                head.to_string()
+                            } else {
+                                with_indefinite_article(head)
+                            };
+                            return format!("{head} entered {tail}");
+                        }
+                        let amount = ironsmith_core::cardinal_word(*n as u32)
+                            .unwrap_or_else(|| n.to_string());
+                        return format!(
+                            "{amount} or more {} entered {tail}",
+                            pluralize_noun_phrase(head)
+                        );
+                    }
+                }
+                // "there are two or more creature cards in your graveyard" /
+                // "there are thirteen or more creatures on the battlefield":
+                // a verbless count over a zone reads as an existential.
+                if let ironsmith_core::Comparison::GreaterThanOrEqual(n) = comparison
+                    && *n > 0
+                {
+                    let description = filter.description();
+                    let noun = strip_indefinite_article(&description).trim().to_string();
+                    let in_zone = matches!(
+                        filter.zone,
+                        Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile)
+                    ) && noun.contains(" in ");
+                    let on_battlefield = filter.zone == Some(Zone::Battlefield)
+                        && filter.controller.is_none()
+                        && !noun.contains(" on the battlefield")
+                        && !noun.contains(" control")
+                        && !noun.contains(" that ")
+                        && !noun.contains(" who ")
+                        && !noun.contains("attacking")
+                        && !noun.contains("blocking");
+                    if in_zone || on_battlefield {
+                        let tail = if on_battlefield { " on the battlefield" } else { "" };
+                        if *n == 1 {
+                            let described = if noun.starts_with("another ") {
+                                noun.clone()
+                            } else {
+                                with_indefinite_article(&noun)
+                            };
+                            return format!("there is {described}{tail}");
+                        }
+                        let amount = ironsmith_core::cardinal_word(*n as u32)
+                            .unwrap_or_else(|| n.to_string());
+                        return format!("there are {amount} or more {objects}{tail}");
+                    }
                 }
                 if let ironsmith_core::Comparison::GreaterThanOrEqual(1) = comparison {
                     return format!(
@@ -5729,6 +5902,49 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                             describe_comparison(comparison)
                         ),
                     },
+                    // "this creature is enchanted by two or more Auras",
+                    // "exactly one Aura" (Timber Paladin, Kitsune Mystic).
+                    Count::AttachedToSource(filter)
+                        if matches!(
+                            comparison,
+                            ironsmith_core::Comparison::GreaterThanOrEqual(1..)
+                                | ironsmith_core::Comparison::Equal(1..)
+                        ) =>
+                    {
+                        let (quantity, plural) = match comparison {
+                            ironsmith_core::Comparison::GreaterThanOrEqual(n) if *n >= 1 => Some((
+                                format!(
+                                    "{} or more",
+                                    ironsmith_core::cardinal_word(*n as u32).unwrap_or_else(|| n.to_string())
+                                ),
+                                true,
+                            )),
+                            ironsmith_core::Comparison::Equal(n) if *n >= 1 => Some((
+                                format!(
+                                    "exactly {}",
+                                    ironsmith_core::cardinal_word(*n as u32).unwrap_or_else(|| n.to_string())
+                                ),
+                                *n != 1,
+                            )),
+                            _ => None,
+                        }
+                        .unwrap_or_default();
+                        let mut attached = filter.clone();
+                        if attached.zone == Some(Zone::Battlefield) {
+                            attached.zone = None;
+                        }
+                        let description = attached.description();
+                        let noun = strip_indefinite_article(&description);
+                        let noun = if plural { pluralize_relative_object_phrase(noun) } else { noun.to_string() };
+                        let mut aura = ObjectFilter::default();
+                        aura.subtypes = vec![crate::types::Subtype::Aura];
+                        aura.union_surface = attached.union_surface.clone();
+                        if attached == aura {
+                            format!("this permanent is enchanted by {quantity} {noun}")
+                        } else {
+                            format!("{quantity} {noun} {} attached to this permanent", if plural { "are" } else { "is" })
+                        }
+                    }
                     other => format!(
                         "the count {} {}",
                         ironsmith_core::semantic_audit::structural_reading(other, &[]),
@@ -6758,6 +6974,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 let count_text = small_number_word(*count as u32)
                     .unwrap_or_else(|| count.to_string());
+                // "If a black creature with flying is attacking" (Slingbow
+                // Trap): one attacking object is an attacking existential.
+                if ironsmith_core::semantic_audit::semantic_audit_active()
+                    && *count == 1
+                    && filter.attacking
+                    && filter.with_counter.is_none()
+                {
+                    let mut subject_filter = filter.clone();
+                    subject_filter.attacking = false;
+                    subject_filter.zone = None;
+                    let subject =
+                        strip_indefinite_article(&subject_filter.description()).to_string();
+                    return format!("{} is attacking", with_indefinite_article(&subject));
+                }
                 if let Some(counter) = filter.with_counter {
                     let mut subject_filter = filter.clone();
                     subject_filter.with_counter = None;
@@ -6778,6 +7008,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     && !head.contains(' ')
                 {
                     return format!("{count_text} or more {head} are attacking {state}");
+                }
+                // "if three or more creatures are attacking" (Lethargy Trap).
+                if let Some(head) = noun.strip_prefix("attacking ")
+                    && !head.contains(' ')
+                    && !head.is_empty()
+                {
+                    return format!("{count_text} or more {head} are attacking");
                 }
                 return format!("there are {} or more {} on the battlefield", count_text, noun);
             }
@@ -6893,6 +7130,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         object
                     );
                 }
+                // "if an opponent cast a blue spell this turn" (Ricochet Trap).
+                if *player == PlayerFilter::Opponent {
+                    return format!("an opponent cast {object} this turn");
+                }
                 let subject = describe_player_filter(player);
                 return format!(
                     "{} {} cast {} this turn",
@@ -6918,6 +7159,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
                 if *player == PlayerFilter::You {
                     return format!("you've cast {count_text} or more {objects} this turn");
+                }
+                if *player == PlayerFilter::Opponent {
+                    return format!("an opponent cast {count_text} or more {objects} this turn");
                 }
                 let subject = describe_player_filter(player);
                 return format!(
@@ -6957,6 +7201,32 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     "{source} {verb} dealt {count} or more {damage} to {} this turn",
                     describe_player_filter(player)
                 );
+            }
+            // "if a source you controlled dealt 5 or more damage this turn"
+            // (Dragon Cultist): the largest one-source total this turn.
+            if *operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                && let Value::Fixed(count) = right.unhinted()
+                && *count >= 1
+                && let Value::DamageHistory(query) = left.unhinted()
+                && query.reduction == ironsmith_core::DamageHistoryReduction::LargestSourceTotal
+                && query.combat.is_none()
+                && matches!(query.recipients, ironsmith_core::DamageHistoryRecipients::Any)
+                && let ironsmith_core::DamageHistorySources::Matching(filter) = &query.sources
+            {
+                let description = filter.description();
+                let source = match description.strip_prefix("a permanent") {
+                    Some("") => Some("a source".to_string()),
+                    Some(" you control" | " you controlled") => {
+                        Some("a source you controlled".to_string())
+                    }
+                    Some(" an opponent controls") => {
+                        Some("a source an opponent controlled".to_string())
+                    }
+                    _ => None,
+                };
+                if let Some(source) = source {
+                    return format!("{source} dealt {count} or more damage this turn");
+                }
             }
             // "If those creatures have total power 8 or greater" (Ultra
             // Magnus): the aggregate ranges over a set tagged by an earlier

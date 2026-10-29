@@ -1677,6 +1677,10 @@ impl StaticAbilityKind for CantBeBlockedByMoreThan {
         } else {
             "creatures"
         };
+        // Oracle spells a single blocker as a word: "more than one creature".
+        if self.max_blockers == 1 && ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "Can't be blocked by more than one creature".to_string();
+        }
         format!(
             "Can't be blocked by more than {} {}",
             self.max_blockers, noun
@@ -1878,7 +1882,9 @@ impl StaticAbilityKind for AttachedGoadedBySourceController {
 
     fn display(&self) -> String {
         if ironsmith_core::semantic_audit::semantic_audit_active() {
-            return "The creature this is attached to is goaded by this permanent's controller".to_string();
+            // Goad by an attached permanent is always by its controller
+            // (CR 701.15a), the printed "Enchanted creature is goaded".
+            return "The permanent this is attached to is goaded".to_string();
         }
         self.display.clone()
     }
@@ -3624,10 +3630,19 @@ impl StaticAbilityKind for ConditionalAttackRequirement {
         StaticAbilityId::ConditionalAttackRequirement
     }
     fn display(&self) -> String {
+        let mut required = self.required.description();
+        // The requirement binds every matching creature (CR 508.1d): "all
+        // creatures you control attack if able" (Viashino Bey).
+        if ironsmith_core::semantic_audit::semantic_audit_active()
+            && let Some(rest) = required.strip_prefix("a creature")
+            && (rest.is_empty() || rest.starts_with(" you control") || rest.starts_with(" an opponent controls"))
+        {
+            required = format!("all creatures{rest}");
+        }
         format!(
             "If {} attacks, {} attack if able",
             self.trigger.description(),
-            self.required.description()
+            required
         )
     }
     fn conditional_attack_requirement(

@@ -2851,7 +2851,9 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                         .unwrap_or_default();
                 format!("{cost_prefix}Turn this face-down permanent face up.")
             }
-            crate::special_actions::SpecialAction::Suspend { .. } => "Suspend".to_string(),
+            crate::special_actions::SpecialAction::Suspend { card_id } => {
+                crate::special_actions::suspend_action_keyword(game, *card_id)
+            }
             crate::special_actions::SpecialAction::Foretell { .. } => "Foretell".to_string(),
             crate::special_actions::SpecialAction::Plot { .. } => "Plot".to_string(),
             crate::special_actions::SpecialAction::ActivateManaAbility { .. } => {

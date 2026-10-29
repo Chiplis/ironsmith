@@ -10538,8 +10538,13 @@ pub(super) fn describe_ninjutsu_activation(
     ability: &Ability,
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<String> {
+    // CR 702.49d: commander ninjutsu also works from the command zone.
+    let commander = matches!(
+        ability.functional_zones.as_slice(),
+        [Zone::Hand, Zone::Command] | [Zone::Command, Zone::Hand]
+    );
     if activated.keyword != Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu)
-        || ability.functional_zones != [Zone::Hand]
+        || (ability.functional_zones != [Zone::Hand] && !commander)
         || !activated.choices.is_empty()
         || !matches!(activated.timing, ActivationTiming::DuringCombat)
         || !activated.additional_restrictions.is_empty()
@@ -10581,7 +10586,8 @@ pub(super) fn describe_ninjutsu_activation(
         return None;
     }
 
-    Some(format!("Ninjutsu {}", mana_cost?.to_oracle()))
+    let keyword = if commander { "Commander ninjutsu" } else { "Ninjutsu" };
+    Some(format!("{keyword} {}", mana_cost?.to_oracle()))
 }
 
 pub(crate) fn level_range_activation_prefix(

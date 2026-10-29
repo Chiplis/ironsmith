@@ -1,4 +1,4 @@
-import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions } from "@/lib/custom-card-library";
+import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
 import { registerCustomCardFlavor } from "@/lib/custom-card-flavor";
 import { setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
 import { setCardPresentation, snapshotStableIds } from "@/lib/card-glint/printing-choices.mjs";
@@ -197,8 +197,9 @@ export default function AddCardSheet({
       }
       try {
         if (custom) {
+          const prepared = await prepareCustomDraftForCreation(custom.draft, input => game.previewCustomCard(input));
           const existing = snapshotStableIds(state);
-          const objectId = await game.createCustomCard({ draft: custom.draft, playerIndex: selectedPlayer, zoneName: zone, skipTriggers });
+          const objectId = await game.createCustomCard({ draft: prepared.input, playerIndex: selectedPlayer, zoneName: zone, skipTriggers });
           if (custom.draft.presentation) {
             const names = custom.draft.faces.map(face => face.name);
             setCardPresentation(objectId, [names.join(" // "), ...names], custom.draft.presentation, { existing });

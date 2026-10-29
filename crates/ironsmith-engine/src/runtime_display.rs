@@ -735,8 +735,23 @@ pub fn describe_aggregate_filter_value_subject(filter: &ObjectFilter) -> String 
 pub fn describe_death_history_subject(
     subject: &str,
     controller: Option<&PlayerFilter>,
-    _controller_surface: ironsmith_core::DeathHistoryControllerSurface,
+    controller_surface: ironsmith_core::DeathHistoryControllerSurface,
 ) -> String {
+    // "creature that died under your control this turn" / "creature you
+    // controlled that died this turn", in the order the card was compiled.
+    let named = match controller {
+        Some(PlayerFilter::You) => Some(("you", "your")),
+        Some(PlayerFilter::Opponent) => Some(("an opponent", "an opponent's")),
+        _ => None,
+    };
+    if let Some((who, whose)) = named {
+        return match controller_surface {
+            ironsmith_core::DeathHistoryControllerSurface::ControlledThenDied => {
+                format!("{subject} {who} controlled that died this turn")
+            }
+            _ => format!("{subject} that died under {whose} control this turn"),
+        };
+    }
     controller.map_or_else(
         || format!("{subject} that died this turn"),
         |controller| format!("{subject} ({controller:?}) that died this turn"),

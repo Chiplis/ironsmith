@@ -151,7 +151,8 @@ pub(crate) fn choose_mana_colors(
         ManaColorsSpec::different_colors(ctx.source, count)
     } else {
         ManaColorsSpec::any_color(ctx.source, prompt_count, same_color)
-    };
+    }
+    .with_mana_amount(count);
 
     let mut chosen = make_decision(
         game,

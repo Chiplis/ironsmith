@@ -62,7 +62,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
-import { createPregameFollower, emptyPregameAction, hotseatFollowTarget, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
+import { createPregameFollower, emptyPregameAction, hotseatFollowTarget, isAutomatedSeat, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
 import { forcedObjectSelectionCommand, localForcedObjectSelectionCommand } from "@/lib/forced-object-selection";
 
 import { GameContext } from "./GameContext.shared";
@@ -866,6 +866,21 @@ export function GameProvider({ children }) {
     setFollowActivePlayerRaw(enabled);
     storeFollowActivePlayer(enabled);
   }, []);
+  // Goldfished seats in local games: their decisions are answered
+  // automatically and the hotseat view never hands the table to them.
+  const [automatedSeats, setAutomatedSeats] = useState(() => new Set());
+  const automatedSeatsRef = useRef(automatedSeats);
+  const toggleAutomatedSeat = useCallback((player) => {
+    const seat = Number(player);
+    if (!Number.isInteger(seat)) return;
+    setAutomatedSeats(current => {
+      const next = new Set(current);
+      if (next.has(seat)) next.delete(seat);
+      else next.add(seat);
+      automatedSeatsRef.current = next;
+      return next;
+    });
+  }, []);
   // Bumped whenever hotseat automation hands the table to another seat; the
   // handoff banner keys its animation on `seq`.
   const [perspectiveHandoff, setPerspectiveHandoff] = useState(null);
@@ -1091,7 +1106,7 @@ export function GameProvider({ children }) {
   const opponentHoldReason = useCallback(
     (decision, currentState) => (
       priorityStops.observe(currentState),
-      priorityHoldReason({
+      isAutomatedSeat(automatedSeatsRef.current, decision?.player) ? null : priorityHoldReason({
         autoPassEnabled,
         holdRule,
         decision,
@@ -1103,8 +1118,8 @@ export function GameProvider({ children }) {
   );
 
   const localTurnHoldReason = useCallback(
-    (decision, currentState) => (
-      priorityStops.stopReason(currentState) || priorityHoldReason({
+    (decision, currentState, canAct) => (
+      priorityStops.stopReason(currentState, canAct) || priorityHoldReason({
         autoPassEnabled,
         holdRule,
         decision,
@@ -1118,8 +1133,8 @@ export function GameProvider({ children }) {
   );
 
   const localOffTurnHoldReason = useCallback(
-    (decision, currentState) => (
-      priorityStops.stopReason(currentState) || priorityHoldReason({
+    (decision, currentState, canAct) => (
+      priorityStops.stopReason(currentState, canAct) || priorityHoldReason({
         autoPassEnabled,
         holdRule,
         decision,
@@ -1130,6 +1145,19 @@ export function GameProvider({ children }) {
     ),
     [autoPassEnabled, holdRule, priorityStops]
   );
+
+  // Automation snapshots skip the presentation menu, so an "I can act" stop
+  // asks the engine directly. Null keeps the stop until the analysis finishes.
+  const resolveStopCanAct = useCallback(async (currentGame, currentState) => {
+    const known = currentState?.decision?.can_act ?? null;
+    if (known != null || !priorityStops.awaitsCanAct(currentState, known)
+        || typeof currentGame?.getPriorityCanAct !== "function") return known;
+    try {
+      return await currentGame.getPriorityCanAct();
+    } catch {
+      return null;
+    }
+  }, [priorityStops]);
 
   const settleLocalStackPriority = useCallback(
     async (currentGame, currentState) => {
@@ -1154,7 +1182,7 @@ export function GameProvider({ children }) {
           break;
         }
 
-        holdReason = localTurnHoldReason(st.decision, st);
+        holdReason = localTurnHoldReason(st.decision, st, await resolveStopCanAct(currentGame, st));
         if (holdReason) break;
 
         const externalReason = externalAutoPassGateRef.current
@@ -1197,7 +1225,7 @@ export function GameProvider({ children }) {
 
       return { state: st, autoPasses, holdReason, trace };
     },
-    [autoPassEnabled, localTurnHoldReason]
+    [autoPassEnabled, localTurnHoldReason, resolveStopCanAct]
   );
 
   const settleOpponentPriority = useCallback(
@@ -1250,7 +1278,7 @@ export function GameProvider({ children }) {
             continue;
           }
           const followTarget = typeof currentGame.setPerspective === "function"
-            ? pregameTarget ?? (autoPassEnabled && followActivePlayerRef.current ? hotseatFollowTarget(st) : null)
+            ? pregameTarget ?? (autoPassEnabled && followActivePlayerRef.current ? hotseatFollowTarget(st, automatedSeatsRef.current) : null)
             : null;
           if (followTarget !== null && perspectiveSwitches < playerCount * 4) {
             const decisionBefore = summarizeDecision(st.decision);
@@ -1308,7 +1336,7 @@ export function GameProvider({ children }) {
               continue;
             }
             holdReason = isLocalOffTurnPriority
-              ? localOffTurnHoldReason(st.decision, st)
+              ? localOffTurnHoldReason(st.decision, st, await resolveStopCanAct(currentGame, st))
               : opponentHoldReason(st.decision, st);
             if (holdReason) break;
             if (passAction.label && passAction.label !== "Pass priority") {
@@ -1417,7 +1445,7 @@ export function GameProvider({ children }) {
 
       return { state: st, autoPasses, autoDeclares, phaseAdvances, holdReason, trace };
     },
-    [autoPassEnabled, localOffTurnHoldReason, opponentHoldReason]
+    [autoPassEnabled, localOffTurnHoldReason, opponentHoldReason, resolveStopCanAct]
   );
 
   const settlePriorityAutomation = useCallback(
@@ -1913,7 +1941,7 @@ export function GameProvider({ children }) {
     const currentState = state;
     const emptyBlockers = autoPassEnabled && holdRule !== "always"
       && samePlayerId(currentState?.decision?.player, currentState?.perspective)
-      && currentState?.decision?.kind === "blockers"
+      && ["blockers", "attackers"].includes(currentState?.decision?.kind)
       ? tryBuildAutoResolveCommand(currentState.decision)?.cmd : null;
     const forcedObjects = holdRule === "always" ? null : (emptyBlockers || localForcedObjectSelectionCommand(currentState));
     if (!forcedObjects && (priorityStops.stopReason(currentState)
@@ -2479,7 +2507,9 @@ export function GameProvider({ children }) {
       setStatus(`Change player failed: ${error}`, true);
     }
   }), [game, runWasmInteraction, stopResolveAll, priorityStops, finalizeState, setStatus, stateRef]);
-  const startResolveAll = useCallback(() => {
+  // continueThroughOwn (double-click Pay): keep resolving through items this
+  // seat adds while the stack resolves; only an opponent's addition pauses.
+  const startResolveAll = useCallback(({ continueThroughOwn = false } = {}) => {
     const current = stateRef.current;
     const stackSize = Number(current?.stack_size || 0);
     if (stackSize <= 0) return;
@@ -2491,6 +2521,7 @@ export function GameProvider({ children }) {
     resolveAllRef.current = {
       turn: current?.turn_number ?? null,
       stackIds: new Set((current.stack_objects || []).map(entry => String(entry.id))),
+      continueThroughOwn,
       stackSize,
       passes: 0,
       inFlight: false,
@@ -2546,10 +2577,33 @@ export function GameProvider({ children }) {
     }
     if (run.submitted && (run.stopKeys !== JSON.stringify(priorityStopsState.stops)
         || holdRule === "always" || !autoPassEnabled)) run.cancelRequested = true;
+    const additions = (state.stack_objects || []).filter(entry => !run.stackIds.has(String(entry.id)));
+    if (run.continueThroughOwn && !run.phases && additions.length > 0
+      && additions.every(entry => samePlayerId(entry.controller, state.perspective))) {
+      // Our own new items join the run; the engine stopped for them, so resume.
+      for (const entry of additions) run.stackIds.add(String(entry.id));
+      if (run.submitted && !(state.pass_intents || []).includes(Number(state.perspective))
+        && state.decision?.kind === "priority" && samePlayerId(state.decision.player, state.perspective)) {
+        run.submitted = false;
+        run.dispatchedFrom = null;
+      }
+    }
     if (run.submitted && !(state.pass_intents || []).includes(Number(state.perspective))) {
-      priorityStops.holdCurrentPriority(state);
-      stopResolveAll();
-      return;
+      // The engine stops at every "I can act" step; only this client knows
+      // whether its seat can act there, so it resumes the advance when not.
+      const canActStop = run.phases && !run.ignoreStops && !run.cancelRequested
+        && state.decision?.kind === "priority" && samePlayerId(state.decision.player, state.perspective)
+        && Number(state.stack_size || 0) === 0 && !priorityStops.stopReason(state, false);
+      const canAct = state.decision?.can_act ?? null;
+      if (canActStop && canAct == null) return;
+      if (canActStop && canAct === false) {
+        run.submitted = false;
+        run.dispatchedFrom = null;
+      } else {
+        priorityStops.holdCurrentPriority(state);
+        stopResolveAll();
+        return;
+      }
     }
     if (run.cancelRequested) {
       if (!run.submitted) { stopResolveAll(); return; }
@@ -3214,10 +3268,39 @@ export function GameProvider({ children }) {
   ]);
 
   const { recordResolveStack } = loopShortcut;
-  const userStartResolveAll = useCallback(() => {
+  const userStartResolveAll = useCallback((options) => {
     recordResolveStack();
-    startResolveAll();
+    startResolveAll(options);
   }, [recordResolveStack, startResolveAll]);
+
+  // Double-clicking Pay asks to resolve the paid spell or ability once it is
+  // on the stack. A cancelled payment returns without a new stack entry.
+  const resolveAfterPaymentRef = useRef(null);
+  const [resolveAfterPaymentTick, setResolveAfterPaymentTick] = useState(0);
+  const requestResolveAfterPayment = useCallback(sourceId => {
+    const current = stateRef.current;
+    resolveAfterPaymentRef.current = {
+      sourceId: sourceId == null ? null : String(sourceId),
+      turn: current?.turn_number ?? null,
+      stackIds: new Set((current?.stack_objects || []).map(entry => String(entry.id))),
+    };
+    setResolveAfterPaymentTick(tick => tick + 1);
+  }, [stateRef]);
+  useEffect(() => {
+    const request = resolveAfterPaymentRef.current;
+    if (!request || !state) return;
+    if (state.game_over || state.turn_number !== request.turn) { resolveAfterPaymentRef.current = null; return; }
+    if (state.mana_payment || state.decision?.kind !== "priority"
+      || !samePlayerId(state.decision.player, state.perspective)) return;
+    resolveAfterPaymentRef.current = null;
+    const top = (state.stack_objects || [])[0];
+    const paidSource = entry => request.sourceId != null
+      && [entry?.id, entry?.inspect_object_id].some(id => id != null && String(id) === request.sourceId);
+    const landed = (state.stack_objects || []).some(paidSource)
+      || (top && !request.stackIds.has(String(top.id)) && samePlayerId(top.controller, state.perspective));
+    // Cast triggers are already on the stack here, so they resolve with it.
+    if (landed) userStartResolveAll({ continueThroughOwn: true });
+  }, [state, resolveAfterPaymentTick, userStartResolveAll]);
 
   const value = useMemo(
     () => ({
@@ -3296,8 +3379,11 @@ export function GameProvider({ children }) {
       setExternalAutoPassGate,
       followActivePlayer,
       setFollowActivePlayer,
+      automatedSeats,
+      toggleAutomatedSeat,
       perspectiveHandoff,
       startResolveAll: userStartResolveAll,
+      requestResolveAfterPayment,
       phasePassing,
       togglePhasePassing,
       startPhaseAdvance,
@@ -3338,9 +3424,12 @@ export function GameProvider({ children }) {
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
       followActivePlayer,
+      automatedSeats,
+      toggleAutomatedSeat,
       setFollowActivePlayer,
       perspectiveHandoff,
       userStartResolveAll,
+      requestResolveAfterPayment,
       phasePassing,
       togglePhasePassing,
       startPhaseAdvance,

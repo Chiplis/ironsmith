@@ -77,7 +77,7 @@ pub fn parse_self_zone_alternative_cost(
             &kind.split(' ').chain(["counters"]).collect::<Vec<_>>()) {
         let price = crate::grammar::values::parse_mana_cost_tokens(&lex_line(price, 0)?)?;
         return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-            "Parsed timed exile", crate::zone::Zone::Exile, ironsmith_core::TotalCost::free(), None, false,
+            ironsmith_core::definition_model::GENERIC_TIMED_EXILE_NAME, crate::zone::Zone::Exile, ironsmith_core::TotalCost::free(), None, false,
         ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
             timed_exile: Some((ironsmith_core::SuspendTime::Fixed(time), price)),
             timed_exile_counter: (counter != ironsmith_core::CounterType::Time).then_some(counter),

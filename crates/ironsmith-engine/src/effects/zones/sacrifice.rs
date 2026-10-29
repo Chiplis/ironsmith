@@ -594,6 +594,17 @@ impl EffectExecutor for SacrificeEffect {
                 };
                 format!("Sacrifice {article} {description}")
             }
+        } else if ironsmith_core::semantic_audit::semantic_audit_active()
+            && !description.contains(' ')
+            && (2..=10).contains(&count)
+        {
+            // "Sacrifice two permanents" (Ulamog, the Defiler's ward cost).
+            let word = ["two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+                [(count - 2) as usize];
+            format!(
+                "Sacrifice {word} {}",
+                crate::runtime_display::pluralize_noun_phrase_for_trigger(&description)
+            )
         } else {
             format!("Sacrifice {} {}", count, description)
         })

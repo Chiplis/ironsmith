@@ -22,7 +22,7 @@ test('per-player tracks, full control, public choices and double-click hand play
     await stop(0, 'Main').waitFor();
     assert.equal(await page.locator('.phase-track--shared:not(.phase-track--combat) .phase-track-step-label').count(), 8, 'duels share one set of phase labels');
     for (const player of [0, 1]) {
-      for (const phase of ['Main', 'Main2']) assert.equal(await stop(player, phase).getAttribute('data-stop'), 'always');
+      for (const phase of ['Main', 'Main2']) assert.equal(await stop(player, phase).getAttribute('data-stop'), 'always', 'main phases stop every time by default');
     }
     assert.equal(await stop(0, 'Main').locator('..').getAttribute('data-active-turn'), 'true');
     assert.equal(await stop(1, 'Main').locator('..').getAttribute('data-has-priority'), 'true');
@@ -31,7 +31,7 @@ test('per-player tracks, full control, public choices and double-click hand play
     await stop(0, 'Main').click();
     assert.equal(await stop(0, 'Main').getAttribute('data-stop'), 'off');
     assert.equal(await stop(1, 'Main').getAttribute('data-stop'), 'always');
-    for (const mode of ['once', 'always', 'off']) {
+    for (const mode of ['always', 'off', 'can_act']) {
       await stop(1, 'Upkeep').click();
       assert.equal(await stop(1, 'Upkeep').getAttribute('data-stop'), mode);
     }

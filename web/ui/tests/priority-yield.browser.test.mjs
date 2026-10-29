@@ -43,7 +43,7 @@ test('provider sends one intention, waits for peers, and cancels phase passing o
   try {
     const page=await browser.newPage();
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
-    await page.addInitScript(()=>localStorage.setItem('ironsmith.priorityStops','["phase:Main2"]'));
+    await page.addInitScript(()=>localStorage.setItem('ironsmith.priorityStops',JSON.stringify({version:3,stops:{'phase:Main2':'always','phase:Upkeep':'off'}})));
     const load=async state=>{
       await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/yield.html`);
       await page.waitForFunction(()=>window.context&&window.publish);
@@ -54,11 +54,25 @@ test('provider sends one intention, waits for peers, and cancels phase passing o
     await page.getByRole('button',{name:'Resolve all',exact:true}).click();
     await page.waitForFunction(()=>window.submissions.length===1);
     await page.waitForTimeout(250);
-    assert.deepEqual(await page.evaluate(()=>window.submissions),[{type:'priority_yield',mode:'stack',stops:['phase:Main2']}]);
+    assert.deepEqual(await page.evaluate(()=>window.submissions),[{type:'priority_yield',mode:'stack',stops:['phase:Draw','phase:Main','phase:Combat','phase:Main2','phase:End','phase:Cleanup',
+      'step:BeginCombat','step:DeclareAttackers','step:DeclareBlockers','step:FirstStrikeDamage','step:CombatDamage','step:EndCombat']}]);
     await page.evaluate(()=>window.publish({...window.currentState,snapshot_id:3,pass_intents:[],stack_objects:[{id:999,controller:0}],stack_size:1,
       priority_player:0,decision:{...window.currentState.decision,player:0}}));
     await page.waitForTimeout(250);
     assert.equal(await page.evaluate(()=>window.submissions.length),1,'a new trigger does not restart the run');
+
+    // Double-click Pay: this seat's own additions join the run; an opponent's pauses it.
+    await load(priority(20,{stack_size:1,stack_objects:[{id:5,controller:0}]}));
+    await page.evaluate(()=>window.context.startResolveAll({continueThroughOwn:true}));
+    await page.waitForFunction(()=>window.submissions.length===1);
+    const back=(id,stack)=>page.evaluate(([id,stack])=>window.publish({...window.currentState,snapshot_id:id,pass_intents:[],
+      stack_objects:stack,stack_size:stack.length,priority_player:0,decision:{...window.currentState.decision,player:0}}),[id,stack]);
+    await back(30,[{id:6,controller:0},{id:5,controller:0}]);
+    await page.waitForFunction(()=>window.submissions.length===2);
+    assert.equal(await page.evaluate(()=>window.submissions[1].type),'priority_yield','own trigger resumes the run');
+    await back(40,[{id:7,controller:1},{id:6,controller:0},{id:5,controller:0}]);
+    await page.waitForTimeout(250);
+    assert.equal(await page.evaluate(()=>window.submissions.length),2,"an opponent's response pauses it");
 
     await load(priority(10));
     await page.getByRole('button',{name:'Advance',exact:true}).click();

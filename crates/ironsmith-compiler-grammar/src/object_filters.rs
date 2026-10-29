@@ -741,6 +741,90 @@ fn parse_subtype_or_colored_permanent_disjunction(
     (has_subtype_arm && has_colored_permanent_arm).then_some(union)
 }
 
+/// Preserve a color-or-card-type selector as a real disjunction.
+///
+/// In `a black or artifact creature` or `a red or artifact source you
+/// control`, the color and the card-type adjective are the two alternatives
+/// and the terminal noun (with its controller/zone tail) is shared. The
+/// characteristic grammar would otherwise fold the color onto the filter and
+/// read `or` as joining the two card-type words (`black artifact or
+/// creature`). Claim only `[article] <color> or <card type> <noun> ...` with a
+/// single `or`; color-or-color and type-or-type lists keep their established
+/// representation.
+fn parse_color_or_card_type_disjunction(
+    tokens: &[OwnedLexToken],
+    other: bool,
+    parse_rest: fn(&[OwnedLexToken], bool) -> Result<ObjectFilter, CardTextError>,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if tokens.iter().filter(|token| token.is_word("or")).count() != 1 {
+        return Ok(None);
+    }
+    let Some(or_idx) = tokens.iter().position(|token| token.is_word("or")) else {
+        return Ok(None);
+    };
+    if or_idx == 0 {
+        return Ok(None);
+    }
+    let color_idx = or_idx - 1;
+    let type_idx = or_idx + 1;
+    let (Some(color), Some(card_type)) = (
+        tokens[color_idx].as_word().and_then(super::util::parse_color),
+        tokens.get(type_idx).and_then(OwnedLexToken::as_word).and_then(parse_card_type),
+    ) else {
+        return Ok(None);
+    };
+    // A bare `red or artifact` is the descriptor before a separately parsed
+    // head noun (`a red or artifact source you control`), so the alternatives
+    // carry no shared selector of their own.
+    let noun = tokens.get(type_idx + 1).map(OwnedLexToken::as_word);
+    let noun_is_object = match noun {
+        None => true,
+        Some(None) => false,
+        Some(Some(noun)) => parse_card_type(noun).is_some()
+        || matches!(
+            noun,
+            "permanent"
+                | "permanents"
+                | "source"
+                | "sources"
+                | "card"
+                | "cards"
+                | "spell"
+                | "spells"
+        ),
+    };
+    // Only an optional article may precede the color alternative.
+    let prefix_is_article = tokens[..color_idx]
+        .iter()
+        .all(|token| token.as_word().is_some_and(|word| matches!(word, "a" | "an")));
+    if !noun_is_object || !prefix_is_article {
+        return Ok(None);
+    }
+
+    let mut filter = if noun.is_none() {
+        ObjectFilter {
+            other,
+            ..ObjectFilter::default()
+        }
+    } else {
+        let mut rest = tokens[..color_idx].to_vec();
+        rest.extend_from_slice(&tokens[type_idx + 1..]);
+        parse_rest(&rest, other)?
+    };
+    if !filter.any_of.is_empty() || filter.colors.is_some() {
+        return Ok(None);
+    }
+    filter.any_of = vec![
+        ObjectFilter {
+            colors: Some(color),
+            ..ObjectFilter::default()
+        },
+        ObjectFilter::default().with_type(card_type),
+    ];
+    filter.set_union_connective(ObjectFilterUnionConnective::Or);
+    Ok(Some(filter))
+}
+
 pub(super) fn slice_has<T: PartialEq>(items: &[T], expected: &T) -> bool {
     crate::slice_primitives::contains(items, expected)
 }
@@ -3994,6 +4078,53 @@ mod tests {
                 "{text}: {filter:#?}"
             );
         }
+    }
+
+    #[test]
+    fn color_or_card_type_selector_is_a_disjunction_over_the_shared_noun() {
+        for (text, color, card_type, noun) in [
+            (
+                "a black or artifact creature",
+                ColorSet::BLACK,
+                CardType::Artifact,
+                Some(CardType::Creature),
+            ),
+            ("a blue or artifact spell", ColorSet::BLUE, CardType::Artifact, None),
+            ("a blue or artifact card", ColorSet::BLUE, CardType::Artifact, None),
+            ("red or artifact", ColorSet::RED, CardType::Artifact, None),
+        ] {
+            let tokens = tokenize_line(text, 0);
+            let filter = parse_object_filter_lexed(&tokens, false)
+                .expect("color-or-type selector should parse");
+
+            assert!(filter.colors.is_none(), "{text}: {filter:#?}");
+            assert_eq!(
+                filter.card_types,
+                noun.into_iter().collect::<Vec<_>>(),
+                "{text}: {filter:#?}"
+            );
+            assert_eq!(
+                filter.any_of,
+                vec![
+                    ObjectFilter {
+                        colors: Some(color),
+                        ..ObjectFilter::default()
+                    },
+                    ObjectFilter::default().with_type(card_type),
+                ],
+                "{text}: {filter:#?}"
+            );
+        }
+
+        // Color-or-color and type-or-type lists keep their representation.
+        let filter =
+            parse_object_filter_lexed(&tokenize_line("white or blue creature", 0), false).unwrap();
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(filter.colors, Some(ColorSet::WHITE.union(ColorSet::BLUE)));
+        let filter =
+            parse_object_filter_lexed(&tokenize_line("artifact or creature", 0), false).unwrap();
+        assert!(filter.colors.is_none(), "{filter:#?}");
+        assert_eq!(filter.card_types, [CardType::Artifact, CardType::Creature]);
     }
 
     #[test]

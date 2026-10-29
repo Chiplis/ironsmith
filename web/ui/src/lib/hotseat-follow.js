@@ -58,10 +58,14 @@ export function createPregameFollower() {
 // table to the next player) and any non-priority choice of another seat, such
 // as declaring blockers. The non-active player's plain priority passes stay
 // automatic, otherwise every step would bounce the view between seats.
-export function hotseatFollowTarget(state) {
+// Goldfished seats (`automated`) answer for themselves, and a blocker
+// declaration with no legal blocker has no choice to hand over.
+export function hotseatFollowTarget(state, automated = null) {
   const decision = state?.decision;
   if (!decision || state.game_over || decision.player == null) return null;
   if (samePlayerId(decision.player, state.perspective)) return null;
+  if (isAutomatedSeat(automated, decision.player)) return null;
+  if (decision.kind === "blockers" && hasNoLegalBlockers(decision)) return null;
   if (decision.kind === "priority") {
     if (!samePlayerId(decision.player, state.active_player) || isPregameDecision(decision)) return null;
   } else if (decision.kind === "mana_payment") {
@@ -69,4 +73,13 @@ export function hotseatFollowTarget(state) {
   }
   const player = Number(decision.player);
   return Number.isInteger(player) && player >= 0 ? player : null;
+}
+
+export function isAutomatedSeat(automated, player) {
+  return Boolean(automated && player != null && [...automated].some(seat => samePlayerId(seat, player)));
+}
+
+export function hasNoLegalBlockers(decision) {
+  return Array.isArray(decision?.blocker_options)
+    && decision.blocker_options.every(option => Array.isArray(option.valid_blockers) && option.valid_blockers.length === 0);
 }
