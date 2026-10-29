@@ -501,7 +501,7 @@ fn parse_simple_object_filter_words_with_list_marker(
 
     let parsed_suffix = parse_simple_object_filter_suffix(&words);
     if let Some((_suffix, suffix_len)) = parsed_suffix.as_ref() {
-        words.truncate(words.len().saturating_sub(*suffix_len));
+        crate::word_claims::claim_drained(words.drain((words.len().saturating_sub(*suffix_len)).min(words.len())..));
     }
     if contains_simple_filter_reject(&words) {
         return None;

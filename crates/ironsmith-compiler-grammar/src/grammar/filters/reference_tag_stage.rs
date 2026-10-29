@@ -951,9 +951,9 @@ fn try_apply_shared_characteristic_relation_clause(
         .and_then(|candidate| token_boundary_for_non_article_word(segment_tokens, candidate.start));
 
     filter.characteristic_relations.push(relation);
-    all_words.truncate(clause.start);
+    crate::word_claims::claim_drained(all_words.drain((clause.start).min(all_words.len())..));
     if let Some(token_boundary) = token_boundary {
-        segment_tokens.truncate(token_boundary);
+        crate::word_claims::claim_drained(segment_tokens.drain((token_boundary).min(segment_tokens.len())..));
     }
     Ok(true)
 }
@@ -985,8 +985,8 @@ fn try_apply_directional_source_block_clause(
     };
     filter.blocked_by_source |= current_blocked_by_source;
     filter.blocked_source_this_turn |= blocked_source_this_turn;
-    all_words.truncate(clause_start);
-    segment_tokens.truncate(token_start);
+    crate::word_claims::claim_drained(all_words.drain((clause_start).min(all_words.len())..));
+    crate::word_claims::claim_drained(segment_tokens.drain((token_start).min(segment_tokens.len())..));
     true
 }
 
@@ -1008,9 +1008,9 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
             ObjectFilter { attacked_this_turn: true, any_of: previous.clone(), ..Default::default() },
             ObjectFilter { blocked_this_turn: true, any_of: previous, ..Default::default() },
         ];
-        all_words.truncate(clause_start);
+        crate::word_claims::claim_drained(all_words.drain((clause_start).min(all_words.len())..));
         if let Some(start) = token_boundary_for_non_article_word(segment_tokens, clause_start) {
-            segment_tokens.truncate(start);
+            crate::word_claims::claim_drained(segment_tokens.drain((start).min(segment_tokens.len())..));
         }
         return Ok(true);
     }
@@ -1048,9 +1048,9 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
         filter.blocked_or_was_blocked_by_this_turn =
             Some(Box::new(parse_object_filter(&partner, false)?));
     }
-    all_words.truncate(clause_start);
+    crate::word_claims::claim_drained(all_words.drain((clause_start).min(all_words.len())..));
     if let Some(start) = token_boundary_for_non_article_word(segment_tokens, clause_start) {
-        segment_tokens.truncate(start);
+        crate::word_claims::claim_drained(segment_tokens.drain((start).min(segment_tokens.len())..));
     }
     Ok(true)
 }

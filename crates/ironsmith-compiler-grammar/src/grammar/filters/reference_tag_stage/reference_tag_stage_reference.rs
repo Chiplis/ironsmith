@@ -324,7 +324,7 @@ fn parse_object_filter_inner_unchecked(
     if let Some(until_token_idx) = token_index_for_word(&base_tokens, UNTIL_WORD)
         && until_token_idx > 0
     {
-        base_tokens.truncate(until_token_idx);
+        crate::word_claims::claim_drained(base_tokens.drain((until_token_idx).min(base_tokens.len())..));
     }
 
     let not_on_battlefield = strip_not_on_battlefield_phrase(&mut base_tokens);
@@ -405,7 +405,7 @@ fn parse_object_filter_inner_unchecked(
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
             // This trailing relation owns the complete reference phrase.
-            base_tokens.truncate(index);
+            crate::word_claims::claim_drained(base_tokens.drain((index).min(base_tokens.len())..));
             break;
         }
     }
@@ -600,7 +600,7 @@ fn parse_object_filter_inner_unchecked(
             push_unique(&mut filter.excluded_supertypes, supertype);
         }
         filter.excluded_colors = filter.excluded_colors.union(excluded_colors);
-        base_tokens.truncate(idx);
+        crate::word_claims::claim_drained(base_tokens.drain((idx).min(base_tokens.len())..));
         break;
     }
 
@@ -639,7 +639,7 @@ fn parse_object_filter_inner_unchecked(
         if suffix_len > 0
             && let Some(start) = token_index_after_word_prefix(&base_tokens, len - suffix_len)
         {
-            base_tokens.truncate(start);
+            crate::word_claims::claim_drained(base_tokens.drain((start).min(base_tokens.len())..));
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: crate::tag::CompilerReferenceTag::SourceDevoured.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -964,7 +964,7 @@ fn parse_object_filter_inner_unchecked(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Discarded));
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
     }
 
     let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);

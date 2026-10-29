@@ -1970,7 +1970,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
             if plural_demonstrative {
                 filter.set_plural_object_noun_surface(true);
             }
-            all_words.remove(0);
+            crate::word_claims::claim_drained([all_words.remove(0)]);
             return true;
         }
     }
@@ -1980,7 +1980,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
         .is_some_and(|word| IT_OR_THEM_WORDS.contains(word))
     {
         push_it_tagged_object_constraint(filter);
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
         return true;
     }
 
@@ -2021,7 +2021,7 @@ pub(super) fn try_apply_target_choice_attribution_reference(
         tag: tag.bind().into(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    all_words.truncate(all_words.len() - suffix.len());
+    crate::word_claims::claim_drained(all_words.drain((all_words.len() - suffix.len()).min(all_words.len())..));
     true
 }
 

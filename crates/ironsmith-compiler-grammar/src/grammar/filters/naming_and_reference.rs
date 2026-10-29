@@ -776,7 +776,7 @@ pub(super) fn strip_object_filter_face_state_words(
 pub(super) fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
     while let Some(idx) = find_phrase_start(all_words.as_slice(), SINGLE_GRAVEYARD_PHRASE) {
         filter.single_graveyard = true;
-        all_words.remove(idx);
+        crate::word_claims::claim_drained([all_words.remove(idx)]);
     }
     // "cards from a player's graveyard" (articles and apostrophes are already
     // stripped here): one unspecified player's graveyard, so every chosen card
@@ -938,7 +938,7 @@ pub(super) fn try_apply_pt_literal_prefix(
     };
     filter.power = Some(crate::filter::Comparison::Equal(power));
     filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
-    all_words.remove(pt_index);
+    crate::word_claims::claim_drained([all_words.remove(pt_index)]);
     true
 }
 
@@ -1204,7 +1204,7 @@ pub(super) fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
         .first()
         .is_some_and(|word| word_is_any(word, OF_OR_FROM_WORDS))
     {
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
     }
 }
 

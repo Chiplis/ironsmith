@@ -428,14 +428,20 @@ impl OwnedLexToken {
         }
     }
 
+    /// Whether this token is the word `expected`. A match reads the word
+    /// (see `word_claims`).
     pub fn is_word(&self, expected: &str) -> bool {
-        matches!(
+        let matched = matches!(
             self.kind,
             TokenKind::Word | TokenKind::Number | TokenKind::Tilde
         ) && self
             .parser_text
             .chars()
-            .eq(expected.chars().map(normalize_parser_char))
+            .eq(expected.chars().map(normalize_parser_char));
+        if matched {
+            crate::word_claims::claim_tokens(std::slice::from_ref(self));
+        }
+        matched
     }
 
     pub fn is_any_word(&self, expected: &[&str]) -> bool {

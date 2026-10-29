@@ -61,7 +61,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             tag: (crate::tag::CompilerReferenceTag::Equipped.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
     } else if all_words
         .first()
         .is_some_and(|word| *word == ENCHANTED_WORD)
@@ -70,14 +70,15 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             tag: (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        all_words.remove(0);    } else if all_words.first().is_some_and(|word| *word == "fortified") {
+        crate::word_claims::claim_drained([all_words.remove(0)]);
+    } else if all_words.first().is_some_and(|word| *word == "fortified") {
         // "Fortified land has indestructible" (CR 301.6): the Fortification's
         // host, exactly as "equipped" names the Equipment's host.
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::Fortified.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
     }
 
     if let Some((source_word_len, surface)) =
@@ -112,7 +113,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             } else {
                 attached_idx
             };
-            all_words.truncate(trim_start);
+            crate::word_claims::claim_drained(all_words.drain((trim_start).min(all_words.len())..));
             filter.attached_to_player = Some(PlayerFilter::TaggedPlayer(
                 (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
             ));
@@ -132,7 +133,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             } else {
                 attached_idx
             };
-            all_words.truncate(trim_start);
+            crate::word_claims::claim_drained(all_words.drain((trim_start).min(all_words.len())..));
             filter.attached_to_player = Some(PlayerFilter::You);
             return ReferenceTagStageResult {
                 source_linked_exile_reference: false,
@@ -181,10 +182,10 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 if let Some(token_start) =
                     segment_words.map_word_or_end_to_token_boundary(segment_trim_start)
                 {
-                    segment_tokens.truncate(token_start);
+                    crate::word_claims::claim_drained(segment_tokens.drain((token_start).min(segment_tokens.len())..));
                 }
             }
-            all_words.truncate(trim_start);
+            crate::word_claims::claim_drained(all_words.drain((trim_start).min(all_words.len())..));
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation,
@@ -194,13 +195,13 @@ pub(in super::super) fn apply_reference_and_tag_stage(
 
     if let Some(relation_idx) = find_blocking_or_blocked_by_source_phrase(all_words) {
         filter.in_combat_with_source = true;
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     if let Some(relation_idx) = find_blocking_source_phrase(all_words) {
         filter.blocking = true;
         filter.in_combat_with_source = true;
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     // "creature that hasn't been phased out with this Attraction" (Ferris
@@ -212,9 +213,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         if let Some(segment_idx) = find_not_phased_out_with_source_phrase(&segment_word_refs)
             && let Some(token_start) = segment_words.map_word_or_end_to_token_boundary(segment_idx)
         {
-            segment_tokens.truncate(token_start);
+            crate::word_claims::claim_drained(segment_tokens.drain((token_start).min(segment_tokens.len())..));
         }
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     // "a Vehicle crewed by this creature this turn" (Balthier and Fran): the
@@ -228,9 +229,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         if let Some(segment_idx) = find_crewed_by_source_this_turn_phrase(&segment_word_refs)
             && let Some(token_start) = segment_words.map_word_or_end_to_token_boundary(segment_idx)
         {
-            segment_tokens.truncate(token_start);
+            crate::word_claims::claim_drained(segment_tokens.drain((token_start).min(segment_tokens.len())..));
         }
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     // "all Merfolk tapped this turn to pay for its abilities" (Vodalian War
@@ -243,9 +244,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         if let Some(segment_idx) = find_tapped_to_pay_for_source_abilities_phrase(&segment_word_refs)
             && let Some(token_start) = segment_words.map_word_or_end_to_token_boundary(segment_idx)
         {
-            segment_tokens.truncate(token_start);
+            crate::word_claims::claim_drained(segment_tokens.drain((token_start).min(segment_tokens.len())..));
         }
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     // "that weren't put there this way" — exclude the objects the previous
@@ -309,7 +310,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         ],
     ) {
         filter.blocked_by_source = true;
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     // "a creature it's paired with" (Donna Noble): the source's soulbond
@@ -328,7 +329,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             tag: (crate::tag::CompilerReferenceTag::SourceObject.bind()).into(),
             relation: TaggedOpbjectRelation::SoulbondPartnerOfTagged,
         });
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     // "creatures banded with it" (Icatian Skirmishers, Urza's Engine): the
@@ -348,7 +349,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             tag: (crate::tag::CompilerReferenceTag::SourceObject.bind()).into(),
             relation: TaggedOpbjectRelation::BandedWithTagged,
         });
-        all_words.truncate(relation_idx);
+        crate::word_claims::claim_drained(all_words.drain((relation_idx).min(all_words.len())..));
     }
 
     let starts_with_exiled_card =
@@ -481,7 +482,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 early_return: true,
             };
         }
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
     }
 
     if words_start_with_any_phrase(all_words, REVEALED_CARD_PREFIXES).is_some() {
@@ -741,7 +742,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        all_words.truncate(became_creature_idx);
+        crate::word_claims::claim_drained(all_words.drain((became_creature_idx).min(all_words.len())..));
     }
     let references_type_chosen_this_way =
         crate::word_primitives::sequence_occurs(all_words, &["type", "chosen", "this", "way"]);
