@@ -351,6 +351,7 @@ fn parse_word_phrase(
     input: &mut primitives::WordSliceInput<'_>,
     phrase: &[&str],
 ) -> Result<(), ErrMode<ContextError>> {
+    let start = *input;
     for expected in phrase {
         let Some((actual, rest)) = input.split_first() else {
             return Err(primitives::backtrack_err(
@@ -366,6 +367,7 @@ fn parse_word_phrase(
         }
         *input = rest;
     }
+    crate::word_claims::claim_words(&start[..start.len() - input.len()]);
     Ok(())
 }
 
@@ -373,6 +375,7 @@ fn word_is_any(word: &str, expected: &[&str]) -> bool {
     let mut idx = 0usize;
     while idx < expected.len() {
         if expected[idx] == word {
+            crate::word_claims::claim_word(word);
             return true;
         }
         idx += 1;
@@ -396,6 +399,7 @@ fn word_index_for_exact(words: &[&str], expected: &str) -> Option<usize> {
     let mut idx = 0usize;
     while idx < words.len() {
         if words[idx] == expected {
+            crate::word_claims::claim_word(words[idx]);
             return Some(idx);
         }
         idx += 1;
@@ -1442,9 +1446,9 @@ pub(super) fn build_spell_filter_power_or_toughness_disjunction(
 
 pub(crate) fn parse_source_number_spell_axes(words: &[&str]) -> Option<ObjectFilter> {
     let mut filter = ObjectFilter::default();
-    if let Some(start) = words.windows(3).position(|window| window == ["with", "mana", "value"]) {
+    if let Some(start) = words.windows(3).position(|window| crate::word_primitives::equals(&window, &["with", "mana", "value"])) {
         let suffix = words[start..].iter().copied().filter(|word| !matches!(*word, "," | "the")).collect::<Vec<_>>();
-        if suffix == ["with", "mana", "value", "power", "or", "toughness", "equal", "to", "chosen", "number"] {
+        if crate::word_primitives::equals(&suffix, &["with", "mana", "value", "power", "or", "toughness", "equal", "to", "chosen", "number"]) {
             apply_spell_filter_word_atoms(&mut filter, &words[..start]);
             let comparison = crate::filter::Comparison::EqualExpr(Box::new(
                 crate::effect::Value::SourceChosenNumber { if_unset: None, pair: None },
@@ -1552,7 +1556,7 @@ fn apply_spell_filter_power_toughness_relation(filter: &mut ObjectFilter, words:
 /// A terminal "cast from <zone> [or [from] <zone>]" constrains the
 /// spell's origin, rather than a nested card mentioned elsewhere in the filter.
 fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]) {
-    let start = if let Some(start) = words.windows(2).rposition(|pair| pair == ["cast", "from"]) {
+    let start = if let Some(start) = words.windows(2).rposition(|pair| crate::word_primitives::equals(&pair, &["cast", "from"])) {
         start + 2
     } else if words.first() == Some(&"from") {
         // Cost-modifier grammar extracts the caster phrase separately.

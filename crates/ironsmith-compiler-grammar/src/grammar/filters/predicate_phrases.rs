@@ -363,6 +363,7 @@ fn word_is_any(word: &str, expected: &[&str]) -> bool {
     let mut idx = 0usize;
     while idx < expected.len() {
         if expected[idx] == word {
+            crate::word_claims::claim_word(word);
             return true;
         }
         idx += 1;
@@ -3928,9 +3929,9 @@ fn parse_active_this_way_discard_predicate(
     // history query and must not inspect an unrelated card in the graveyard.
     let words = crate::lexer::token_word_refs(tokens);
     let mut implicit_result_tokens;
-    let tokens = if words.starts_with(&["you", "discarded"])
-        && !words.ends_with(&["this", "way"])
-        && !words.ends_with(&["this", "turn"])
+    let tokens = if crate::word_primitives::starts_with(&words, &["you", "discarded"])
+        && !crate::word_primitives::ends_with(&words, &["this", "way"])
+        && !crate::word_primitives::ends_with(&words, &["this", "turn"])
     {
         implicit_result_tokens = tokens.to_vec();
         implicit_result_tokens.extend(crate::lexer::synthetic_word_tokens(["this", "way"]));
@@ -5534,7 +5535,7 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
     {
         return Some(predicate);
     }
-    let triggering_roll = words.starts_with(&["you", "rolled"]);
+    let triggering_roll = crate::word_primitives::starts_with(&words, &["you", "rolled"]);
     let (grouped, number) = if let Some(rest) = words
         .strip_prefix(&["any", "of", "those", "results", "was"])
         .or_else(|| words.strip_prefix(&["any", "of", "those", "results", "were"]))

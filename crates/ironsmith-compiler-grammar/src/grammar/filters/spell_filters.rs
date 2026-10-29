@@ -242,7 +242,7 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         return Ok(filter);
     }
     let words = crate::lexer::parser_token_word_refs(tokens);
-    if words == ["spell", "or", "permanent"] || words == ["permanent", "or", "spell"] {
+    if crate::word_primitives::equals(&words, &["spell", "or", "permanent"]) || crate::word_primitives::equals(&words, &["permanent", "or", "spell"]) {
         return Ok(ObjectFilter {
             other,
             any_of: vec![ObjectFilter::spell(), ObjectFilter::permanent()],

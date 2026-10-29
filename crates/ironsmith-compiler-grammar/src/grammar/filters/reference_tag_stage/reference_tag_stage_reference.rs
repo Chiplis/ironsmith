@@ -357,7 +357,7 @@ fn parse_object_filter_inner_unchecked(
         if parse_phrase_whole(&attached_to_words, THAT_PLAYER_ATTACHMENT_TAIL).is_some() {
             filter.attached_to_player =
                 Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
-        } else if attached_to_words == ["you"] {
+        } else if crate::word_primitives::equals(&attached_to_words, &["you"]) {
             // "a Curse attached to you" (Lynde, Cheerful Tormentor): an Aura
             // enchanting the ability's controller, not an object.
             filter.attached_to_player = Some(PlayerFilter::You);
@@ -396,9 +396,9 @@ fn parse_object_filter_inner_unchecked(
     for index in 0..base_tokens.len() {
         let tail = non_article_parser_word_refs(&base_tokens[index..]);
         if tail.len() >= 6
-            && tail[..2] == ["other", "than"]
+            && crate::word_primitives::equals(&tail[..2], &["other", "than"])
             && parse_word_choice(tail[2], OBJECT_REFERENCE_NOUN_WORDS).is_some()
-            && tail[3..6] == ["tapped", "this", "way"]
+            && crate::word_primitives::equals(&tail[3..6], &["tapped", "this", "way"])
         {
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG.into(),
@@ -914,7 +914,7 @@ fn parse_object_filter_inner_unchecked(
             .any(|word| matches!(*word, "was" | "were"))
             && blocked_by_words
                 .windows(5)
-                .any(|window| window == ["blocked", "by", "one", "of", "those"]);
+                .any(|window| crate::word_primitives::equals(&window, &["blocked", "by", "one", "of", "those"]));
         filter.blocked = !historical;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(
             (crate::tag::CompilerReferenceTag::It.bind()).into(),
@@ -1396,16 +1396,21 @@ fn parse_object_filter_inner_unchecked(
             if filter.zone.is_none() {
                 filter.zone = Some(zone);
             }
+            // The zone phrase is read: its preposition and owner words.
+            let mut owner_start = idx;
             if idx > 0 {
                 match all_words[idx - 1] {
                     "your" => {
                         filter.owner = Some(PlayerFilter::You);
+                        owner_start = idx - 1;
                     }
                     "opponent" | "opponents" => {
                         filter.owner = Some(PlayerFilter::Opponent);
+                        owner_start = idx - 1;
                     }
                     "their" => {
                         filter.owner = Some(pronoun_player_filter.clone());
+                        owner_start = idx - 1;
                     }
                     _ => {}
                 }
@@ -1415,19 +1420,29 @@ fn parse_object_filter_inner_unchecked(
                 match owner_pair {
                     ("defending", "player") | ("defending", "players") => {
                         filter.owner = Some(PlayerFilter::Defending);
+                        owner_start = idx - 2;
                     }
                     ("target", "player") | ("target", "players") => {
                         filter.owner = Some(PlayerFilter::target_player());
+                        owner_start = idx - 2;
                     }
                     ("target", "opponent") | ("target", "opponents") => {
                         filter.owner = Some(PlayerFilter::target_opponent());
+                        owner_start = idx - 2;
                     }
                     ("that", "player") | ("that", "players") => {
                         filter.owner = Some(PlayerFilter::IteratedPlayer);
+                        owner_start = idx - 2;
                     }
                     _ => {}
                 }
             }
+            if owner_start > 0
+                && matches!(all_words[owner_start - 1], "from" | "in" | "on" | "into" | "onto")
+            {
+                owner_start -= 1;
+            }
+            crate::word_claims::claim_words(&all_words[owner_start..idx]);
         }
     }
     if referenced_zones.len() > 1 && filter.any_of.is_empty() {
@@ -1443,7 +1458,7 @@ fn parse_object_filter_inner_unchecked(
     // equal to the triggering creature's power plus toughness.
     if let Some(idx) = all_words
         .windows(5)
-        .position(|window| window == ["same", "total", "power", "and", "toughness"])
+        .position(|window| crate::word_primitives::equals(&window, &["same", "total", "power", "and", "toughness"]))
         && idx + 5 == all_words.len()
     {
         let triggering = || {
@@ -3012,7 +3027,7 @@ fn parse_object_filter_inner_unchecked(
             // the attachment tail is admitted once it was captured.
             let attachment_tail = all_words.get(index + 2) == Some(&"attached")
                 && (filter.attached_to_object.is_some() || filter.attached_to_player.is_some());
-            if words == ["you", "control"]
+            if crate::word_primitives::equals(&words, &["you", "control"])
                 && !negated_name_tail
                 && !attachment_tail
                 && let Some(next) = all_words.get(index + 2)

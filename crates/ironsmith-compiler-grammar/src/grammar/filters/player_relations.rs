@@ -1715,15 +1715,15 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
     ] {
         if let Some(start) = crate::word_primitives::parse_sequence_start(all_words, prefix) {
             let rest = &all_words[start + prefix.len()..];
-            let reference_len = if rest.starts_with(&["it", "this", "turn"]) { Some(1) }
-                else if rest.starts_with(&["that", "creature", "this", "turn"])
-                    || rest.starts_with(&["that", "permanent", "this", "turn"]) { Some(2) }
+            let reference_len = if crate::word_primitives::starts_with(&rest, &["it", "this", "turn"]) { Some(1) }
+                else if crate::word_primitives::starts_with(&rest, &["that", "creature", "this", "turn"])
+                    || crate::word_primitives::starts_with(&rest, &["that", "permanent", "this", "turn"]) { Some(2) }
                 else { None };
             // "that dealt damage to this creature this turn" (Giant
             // Albatross): the recipient is the source itself, including its
             // last-known incarnation once it has left the battlefield.
-            let source_reference = rest.starts_with(&["this", "creature", "this", "turn"])
-                || rest.starts_with(&["this", "permanent", "this", "turn"]);
+            let source_reference = crate::word_primitives::starts_with(&rest, &["this", "creature", "this", "turn"])
+                || crate::word_primitives::starts_with(&rest, &["this", "permanent", "this", "turn"]);
             if let Some(reference_len) = reference_len.or(source_reference.then_some(2)) {
                 let end = start + prefix.len() + reference_len + 2;
                 let phrase = all_words[start..end].to_vec();
@@ -1747,9 +1747,9 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
                 // any player is a damage recipient, though "a player" is not
                 // an owner/controller relation subject.
                 let rest = &all_words[start + prefix.len()..];
-                if rest.starts_with(&["a", "player"]) || rest.starts_with(&["any", "player"]) {
+                if crate::word_primitives::starts_with(&rest, &["a", "player"]) || crate::word_primitives::starts_with(&rest, &["any", "player"]) {
                     Some((PlayerFilter::Any, 2))
-                } else if rest.starts_with(&["player", "this", "turn"]) {
+                } else if crate::word_primitives::starts_with(&rest, &["player", "this", "turn"]) {
                     // The article may already be stripped from the word view.
                     Some((PlayerFilter::Any, 1))
                 } else {

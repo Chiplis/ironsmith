@@ -1221,13 +1221,13 @@ fn finalize_public_object_filter(
     let words = parser_token_word_refs(tokens);
     if words
         .windows(3)
-        .any(|part| part == ["that", "are", "enchanted"])
+        .any(|part| crate::word_primitives::equals(&part, &["that", "are", "enchanted"]))
         || words
             .windows(2)
-            .any(|part| part == ["enchanted", "creatures"])
+            .any(|part| crate::word_primitives::equals(&part, &["enchanted", "creatures"]))
         || words
             .windows(3)
-            .any(|part| part == ["an", "enchanted", "creature"])
+            .any(|part| crate::word_primitives::equals(&part, &["an", "enchanted", "creature"]))
     {
         filter
             .tagged_constraints
@@ -1237,10 +1237,10 @@ fn finalize_public_object_filter(
         // "creatures that are enchanted by an Aura you control": the Aura's
         // controller constrains the attachment, not the enchanted creature.
         if words.windows(6).any(|part| {
-            part == ["enchanted", "by", "an", "aura", "you", "control"]
+            crate::word_primitives::equals(&part, &["enchanted", "by", "an", "aura", "you", "control"])
         }) || words
             .windows(5)
-            .any(|part| part == ["enchanted", "by", "auras", "you", "control"])
+            .any(|part| crate::word_primitives::equals(&part, &["enchanted", "by", "auras", "you", "control"]))
         {
             aura.controller = Some(PlayerFilter::You);
         }
@@ -2044,7 +2044,7 @@ fn parse_object_filter_unaudited(
             && rel > 0
             && let Some(or_rel) = words_ref
                 .windows(3)
-                .position(|window| window == ["or", "that", "has"])
+                .position(|window| crate::word_primitives::equals(&window, &["or", "that", "has"]))
             && or_rel > rel + 1
             && let Some(&rel_start) = words.token_start_indices().get(rel)
             && let Some(&or_start) = words.token_start_indices().get(or_rel)
@@ -2430,7 +2430,7 @@ pub fn parse_object_filter_words(
     }
     if word_refs
         .windows(5)
-        .any(|words| words == ["with", "the", "same", "name", "as"])
+        .any(|words| crate::word_primitives::equals(&words, &["with", "the", "same", "name", "as"]))
     {
         let tokens = super::lexer::synthetic_word_tokens(word_refs.iter().copied());
         if let Some(result) = crate::grammar::filters::parse_live_name_relation(&tokens, other) {

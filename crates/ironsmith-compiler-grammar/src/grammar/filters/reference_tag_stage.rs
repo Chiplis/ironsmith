@@ -285,6 +285,8 @@ fn filter_comparison_rhs_ranges(
         };
         let rhs_end = rhs_start.saturating_add(consumed).min(words.len());
         if rhs_start < rhs_end {
+            // The axis and its compared value ("power x or less") are read.
+            crate::word_claims::claim_words(&words[idx..rhs_end]);
             ranges.push(rhs_start..rhs_end);
         }
         idx = rhs_end.max(rhs_start);
@@ -970,7 +972,7 @@ fn try_apply_directional_source_block_clause(
     let tail = &words[blocked + 1..];
     let current_blocked_by_source =
         tail.first() == Some(&"by") && crate::util::is_source_reference_words(&tail[1..]);
-    let blocked_source_this_turn = tail.ends_with(&["this", "turn"])
+    let blocked_source_this_turn = crate::word_primitives::ends_with(&tail, &["this", "turn"])
         && crate::util::is_source_reference_words(&tail[..tail.len() - 2]);
     if !current_blocked_by_source && !blocked_source_this_turn {
         return false;
@@ -998,7 +1000,7 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
     let words = non_article_parser_word_refs(segment_tokens);
     // A shared terminal time window applies to both active combat roles.
     if let Some(start) = words.len().checked_sub(5)
-        .filter(|start| words[*start..] == ["attacked", "or", "blocked", "this", "turn"])
+        .filter(|start| crate::word_primitives::equals(&words[*start..], &["attacked", "or", "blocked", "this", "turn"]))
     {
         let clause_start = start.checked_sub(1)
             .filter(|idx| matches!(words[*idx], "that" | "which"))
@@ -1015,8 +1017,8 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
         return Ok(true);
     }
     let Some(blocked_idx) = words.windows(4).position(|part|
-        part == ["blocked", "or", "was", "blocked"]
-            || part == ["blocked", "or", "were", "blocked"])
+        crate::word_primitives::equals(&part, &["blocked", "or", "was", "blocked"])
+            || crate::word_primitives::equals(&part, &["blocked", "or", "were", "blocked"]))
     else { return Ok(false); };
     let tail_start = blocked_idx + 4;
     let Some(this_turn_idx) =
@@ -1483,7 +1485,7 @@ pub(super) fn parse_object_filter(
     }
     let words = TokenWordView::new(tokens);
     let refs = words.word_refs();
-    if refs.starts_with(&["fortified", "land"]) {
+    if crate::word_primitives::starts_with(&refs, &["fortified", "land"]) {
         let mut filter = parse_object_filter(&tokens[words.token_start_indices()[1]..], other)?;
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: crate::tag::CompilerReferenceTag::Fortified.bind().into(),

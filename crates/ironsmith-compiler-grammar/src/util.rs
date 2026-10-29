@@ -611,11 +611,19 @@ pub fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
     token_facts::non_article_word_refs(words)
 }
 
+/// The words that are not in `excluded`. The caller skips excluded words on
+/// purpose, so dropping one counts as reading it.
 pub fn word_refs_except<'a>(words: &[&'a str], excluded: &[&str]) -> Vec<&'a str> {
     words
         .iter()
         .copied()
-        .filter(|word| !excluded.iter().any(|excluded_word| word == excluded_word))
+        .filter(|word| {
+            let skipped = excluded.iter().any(|excluded_word| word == excluded_word);
+            if skipped {
+                crate::word_claims::claim_word(word);
+            }
+            !skipped
+        })
         .collect()
 }
 
@@ -1315,7 +1323,7 @@ pub fn is_permanent_type(card_type: CardType) -> bool {
 }
 
 pub fn parse_zone_word(word: &str) -> Option<Zone> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_zone_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_zone_complete(word)))
 }
 
 pub fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {

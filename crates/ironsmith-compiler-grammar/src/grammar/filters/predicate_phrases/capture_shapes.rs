@@ -178,20 +178,30 @@ fn parse_atoms<'a, 'p>(
     captures: &mut Vec<WinnowSequenceCapture<'p>>,
 ) -> WResult<()> {
     for atom in atoms {
+        // Literal atoms read the words they match; captures are read by
+        // their own readers.
+        let before = *input;
+        let literal_read = |input: &WordSliceInput<'a>| {
+            crate::word_claims::claim_words(&before[..before.len() - input.len()]);
+        };
         match *atom {
             WinnowAtom::Word(expected) => {
                 dynamic_word(expected).void().parse_next(input)?;
+                literal_read(input);
             }
             WinnowAtom::AnyWord(expected) => {
                 any.verify(|word: &&str| one_of_words(word, expected))
                     .void()
                     .parse_next(input)?;
+                literal_read(input);
             }
             WinnowAtom::Phrase(expected) => {
                 dynamic_sequence(expected).parse_next(input)?;
+                literal_read(input);
             }
             WinnowAtom::AnyPhrase(alternatives) => {
                 parse_longest_sequence(alternatives, input)?;
+                literal_read(input);
             }
             WinnowAtom::Optional(optional_atoms) => {
                 let mut probe = *input;

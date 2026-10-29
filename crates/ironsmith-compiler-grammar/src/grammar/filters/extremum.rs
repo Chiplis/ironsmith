@@ -199,7 +199,7 @@ pub fn parse_extremum_object_filter_words(
                 split
                     .scope_words
                     .is_some_and(|words| {
-                        words.windows(3).any(|w| w == ["on", "the", "battlefield"])
+                        words.windows(3).any(|w| crate::word_primitives::equals(&w, &["on", "the", "battlefield"]))
                     })
                     .then_some(ValueSurfaceHint::ExtremumExplicitBattlefieldScope),
             )

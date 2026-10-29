@@ -456,7 +456,7 @@ fn parse_simple_object_filter_words_with_list_marker(
     saw_type_list_separator: bool,
 ) -> Option<ObjectFilter> {
     let subject_words = non_article_word_refs(input_words);
-    if subject_words.starts_with(&["equipped", "creature"]) {
+    if crate::word_primitives::starts_with(&subject_words, &["equipped", "creature"]) {
         // Singular Equipment-host references belong to the source attachment
         // grammar; plural equipped creatures describe a battlefield set.
         return None;
@@ -484,7 +484,7 @@ fn parse_simple_object_filter_words_with_list_marker(
         filter.other = other;
         return Some(filter);
     }
-    if input_words.starts_with(&["one", "or", "more"]) {
+    if crate::word_primitives::starts_with(&input_words, &["one", "or", "more"]) {
         let mut filter = parse_simple_object_filter_words_with_list_marker(
             &input_words[3..],
             other,
@@ -494,7 +494,13 @@ fn parse_simple_object_filter_words_with_list_marker(
         return Some(filter);
     }
     let mut words = non_article_word_refs(input_words);
-    words.retain(|word| *word != "instead");
+    words.retain(|word| {
+        let instead = *word == "instead";
+        if instead {
+            crate::word_claims::claim_word(word);
+        }
+        !instead
+    });
     if words.is_empty() {
         return None;
     }

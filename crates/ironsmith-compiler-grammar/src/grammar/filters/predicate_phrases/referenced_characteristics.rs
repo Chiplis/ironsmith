@@ -9,7 +9,7 @@ pub(super) fn parse_referenced_characteristic_state(
     // "if it's at least one of the chosen colors" (Tablet of the Guilds): the
     // referenced object is any of the source's chosen colors.
     if let ["it", "is", rest @ ..] | ["its" | "it's", rest @ ..] = words.as_slice()
-        && rest == ["at", "least", "one", "of", "the", "chosen", "colors"]
+        && crate::word_primitives::equals(&rest, &["at", "least", "one", "of", "the", "chosen", "colors"])
     {
         return Ok(Some(PredicateAst::ItMatches(ObjectFilter {
             chosen_color: true,
@@ -82,7 +82,7 @@ pub(super) fn parse_referenced_characteristic_state(
     }
     if let Some(index) = words
         .windows(4)
-        .position(|words| words == ["was", "attached", "to", "it"])
+        .position(|words| crate::word_primitives::equals(&words, &["was", "attached", "to", "it"]))
         && index + 4 == words.len()
         && index != 0
     {

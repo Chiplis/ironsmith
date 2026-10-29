@@ -651,6 +651,7 @@ fn parse_word_phrase(input: &mut WordInput<'_>, expected: &[&str]) -> WResult<()
             return Err(err);
         }
     }
+    crate::word_claims::claim_words(&checkpoint[..checkpoint.len() - input.len()]);
     Ok(())
 }
 

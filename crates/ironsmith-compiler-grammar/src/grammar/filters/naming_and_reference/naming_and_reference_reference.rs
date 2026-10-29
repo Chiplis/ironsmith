@@ -124,7 +124,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         }
         // "a Curse attached to you" (Lynde, Cheerful Tormentor): an Aura
         // enchanting the filter's controller-relative player.
-        if attached_to_words == ["you"] {
+        if crate::word_primitives::equals(&attached_to_words, &["you"]) {
             let trim_start = if attached_idx >= 2
                 && all_words[attached_idx - 2] == THAT_WORD
                 && word_is_any(all_words[attached_idx - 1], BE_VERB_WORDS)
@@ -276,7 +276,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         &["that", "werent", "put", "onto", "battlefield"][..],
     ] {
         if let Some(idx) = crate::word_primitives::parse_sequence_start(all_words, phrase)
-            && all_words[..idx].ends_with(&["revealed", "this", "way"])
+            && crate::word_primitives::ends_with(&all_words[..idx], &["revealed", "this", "way"])
         {
             filter.zone = Some(Zone::Library);
             crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
@@ -341,9 +341,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             &["banded", "with", "this", "creature"],
             &["banded", "with", "this", "permanent"],
         ],
-    ) && (all_words[relation_idx..] == ["banded", "with", "it"]
-        || all_words[relation_idx..] == ["banded", "with", "this", "creature"]
-        || all_words[relation_idx..] == ["banded", "with", "this", "permanent"])
+    ) && (crate::word_primitives::equals(&all_words[relation_idx..], &["banded", "with", "it"])
+        || crate::word_primitives::equals(&all_words[relation_idx..], &["banded", "with", "this", "creature"])
+        || crate::word_primitives::equals(&all_words[relation_idx..], &["banded", "with", "this", "permanent"]))
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::SourceObject.bind()).into(),
@@ -661,8 +661,8 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     // mana value" (Boxing Ring): the comparand is the clause's antecedent.
     if !has_same_mana_value
         && filter.mana_value.is_none()
-        && (all_words.ends_with(&["with", "same", "mana", "value"])
-            || all_words.ends_with(&["with", "the", "same", "mana", "value"]))
+        && (crate::word_primitives::ends_with(&all_words, &["with", "same", "mana", "value"])
+            || crate::word_primitives::ends_with(&all_words, &["with", "the", "same", "mana", "value"]))
     {
         filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
             Value::ManaValueOf(Box::new(crate::ChooseSpec::Tagged(
