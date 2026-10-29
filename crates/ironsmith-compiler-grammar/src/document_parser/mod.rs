@@ -4090,6 +4090,7 @@ pub fn parse_text_to_semantic_document_with_context(
     crate::sentence_memo::reset();
     let allow_unsupported = context.features().allow_unsupported;
     let card_name = card.name_ref().to_string();
+    crate::word_claims::begin_card(&card_name);
     let _trace_scope = parse_trace::scope(format!(
         "card parse: \"{}\" allow_unsupported={} source_lines={}",
         card_name,

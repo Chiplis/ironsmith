@@ -2003,7 +2003,18 @@ fn parse_source_mana_value_filter(words: &[&str], other: bool) -> Option<Result<
     None
 }
 
+/// Parse an object filter. In claim-audit mode the authored words it did not
+/// read are reported against the calling site.
+#[track_caller]
 pub fn parse_object_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
+    let caller = std::panic::Location::caller();
+    crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_unaudited(tokens, other))
+}
+
+fn parse_object_filter_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -2522,7 +2533,18 @@ fn split_could_enchant_suffix(
     Ok(Some((base, host)))
 }
 
+/// Parse an object filter. In claim-audit mode the authored words it did not
+/// read are reported against the calling site.
+#[track_caller]
 pub fn parse_object_filter_lexed(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
+    let caller = std::panic::Location::caller();
+    crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_lexed_unaudited(tokens, other))
+}
+
+fn parse_object_filter_lexed_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
