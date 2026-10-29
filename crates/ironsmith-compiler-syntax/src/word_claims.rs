@@ -55,8 +55,19 @@ impl ClaimSet {
         self.spans.is_empty()
     }
 
-    fn extend(&mut self, other: &ClaimSet) {
+    pub fn extend(&mut self, other: &ClaimSet) {
         self.spans.extend(other.spans.iter().copied());
+    }
+
+    /// The word pieces of `tokens`.
+    pub fn of_tokens<'a>(tokens: impl IntoIterator<Item = &'a OwnedLexToken>) -> Self {
+        let mut claims = Self::default();
+        for token in tokens.into_iter().filter(|token| !is_synthetic(token)) {
+            for piece in token.parser_word_pieces() {
+                claims.insert(piece.span);
+            }
+        }
+        claims
     }
 }
 
@@ -67,15 +78,25 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-/// Whether claim auditing is on for this process
-/// (`IRONSMITH_FILTER_CLAIM_AUDIT` is set).
+/// Whether claims are recorded for this process: when auditing
+/// (`IRONSMITH_FILTER_CLAIM_AUDIT`) or enforcing
+/// (`IRONSMITH_FILTER_CLAIM_ENFORCE`).
 pub fn audit_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_FILTER_CLAIM_AUDIT").is_some())
+    *ENABLED.get_or_init(|| {
+        std::env::var_os("IRONSMITH_FILTER_CLAIM_AUDIT").is_some()
+            || std::env::var_os("IRONSMITH_FILTER_CLAIM_ENFORCE").is_some()
+    })
 }
 
 pub fn is_recording() -> bool {
     DEPTH.with(Cell::get) > 0
+}
+
+/// A token the compiler inserted has an empty span; its word pieces still
+/// carry offsets from that empty base, so the token's own span decides.
+fn is_synthetic(token: &OwnedLexToken) -> bool {
+    token.span.end <= token.span.start
 }
 
 fn key(word: &str) -> (usize, usize) {
@@ -91,7 +112,7 @@ pub fn register_tokens(tokens: &[OwnedLexToken]) {
     }
     WORD_SPANS.with(|spans| {
         let mut spans = spans.borrow_mut();
-        for token in tokens {
+        for token in tokens.iter().filter(|token| !is_synthetic(token)) {
             let pieces = token.parser_word_pieces();
             for piece in pieces {
                 spans.insert(key(&piece.text), vec![piece.span]);
@@ -146,7 +167,7 @@ pub fn claim_tokens(tokens: &[OwnedLexToken]) {
     if !is_recording() {
         return;
     }
-    for token in tokens {
+    for token in tokens.iter().filter(|token| !is_synthetic(token)) {
         for piece in token.parser_word_pieces() {
             claim(piece.span);
         }
@@ -230,7 +251,7 @@ pub fn observe<T>(f: impl FnOnce() -> T) -> (T, ClaimSet) {
 pub fn unclaimed_words<'a>(tokens: &'a [OwnedLexToken], claims: &ClaimSet) -> Vec<&'a str> {
     tokens
         .iter()
-        .filter(|token| token.kind == crate::lexer::TokenKind::Word)
+        .filter(|token| token.kind == crate::lexer::TokenKind::Word && !is_synthetic(token))
         .flat_map(|token| token.parser_word_pieces())
         .filter(|piece| !claims.contains(piece.span))
         .map(|piece| piece.text.as_str())

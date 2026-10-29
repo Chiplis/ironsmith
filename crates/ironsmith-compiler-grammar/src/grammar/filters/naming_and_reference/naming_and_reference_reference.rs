@@ -754,6 +754,8 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 &all_words[..this_way_idx],
             )
     {
+        // The prior action and its "this way" ("revealed this way") are read.
+        crate::word_claims::claim_words(&all_words[action_start..this_way_idx + 2]);
         // Tapping is only meaningful for objects on the battlefield. Preserve
         // that semantic zone when a later clause refers to the objects tapped
         // this way, even though the reference surface itself omits the zone.

@@ -1688,6 +1688,12 @@ fn parse_object_filter_inner_unchecked(
             negated_word_indices.insert(idx + 1);
         }
     }
+    // A "non" is read when it negated the word after it.
+    for idx in 1..all_words.len() {
+        if set_has(&negated_word_indices, &idx) && all_words[idx - 1] == NON_WORD {
+            crate::word_claims::claim_word(all_words[idx - 1]);
+        }
+    }
     for idx in 0..all_words.len() {
         if word_is_in_ranges(idx, &comparison_rhs_ranges) {
             continue;
@@ -1932,6 +1938,8 @@ fn parse_object_filter_inner_unchecked(
         // Every arm but the fall-through reads its word.
         let mut unread_word = false;
         match *word {
+            // A determiner like "a": "any creature card" selects creature cards.
+            "any" => {}
             "permanent" | "permanents" => saw_permanent = true,
             "spell" | "spells" => {
                 if !is_tagged_spell_reference_at(idx) {
