@@ -1,3 +1,4 @@
+import { validateCommunityDeck } from "../../lib/community-format.js";
 export { hiddenCardMetadataForObjectFromCheckpoint } from "../../lib/hidden-card-metadata.js";
 import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "../../lib/sync-object-identity.js";
 export { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint };
@@ -2193,7 +2194,8 @@ export function rememberDefaultLobbyDeck(deckText, commanderText = "") {
 
 // The format check for one seat's open decklist in a public-format lobby, or
 // null when the lobby's format has no card legality (Normal, Planechase).
-export function lobbyDeckLegality(format, deck, commanders = [], sideboard = [], { allowUnreleased = false } = {}) {
+export function lobbyDeckLegality(format, deck, commanders = [], sideboard = [], { allowUnreleased = false, communityFormat = null } = {}) {
+  if (communityFormat) return validateCommunityDeck(communityFormat, deck, commanders, sideboard);
   if (!isLegalityFormat(format)) return null;
   return validateFormatDeck(format, sanitizeCardList(deck), sanitizeCardList(commanders),
     sanitizeCardList(sideboard), undefined, { allowUnreleased: allowUnreleased === true });
@@ -3179,8 +3181,8 @@ export function canHostedMatchStart(session) {
     const rules = PUBLIC_FORMATS[session.format];
     if (!rules || playerCount > rules.maxPlayers || session.startingLife !== rules.startingLife) return false;
   }
-  if (isLegalityFormat(session.format) && !session.players.every(p =>
-    lobbyDeckLegality(session.format, p.deck, p.commanders, p.sideboard, { allowUnreleased: session.allowUnreleased }).ready)) return false;
+  if ((isLegalityFormat(session.format) || session.communityFormat) && !session.players.every(p =>
+    lobbyDeckLegality(session.format, p.deck, p.commanders, p.sideboard, { allowUnreleased: session.allowUnreleased, communityFormat: session.communityFormat }).ready)) return false;
   if (
     normalizeMatchFormat(session.format) === MATCH_FORMAT_PLANECHASE
     && !isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))

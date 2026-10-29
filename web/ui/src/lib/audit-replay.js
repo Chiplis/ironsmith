@@ -77,6 +77,7 @@ function replayPublicDecklists(match) {
 function replayMatchConfig(match = {}) {
   return {
     playerNames: replayPlayerNames(match),
+    communityFormat: match.communityFormat,
     startingLife: Number(match.startingLife || 20),
     seed: match.seed ?? "",
     format: String(match.format || "normal"),

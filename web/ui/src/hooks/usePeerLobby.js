@@ -408,6 +408,7 @@ export function usePeerLobby({
       const deckSubmission = await withSupportedCards(
         parseDeckSubmission(currentSession.format, nextDeckText, nextCommanderText),
         {
+          communityFormat: currentSession.communityFormat,
           game: gameRef.current,
           onSubstitute: (substitutions) => {
             if (isCurrentUpdate()) {
@@ -448,7 +449,7 @@ export function usePeerLobby({
 	                          deckSubmission.deck,
 	                          deckSubmission.commanders,
 	                          deckSubmission.sideboard,
-	                          { allowUnreleased: prev.allowUnreleased }
+	                          { allowUnreleased: prev.allowUnreleased, communityFormat: prev.communityFormat }
 	                        )
 	                      : player
 	                  )
@@ -558,7 +559,7 @@ export function usePeerLobby({
                         deckSubmission.deck,
                         deckSubmission.commanders,
                         deckSubmission.sideboard,
-                        { allowUnreleased: prev.allowUnreleased }
+                        { allowUnreleased: prev.allowUnreleased, communityFormat: prev.communityFormat }
                       )
                     : player
                 )

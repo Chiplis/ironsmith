@@ -1,3 +1,5 @@
+import { communityCustomCards } from "../lib/community-format.js";
+import { installCommunityCards } from "../lib/community-runtime.js";
 import { cardSearchKey } from "../lib/card-search.js";
 import { startSandbox, sandboxCatalogNames } from "../lib/sandbox.js";
 import { ANALYSIS_SEED_MIN_OPERATIONS, createLocalAnalysisJournal, localReplayCaughtUp, localReplayTransfer, releaseRestoredRuntimeSavepoints, seededLocalReplay } from "../lib/local-analysis-replay.js";
@@ -1199,6 +1201,16 @@ function handleCall(msg) {
         result: names.filter(cardNameAlreadyKnown),
         registryStatus: readRegistryStatus(),
       };
+    }
+    if ((method === 'startMatch' || method === 'replayTrustedMatch' || method === 'validateMatchConfig') && args?.[0]?.communityFormat) {
+      const index = await loadCardIndex();
+      const officialNames = new Set((index?.cards || []).flatMap(card => [cardSearchKey(card.name), cardSearchKey(card.name.split(' // ')[0])]));
+      for (const card of communityCustomCards(args[0].communityFormat)) {
+        for (const face of card.draft.faces) {
+          if (officialNames.has(cardSearchKey(face.name))) throw new Error(`Custom card name conflicts with an official card: ${face.name}`);
+        }
+      }
+      await installCommunityCards(game, args[0].communityFormat);
     }
     const replayOptions = { yieldControl: () => new Promise(resolve => setTimeout(resolve, 0)) };
     const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)

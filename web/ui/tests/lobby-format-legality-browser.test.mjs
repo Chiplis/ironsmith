@@ -79,3 +79,21 @@ for (const securityMode of ["trusted", "verified"]) {
     assert.deepEqual(names, ["Renamed Guest", "Renamed Host"]);
   });
 }
+
+test('Community room shares its pool, rejects excluded cards and starts with custom cards', { timeout: 120_000 }, async t => {
+  const [host, guest] = await setup(t, false);
+  const communityFormat = { name: 'Community night', includedSets: [{ code: 'tst', name: 'Test set', cards: ['Island', 'Sol Ring'] }],
+    excludedCards: ['Sol Ring'], customCards: [{ id: 'mage', draft: { layout: 'single', faces: [{ name: 'Community Mage', cardTypes: ['Creature'], power: '2', toughness: '2', oracleText: '' }] } }] };
+  await host.evaluate(communityFormat => window.__peerHarness.createLobby({ name: 'Host', desiredPlayers: 2, startingLife: 20,
+    format: 'normal', securityMode: 'trusted', deckText: '59 Island\n1 Community Mage', communityFormat }), communityFormat);
+  await waitFor(host, () => window.__peerHarness.lobbyState().multiplayer.mode === 'lobby');
+  const lobbyId = await host.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lobbyId);
+  await guest.evaluate(lobbyId => window.__peerHarness.joinLobby({ name: 'Guest', lobbyId, deckText: '59 Island\n1 Sol Ring' }), lobbyId);
+  for (const page of [host, guest]) await waitFor(page, () => window.__peerHarness.lobbyState().multiplayer.players.some(player => player.formatErrors?.some(error => error.includes('Sol Ring'))));
+  assert.equal(await host.evaluate(canStart), false);
+  assert.deepEqual(await guest.evaluate(() => window.__peerHarness.lobbyState().multiplayer.communityFormat.excludedCards), ['Sol Ring']);
+  await guest.evaluate(() => window.__peerHarness.updateLobbyDeck({ deckText: '59 Island\n1 Community Mage' }));
+  await waitFor(host, canStart);
+  await host.evaluate(() => window.__peerHarness.startHostedMatch());
+  for (const page of [host, guest]) await waitFor(page, () => window.__peerHarness.lobbyState().multiplayer.matchStarted);
+});

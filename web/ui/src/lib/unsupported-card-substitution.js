@@ -110,7 +110,8 @@ export function describeSubstitutions(substitutions) {
  * committed. Every path that turns deck text into a player's deck goes through
  * this, so an audit manifest is always built over what will actually be played.
  */
-export async function withSupportedCards(parsed, { game, onSubstitute } = {}) {
+export async function withSupportedCards(parsed, { game, onSubstitute, communityFormat } = {}) {
+  if (communityFormat) return parsed;
   const substituted = await substituteUnsupportedCards(parsed, { game });
   if (!substituted.substitutions.length) return parsed;
   onSubstitute?.(substituted.substitutions);

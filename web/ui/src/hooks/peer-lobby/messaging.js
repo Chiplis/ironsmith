@@ -1,3 +1,4 @@
+import { normalizeCommunityFormat, assertCommunityMatch } from "../../lib/community-format.js";
 import { describeColorNoteIssues, submissionColorNoteIssues } from "../../lib/deck-color-notes.js";
 import { ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { recoverVerifiedRuntime } from "../../lib/local-runtime-recovery.js";
@@ -153,7 +154,7 @@ function normalizeLobbyDeckOptions(value) {
 // decklist, whose problems every seat is shown.
 function hostCheckedDeckReadiness(session, message) {
   const legality = lobbyDeckLegality(session.format, message.deck, message.commanders,
-    message.sideboard, { allowUnreleased: session.allowUnreleased });
+    message.sideboard, { allowUnreleased: session.allowUnreleased, communityFormat: session.communityFormat });
   return {
     ready: legality ? legality.ready : Boolean(message.ready),
     formatErrors: formatErrorsForLobby(legality),
@@ -535,6 +536,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         let nextState;
         try {
         await replayTrustedMatch(currentGame, {
+          communityFormat: matchPayload.communityFormat,
           playerNames: matchPayload.players.map(player => player.name),
           startingLife: matchPayload.startingLife,
           seed: matchPayload.seed,
@@ -635,6 +637,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           desiredPlayers: acceptedMatchPayload.players?.length ?? prev.desiredPlayers,
           startingLife: Number(acceptedMatchPayload.startingLife || prev.startingLife || 20),
           format: normalizeMatchFormat(acceptedMatchPayload.format || prev.format),
+          communityFormat: acceptedMatchPayload.communityFormat || null,
           securityMode: MULTIPLAYER_SECURITY_TRUSTED,
           lockedSecurityMode: MULTIPLAYER_SECURITY_TRUSTED,
           localPlayerIndex: localEntry.index ?? prev.localPlayerIndex,
@@ -929,6 +932,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         desiredPlayers: acceptedMatchPayload.players?.length ?? prev.desiredPlayers,
         startingLife: Number(acceptedMatchPayload.startingLife || prev.startingLife || 20),
         format: normalizeMatchFormat(acceptedMatchPayload.format || prev.format),
+          communityFormat: acceptedMatchPayload.communityFormat || null,
         securityMode,
         lockedSecurityMode: securityMode,
         localPlayerIndex: localEntry.index ?? prev.localPlayerIndex,
@@ -1010,9 +1014,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     let session = multiplayerRef.current;
     // The legality catalog can finish loading after a deck arrived, so the
     // host re-checks every seat before telling the table.
-    if (session.role === 'host' && isLegalityFormat(session.format) && !session.matchStarted) {
+    if (session.role === 'host' && (isLegalityFormat(session.format) || session.communityFormat) && !session.matchStarted) {
       session = updateMultiplayer(prev => ({ ...prev, players: prev.players.map(p =>
-        withDeckState(p, prev.format, p.deck, p.commanders, p.sideboard, { allowUnreleased: prev.allowUnreleased })) }));
+        withDeckState(p, prev.format, p.deck, p.commanders, p.sideboard, { allowUnreleased: prev.allowUnreleased, communityFormat: prev.communityFormat })) }));
     }
     if (session.role !== "host") return;
     broadcastToClients({
@@ -1023,6 +1027,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       desiredPlayers: session.desiredPlayers,
       startingLife: session.startingLife,
       format: session.format,
+      communityFormat: session.communityFormat || null,
       allowUnreleased: session.allowUnreleased === true,
       securityMode: sessionSecurityMode(session),
       players: toLobbyPlayers(session.players),
@@ -1077,6 +1082,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       hostPeerId: session.localPeerId,
       players: payloadPlayers,
       format,
+      ...(session.communityFormat ? { communityFormat: session.communityFormat } : {}),
       ...(session.allowUnreleased ? { allowUnreleased: true } : {}),
       openDecklists: true,
       decks: players.map((player) => sanitizeCardList(player.deck)),
@@ -1094,6 +1100,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       try { (isRelayId(session.lobbyId) ? assertFormatMatch : assertFormatDecks)(payload); }
       catch (error) { setStatus(error.message, true); return; }
     }
+    try { assertCommunityMatch(payload); } catch (error) { setStatus(error.message, true); return; }
     payload.seed = createMatchSeed(payload);
 
     updateMultiplayer((prev) => ({
@@ -1113,6 +1120,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     try {
       if (typeof currentGame.validateMatchConfig === "function") {
         const validation = await currentGame.validateMatchConfig({
+          communityFormat: payload.communityFormat,
           playerNames: payload.players.map((player) => player.name),
           startingLife: payload.startingLife,
           seed: payload.seed,
@@ -1250,6 +1258,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       hostPeerId: session.localPeerId,
       players: players.map(toPublicPlayer),
       format,
+      ...(session.communityFormat ? { communityFormat: session.communityFormat } : {}),
       ...(session.allowUnreleased ? { allowUnreleased: true } : {}),
       openDecklists: true,
       decks: players.map(() => []),
@@ -1338,6 +1347,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     try {
       if (typeof currentGame.validateMatchConfig === "function") {
         const validation = await currentGame.validateMatchConfig({
+          communityFormat: payload.communityFormat,
           playerNames: payload.players.map((player) => player.name),
           startingLife: payload.startingLife,
           seed: payload.seed,
@@ -1509,6 +1519,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         ready: false,
       })),
       format,
+      ...(session.communityFormat ? { communityFormat: session.communityFormat } : {}),
       ...(session.allowUnreleased ? { allowUnreleased: true } : {}),
       openDecklists: true,
       decks: players.map(() => []),
@@ -1634,6 +1645,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     try {
       if (typeof currentGame.validateMatchConfig === "function") {
         const validation = await currentGame.validateMatchConfig({
+          communityFormat: payload.communityFormat,
           playerNames: payload.players.map((player) => player.name),
           startingLife: payload.startingLife,
           seed: payload.seed,
@@ -1856,10 +1868,10 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     const commanderText = String(rematch.localCommanderText ?? "");
     const submission = await withSupportedCards(
       parseDeckSubmission(session.format, deckText, commanderText),
-      { game: gameRef.current, onSubstitute: reportCardSubstitutions },
+      { communityFormat: session.communityFormat, game: gameRef.current, onSubstitute: reportCardSubstitutions },
     );
     const formatStatus = lobbyDeckLegality(session.format, submission.deck, submission.commanders,
-      submission.sideboard, { allowUnreleased: session.allowUnreleased });
+      submission.sideboard, { allowUnreleased: session.allowUnreleased, communityFormat: session.communityFormat });
     const noteIssues = await submissionColorNoteIssues(gameRef.current, submission);
     if (noteIssues.length) {
       setStatus(describeColorNoteIssues(noteIssues), true);
@@ -2082,11 +2094,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	    if (session.role !== "client" || session.matchStarted || session.mode === "starting") return;
 	    const localPlayerIndex = resolveLocalPlayerIndex(session);
 	    if (localPlayerIndex == null) return;
-	    const deckSubmission = parseDeckSubmission(
+	    const deckSubmission = await withSupportedCards(parseDeckSubmission(
 	      session.format,
 	      session.localDeckText,
 	      session.localCommanderText
-	    );
+	    ), { communityFormat: session.communityFormat, game: gameRef.current, onSubstitute: reportCardSubstitutions });
+        const latest = multiplayerRef.current;
+        if (latest.hostPeerId !== session.hostPeerId || latest.matchStarted || latest.mode === 'starting'
+          || latest.localDeckText !== session.localDeckText || latest.localCommanderText !== session.localCommanderText) return;
 	    if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) {
           // A lobby_state acknowledges these open decklists. Re-sending the same
           // submission would make the host broadcast another lobby_state forever.
@@ -2114,7 +2129,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	                  deckSubmission.deck,
 	                  deckSubmission.commanders,
 	                  deckSubmission.sideboard,
-	                  { allowUnreleased: prev.allowUnreleased }
+	                  { allowUnreleased: prev.allowUnreleased, communityFormat: prev.communityFormat }
 	                )
 	              : player
 	          )
@@ -2371,6 +2386,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               desiredPlayers: Number(message.desiredPlayers || prev.desiredPlayers || 0),
               startingLife: Number(message.startingLife || prev.startingLife || 20),
               format: nextFormat,
+              communityFormat: normalizeCommunityFormat(message.communityFormat),
               allowUnreleased: message.allowUnreleased === true,
               securityMode: nextSecurityMode,
               lockedSecurityMode: nextSecurityMode,
@@ -4138,7 +4154,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
                       currentDeck.deck,
                       currentDeck.commanders,
                       currentDeck.sideboard,
-                      { allowUnreleased: current.allowUnreleased }
+                      { allowUnreleased: current.allowUnreleased, communityFormat: current.communityFormat }
                     );
               }
               return {
@@ -4242,8 +4258,16 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       resume = null,
       deckOptions = [],
       allowUnreleased = resume?.session?.allowUnreleased === true,
+      communityFormat = resume?.session?.communityFormat || null,
       tournamentId = resume?.session?.tournament?.tournamentId || "",
     }) => {
+      try { communityFormat = normalizeCommunityFormat(communityFormat); }
+      catch (error) { setStatus(error.message, true); return; }
+      if (communityFormat) {
+        if (transport !== 'peerjs' || tournamentId) { setStatus('Community rooms use peer-to-peer connections', true); return; }
+        format = MATCH_FORMAT_NORMAL;
+        securityMode = MULTIPLAYER_SECURITY_TRUSTED;
+      }
       let tournament = null;
       if (tournamentId) {
         // Tournament matches are Verified relay rooms kept out of the public
@@ -4294,7 +4318,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       const lifeTotal = Math.max(1, Number(startingLife) || 20);
       const deckSubmission = await withSupportedCards(
         parseDeckSubmission(normalizedFormat, deckText, commanderText),
-        { game: gameRef.current, onSubstitute: reportCardSubstitutions },
+        { communityFormat, game: gameRef.current, onSubstitute: reportCardSubstitutions },
       );
       if (resume) {
         updateMultiplayer({ ...resume.session, submittingAction: false, mode: "hosting",
@@ -4361,6 +4385,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         desiredPlayers: targetPlayers,
         startingLife: lifeTotal,
         format: normalizedFormat,
+        communityFormat,
         allowUnreleased: isLegalityFormat(normalizedFormat) && allowUnreleased === true,
         securityMode: normalizedSecurityMode,
         lockedSecurityMode: normalizedSecurityMode,
@@ -4476,7 +4501,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               currentDeck.deck,
               currentDeck.commanders,
               currentDeck.sideboard,
-              { allowUnreleased: prev.allowUnreleased }
+              { allowUnreleased: prev.allowUnreleased, communityFormat: prev.communityFormat }
             ),
           ],
         }));
@@ -4498,7 +4523,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           setStatus('Waiting for the previous host connection to close...');
           window.setTimeout(() => {
             if (peerRef.current !== peer) return;
-            void createLobby({ name, desiredPlayers, startingLife, format, securityMode,
+            void createLobby({ name, desiredPlayers, startingLife, format, securityMode, communityFormat,
               deckText, commanderText, transport, advertise,
               resume: { ...resume, reconnectAttempts: (resume.reconnectAttempts || 0) + 1 } });
           }, 1000);
@@ -4553,7 +4578,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           if (!session) throw new Error('Host session is missing from this browser');
           if (session.matchStarted && !checkpoint) throw new Error('Saved game checkpoint is missing');
           return await createLobby({ name: session.localName, desiredPlayers: session.desiredPlayers,
-            startingLife: session.startingLife, format: session.format, securityMode: session.securityMode,
+            startingLife: session.startingLife, format: session.format, securityMode: session.securityMode, communityFormat: session.communityFormat,
             transport: isRelayId(lobbyId) ? 'websocket' : 'peerjs', advertise: saved.advertise,
             deckText: session.localDeckText, commanderText: session.localCommanderText,
             resume: checkpoint || { session } });
@@ -4577,10 +4602,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         return;
       }
 
-      const deckSubmission = await withSupportedCards(
-        parseDeckSubmission(MATCH_FORMAT_NORMAL, deckText, commanderText),
-        { game: gameRef.current, onSubstitute: reportCardSubstitutions },
-      );
+      const deckSubmission = parseDeckSubmission(MATCH_FORMAT_NORMAL, deckText, commanderText);
       const peer = createPeer(!isRelayId(lobbyId) && saved && !resumeAsGuest ? saved.peerId : "", peerOptionsRef.current);
       peerRef.current = peer;
       peer.on?.("witness", (message) => { void servicesRef.current.handleWitnessEvent(message); });

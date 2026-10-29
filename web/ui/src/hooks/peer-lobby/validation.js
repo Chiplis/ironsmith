@@ -1,3 +1,4 @@
+import { assertCommunityMatch } from "../../lib/community-format.js";
 import { isOwnPassCancellation, isSeatControlCommand } from "../../lib/sync-commands.js";
 import { isOpaqueExilePlayCommand, localOpaqueExilePlayCommand } from "../../lib/sync-object-identity.js";
 import { createOperationRevealBatch } from "../../lib/ziffle-operation-reveal-batch.js";
@@ -4939,6 +4940,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
         assertFormatMatch({ ...payload, decks: validationDecksForMatchPayload(payload),
           sideboards: validationSideboardsForMatchPayload(payload), commanders: validationCommandersForMatchPayload(payload) });
       }
+      assertCommunityMatch(payload);
+      if (JSON.stringify(payload.communityFormat || null) !== JSON.stringify(currentSession.communityFormat || null)) {
+        throw new Error('The Community format changed after joining the room');
+      }
       const startDecks = verifiedMode
 	        ? payload.players.map(() => [])
 	        : validationDecksForMatchPayload(payload);
@@ -4947,6 +4952,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      const startPlanarDecks = validationPlanarDecksForMatchPayload(payload);
 
 	      await currentGame.startMatch({
+            communityFormat: payload.communityFormat,
 	        playerNames: payload.players.map((player) => player.name),
 	        startingLife: payload.startingLife,
 	        seed: payload.seed,
@@ -5043,6 +5049,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        desiredPlayers: payload.players.length,
 	        startingLife: payload.startingLife,
 	        format: normalizeMatchFormat(payload.format),
+            communityFormat: payload.communityFormat || null,
 	        securityMode,
 	        lockedSecurityMode: securityMode,
 	        localDeckCount:

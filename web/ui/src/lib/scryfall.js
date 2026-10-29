@@ -542,7 +542,7 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function fetchScryfallApiJson(url) {
+export function fetchScryfallApiJson(url) {
   const missingResponse = () => new Response(null, { status: 404 });
   if (missingScryfallApiUrls.has(url)) return Promise.resolve(missingResponse());
   const run = async () => {
