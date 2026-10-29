@@ -591,7 +591,9 @@ pub fn strip_leading_article_word_refs<'slice, 'word>(
 }
 
 pub fn strip_leading_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    leaf::parse_leaf_leading_articles_tokens(tokens).rest
+    let rest = leaf::parse_leaf_leading_articles_tokens(tokens).rest;
+    crate::word_claims::claim_tokens(&tokens[..tokens.len() - rest.len()]);
+    rest
 }
 
 pub fn strip_leading_token_words_any<'a>(
@@ -1217,16 +1219,25 @@ pub fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
 
 pub use ironsmith_compiler_source::map_span_to_original;
 
+/// A characteristic word (type, supertype, subtype, color) a filter
+/// recognizes is a word it reads.
+fn claim_read_word<T>(word: &str, parsed: Option<T>) -> Option<T> {
+    if parsed.is_some() {
+        crate::word_claims::claim_word(word);
+    }
+    parsed
+}
+
 pub fn parse_card_type(word: &str) -> Option<CardType> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word)))
 }
 
 pub fn parse_supertype_word(word: &str) -> Option<Supertype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_supertype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_supertype_complete(word)))
 }
 
 pub fn parse_subtype_word(word: &str) -> Option<Subtype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_complete(word)))
 }
 
 pub fn parse_mana_symbol_word_flexible(word: &str) -> Option<ManaSymbol> {
@@ -1234,27 +1245,27 @@ pub fn parse_mana_symbol_word_flexible(word: &str) -> Option<ManaSymbol> {
 }
 
 pub fn parse_color(word: &str) -> Option<crate::color::ColorSet> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(word)))
 }
 
 pub fn parse_non_type(word: &str) -> Option<CardType> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_card_type_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_card_type_complete(word)))
 }
 
 pub fn parse_non_supertype(word: &str) -> Option<Supertype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_supertype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_supertype_complete(word)))
 }
 
 pub fn parse_non_color(word: &str) -> Option<crate::color::ColorSet> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_color_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_color_complete(word)))
 }
 
 pub fn parse_non_subtype(word: &str) -> Option<Subtype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_subtype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_subtype_complete(word)))
 }
 
 pub fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(word)))
 }
 
 pub fn is_source_reference_words(words: &[&str]) -> bool {

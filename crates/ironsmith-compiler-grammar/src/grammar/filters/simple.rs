@@ -731,7 +731,9 @@ fn parse_simple_filter_body(
 }
 
 fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
-    alt((
+    // Whatever an atom consumed, it read.
+    let start = *input;
+    let atom = alt((
         alt((parse_type_list_separator, parse_of_named_atom)),
         parse_alternative_cast_atom,
         parse_filter_face_state.map(SimpleObjectFilterAtom::FaceState),
@@ -742,7 +744,9 @@ fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleO
         parse_compound_subtype_atom,
         parse_typed_word_atom,
     ))
-    .parse_next(input)
+    .parse_next(input)?;
+    crate::word_claims::claim_words(&start[..start.len() - input.len()]);
+    Ok(atom)
 }
 
 fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {

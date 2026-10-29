@@ -683,12 +683,9 @@ fn parse_object_filter_inner_unchecked(
     };
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
-    let enchanted_set = all_words
-        .windows(3)
-        .any(|part| part == ["that", "are", "enchanted"])
-        || all_words
-            .windows(2)
-            .any(|part| part == ["enchanted", "creatures"]);
+    let enchanted_set =
+        crate::word_primitives::sequence_occurs(&all_words, &["that", "are", "enchanted"])
+            || crate::word_primitives::sequence_occurs(&all_words, &["enchanted", "creatures"]);
 
     let has_tap_activated_ability = has_tap_activated_ability_phrase(&all_words);
     let has_non_mana_activated_ability = has_non_mana_activated_ability_phrase(&all_words);
@@ -1917,6 +1914,8 @@ fn parse_object_filter_inner_unchecked(
             continue;
         }
         let is_negated_word = set_has(&negated_word_indices, &idx);
+        // Every arm but the fall-through reads its word.
+        let mut unread_word = false;
         match *word {
             "permanent" | "permanents" => saw_permanent = true,
             "spell" | "spells" => {
@@ -2071,7 +2070,10 @@ fn parse_object_filter_inner_unchecked(
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
             crate::keyword_forms::GOADED if !is_negated_word => filter.goaded = true,
-            _ => {}
+            _ => unread_word = true,
+        }
+        if !unread_word {
+            crate::word_claims::claim_word(word);
         }
 
         if is_non_outlaw_word(word) {

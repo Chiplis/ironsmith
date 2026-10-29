@@ -673,14 +673,19 @@ fn contains_explicit_card_noun(
     words: &[&str],
     comparison_rhs_ranges: &[std::ops::Range<usize>],
 ) -> bool {
-    words.iter().enumerate().any(|(idx, word)| {
-        matches!(*word, "card" | "cards")
-            && !word_is_in_ranges(idx, comparison_rhs_ranges)
+    let card_nouns = words.iter().enumerate().filter(|(idx, word)| {
+        matches!(**word, "card" | "cards")
+            && !word_is_in_ranges(*idx, comparison_rhs_ranges)
             // These phrases name a characteristic rather than the object
             // selected by this filter.
             && !words
                 .get(idx + 1)
                 .is_some_and(|next| matches!(*next, "type" | "types" | "name" | "names"))
+    });
+    // Every card noun the filter reads, not just the first.
+    card_nouns.fold(false, |_, (_, word)| {
+        crate::word_claims::claim_word(word);
+        true
     })
 }
 const NO_SHARED_CREATURE_TYPE_WITH_YOUR_CREATURES_OR_GRAVEYARD_CLAUSES: &[&[&str]] = &[
@@ -753,10 +758,7 @@ fn token_index_for_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usiz
 }
 
 fn non_article_parser_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    parser_token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect()
+    crate::util::non_article_word_refs(&parser_token_word_refs(tokens))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -824,6 +824,7 @@ fn parse_relation_phrase(
             "non-empty phrase",
         ));
     }
+    let start = *input;
     for expected in phrase {
         let word: &str = any.parse_next(input)?;
         if word != *expected && !(word == "planeswalker's" && *expected == "planeswalkers") {
@@ -833,6 +834,7 @@ fn parse_relation_phrase(
             ));
         }
     }
+    crate::word_claims::claim_words(&start[..start.len() - input.len()]);
     Ok(())
 }
 

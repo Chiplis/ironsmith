@@ -1118,6 +1118,7 @@ pub fn match_word_prefix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Optio
         return None;
     }
     let token_end = view.token_index_after_words(expected.len())?;
+    ironsmith_compiler_syntax::word_claims::claim_tokens(&tokens[..token_end]);
     Some(&tokens[token_end..])
 }
 
@@ -1148,6 +1149,7 @@ pub fn match_word_suffix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Optio
     let token_start = view
         .token_span_for_words(suffix_start_word, view.len())?
         .start;
+    ironsmith_compiler_syntax::word_claims::claim_tokens(&tokens[token_start..]);
     Some(&tokens[..token_start])
 }
 
@@ -1172,6 +1174,7 @@ fn dynamic_word_sequence<'a, 'p>(
     expected: &'p [&'p str],
 ) -> impl Parser<WordSliceInput<'a>, (), ErrMode<ContextError>> + 'p {
     move |input: &mut WordSliceInput<'a>| {
+        let start = *input;
         for expected_word in expected {
             let Some((word, rest)) = input.split_first() else {
                 return Err(backtrack_err("word sequence", "expected word"));
@@ -1181,6 +1184,7 @@ fn dynamic_word_sequence<'a, 'p>(
             }
             *input = rest;
         }
+        ironsmith_compiler_syntax::word_claims::claim_words(&start[..start.len() - input.len()]);
         Ok(())
     }
 }
@@ -1237,6 +1241,7 @@ pub fn word_slice_exact<'a>(
         };
         if *word == expected {
             *input = rest;
+            ironsmith_compiler_syntax::word_claims::claim_word(word);
             Ok(*word)
         } else {
             Err(backtrack_err("word", expected))

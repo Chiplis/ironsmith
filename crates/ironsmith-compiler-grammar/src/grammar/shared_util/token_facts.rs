@@ -99,11 +99,19 @@ pub fn strip_leading_selected_word_refs_lexical(
     LeadingSelectedWordsFact { consumed_words }
 }
 
+/// The words that are not articles. Filters read an article as nothing, so
+/// dropping one counts as reading it.
 pub fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
     words
         .iter()
         .copied()
-        .filter(|word| leaf::parse_leaf_article_complete(word).is_err())
+        .filter(|word| {
+            let article = leaf::parse_leaf_article_complete(word).is_ok();
+            if article {
+                crate::word_claims::claim_word(word);
+            }
+            !article
+        })
         .collect()
 }
 

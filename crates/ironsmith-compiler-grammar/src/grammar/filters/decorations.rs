@@ -255,6 +255,7 @@ pub fn parse_filter_tail_decoration_tokens(
         if base_tokens.is_empty() {
             return None;
         }
+        crate::word_claims::claim_tokens(&tokens[token_idx..=token_idx]);
         return Some(LexedFilterTailSplit {
             base_tokens,
             decoration: parsed.decoration,
@@ -274,6 +275,7 @@ pub fn parse_filter_tail_decoration_split_words<'a>(
         if parsed.consumed != words.len().saturating_sub(word_idx + 1) || word_idx == 0 {
             return None;
         }
+        crate::word_claims::claim_word(words[word_idx]);
         return Some(WordFilterTailSplit {
             base_words: &words[..word_idx],
             decoration: parsed.decoration,
