@@ -1193,7 +1193,7 @@ fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &
         return;
     }
 
-    all_words.drain(0..3);
+    crate::word_claims::claim_drained(all_words.drain(0..3));
 }
 
 /// "Auras, Equipment, and modified creatures you control" (Silkguard): a

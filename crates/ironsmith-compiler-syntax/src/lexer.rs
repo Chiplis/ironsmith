@@ -847,6 +847,7 @@ pub struct TokenWordView<'a> {
 
 impl<'a> TokenWordView<'a> {
     pub fn new(tokens: &'a [OwnedLexToken]) -> Self {
+        crate::word_claims::register_tokens(tokens);
         let mut words = Vec::with_capacity(tokens.len());
         let mut token_start_indices = Vec::with_capacity(tokens.len());
         let mut token_end_indices = Vec::with_capacity(tokens.len());
@@ -1183,6 +1184,7 @@ impl<'a> LexCursor<'a> {
 }
 
 pub fn token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::word_claims::register_tokens(tokens);
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
 }
 
@@ -1206,6 +1208,7 @@ pub fn synthetic_phrase_tokens(phrase: &str) -> Vec<OwnedLexToken> {
 }
 
 pub fn parser_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::word_claims::register_tokens(tokens);
     let mut words = Vec::new();
     for token in tokens {
         for piece in token.parser_word_pieces() {
@@ -1216,6 +1219,7 @@ pub fn parser_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
 }
 
 pub fn parser_token_word_positions(tokens: &[OwnedLexToken]) -> Vec<(usize, &str)> {
+    crate::word_claims::register_tokens(tokens);
     let mut positions = Vec::new();
     for (token_idx, token) in tokens.iter().enumerate() {
         for piece in token.parser_word_pieces() {

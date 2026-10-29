@@ -780,7 +780,7 @@ pub(super) fn drain_segment_phrase_variants(
         && let Some(token_range) =
             segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
     {
-        segment_tokens.drain(token_range);
+        crate::word_claims::claim_drained(segment_tokens.drain(token_range));
     }
 }
 
@@ -795,7 +795,7 @@ fn drain_segment_matching_phrase(segment_tokens: &mut Vec<OwnedLexToken>, phrase
         && let Some(token_range) =
             segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
     {
-        segment_tokens.drain(token_range);
+        crate::word_claims::claim_drained(segment_tokens.drain(token_range));
     }
 }
 
@@ -874,7 +874,7 @@ pub(super) fn try_apply_put_there_from_battlefield_this_turn_clause(
     filter.set_graveyard_entry_history_surface(Some(
         crate::filter::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn,
     ));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -952,7 +952,7 @@ pub(super) fn try_apply_put_there_from_anywhere_this_turn_clause(
     filter.set_graveyard_entry_history_surface(Some(
         crate::filter::GraveyardEntryHistorySurface::PutThereFromAnywhereThisTurn,
     ));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -996,7 +996,7 @@ pub(super) fn try_apply_milled_this_turn_clause(
     // Milling is narrower than any library-to-graveyard move (surveil and
     // "put into your graveyard" are not mills).
     filter.milled_into_graveyard_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1030,7 +1030,7 @@ pub(super) fn try_apply_put_there_from_their_library_this_turn_clause(
     };
     filter.entered_graveyard_this_turn = true;
     filter.entered_graveyard_from_library_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1086,7 +1086,7 @@ pub(super) fn try_apply_not_put_there_this_combat_clause(
         return false;
     };
     filter.not_put_into_graveyard_this_combat = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1129,7 +1129,7 @@ pub(super) fn try_apply_put_there_this_turn_clause(
     filter.set_graveyard_entry_history_surface(Some(
         crate::filter::GraveyardEntryHistorySurface::PutThereThisTurn,
     ));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1158,7 +1158,7 @@ pub(super) fn try_apply_graveyard_from_battlefield_this_turn_clause(
         return false;
     };
     filter.entered_graveyard_from_battlefield_this_turn = true;
-    all_words.drain(word_start + 1..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start + 1..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1204,7 +1204,7 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
     filter.entered_battlefield_controller = controller;
     filter.zone = Some(Zone::Battlefield);
     filter.set_entered_battlefield_explicit_surface(explicitly_named_battlefield);
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1336,7 +1336,7 @@ pub(super) fn try_apply_didnt_enter_battlefield_this_turn_clause(
         filter.didnt_attack_this_turn = true;
         filter.attacked_this_turn = false;
     }
-    all_words.drain(word_start..word_end);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_end));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1398,7 +1398,7 @@ pub(super) fn try_apply_target_player_or_planeswalker_controller_clause(
     };
 
     filter.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
-    all_words.drain(word_start..word_end);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_end));
     drain_segment_matching_phrase(
         segment_tokens,
         TARGET_PLAYER_OR_PLANESWALKER_CONTROLLER_CONTROL_PHRASES,
@@ -1427,7 +1427,7 @@ pub(super) fn try_apply_put_onto_battlefield_with_source_clause(
             format!("this {}", phrase.last().copied().unwrap_or("permanent")),
         ));
     filter.zone = Some(Zone::Battlefield);
-    all_words.drain(word_start..word_start + phrase.len());
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + phrase.len()));
     let mut authored_phrase = phrase.to_vec();
     authored_phrase.insert(2, "the");
     drain_segment_matching_phrase(segment_tokens, &[&authored_phrase, phrase]);
@@ -1458,7 +1458,7 @@ pub(super) fn try_apply_created_with_source_clause(
 
     filter.created_with_source = true;
     filter.created_with_source_surface = Some(source_surface);
-    all_words.drain(word_start..word_start + phrase.len());
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + phrase.len()));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1506,7 +1506,7 @@ pub(super) fn try_apply_drawn_this_turn_clause(
         return false;
     };
     filter.drawn_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[SegmentPhraseVariant {
@@ -1581,7 +1581,7 @@ pub(super) fn try_apply_counters_put_on_this_turn_clause(
 
     let phrase_words = all_words[word_start..word_start + consumed].to_vec();
     filter.counters_put_on_this_turn = Some(constraint);
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_matching_phrase(segment_tokens, &[phrase_words.as_slice()]);
     true
 }
@@ -1677,7 +1677,7 @@ pub(super) fn try_apply_counter_source_history_clause(
     };
     let phrase_words = all_words[word_start..word_start + consumed].to_vec();
     filter.counter_source_history = Some(constraint);
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     // The segment keeps its articles: "that a mire counter ...".
     let with_article = |article: &'static str| {
         let mut authored = Vec::with_capacity(phrase_words.len() + 2);
@@ -1735,7 +1735,7 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
                     relation: crate::target::TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only },
                 });
                 drain_segment_matching_phrase(segment_tokens, &[phrase.as_slice()]);
-                all_words.drain(start..end);
+                crate::word_claims::claim_drained(all_words.drain(start..end));
                 return true;
             }
         }
@@ -1767,9 +1767,9 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
                 crate::word_primitives::parse_sequence_start(&segment_words, &phrase)
                 && let Some(range) = view.token_span_for_words(offset, offset + phrase.len())
             {
-                segment_tokens.drain(range);
+                crate::word_claims::claim_drained(segment_tokens.drain(range));
             }
-            all_words.drain(start..end);
+            crate::word_claims::claim_drained(all_words.drain(start..end));
             return true;
         }
     }
@@ -1780,7 +1780,7 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
     };
 
     filter.dealt_damage_this_turn = true;
-    all_words.drain(word_start..word_start + ACTIVE_PHRASE.len());
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + ACTIVE_PHRASE.len()));
     drain_segment_phrase_variants(
         segment_tokens,
         &[SegmentPhraseVariant {
@@ -1818,7 +1818,7 @@ pub(super) fn try_apply_ability_activated_this_turn_clause(
     let consumed = phrase.len();
 
     filter.ability_activated_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(segment_tokens, PHRASES);
     true
 }
@@ -1864,7 +1864,7 @@ pub(super) fn try_apply_not_enchanted_clause(
     let mut aura = ObjectFilter::enchantment();
     aura.subtypes.push(Subtype::Aura);
     filter.without_attached_object = Some(Box::new(aura));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(segment_tokens, PHRASES);
     true
 }
@@ -1893,7 +1893,7 @@ pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
     };
 
     filter.was_dealt_damage_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1942,7 +1942,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
         && is_demonstrative_object_head(all_words[2])
     {
         push_it_tagged_object_constraint(filter);
-        all_words.drain(..2);
+        crate::word_claims::claim_drained(all_words.drain(..2));
         return true;
     }
     if all_words.len() >= 2 && LEADING_TAGGED_REFERENCE_WORDS.contains(&all_words[0]) {

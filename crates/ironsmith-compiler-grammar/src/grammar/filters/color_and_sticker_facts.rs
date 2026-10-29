@@ -27,7 +27,7 @@ pub(super) fn try_apply_sticker_filter_clause(
         };
         let consumed = initial_len.saturating_sub(input.len());
         filter.sticker = Some(sticker);
-        words.drain(start..start + consumed);
+        crate::word_claims::claim_drained(words.drain(start..start + consumed));
         return true;
     }
     false
@@ -80,7 +80,7 @@ pub(super) fn try_apply_required_both_colors_clause(
         };
         let consumed = initial_len.saturating_sub(input.len());
         filter.required_colors = Some(colors);
-        words.drain(start..start + consumed);
+        crate::word_claims::claim_drained(words.drain(start..start + consumed));
         return true;
     }
     false

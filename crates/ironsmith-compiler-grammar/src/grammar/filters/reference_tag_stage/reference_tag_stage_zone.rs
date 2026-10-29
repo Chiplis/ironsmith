@@ -19,7 +19,7 @@ pub(super) fn try_apply_no_shared_creature_type_with_your_creatures_or_graveyard
                 .in_zone(Zone::Graveyard)
                 .owned_by(PlayerFilter::You),
         );
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false

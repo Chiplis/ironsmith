@@ -187,14 +187,14 @@ fn parse_object_filter_inner_unchecked(
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == THAT_WORD))
             {
-                fragment_tokens.drain(..1);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..1));
             }
             if fragment_tokens
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == ONLY_WORD))
             {
                 only = true;
-                fragment_tokens.drain(..1);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..1));
             }
             if fragment_tokens.len() >= 2
                 && fragment_tokens[0].is_word("a")
@@ -207,7 +207,7 @@ fn parse_object_filter_inner_unchecked(
                 if !only && !relation_only {
                     count = Some(crate::effect::ChoiceCount::exactly(1));
                 }
-                fragment_tokens.drain(..2);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..2));
             } else if fragment_tokens
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == SINGLE_WORD))
@@ -215,7 +215,7 @@ fn parse_object_filter_inner_unchecked(
                 if !only && !relation_only {
                     count = Some(crate::effect::ChoiceCount::exactly(1));
                 }
-                fragment_tokens.drain(..1);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..1));
             }
 
             if parse_phrase_at_head(
@@ -443,7 +443,7 @@ fn parse_object_filter_inner_unchecked(
                     format!("the chosen {chosen_kind}"),
                 ));
             }
-            base_tokens.drain(start..end);
+            crate::word_claims::claim_drained(base_tokens.drain(start..end));
         }
     }
 
@@ -477,9 +477,9 @@ fn parse_object_filter_inner_unchecked(
             .is_some_and(|token| token.is_word("or") || token.is_word("and"))
             && base_tokens.len() > idx + 5
         {
-            base_tokens.drain(idx + 2..idx + 5);
+            crate::word_claims::claim_drained(base_tokens.drain(idx + 2..idx + 5));
         } else {
-            base_tokens.drain(idx..idx + 4);
+            crate::word_claims::claim_drained(base_tokens.drain(idx..idx + 4));
         }
     }
 
@@ -505,7 +505,7 @@ fn parse_object_filter_inner_unchecked(
 
         filter.other = true;
         filter.source_surface.get_or_insert(surface);
-        base_tokens.drain(idx..idx + 2 + tail_token_len);
+        crate::word_claims::claim_drained(base_tokens.drain(idx..idx + 2 + tail_token_len));
     }
 
     // "other than Werewolves and Wolves" is an exclusion on the described
@@ -3133,7 +3133,7 @@ pub(super) fn try_apply_could_be_targeted_by_that_spell_clause(
         filter.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(
             ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind()),
         ));
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false
@@ -3179,7 +3179,7 @@ pub(super) fn try_apply_shared_creature_type_with_source_clause(
         let idx = fact.span.start;
 
         filter.shares_creature_type_with_source = true;
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false

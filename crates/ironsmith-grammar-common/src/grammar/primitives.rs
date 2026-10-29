@@ -525,6 +525,10 @@ pub fn kw<'a>(
             detail: expected,
         },
         any.verify(move |token: &&LexToken| token.is_word(expected))
+            .map(|token: &'a LexToken| {
+                ironsmith_compiler_syntax::word_claims::claim_tokens(std::slice::from_ref(token));
+                token
+            })
             .context(StrContext::Label("keyword"))
             .context(StrContext::Expected(StrContextValue::Description(expected))),
     )

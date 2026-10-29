@@ -39,7 +39,7 @@ pub(super) fn try_apply_no_shared_creature_type_with_chosen_creature_clause(
             .push(ObjectFilter::tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
             ));
-        all_words.drain(fact.span.start..fact.span.start + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(fact.span.start..fact.span.start + phrase.len()));
         return true;
     }
     false

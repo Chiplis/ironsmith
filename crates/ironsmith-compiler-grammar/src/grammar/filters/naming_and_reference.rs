@@ -649,7 +649,7 @@ pub(super) fn try_apply_entered_since_your_last_turn_ended_clause(
         return false;
     };
     filter.entered_since_your_last_turn_ended = true;
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -733,7 +733,7 @@ pub(super) fn try_apply_controlled_continuously_since_turn_began_clause(
     if active && filter.controller.is_none() {
         filter.controller = Some(PlayerFilter::Active);
     }
-    all_words.drain(start..start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(start..start + consumed));
     true
 }
 
@@ -752,7 +752,7 @@ pub(super) fn strip_turned_face_up_this_turn_words(
     for phrase in PHRASES {
         if let Some(start) = find_phrase_start(all_words.as_slice(), phrase) {
             filter.turned_face_up_this_turn = true;
-            all_words.drain(start..start + phrase.len());
+            crate::word_claims::claim_drained(all_words.drain(start..start + phrase.len()));
             return;
         }
     }
@@ -769,7 +769,7 @@ pub(super) fn strip_object_filter_face_state_words(
             continue;
         };
         filter.face_down = Some(face_down);
-        all_words.drain(idx..idx + consumed);
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     }
 }
 
@@ -850,7 +850,7 @@ pub(super) fn try_apply_card_type_count_phrase(
         };
         filter.creature_type_count =
             Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
-        all_words.drain(index..index + consumed);
+        crate::word_claims::claim_drained(all_words.drain(index..index + consumed));
         return true;
     };
     // "any number of cards ... with four or more card types among them"
@@ -863,11 +863,11 @@ pub(super) fn try_apply_card_type_count_phrase(
                 count as i32,
             ),
         ));
-        all_words.drain(index..index + consumed + 2);
+        crate::word_claims::claim_drained(all_words.drain(index..index + consumed + 2));
         return true;
     }
     filter.card_type_count = Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
-    all_words.drain(index..index + consumed);
+    crate::word_claims::claim_drained(all_words.drain(index..index + consumed));
     true
 }
 
@@ -917,7 +917,7 @@ pub(super) fn try_apply_color_count_phrase(
     } else {
         color_count_idx
     };
-    all_words.drain(drain_start..color_count_idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(drain_start..color_count_idx + consumed));
     Ok(true)
 }
 
@@ -962,7 +962,7 @@ pub(super) fn try_apply_not_all_colors_clause(
         return false;
     };
     filter.all_colors = Some(false);
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -993,7 +993,7 @@ pub(super) fn try_apply_not_exactly_two_colors_clause(
         return false;
     };
     filter.exactly_two_colors = Some(false);
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -1007,7 +1007,7 @@ pub(super) fn try_apply_exactly_two_colors_clause(
         return false;
     };
     filter.exactly_two_colors = Some(true);
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -1141,7 +1141,7 @@ pub(super) fn try_apply_mana_value_counters_on_source_clause(
     } else {
         filter.mana_value = Some(comparison);
     }
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
 
     let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
     let segment_words = segment_words_view.to_word_refs();
@@ -1152,7 +1152,7 @@ pub(super) fn try_apply_mana_value_counters_on_source_clause(
         && token_range.start < token_range.end
         && token_range.end <= segment_tokens.len()
     {
-        segment_tokens.drain(token_range);
+        crate::word_claims::claim_drained(segment_tokens.drain(token_range));
     }
 
     true
@@ -1189,16 +1189,16 @@ pub(super) fn try_apply_attached_exclusion_phrases(
             tag: tag.key.clone(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
-        all_words.drain(idx..drain_end);
+        crate::word_claims::claim_drained(all_words.drain(idx..drain_end));
     }
 }
 
 pub(super) fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
     while words_start_with_phrase(all_words.as_slice(), ONE_OF_PREFIX) {
-        all_words.drain(0..ONE_OF_PREFIX.len());
+        crate::word_claims::claim_drained(all_words.drain(0..ONE_OF_PREFIX.len()));
     }
     while words_start_with_phrase(all_words.as_slice(), DIFFERENT_ONE_OF_PREFIX) {
-        all_words.drain(0..DIFFERENT_ONE_OF_PREFIX.len());
+        crate::word_claims::claim_drained(all_words.drain(0..DIFFERENT_ONE_OF_PREFIX.len()));
     }
     while all_words
         .first()
@@ -1970,7 +1970,7 @@ fn drain_source_reference_prefix_tokens(
     else {
         return;
     };
-    segment_tokens.drain(..end_token_idx);
+    crate::word_claims::claim_drained(segment_tokens.drain(..end_token_idx));
 }
 
 #[path = "naming_and_reference/naming_and_reference_reference.rs"]

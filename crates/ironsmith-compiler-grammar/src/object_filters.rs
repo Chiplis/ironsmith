@@ -1713,7 +1713,7 @@ pub(crate) fn split_source_relation_phrases(
             && window[5].is_word("planeswalker")
     }) {
         attacking_same_defender_as_source = true;
-        kept.drain(start + 1..start + 6).for_each(drop);
+        crate::word_claims::claim_drained(kept.drain(start + 1..start + 6));
     }
     let could_be_enchanted_by_source = kept.len() >= 4 && {
         let tail = &kept[kept.len() - 4..];

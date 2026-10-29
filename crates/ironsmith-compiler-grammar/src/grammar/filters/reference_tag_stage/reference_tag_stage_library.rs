@@ -70,7 +70,7 @@ pub(super) fn strip_other_than_basic_land_cards_clause(
         {
             end += 1;
         }
-        all_words.drain(idx..end);
+        crate::word_claims::claim_drained(all_words.drain(idx..end));
         strip_other_than_basic_land_cards_tokens(segment_tokens);
         return true;
     }
@@ -99,7 +99,7 @@ pub(super) fn strip_other_than_basic_land_cards_tokens(segment_tokens: &mut Vec<
         if word_at(end).is_some_and(|word| parse_word_choice(word, CARD_OR_CARDS_WORDS).is_some()) {
             end += 1;
         }
-        segment_tokens.drain(idx..end);
+        crate::word_claims::claim_drained(segment_tokens.drain(idx..end));
         return;
     }
 }

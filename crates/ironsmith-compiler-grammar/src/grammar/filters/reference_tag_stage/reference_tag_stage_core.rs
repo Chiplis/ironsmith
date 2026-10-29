@@ -299,7 +299,7 @@ pub(super) fn try_apply_distinct_powers_clause(
         };
         let idx = fact.span.start;
         filter.distinct_powers = true;
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false
@@ -323,7 +323,7 @@ pub(super) fn try_apply_shares_land_type_clause(
         };
         let idx = fact.span.start;
         filter.shares_land_type = true;
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false
@@ -343,7 +343,7 @@ pub(super) fn try_apply_distinct_creature_types_clause(
         };
         let idx = fact.span.start;
         filter.distinct_creature_types = true;
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false

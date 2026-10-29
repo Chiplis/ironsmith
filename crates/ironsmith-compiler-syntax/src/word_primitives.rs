@@ -7,6 +7,7 @@ fn dynamic_sequence<'a, 'p>(
     expected: &'p [&'p str],
 ) -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> + 'p {
     move |input: &mut WordInput<'a>| {
+        let start = *input;
         for expected_word in expected {
             let Some((word, rest)) = input.split_first() else {
                 return Err(ErrMode::Backtrack(ContextError::new()));
@@ -16,6 +17,7 @@ fn dynamic_sequence<'a, 'p>(
             }
             *input = rest;
         }
+        crate::word_claims::claim_words(&start[..start.len() - input.len()]);
         Ok(())
     }
 }
@@ -24,6 +26,7 @@ fn dynamic_choice_sequence<'a, 'p>(
     expected: &'p [&'p [&'p str]],
 ) -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> + 'p {
     move |input: &mut WordInput<'a>| {
+        let start = *input;
         for accepted_words in expected {
             let Some((word, rest)) = input.split_first() else {
                 return Err(ErrMode::Backtrack(ContextError::new()));
@@ -33,6 +36,7 @@ fn dynamic_choice_sequence<'a, 'p>(
             }
             *input = rest;
         }
+        crate::word_claims::claim_words(&start[..start.len() - input.len()]);
         Ok(())
     }
 }
@@ -294,8 +298,16 @@ pub fn contains_any_phrase_or_empty(words: &[&str], expected: &[&[&str]]) -> boo
         .any(|phrase| sequence_or_empty_occurs(words, phrase))
 }
 
+/// Claim `words` when a match succeeded; the matched words were read.
+fn claimed(matched: bool, words: &[&str]) -> bool {
+    if matched {
+        crate::word_claims::claim_words(words);
+    }
+    matched
+}
+
 pub fn equals(words: &[&str], expected: &[&str]) -> bool {
-    words == expected
+    claimed(words == expected, words)
 }
 
 pub fn equals_any(words: &[&str], expected: &[&[&str]]) -> bool {
@@ -313,11 +325,11 @@ pub fn equals_any_at(words: &[&str], idx: usize, expected: &[&[&str]]) -> bool {
 }
 
 pub fn at_is(words: &[&str], idx: usize, expected: &str) -> bool {
-    words.get(idx).is_some_and(|word| *word == expected)
+    words.get(idx..=idx).is_some_and(|word| claimed(word[0] == expected, word))
 }
 
 pub fn at_is_any(words: &[&str], idx: usize, expected: &[&str]) -> bool {
-    words.get(idx).is_some_and(|word| expected.contains(word))
+    words.get(idx..=idx).is_some_and(|word| claimed(expected.contains(&word[0]), word))
 }
 
 pub fn first_is(words: &[&str], expected: &str) -> bool {
@@ -329,11 +341,11 @@ pub fn first_is_any(words: &[&str], expected: &[&str]) -> bool {
 }
 
 pub fn last_is(words: &[&str], expected: &str) -> bool {
-    words.last().is_some_and(|word| *word == expected)
+    words.len().checked_sub(1).is_some_and(|idx| at_is(words, idx, expected))
 }
 
 pub fn last_is_any(words: &[&str], expected: &[&str]) -> bool {
-    words.last().is_some_and(|word| expected.contains(word))
+    words.len().checked_sub(1).is_some_and(|idx| at_is_any(words, idx, expected))
 }
 
 pub fn matching_phrase<'p>(words: &[&str], expected: &'p [&'p [&'p str]]) -> Option<&'p [&'p str]> {
@@ -348,7 +360,7 @@ pub fn matching_value<T: Clone>(words: &[&str], expected: &[(&[&str], T)]) -> Op
 }
 
 pub fn ends_with(words: &[&str], expected: &[&str]) -> bool {
-    words.len() >= expected.len() && words[words.len() - expected.len()..] == *expected
+    words.len() >= expected.len() && equals(&words[words.len() - expected.len()..], expected)
 }
 
 pub fn ends_with_any(words: &[&str], expected: &[&[&str]]) -> bool {
@@ -356,7 +368,7 @@ pub fn ends_with_any(words: &[&str], expected: &[&[&str]]) -> bool {
 }
 
 pub fn starts_with(words: &[&str], expected: &[&str]) -> bool {
-    words.len() >= expected.len() && words[..expected.len()] == *expected
+    words.len() >= expected.len() && equals(&words[..expected.len()], expected)
 }
 
 pub fn starts_with_at(words: &[&str], idx: usize, expected: &[&str]) -> bool {
@@ -396,10 +408,7 @@ pub fn strip_prefix_value<'w, 'a, T: Clone>(
 }
 
 pub fn strip_first_word<'w, 'a>(words: &'w [&'a str], expected: &str) -> Option<&'w [&'a str]> {
-    words
-        .first()
-        .is_some_and(|word| *word == expected)
-        .then(|| &words[1..])
+    first_is(words, expected).then(|| &words[1..])
 }
 
 pub fn strip_first_word_value<'w, 'a, T: Clone>(
@@ -407,9 +416,11 @@ pub fn strip_first_word_value<'w, 'a, T: Clone>(
     expected: &[(&str, T)],
 ) -> Option<(T, &'w [&'a str])> {
     let first = words.first()?;
-    expected
+    let value = expected
         .iter()
-        .find_map(|(word, value)| (*first == *word).then(|| (value.clone(), &words[1..])))
+        .find_map(|(word, value)| (*first == *word).then(|| value.clone()))?;
+    crate::word_claims::claim_word(first);
+    Some((value, &words[1..]))
 }
 
 pub fn strip_any_suffix<'a, 'p>(
@@ -431,7 +442,7 @@ pub fn strip_suffix_value<'w, 'a, T: Clone>(
 }
 
 pub fn contains_word(words: &[&str], expected: &str) -> bool {
-    words.contains(&expected)
+    find_word(words, expected).is_some()
 }
 
 pub fn find_word(words: &[&str], expected: &str) -> Option<usize> {
@@ -448,6 +459,7 @@ pub fn select_word_position(
 ) -> Option<usize> {
     for (position, word) in words.iter().enumerate() {
         if predicate(word) {
+            crate::word_claims::claim_word(word);
             return Some(position);
         }
     }
@@ -460,6 +472,7 @@ pub fn select_last_word_position(
 ) -> Option<usize> {
     for (position, word) in words.iter().enumerate().rev() {
         if predicate(word) {
+            crate::word_claims::claim_word(word);
             return Some(position);
         }
     }

@@ -222,7 +222,7 @@ pub fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool 
     else {
         return false;
     };
-    tokens.drain(token_start..token_end);
+    crate::word_claims::claim_drained(tokens.drain(token_start..token_end));
     true
 }
 

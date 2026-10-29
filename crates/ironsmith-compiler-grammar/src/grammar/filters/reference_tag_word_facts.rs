@@ -34,6 +34,7 @@ fn expected_word<'i, 'p>(
             return Err(primitives::backtrack_err("word fact", "expected word"));
         }
         *input = rest;
+        crate::word_claims::claim_word(word);
         Ok(*word)
     }
 }

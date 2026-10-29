@@ -85,7 +85,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     {
         filter.source = true;
         filter.source_surface = Some(surface);
-        all_words.drain(..source_word_len);
+        crate::word_claims::claim_drained(all_words.drain(..source_word_len));
         drain_source_reference_prefix_tokens(segment_tokens, source_word_len);
     }
 
@@ -259,7 +259,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 tag: (crate::tag::CompilerReferenceTag::ThisWaySacrificed.bind()).into(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
-            all_words.drain(idx..idx + 6);
+            crate::word_claims::claim_drained(all_words.drain(idx..idx + 6));
             break;
         }
     }
@@ -278,7 +278,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             && all_words[..idx].ends_with(&["revealed", "this", "way"])
         {
             filter.zone = Some(Zone::Library);
-            all_words.drain(idx..idx + phrase.len());
+            crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
             break;
         }
     }
@@ -293,7 +293,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         let next = all_words.get(idx + 2).copied();
         if matches!(next, None | Some("that") | Some("attached")) {
             filter.controller = Some(PlayerFilter::You);
-            all_words.drain(idx..idx + 2);
+            crate::word_claims::claim_drained(all_words.drain(idx..idx + 2));
         }
     }
 
@@ -399,7 +399,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 reference_end += 1;
             }
             if reference_end > exiled_with_idx + 1 {
-                all_words.drain(exiled_with_idx + 1..reference_end);
+                crate::word_claims::claim_drained(all_words.drain(exiled_with_idx + 1..reference_end));
             }
         }
         if let Some(used_to_craft_idx) = find_phrase_start(all_words, USED_TO_CRAFT_PHRASE) {
@@ -416,7 +416,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             {
                 reference_end += 1;
             }
-            all_words.drain(used_to_craft_idx..reference_end);
+            crate::word_claims::claim_drained(all_words.drain(used_to_craft_idx..reference_end));
         }
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_words = segment_words_view.to_word_refs();
@@ -440,7 +440,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 && let Some(token_range) =
                     segment_words_view.token_span_for_words(exiled_with_idx + 1, reference_end_word)
             {
-                segment_tokens.drain(token_range);
+                crate::word_claims::claim_drained(segment_tokens.drain(token_range));
             }
         }
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
@@ -462,7 +462,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             if let Some(token_range) =
                 segment_words_view.token_span_for_words(used_to_craft_idx, reference_end_word)
             {
-                segment_tokens.drain(token_range);
+                crate::word_claims::claim_drained(segment_tokens.drain(token_range));
             }
         }
     }
@@ -489,7 +489,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        all_words.drain(..2);
+        crate::word_claims::claim_drained(all_words.drain(..2));
     }
 
     let additional_cost_surface = additional_cost_object_surface(all_words);

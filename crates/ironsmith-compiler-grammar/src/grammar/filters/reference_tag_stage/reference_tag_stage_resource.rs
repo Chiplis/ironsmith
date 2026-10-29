@@ -241,9 +241,9 @@ pub(super) fn try_apply_distinct_mana_values_clause(
                 .get(idx + phrase.len() + 1)
                 .is_some_and(|word| *word == "or");
         if comparison_follows && phrase.ends_with(&["mana", "value"]) {
-            all_words.drain(idx..idx + phrase.len() - 2);
+            crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len() - 2));
         } else {
-            all_words.drain(idx..idx + phrase.len());
+            crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         }
         return true;
     }
