@@ -1526,8 +1526,9 @@ pub(super) fn parse_object_filter(
             base_end -= 2;
         }
         if base_end > 0 {
-            let mut filter =
-                parse_object_filter(&tokens[..words.token_start_indices()[base_end]], other)?;
+            let boundary = words.token_start_indices()[base_end];
+            let mut filter = parse_object_filter(&tokens[..boundary], other)?;
+            crate::word_claims::claim_tokens(&tokens[boundary..]);
             filter.blocking = true;
             filter.in_combat_with = Some(crate::filter::ObjectRef::Tagged(host.bind().into()));
             return Ok(filter);
@@ -1537,6 +1538,7 @@ pub(super) fn parse_object_filter(
     // Resilience): restrict the selection to the referenced collection.
     if let Some(base) = crate::object_filters::split_from_among_those_cards_suffix(tokens) {
         let mut filter = parse_object_filter(&base, other)?;
+        crate::object_filters::claim_outside(tokens, &base);
         crate::object_filters::clear_zone_for_referenced_cards(&mut filter);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: crate::tag::CompilerReferenceTag::ThoseCardsReference.key(),

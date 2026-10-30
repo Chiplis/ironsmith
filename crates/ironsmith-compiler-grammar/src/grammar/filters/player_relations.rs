@@ -533,6 +533,12 @@ fn parse_was_dealt_damage_this_turn_shape(words: &[&str]) -> Option<usize> {
         &["that", "were", "dealt", "damage", "this", "turn"],
         &["was", "dealt", "damage", "this", "turn"],
         &["were", "dealt", "damage", "this", "turn"],
+        // "a creature that has been dealt damage this turn" (Giant Shark).
+        &["that", "has", "been", "dealt", "damage", "this", "turn"],
+        &["that", "have", "been", "dealt", "damage", "this", "turn"],
+        &["has", "been", "dealt", "damage", "this", "turn"],
+        &["have", "been", "dealt", "damage", "this", "turn"],
+        &["been", "dealt", "damage", "this", "turn"],
         // Oracle sometimes elides "was" after a quantified object, as in
         // "each creature dealt damage this turn" (Inflame).
         &["dealt", "damage", "this", "turn"],
@@ -1913,6 +1919,26 @@ pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
             },
             SegmentPhraseVariant {
                 words: &["were", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "has", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "have", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["has", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["have", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["been", "dealt", "damage", "this", "turn"],
                 drain_start_offset: 0,
             },
             SegmentPhraseVariant {

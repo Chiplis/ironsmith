@@ -372,6 +372,18 @@ pub fn parse_trigger_subject_filter_lexed(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
+    // A misplaced split hands over a clause fragment ("this creature attacks
+    // or" from "attacks or blocks"), never a subject: a noun phrase does not
+    // end on a conjunction. Rejecting (rather than declining) keeps the
+    // probing rule from succeeding through another path.
+    if subject_tokens
+        .last()
+        .is_some_and(|token| token.is_any_word(&["or", "and"]))
+    {
+        return Err(CardTextError::ParseError(
+            "trigger subject is a clause fragment".into(),
+        ));
+    }
 
     let mut subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
     let mut other = false;

@@ -687,6 +687,14 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         )));
     }
     if has_same_name_as_tagged_object {
+        if let Some(start) = find_any_phrase_start(all_words, SAME_NAME_AS_TAGGED_OBJECT_PHRASES)
+            && let Some(phrase) = SAME_NAME_AS_TAGGED_OBJECT_PHRASES
+                .iter()
+                .filter(|phrase| crate::word_primitives::starts_with(&all_words[start..], phrase))
+                .max_by_key(|phrase| phrase.len())
+        {
+            crate::word_claims::claim_words(&all_words[start..start + phrase.len()]);
+        }
         filter.set_same_name_antecedent_surface(same_name_antecedent_surface(all_words));
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: if source_exiled_is_same_name_antecedent {
@@ -817,6 +825,10 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                         | "didn't"
                 )
             }) {
+            // The negation and its copula subject ("that weren't") are read.
+            let negation = action_start - 1;
+            let start = if negation > 0 && all_words[negation - 1] == "that" { negation - 1 } else { negation };
+            crate::word_claims::claim_words(&all_words[start..action_start]);
             TaggedOpbjectRelation::IsNotTaggedObject
         } else {
             TaggedOpbjectRelation::IsTaggedObject

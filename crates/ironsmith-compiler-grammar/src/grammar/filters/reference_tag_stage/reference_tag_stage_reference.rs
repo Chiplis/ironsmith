@@ -1425,6 +1425,8 @@ fn parse_object_filter_inner_unchecked(
                         filter.owner = Some(pronoun_player_filter.clone());
                         owner_start = idx - 1;
                     }
+                    // "in all graveyards": any owner.
+                    "all" => owner_start = idx - 1,
                     _ => {}
                 }
             }

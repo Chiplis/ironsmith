@@ -471,6 +471,7 @@ fn parse_simple_object_filter_words_with_list_marker(
             subtypes: vec![Subtype::Equipment],
             ..ObjectFilter::default()
         }));
+        crate::word_claims::claim_words(&input_words[..1]);
         return Some(filter);
     }
     if input_words.first() == Some(&"your")
@@ -482,6 +483,7 @@ fn parse_simple_object_filter_words_with_list_marker(
         let mut filter = ObjectFilter::default().ring_bearer().you_control();
         filter.zone = Some(Zone::Battlefield);
         filter.other = other;
+        crate::word_claims::claim_words(input_words);
         return Some(filter);
     }
     if crate::word_primitives::starts_with(&input_words, &["one", "or", "more"]) {

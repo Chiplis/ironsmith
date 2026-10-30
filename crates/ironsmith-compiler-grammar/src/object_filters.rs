@@ -1367,6 +1367,7 @@ pub(crate) fn parse_terminal_same_name_filter(
         && parser_token_word_refs(&trimmed[trimmed.len() - 3..]) == ["with", "those", "names"]
     {
         let mut filter = parse_object_filter(&trimmed[..trimmed.len() - 3], other)?;
+        crate::word_claims::claim_tokens(&trimmed[trimmed.len() - 3..]);
         filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
@@ -1451,6 +1452,9 @@ pub(crate) fn parse_terminal_same_name_filter(
         head.extend_from_slice(head_tail);
         parse_object_filter(&head, other)?
     };
+    // The relation marker and its reference are read here; a trailing zone
+    // qualifier was read with the head.
+    crate::word_claims::claim_tokens(&trimmed[start..trimmed.len() - head_tail.len()]);
     filter.set_same_name_antecedent_surface(surface);
     filter
         .tagged_constraints
@@ -1494,6 +1498,7 @@ fn parse_terminal_different_name_filter(
         return Ok(None);
     }
     let mut filter = parse_object_filter(&trimmed[..base_end], other)?;
+    crate::word_claims::claim_tokens(&trimmed[base_end..]);
     filter.set_same_name_antecedent_surface(Some(surface));
     filter
         .tagged_constraints
@@ -2029,7 +2034,7 @@ fn strip_resolution_time_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTo
 
 /// Claim the words of `tokens` outside `base`: a fast path that split a
 /// recognized suffix or prefix off and parsed the rest read the whole input.
-fn claim_outside(tokens: &[OwnedLexToken], base: &[OwnedLexToken]) {
+pub(crate) fn claim_outside(tokens: &[OwnedLexToken], base: &[OwnedLexToken]) {
     if !crate::word_claims::is_recording() {
         return;
     }
