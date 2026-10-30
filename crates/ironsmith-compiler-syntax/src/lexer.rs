@@ -1205,7 +1205,15 @@ where
 {
     words
         .into_iter()
-        .map(|word| OwnedLexToken::synthetic_word(word.as_ref()))
+        .map(|word| {
+            // While claims are recorded, a word handed out from authored
+            // tokens keeps its source span, so readers of the rebuilt tokens
+            // claim the authored word.
+            if let Some(span) = crate::word_claims::authored_word_span(word.as_ref()) {
+                return OwnedLexToken::word(word.as_ref(), span);
+            }
+            OwnedLexToken::synthetic_word(word.as_ref())
+        })
         .collect()
 }
 

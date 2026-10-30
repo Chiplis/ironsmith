@@ -97,11 +97,32 @@ pub fn audit_card<T: std::fmt::Debug>(
         // Only a filter the card kept counts: a probe of the wrong span
         // produces a filter that is not in the parsed document.
         let mut violations = claims.violations();
+        if std::env::var_os("IRONSMITH_FILTER_CLAIM_DEBUG").is_some() {
+            for (obligation, claimed) in claims.obligations_debug() {
+                eprintln!("claim-debug obligation '{}' in '{}' claimed={claimed}", obligation.word, obligation.input);
+            }
+            let document = comparable_debug(&format!("{value:?}"));
+            for obligation in &violations {
+                eprintln!(
+                    "claim-debug {name}: '{}' in '{}' at {} kept={} clean={}",
+                    obligation.word,
+                    obligation.input,
+                    obligation.caller,
+                    document.contains(&*obligation.filter),
+                    claims.has_clean_filter(&obligation.filter),
+                );
+            }
+        }
         if violations.is_empty() {
             return Ok(value);
         }
         let document = comparable_debug(&format!("{value:?}"));
-        violations.retain(|obligation| document.contains(&*obligation.filter));
+        // A kept filter some other parse produced while reading all its
+        // words is explained by that parse (a probe of a whole clause that
+        // came back as the clause's real "target creature").
+        violations.retain(|obligation| {
+            document.contains(&*obligation.filter) && !claims.has_clean_filter(&obligation.filter)
+        });
         if violations.is_empty() {
             return Ok(value);
         }
@@ -144,9 +165,36 @@ pub fn audit_filter<T: std::fmt::Debug>(
     if !audit_enabled() {
         return f();
     }
+    audit_filter_input(FilterInput::Tokens(tokens), caller, f)
+}
+
+/// [`audit_filter`] for a filter given registered `&str` words. Only an
+/// outermost word parse inside a card leaves obligations: outside a card the
+/// words' origin is unknown.
+pub fn audit_filter_words<T: std::fmt::Debug>(
+    words: &[&str],
+    caller: &'static Location<'static>,
+    f: impl FnOnce() -> Result<T, crate::CardTextError>,
+) -> Result<T, crate::CardTextError> {
+    if !audit_enabled() {
+        return f();
+    }
+    audit_filter_input(FilterInput::Words(words), caller, f)
+}
+
+enum FilterInput<'a> {
+    Tokens(&'a [OwnedLexToken]),
+    Words(&'a [&'a str]),
+}
+
+fn audit_filter_input<T: std::fmt::Debug>(
+    input: FilterInput<'_>,
+    caller: &'static Location<'static>,
+    f: impl FnOnce() -> Result<T, crate::CardTextError>,
+) -> Result<T, crate::CardTextError> {
     let in_card = CARD_DEPTH.with(Cell::get) > 0;
     let outermost = FILTER_DEPTH.with(|depth| depth.get() == 0);
-    if outermost && !in_card {
+    if outermost && !in_card && matches!(input, FilterInput::Tokens(_)) {
         reset_registry();
     }
     let guard = depth_guard(&FILTER_DEPTH);
@@ -157,18 +205,62 @@ pub fn audit_filter<T: std::fmt::Debug>(
             CALLER_OWNED.with(|owned| owned.borrow().iter().for_each(|set| claims.extend(set)));
             if in_card {
                 let filter = result.as_ref().ok();
-                claims.oblige_unclaimed(
-                    tokens,
-                    || comparable_debug(&format!("{:?}", filter.expect("ok result"))),
-                    caller,
-                );
-            } else {
+                let filter = || comparable_debug(&format!("{:?}", filter.expect("ok result")));
+                let unread = match input {
+                    FilterInput::Tokens(tokens) => claims.leaves_unread(tokens),
+                    FilterInput::Words(words) => claims.leaves_words_unread(words),
+                };
+                if std::env::var_os("IRONSMITH_FILTER_CLAIM_DEBUG").is_some() {
+                    let text = match input {
+                        FilterInput::Tokens(tokens) => crate::lexer::token_word_refs(tokens).join(" "),
+                        FilterInput::Words(words) => words.join(" "),
+                    };
+                    eprintln!("claim-debug filter '{text}' at {caller} unread={unread}");
+                }
+                // Words of unknown origin cannot vouch for a clean reading.
+                let traceable = match input {
+                    FilterInput::Tokens(_) => true,
+                    FilterInput::Words(words) => {
+                        words.iter().all(|word| !word_spans(word).is_empty())
+                    }
+                };
+                if !unread {
+                    if traceable {
+                        claims.note_clean_filter(&filter());
+                    }
+                } else {
+                    match input {
+                        FilterInput::Tokens(tokens) => claims.oblige_unclaimed(tokens, filter, caller),
+                        FilterInput::Words(words) => {
+                            claims.oblige_unclaimed_words(words, filter, caller)
+                        }
+                    }
+                }
+            } else if let FilterInput::Tokens(tokens) = input {
                 report(tokens, &claims, caller);
             }
         }
         adopt(&claims);
     }
     result
+}
+
+/// A filter reading of `input` that read only part of it (a recovery that
+/// kept the best-parsing suffix): the `skipped` words count as left unread
+/// by the filter `value`, as an outermost filter parse would leave them.
+pub fn oblige_skipped<T: std::fmt::Debug>(
+    input: &[OwnedLexToken],
+    skipped: &[OwnedLexToken],
+    value: &T,
+    caller: &'static Location<'static>,
+) {
+    if skipped.is_empty() || !is_recording() || CARD_DEPTH.with(Cell::get) == 0 {
+        return;
+    }
+    let mut claims = ClaimSet::default();
+    claims.oblige_unclaimed(skipped, || comparable_debug(&format!("{value:?}")), caller);
+    claims.set_obligation_inputs(crate::lexer::token_word_refs(input).join(" "));
+    adopt(&claims);
 }
 
 /// A filter's debug text with the fields its callers routinely finish

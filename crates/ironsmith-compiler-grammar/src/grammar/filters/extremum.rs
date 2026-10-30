@@ -154,6 +154,19 @@ pub fn parse_extremum_object_filter_words(
 
     let mut selected =
         crate::object_filters::parse_object_filter_words(split.subject_words, other)?;
+    // The extremum words around the scope ("with the greatest power among",
+    // a tie suffix) are read here; the subject and scope are read by their
+    // own filter parses.
+    let header_start = split.subject_words.len();
+    match split.scope_words {
+        Some(scope) => {
+            let scope_start = scope.as_ptr() as usize - words.as_ptr() as usize;
+            let scope_start = scope_start / std::mem::size_of::<&str>();
+            crate::word_claims::claim_words(&words[header_start..scope_start]);
+            crate::word_claims::claim_words(&words[scope_start + scope.len()..]);
+        }
+        None => crate::word_claims::claim_words(&words[header_start..]),
+    }
     let scope = if let Some(scope_words) = split.scope_words {
         let mut scope = crate::object_filters::parse_object_filter_words(scope_words, false)?;
         // "a creature an opponent controls with the greatest power among

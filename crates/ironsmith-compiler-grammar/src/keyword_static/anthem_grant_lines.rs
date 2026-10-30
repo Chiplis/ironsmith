@@ -3266,7 +3266,19 @@ pub fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     None
 }
 
+#[track_caller]
 pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    // Each suffix probe reads only its own words; the words before the kept
+    // suffix are left unread by the recovery as a whole.
+    let caller = std::panic::Location::caller();
+    let (best, _probes) = crate::word_claims::speculative(|| best_object_filter_suffix(tokens));
+    best.map(|(start, filter)| {
+        crate::word_claims::oblige_skipped(tokens, &tokens[..start], &filter, caller);
+        filter
+    })
+}
+
+fn best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, ObjectFilter)> {
     let mut best: Option<(usize, usize, ObjectFilter)> = None;
     for start in 0..tokens.len() {
         if tokens[start].as_word().is_none() {
@@ -3307,7 +3319,7 @@ pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<Objec
                 ),
             );
         }
-        filter
+        (start, filter)
     })
 }
 

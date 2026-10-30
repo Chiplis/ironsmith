@@ -169,6 +169,7 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         && tokens.get(1).is_some_and(|token| token.is_word("land"))
     {
         let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[1..], other)?;
+        crate::word_claims::claim_tokens(&tokens[..1]);
         filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
             tag: crate::tag::CompilerReferenceTag::Fortified.bind().into(),
             relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
@@ -177,6 +178,7 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     }
     if tokens.first().is_some_and(|token| token.is_word("all")) {
         let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[1..], other)?;
+        crate::word_claims::claim_tokens(&tokens[..1]);
         filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
         return Ok(filter);
     }
@@ -192,6 +194,7 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         && let Ok((power, toughness)) = crate::keyword_static::parse_pt_modifier(first)
     {
         let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[1..], other)?;
+        crate::word_claims::claim_tokens(&tokens[..1]);
         filter.power = Some(crate::filter::Comparison::Equal(power));
         filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
         return Ok(filter);
@@ -213,6 +216,7 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         {
             let mut filter =
                 parse_object_filter_with_grammar_entrypoint(&tokens[token_end..], other)?;
+            crate::word_claims::claim_tokens(&tokens[..token_end]);
             filter.double_faced = true;
             return Ok(filter);
         }
@@ -416,6 +420,7 @@ fn split_trailing_color_count_phrase_tokens(
         if head.is_empty() {
             return None;
         }
+        crate::word_claims::claim_tokens(&tokens[link_token..]);
         return Some((head, count, exact));
     }
     None

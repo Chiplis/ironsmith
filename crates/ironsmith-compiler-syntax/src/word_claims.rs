@@ -37,6 +37,13 @@ use crate::lexer::OwnedLexToken;
 
 type SpanKey = (usize, usize, usize);
 
+fn filter_hash(filter: &str) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    filter.hash(&mut hasher);
+    hasher.finish()
+}
+
 fn span_key(span: TextSpan) -> SpanKey {
     (span.line, span.start, span.end)
 }
@@ -60,6 +67,9 @@ pub struct Obligation {
 pub struct ClaimSet {
     spans: BTreeSet<SpanKey>,
     obligations: BTreeMap<SpanKey, Obligation>,
+    // Filters (by hash of their comparable debug text) some parse produced
+    // while reading every word it was given.
+    clean_filters: BTreeSet<u64>,
 }
 
 impl ClaimSet {
@@ -74,7 +84,7 @@ impl ClaimSet {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.spans.is_empty() && self.obligations.is_empty()
+        self.spans.is_empty() && self.obligations.is_empty() && self.clean_filters.is_empty()
     }
 
     pub fn extend(&mut self, other: &ClaimSet) {
@@ -84,6 +94,23 @@ impl ClaimSet {
                 .entry(*span)
                 .or_insert_with(|| obligation.clone());
         }
+        self.clean_filters.extend(other.clean_filters.iter().copied());
+    }
+
+    /// Whether `tokens` has an authored word outside `self`.
+    pub fn leaves_unread(&self, tokens: &[OwnedLexToken]) -> bool {
+        authored_pieces(tokens).any(|piece| !self.contains(piece.span))
+    }
+
+    /// Record that a parse produced `filter` while reading all its input.
+    pub fn note_clean_filter(&mut self, filter: &str) {
+        self.clean_filters.insert(filter_hash(filter));
+    }
+
+    /// Whether some parse produced `filter` while reading all its input, so
+    /// a kept filter with that text need not be the one that dropped words.
+    pub fn has_clean_filter(&self, filter: &str) -> bool {
+        self.clean_filters.contains(&filter_hash(filter))
     }
 
     /// Record that a filter given `tokens` left their words outside `self`
@@ -118,6 +145,57 @@ impl ClaimSet {
         }
     }
 
+    /// Report every obligation in this set against `input`.
+    pub fn set_obligation_inputs(&mut self, input: String) {
+        let input: Rc<str> = Rc::from(input);
+        for obligation in self.obligations.values_mut() {
+            obligation.input = input.clone();
+        }
+    }
+
+    /// [`Self::oblige_unclaimed`] for a filter given registered `&str`
+    /// words; words of unknown origin are skipped.
+    pub fn oblige_unclaimed_words(
+        &mut self,
+        words: &[&str],
+        filter: impl FnOnce() -> String,
+        caller: &'static Location<'static>,
+    ) {
+        let mut filter = Some(filter);
+        let mut filter_text: Option<Rc<str>> = None;
+        let mut input: Option<Rc<str>> = None;
+        for word in words {
+            for span in word_spans(word) {
+                if self.contains(span) {
+                    continue;
+                }
+                let input = input.get_or_insert_with(|| Rc::from(words.join(" "))).clone();
+                let filter = filter_text
+                    .get_or_insert_with(|| Rc::from(filter.take().map(|f| f()).unwrap_or_default()))
+                    .clone();
+                self.obligations.entry(span_key(span)).or_insert_with(|| Obligation {
+                    word: word.to_string(),
+                    input,
+                    filter,
+                    caller,
+                });
+            }
+        }
+    }
+
+    /// Whether a registered word of `words` has a span outside `self`.
+    pub fn leaves_words_unread(&self, words: &[&str]) -> bool {
+        words.iter().any(|word| word_spans(word).into_iter().any(|span| !self.contains(span)))
+    }
+
+    /// Every obligation with whether some claim covers it (debugging).
+    pub fn obligations_debug(&self) -> Vec<(&Obligation, bool)> {
+        self.obligations
+            .iter()
+            .map(|(span, obligation)| (obligation, self.spans.contains(span)))
+            .collect()
+    }
+
     /// Obligations no claim in this set covers, in source order.
     pub fn violations(&self) -> Vec<&Obligation> {
         self.obligations
@@ -142,7 +220,9 @@ impl ClaimSet {
 thread_local! {
     static DEPTH: Cell<usize> = const { Cell::new(0) };
     static STACK: RefCell<Vec<ClaimSet>> = const { RefCell::new(Vec::new()) };
-    static WORD_SPANS: RefCell<HashMap<(usize, usize), Vec<TextSpan>>> =
+    // Keyed by address and length; the text hash guards against a freed
+    // word's address being reused by a different word of the same length.
+    static WORD_SPANS: RefCell<HashMap<(usize, usize), (u64, Vec<TextSpan>)>> =
         RefCell::new(HashMap::new());
 }
 
@@ -183,15 +263,44 @@ pub fn register_tokens(tokens: &[OwnedLexToken]) {
         for token in tokens.iter().filter(|token| !is_synthetic(token)) {
             let pieces = token.parser_word_pieces();
             for piece in pieces {
-                spans.insert(key(&piece.text), vec![piece.span]);
+                spans.insert(key(&piece.text), (filter_hash(&piece.text), vec![piece.span]));
             }
             let whole: Vec<TextSpan> = pieces.iter().map(|piece| piece.span).collect();
             if let Some(word) = token.as_word() {
-                spans.insert(key(word), whole.clone());
+                spans.insert(key(word), (filter_hash(word), whole.clone()));
             }
-            spans.insert(key(token.parser_text()), whole);
+            spans.insert(key(token.parser_text()), (filter_hash(token.parser_text()), whole));
         }
     });
+}
+
+/// The authored spans of a registered `word`; empty for words of unknown
+/// origin.
+pub fn word_spans(word: &str) -> Vec<TextSpan> {
+    registered_spans(word).unwrap_or_default()
+}
+
+fn registered_spans(word: &str) -> Option<Vec<TextSpan>> {
+    WORD_SPANS.with(|spans| {
+        spans
+            .borrow()
+            .get(&key(word))
+            .filter(|(text, _)| *text == filter_hash(word))
+            .map(|(_, spans)| spans.clone())
+    })
+}
+
+/// The single authored span of a registered `word` whose text spans it
+/// exactly, while recording; `None` otherwise (normalized or multi-piece
+/// words keep a synthetic span).
+pub fn authored_word_span(word: &str) -> Option<TextSpan> {
+    if !is_recording() {
+        return None;
+    }
+    match registered_spans(word)?.as_slice() {
+        [span] if span.end - span.start == word.len() => Some(*span),
+        _ => None,
+    }
 }
 
 /// Forget registered words. Called at the outermost scope.
@@ -217,7 +326,7 @@ pub fn claim_word(word: &str) {
     if !is_recording() {
         return;
     }
-    let spans = WORD_SPANS.with(|spans| spans.borrow().get(&key(word)).cloned());
+    let spans = registered_spans(word);
     for span in spans.into_iter().flatten() {
         claim(span);
     }
@@ -243,6 +352,7 @@ pub fn claim_tokens(tokens: &[OwnedLexToken]) {
         }
     }
 }
+
 
 /// A word or token a reader can drain out of its working list.
 pub trait Claimable {
@@ -341,6 +451,7 @@ pub fn speculative<T>(f: impl FnOnce() -> T) -> (T, Speculative) {
     let (result, claims) = scoped(f);
     let mut read = claims.clone();
     read.obligations.clear();
+    read.clean_filters.clear();
     adopt(&read);
     (result, Speculative(claims))
 }

@@ -562,6 +562,11 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     let same_name_references_source_object =
         find_any_phrase_start(all_words, SAME_NAME_AS_SOURCE_OBJECT_PHRASES).is_some();
 
+    if has_share_card_type || has_share_creature_type {
+        crate::word_claims::claim_words(
+            &all_words.iter().copied().filter(|word| SHARE_WORDS.contains(word)).collect::<Vec<_>>(),
+        );
+    }
     if has_share_card_type {
         let tag = if references_additional_cost_object {
             crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()
@@ -581,6 +586,13 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         }
     }
     if has_share_color {
+        crate::word_claims::claim_words(
+            &all_words
+                .iter()
+                .copied()
+                .filter(|word| SHARE_WORDS.contains(word) || COLOR_OR_COLORS_WORDS.contains(word))
+                .collect::<Vec<_>>(),
+        );
         if let Some(reference_start) = shares_color_with_that_card {
             // The referenced card is the comparison operand, not the noun
             // of the creatures/permanents selected by this filter.
