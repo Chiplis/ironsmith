@@ -1728,6 +1728,10 @@ pub fn parse_negated_object_restriction_clause(
     // on choosing particular planeswalkers or battles as attack targets.
     if remainder_words.first() == Some(&"attack")
         && !matches!(remainder_words.get(1), Some(&"you") | Some(&"alone") | None)
+        // "its owner or planeswalkers its owner controls" names a player as
+        // well; the typed tail below owns it.
+        && restriction_grammar::parse_negated_object_tail_words(&remainder_words)
+            != Some(NegatedObjectTailShape::AttackOwnerOrPlaneswalkers)
         && let Some(permanents) = crate::grammar::primitives::probe_shape(parse_object_filter(
             &remainder_tokens[1..],
             false,
@@ -1784,6 +1788,14 @@ pub fn parse_negated_object_restriction_clause(
         }
         Some(NegatedObjectTailShape::AttackYouOrPlaneswalkers) => {
             Restriction::attack_player_or_planeswalkers_controlled_by(filter, PlayerFilter::You)
+        }
+        Some(NegatedObjectTailShape::AttackOwnerOrPlaneswalkers) if filter.source => {
+            Restriction::attack_player_or_planeswalkers_controlled_by(
+                filter,
+                PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+                    ironsmith_core::SOURCE_OBJECT_TAG,
+                )),
+            )
         }
         Some(NegatedObjectTailShape::BeBlockedExceptBy { payload_words })
             if remainder_words.len() > payload_words =>

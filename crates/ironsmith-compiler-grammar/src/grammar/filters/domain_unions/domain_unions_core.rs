@@ -392,6 +392,9 @@ pub fn parse_elided_shared_domain_union(
                 ..Default::default()
             };
         }
+        // Both locations, their owners (checked against the shared owner
+        // above) and the joining "and" are read.
+        crate::word_claims::claim_tokens(&tokens[first_in..after_second]);
         return Some(outer);
     }
     None

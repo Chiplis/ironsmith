@@ -400,6 +400,37 @@ fn excluded_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
     }
 }
 
+/// The origin clause `excluded_cast_origin_zone` reads is read here too when
+/// nothing between "from" and the zone narrows it: "its owner's hand" (Wash
+/// Away) is the only hand a spell is cast from.
+fn claim_excluded_cast_origin(tokens: &[OwnedLexToken]) {
+    let words = parser_token_word_refs(tokens);
+    let Some(start) = crate::word_primitives::parse_last_sequence_start(
+        &words,
+        &["that", "wasnt", "cast", "from"],
+    )
+    .map(|index| (index, index + 4))
+    .or_else(|| {
+        crate::word_primitives::parse_last_sequence_start(
+            &words,
+            &["that", "was", "not", "cast", "from"],
+        )
+        .map(|index| (index, index + 5))
+    }) else {
+        return;
+    };
+    let (clause_start, origin_start) = start;
+    let Some((_, between)) = words[origin_start..].split_last() else {
+        return;
+    };
+    if between
+        .iter()
+        .all(|word| matches!(*word, "its" | "owners" | "owner's" | "their" | "the"))
+    {
+        crate::word_claims::claim_words(&words[clause_start..]);
+    }
+}
+
 /// "spell ... that wasn't cast" (Errant, Street Artist): a terminal relative
 /// clause denying the cast itself, with no origin zone after it.
 fn denies_spell_was_cast(tokens: &[OwnedLexToken]) -> bool {
@@ -1009,6 +1040,7 @@ fn preserve_explicit_spell_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexT
 fn preserve_public_spell_filter_facts(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     if let Some(zone) = excluded_cast_origin_zone(tokens) {
         filter.excluded_cast_origin_zone = Some(zone);
+        claim_excluded_cast_origin(tokens);
         preserve_explicit_spell_domain(filter, tokens);
     }
     if denies_spell_was_cast(tokens) {
@@ -2462,6 +2494,7 @@ fn parse_object_filter_inner(
     preserve_explicit_spell_domain(&mut filter, tokens);
     if let Some(zone) = excluded_cast_origin_zone(tokens) {
         filter.excluded_cast_origin_zone = Some(zone);
+        claim_excluded_cast_origin(tokens);
     }
     if denies_spell_was_cast(tokens) {
         filter.not_cast = true;

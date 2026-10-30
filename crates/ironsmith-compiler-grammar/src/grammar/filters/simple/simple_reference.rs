@@ -84,6 +84,7 @@ pub(super) fn parse_other_than_filter(
     };
     if basic_land_only {
         push_unique(&mut filter.excluded_supertypes, crate::types::Supertype::Basic);
+        crate::word_claims::claim_words(split.exclusions);
         return Some(filter);
     }
     let mut input: WordInput<'_> = split.exclusions;

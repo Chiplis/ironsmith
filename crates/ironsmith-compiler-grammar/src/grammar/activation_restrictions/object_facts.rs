@@ -63,6 +63,9 @@ pub enum NegatedObjectTailShape {
     BecomeSuspected,
     AttackYou,
     AttackYouOrPlaneswalkers,
+    /// "can't attack its owner or planeswalkers its owner controls"
+    /// (Xantcha, Sleeper Agent): the restricted permanent's owner.
+    AttackOwnerOrPlaneswalkers,
     BeBlockedExceptBy { payload_words: usize },
     BeBlockedBy { payload_words: usize },
     BeActivated,
@@ -329,6 +332,14 @@ pub fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedObjectTa
         ],
     ) {
         Some(NegatedObjectTailShape::AttackYouOrPlaneswalkers)
+    } else if exact_any(
+        words,
+        &[
+            &["attack", "its", "owner", "or", "planeswalkers", "its", "owner", "controls"],
+            &["attack", "its", "owner", "or", "planeswalkers", "its", "owners", "controls"],
+        ],
+    ) {
+        Some(NegatedObjectTailShape::AttackOwnerOrPlaneswalkers)
     } else if prefix(words, &["be", "blocked", "this", "turn", "except", "by"]) {
         Some(NegatedObjectTailShape::BeBlockedExceptBy { payload_words: 6 })
     } else if prefix(words, &["be", "blocked", "except", "by"]) {

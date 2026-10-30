@@ -667,6 +667,23 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         });
     }
     if has_lt_mana_value_as_tagged {
+        // "with lesser mana value than the creature that died" (Death's
+        // Oasis): the comparand is the clause's antecedent.
+        if let Some(start) = find_phrase_start(all_words, LESSER_MANA_VALUE_PHRASE) {
+            let rest = &all_words[start + 3..];
+            let head = usize::from(rest.get(1).is_some_and(|word| matches!(*word, "the" | "that")));
+            if rest.first() == Some(&"than")
+                && rest.get(1 + head).is_some_and(|noun| {
+                    matches!(*noun, "creature" | "permanent" | "artifact" | "card" | "spell")
+                })
+            {
+                let mut end = start + 3 + 2 + head;
+                if all_words[end..].starts_with(&["that", "died"]) {
+                    end += 2;
+                }
+                crate::word_claims::claim_words(&all_words[start..end]);
+            }
+        }
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::ManaValueLtTagged,
@@ -735,17 +752,19 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     // "the amassed Army" names the Army itself; "the amassed Army's power"
     // inside a comparison ("with power less than or equal to the amassed
     // Army's power", Grishnákh) only measures it and selects another object.
-    let names_amassed_army = AMASSED_ARMY_TAG_PHRASES.iter().any(|phrase| {
-        all_words.windows(phrase.len()).enumerate().any(|(start, window)| {
-            window == *phrase
+    let amassed_army = AMASSED_ARMY_TAG_PHRASES.iter().find_map(|phrase| {
+        all_words.windows(phrase.len()).enumerate().find_map(|(start, window)| {
+            (window == *phrase
                 && phrase.last() != Some(&"armys")
                 && !matches!(
                     all_words.get(start + phrase.len()).copied(),
                     Some("power" | "toughness" | "powers" | "toughnesses")
-                )
+                ))
+            .then_some(start..start + phrase.len())
         })
     });
-    if names_amassed_army {
+    if let Some(phrase) = amassed_army {
+        crate::word_claims::claim_words(&all_words[phrase]);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -780,6 +799,16 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     {
         // The prior action and its "this way" ("revealed this way") are read.
         crate::word_claims::claim_words(&all_words[action_start..this_way_idx + 2]);
+        // "each creature that had a +1/+1 counter put on it this way" (Fangs
+        // of Kalonia): the counter recipients of the producing effect, which
+        // already fixes the counter kind.
+        if action == ironsmith_core::PriorEffectAction::CountersPut
+            && action_start >= 2
+            && matches!(all_words[action_start - 2], "had" | "has" | "have")
+            && crate::grammar::filters::counter_constraints::parse_counter_type_word(all_words[action_start - 1]).is_some()
+        {
+            crate::word_claims::claim_words(&all_words[action_start - 2..action_start]);
+        }
         // Tapping is only meaningful for objects on the battlefield. Preserve
         // that semantic zone when a later clause refers to the objects tapped
         // this way, even though the reference surface itself omits the zone.

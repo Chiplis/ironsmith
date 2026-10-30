@@ -1917,6 +1917,36 @@ mod tests {
     }
 
     #[test]
+    fn cant_attack_its_owner_or_their_planeswalkers_names_the_source_owner() {
+        let tokens = tokenize_line(
+            "This creature can't attack its owner or planeswalkers its owner controls.",
+            0,
+        );
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("owner attack restriction should parse")
+            .expect("expected a typed restriction");
+        let [ability] = abilities.as_slice() else {
+            panic!("expected one restriction: {abilities:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction:
+                crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+                    attackers,
+                    player: PlayerFilter::OwnerOf(owner_of),
+                },
+            ..
+        } = &ability.payload
+        else {
+            panic!("expected the owner's player-or-planeswalkers ban: {ability:#?}");
+        };
+        assert!(attackers.source, "{attackers:#?}");
+        assert_eq!(
+            *owner_of,
+            crate::filter::ObjectRef::tagged(ironsmith_core::SOURCE_OBJECT_TAG)
+        );
+    }
+
+    #[test]
     fn pronoun_conjunction_inherits_the_typed_restriction_subject() {
         let tokens = tokenize_line(
             "Clerics your opponents control can't block, and they can't attack you or planeswalkers you control.",

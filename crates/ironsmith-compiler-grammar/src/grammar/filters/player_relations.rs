@@ -223,6 +223,8 @@ fn parse_relation_subject_word_slice(
                 relation_phrase(&["voter"]).value(PlayerFilter::IteratedPlayer),
                 // "a permanent owned by another player" (Kothophed).
                 relation_phrase(&["another", "player"]).value(PlayerFilter::NotYou),
+                // "basic lands each player controls" (Sheltering Prayers).
+                relation_phrase(&["each", "player"]).value(PlayerFilter::Any),
                 relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
                 // "one of their opponents controls": opponents of the
                 // pronoun's player, not of the ability's controller.
@@ -598,6 +600,11 @@ pub(super) fn apply_player_relation(
     player: PlayerFilter,
     verb: PlayerRelationVerb,
 ) {
+    // "each player controls": every player, which an unset relation
+    // already means.
+    if player == PlayerFilter::Any {
+        return;
+    }
     match verb {
         PlayerRelationVerb::Cast => filter.cast_by = Some(player),
         PlayerRelationVerb::Control => filter.controller = Some(player),

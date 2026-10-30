@@ -1210,7 +1210,13 @@ where
             // tokens keeps its source span, so readers of the rebuilt tokens
             // claim the authored word.
             if let Some(span) = crate::word_claims::authored_word_span(word.as_ref()) {
-                return OwnedLexToken::word(word.as_ref(), span);
+                let mut token = OwnedLexToken::word(word.as_ref(), span);
+                // A normalized word ("wasnt" from "wasn't") is shorter than
+                // its authored span; its one piece still covers that span.
+                if let [piece] = &mut *token.parser_word_pieces {
+                    piece.span = span;
+                }
+                return token;
             }
             OwnedLexToken::synthetic_word(word.as_ref())
         })
