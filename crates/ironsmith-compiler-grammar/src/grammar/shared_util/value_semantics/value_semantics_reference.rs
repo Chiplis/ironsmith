@@ -185,6 +185,19 @@ pub fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option
     if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
+    // "the total power of Daleks that died this turn" (Genesis of the
+    // Daleks): a death-history sum over last-known power, not the matching
+    // permanents still on the battlefield.
+    if aggregate == value_helper_shapes::AggregateKind::Total
+        && value_kind == value_helper_shapes::AggregateValueKind::Power
+        && let Some(Value::TurnHistoryCount(TurnHistoryCount::Died { filter, .. })) =
+            parse_turn_history_count_value(filter_tokens)
+    {
+        return Some(
+            Value::TurnHistoryCount(TurnHistoryCount::DiedTotalPower(filter))
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
+    }
     let mut filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
     if object_words

@@ -6857,6 +6857,12 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
+        TurnHistoryCount::DiedTotalPower(filter) => {
+            let mut subject_filter = filter.clone();
+            subject_filter.zone = None;
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(&subject_filter));
+            format!("the total power of {subject} that died this turn")
+        }
         TurnHistoryCount::DealtExcessDamage(filter) => format!(
             "the number of times {} was dealt excess damage this turn",
             filter.description()

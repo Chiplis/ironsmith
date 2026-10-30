@@ -675,6 +675,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
             | TurnHistoryCount::Died { filter, .. }
             | TurnHistoryCount::EnteredBattlefield(filter)
             | TurnHistoryCount::DealtExcessDamage(filter)
+            | TurnHistoryCount::DiedTotalPower(filter)
             | TurnHistoryCount::MovedZones { filter, .. }
             | TurnHistoryCount::Sacrificed { filter, .. }
             | TurnHistoryCount::SacrificedCardTypes { filter, .. }
@@ -2656,6 +2657,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 }
                 TurnHistoryCount::DealtExcessDamage(filter) => {
                     TurnHistoryCount::DealtExcessDamage(resolve_it_tag(filter, refs)?)
+                }
+                TurnHistoryCount::DiedTotalPower(filter) => {
+                    TurnHistoryCount::DiedTotalPower(resolve_it_tag(filter, refs)?)
                 }
                 TurnHistoryCount::TurnedFaceUp(player) => {
                     TurnHistoryCount::TurnedFaceUp(resolve_contextual_player_filter(player, refs)?)

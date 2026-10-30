@@ -447,7 +447,7 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
     let mut rewritten = count.clone();
     match &mut rewritten {
         TurnHistoryCount::Died { filter, .. } | TurnHistoryCount::EnteredBattlefield(filter)
-        | TurnHistoryCount::DealtExcessDamage(filter)
+        | TurnHistoryCount::DealtExcessDamage(filter) | TurnHistoryCount::DiedTotalPower(filter)
         | TurnHistoryCount::MovedZones { filter, .. } | TurnHistoryCount::CountersRemovedFrom { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }

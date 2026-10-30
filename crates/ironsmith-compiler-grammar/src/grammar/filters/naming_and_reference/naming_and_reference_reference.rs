@@ -298,8 +298,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         }
     }
 
-    // "creature this (creature) is blocking" — the filtered object is an
-    // attacker currently blocked by the source.
+    // "creature this (creature) is blocking" / "creature it's blocking"
+    // (Tinder Wall) — the filtered object is an attacker currently blocked
+    // by the source.
     if let Some(relation_idx) = find_any_filter_phrase_start(
         all_words,
         &[
@@ -307,6 +308,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             &["this", "permanent", "is", "blocking"],
             &["this", "source", "is", "blocking"],
             &["this", "is", "blocking"],
+            &["it's", "blocking"],
+            &["its", "blocking"],
+            &["it", "is", "blocking"],
         ],
     ) {
         filter.blocked_by_source = true;

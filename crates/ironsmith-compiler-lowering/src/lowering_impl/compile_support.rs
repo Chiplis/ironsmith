@@ -1153,6 +1153,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 TurnHistoryCount::Died { filter, .. }
                 | TurnHistoryCount::CountersRemovedFrom { filter, .. }
                 | TurnHistoryCount::DealtExcessDamage(filter)
+                | TurnHistoryCount::DiedTotalPower(filter)
                 | TurnHistoryCount::EnteredBattlefield(filter) => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }

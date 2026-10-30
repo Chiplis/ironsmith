@@ -678,6 +678,10 @@ pub enum TurnHistoryCount {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    /// Total last-known power of the objects matching the filter which died
+    /// this turn ("the total power of Daleks that died this turn", Genesis of
+    /// the Daleks). Appended to preserve serialized ordinals.
+    DiedTotalPower(ObjectFilter),
 }
 
 impl TurnHistoryCount {
