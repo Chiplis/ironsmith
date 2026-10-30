@@ -1447,6 +1447,11 @@ fn parse_object_filter_inner_unchecked(
                         filter.owner = Some(PlayerFilter::IteratedPlayer);
                         owner_start = idx - 2;
                     }
+                    // "cards in all players' hands", "each player's hand":
+                    // any owner, which an unset owner already means.
+                    ("all", "players") | ("each", "player") | ("each", "players") => {
+                        owner_start = idx - 2;
+                    }
                     _ => {}
                 }
             }

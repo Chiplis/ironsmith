@@ -297,10 +297,18 @@ pub fn authored_word_span(word: &str) -> Option<TextSpan> {
     if !is_recording() {
         return None;
     }
-    match registered_spans(word)?.as_slice() {
-        [span] if span.end - span.start == word.len() => Some(*span),
-        _ => None,
+    let spans = registered_spans(word)?;
+    let first = spans.first()?;
+    if spans.iter().any(|span| span.line != first.line) {
+        return None;
     }
+    let span = TextSpan {
+        start: spans.iter().map(|span| span.start).min()?,
+        end: spans.iter().map(|span| span.end).max()?,
+        ..*first
+    };
+    // A possessive's apostrophe is dropped from its word ("players'").
+    ((span.end - span.start).abs_diff(word.len()) <= 1).then_some(span)
 }
 
 /// Forget registered words. Called at the outermost scope.

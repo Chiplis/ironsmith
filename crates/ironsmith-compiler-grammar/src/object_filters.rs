@@ -2010,6 +2010,23 @@ fn parse_source_mana_value_filter(words: &[&str], other: bool) -> Option<Result<
     None
 }
 
+/// "lands you control at that time", "Wizards you control as this ability
+/// resolves": a count is taken when the ability resolves, so the suffix only
+/// restates when the filter is read.
+fn strip_resolution_time_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    const SUFFIXES: &[&[&str]] = &[
+        &["at", "that", "time"],
+        &["as", "this", "ability", "resolves"],
+        &["as", "this", "spell", "resolves"],
+    ];
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    SUFFIXES.iter().find_map(|suffix| {
+        let base_len = words.len().checked_sub(suffix.len())?;
+        (base_len > 0 && words[base_len..] == **suffix && tokens.len() == words.len())
+            .then(|| &tokens[..base_len])
+    })
+}
+
 /// Claim the words of `tokens` outside `base`: a fast path that split a
 /// recognized suffix or prefix off and parsed the rest read the whole input.
 fn claim_outside(tokens: &[OwnedLexToken], base: &[OwnedLexToken]) {
@@ -2040,6 +2057,11 @@ fn parse_object_filter_unaudited(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
+    if let Some(base) = strip_resolution_time_suffix(tokens) {
+        let filter = parse_object_filter(base, other)?;
+        claim_outside(tokens, base);
+        return Ok(filter);
+    }
     if let Some(rewritten) = without_characteristic_list_commas(tokens) {
         return parse_object_filter(&rewritten, other);
     }
@@ -2606,6 +2628,11 @@ fn parse_object_filter_lexed_unaudited(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
+    if let Some(base) = strip_resolution_time_suffix(tokens) {
+        let filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
+        return Ok(filter);
+    }
     if let Some(rewritten) = without_characteristic_list_commas(tokens) {
         return parse_object_filter_lexed(&rewritten, other);
     }
@@ -2625,6 +2652,7 @@ fn parse_object_filter_lexed_unaudited(
     {
         crate::word_claims::claim_tokens(&tokens[*token_index..]);
         let mut filter = parse_object_filter(&tokens[..*token_index], other)?;
+        claim_outside(tokens, &tokens[..*token_index]);
         filter.in_combat_with_source = true;
         return Ok(filter);
     }
@@ -2634,23 +2662,29 @@ fn parse_object_filter_lexed_unaudited(
     }
     if let Some(split) = split_source_relation_phrases(tokens) {
         let mut filter = parse_object_filter_lexed(&split.tokens, other)?;
+        claim_outside(tokens, &split.tokens);
         apply_source_relation_phrases(&mut filter, &split);
         return Ok(filter);
     }
     if let Some((base, relation)) = split_same_power_toughness_as_source_suffix(tokens) {
         let filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
         return Ok(apply_same_power_toughness_as_source(filter, &relation));
     }
     if let Some((base, opponent)) = split_same_controller_suffix(tokens) {
         let mut filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
         apply_same_controller_suffix(&mut filter, opponent);
         return Ok(filter);
     }
     if let Some(base) = strip_as_you_cast_this_spell_suffix(tokens) {
-        return parse_object_filter_lexed(base, other);
+        let filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
+        return Ok(filter);
     }
     if let Some(base) = split_shares_producible_mana_type_suffix(tokens) {
         let mut filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
         filter
             .tagged_constraints
             .push(shares_producible_mana_type_with_triggering());
@@ -2658,6 +2692,7 @@ fn parse_object_filter_lexed_unaudited(
     }
     if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
         let mut filter = parse_object_filter_lexed(&base, other)?;
+        claim_outside(tokens, &base);
         filter.could_enchant_object = Some(Box::new(host));
         return Ok(filter);
     }
