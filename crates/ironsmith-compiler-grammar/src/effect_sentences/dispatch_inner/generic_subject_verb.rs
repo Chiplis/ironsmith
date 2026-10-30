@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GenericPermissionVerb {
     PlayAndCast,
@@ -3025,7 +3026,7 @@ pub fn parse_choice_complement_subject_verb(
         }.lower()));
     }
     if find_from_among(choice_tokens).is_none()
-        && !crate::lexer::token_word_refs(choice_tokens).windows(4).any(|words| words == ["of", "each", "permanent", "type"])
+        && !crate::lexer::token_word_refs(choice_tokens).word_windows(4).any(|words| words == ["of", "each", "permanent", "type"])
         && !choice_tokens.iter().any(|token| token.is_word("and"))
         && let Some((keep_count, count_used)) =
             crate::util::parse_choice_count_token_prefix_consumed(choice_tokens)

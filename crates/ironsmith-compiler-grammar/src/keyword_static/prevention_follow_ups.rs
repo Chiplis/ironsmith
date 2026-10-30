@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::{EffectAst, ForEachEffectAst, LibraryActionAst, LifeResourceActionAst, SubjectVerbEffectAst, TokenActionAst};
 use super::damage_prevention::{needs_shared_recipient_allocation, prevention_recipient_filters};
@@ -141,11 +142,11 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
     let words = view.word_refs();
     // "prevent that damage and <program>" or, with a serial program, "prevent
     // that damage, <first>, and <second>" (Sekki, Seasons' Guide).
-    let Some((boundary, tail_start)) = words.windows(4).position(|words|
+    let Some((boundary, tail_start)) = words.word_windows(4).position(|words|
         words == ["prevent", "that", "damage", "and"])
         .map(|start| (start, start + 4))
         .or_else(|| {
-            let start = words.windows(3).position(|words| words == ["prevent", "that", "damage"])?;
+            let start = words.word_windows(3).position(|words| words == ["prevent", "that", "damage"])?;
             let range = view.token_span_for_words(start, start + 3)?;
             tokens_without_period.get(range.end).filter(|token| token.is_comma())?;
             Some((start, start + 3))

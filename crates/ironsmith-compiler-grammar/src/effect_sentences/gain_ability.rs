@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::super::clause_support::{
     parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed, parse_triggered_line_lexed,
@@ -2920,7 +2921,7 @@ pub fn split_pronoun_ability_and_type_pair(
     let descriptor_words = crate::lexer::parser_token_word_refs(descriptor);
     if has_tail.is_empty()
         || !descriptor_words
-            .windows(3)
+            .word_windows(3)
             .any(|window| window == ["in", "addition", "to"])
     {
         return None;
@@ -3005,7 +3006,7 @@ fn parse_player_no_maximum_hand_size_while_controlled(
     }
     let words = crate::lexer::token_word_refs(tokens);
     let duration_start = words
-        .windows(6)
+        .word_windows(6)
         .position(|window| window == ["for", "as", "long", "as", "you", "control"])?;
     if words.len() != duration_start + 8 || words[duration_start + 6] != "this" {
         return None;

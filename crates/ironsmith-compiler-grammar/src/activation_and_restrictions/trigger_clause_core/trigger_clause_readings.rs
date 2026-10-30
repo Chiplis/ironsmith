@@ -6,6 +6,7 @@
 //! by rank while the overlaps are measured. The legacy aggregate matcher is
 //! the fallback.
 
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -422,7 +423,7 @@ fn read_combat_damage_trigger(
     // same event, once for each damaged opponent.
     let words = crate::lexer::token_word_refs(tokens);
     if let Some(is_idx) = words
-        .windows(5)
+        .word_windows(5)
         .position(|window| window == ["is", "dealt", "combat", "damage", "by"])
         && matches!(words[..is_idx], ["an", "opponent"] | ["a", "player"])
         && words.get(is_idx + 5..is_idx + 8) == Some(&["one", "or", "more"][..])

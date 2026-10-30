@@ -5,6 +5,7 @@
 //! run on every document and must agree: the order they are written in no
 //! longer defines the language.
 
+use crate::word_primitives::WordWindows as _;
 use super::SubjectVerbPrimitiveClause;
 use super::dispatch_entry::{
     SentenceInput, parse_complete_become_statement, parse_complete_composable_fight_program,
@@ -203,7 +204,7 @@ const DOCUMENT_READINGS: &[Reading] = &[
         read: |document| {
             document.outcome(match document.sentences.as_slice() {
                 [sentence] if crate::lexer::parser_token_word_refs(sentence)
-                    .windows(3)
+                    .word_windows(3)
                     .any(|words| words == ["unless", "a", "player"] || words == ["unless", "any", "player"]) =>
                 {
                     super::subject_verb_primitives::parse_sentence_damage_unless_controller_has_source_deal_damage(
@@ -827,7 +828,7 @@ fn read_next_end_step_followups(
         // with the delayed one; the single delayed-action shape would read
         // the second action as part of the exiled object's noun phrase.
         && !crate::lexer::token_word_refs(sentence)
-            .windows(2)
+            .word_windows(2)
             .any(|window| window == ["and", "return"])
     {
         let clause = SubjectVerbPrimitiveClause::new(sentence);

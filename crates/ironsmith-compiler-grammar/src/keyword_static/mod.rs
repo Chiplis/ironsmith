@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 mod characteristic_assertions;
 mod reminder_definitions;
 
@@ -4144,9 +4145,9 @@ pub(super) fn parse_as_long_as_attached_otherwise_source_keyword_line(
         return Ok(None);
     };
     let condition_words = crate::lexer::parser_token_word_refs(split.condition_tokens);
-    let attached_subject = if condition_words.windows(2).any(|pair| pair == ["enchanted", "creature"]) {
+    let attached_subject = if condition_words.word_windows(2).any(|pair| pair == ["enchanted", "creature"]) {
         ["enchanted", "creature"]
-    } else if condition_words.windows(2).any(|pair| pair == ["equipped", "creature"]) {
+    } else if condition_words.word_windows(2).any(|pair| pair == ["equipped", "creature"]) {
         ["equipped", "creature"]
     } else {
         return Ok(None);
@@ -4224,9 +4225,9 @@ pub(super) fn parse_as_long_as_otherwise_static_line(
     }
     let otherwise_body = trim_edge_punctuation(&second[1..]);
     let condition_words = crate::lexer::parser_token_word_refs(split.condition_tokens);
-    let attached_subject = if condition_words.windows(2).any(|pair| pair == ["enchanted", "creature"]) {
+    let attached_subject = if condition_words.word_windows(2).any(|pair| pair == ["enchanted", "creature"]) {
         Some(["enchanted", "creature"])
-    } else if condition_words.windows(2).any(|pair| pair == ["equipped", "creature"]) {
+    } else if condition_words.word_windows(2).any(|pair| pair == ["equipped", "creature"]) {
         Some(["equipped", "creature"])
     } else {
         None
@@ -4286,7 +4287,7 @@ fn parse_source_exiled_play_trailing_condition_line(
     let clean = trim_edge_punctuation(tokens);
     let words = crate::lexer::parser_token_word_refs(&clean);
     if !matches!(words.as_slice(), ["you", "may", "play" | "cast", ..])
-        || !words.windows(2).any(|pair| pair == ["exiled", "with"])
+        || !words.word_windows(2).any(|pair| pair == ["exiled", "with"])
         || words.iter().filter(|word| **word == "as").count() != 2
     {
         return Ok(None);

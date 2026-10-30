@@ -1,4 +1,5 @@
 //! A counted instruction whose recipient was blocked by another declared target.
+use crate::word_primitives::WordWindows as _;
 use crate::util::parse_target_phrase;
 use crate::cards::builders::{CardTextError, EffectAst, TargetAst};
 use crate::lexer::{OwnedLexToken, TokenWordView};
@@ -11,7 +12,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     let words = view.word_refs();
     if !words.starts_with(&["put", "x"]) { return Ok(None); }
     let Some(on) = words.iter().position(|word| *word == "on") else { return Ok(None); };
-    let Some(that) = words.windows(2).position(|pair| pair == ["that", "target"]) else { return Ok(None); };
+    let Some(that) = words.word_windows(2).position(|pair| pair == ["that", "target"]) else { return Ok(None); };
     let Some(blocked) = words.iter().position(|word| *word == "blocked") else { return Ok(None); };
     if words.get(blocked..blocked + 3) != Some(&["blocked", "this", "turn"][..])
         || words.get(blocked + 3..) != Some(&["where", "x", "is", "the", "power", "of", "that", "blocked", "creature"][..])

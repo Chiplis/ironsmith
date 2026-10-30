@@ -3,8 +3,10 @@
 //! The recorder (scopes, claims, the word registry) lives in
 //! `ironsmith_compiler_syntax::word_claims` beside the word primitives that
 //! claim. This module adds the filter audit: each outermost object-filter
-//! parse reports the authored words it did not read
-//! (architecture/filter-word-consumption-plan.md).
+//! parse leaves an obligation for every authored word it did not read, and
+//! the card parse reports (or, when enforcing, fails on) the obligations no
+//! reader anywhere in the card claimed
+//! (architecture/filter-word-consumption-plan.md, "The check is per card").
 
 use std::cell::{Cell, RefCell};
 use std::io::Write as _;
@@ -16,9 +18,10 @@ pub use ironsmith_compiler_syntax::word_claims::*;
 
 thread_local! {
     static FILTER_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static CARD_DEPTH: Cell<usize> = const { Cell::new(0) };
     static CARD: RefCell<String> = const { RefCell::new(String::new()) };
-    // Lines already reported for the current card; recognition probes the
-    // same filter many times.
+    // Lines already reported for the current card; outside a card parse the
+    // same filter is probed many times.
     static REPORTED: RefCell<std::collections::HashSet<String>> =
         RefCell::new(std::collections::HashSet::new());
     // Words callers read themselves around the filter they parse.
@@ -53,27 +56,87 @@ fn audit_path() -> Option<&'static std::path::Path> {
         .as_deref()
 }
 
-/// Whether an object filter that leaves authored words unread fails
-/// (`IRONSMITH_FILTER_CLAIM_ENFORCE`). Off by default until every caller
-/// passes only the words its filter reads (plan stage 5).
+/// Whether a card whose filters leave authored words that nothing reads
+/// fails (`IRONSMITH_FILTER_CLAIM_ENFORCE`). Off by default until the
+/// readers those words reach all claim (plan stage 5).
 fn enforce_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_FILTER_CLAIM_ENFORCE").is_some())
 }
 
-/// Name the card whose filters the next report lines describe.
-pub fn begin_card(name: &str) {
-    if audit_enabled() {
-        CARD.with(|card| card.replace(name.to_string()));
-        REPORTED.with(|reported| reported.borrow_mut().clear());
+fn depth_guard(depth: &'static std::thread::LocalKey<Cell<usize>>) -> impl Drop {
+    struct Guard(&'static std::thread::LocalKey<Cell<usize>>);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.0.with(|depth| depth.set(depth.get() - 1));
+        }
     }
+    depth.with(|depth| depth.set(depth.get() + 1));
+    Guard(depth)
 }
 
-/// Run one object-filter parse of `tokens` and, in audit mode, report the
-/// authored words it did not read; when enforcing, those words fail the
-/// parse. Only the outermost filter parse checks: a nested sub-phrase's
-/// claims are adopted by its parent, so its unread words appear there.
-pub fn audit_filter<T>(
+/// Parse one card inside a single recording scope. In audit mode, report
+/// the words its object filters left unread that no reader in the card
+/// claimed; when enforcing, those words fail the card. A card parse nested
+/// in another (a quoted ability) joins the enclosing scope.
+pub fn audit_card<T: std::fmt::Debug>(
+    name: &str,
+    f: impl FnOnce() -> Result<T, crate::CardTextError>,
+) -> Result<T, crate::CardTextError> {
+    if !audit_enabled() || CARD_DEPTH.with(Cell::get) > 0 {
+        return f();
+    }
+    CARD.with(|card| card.replace(name.to_string()));
+    REPORTED.with(|reported| reported.borrow_mut().clear());
+    reset_registry();
+    let guard = depth_guard(&CARD_DEPTH);
+    let (result, claims) = scoped(f);
+    drop(guard);
+    reset_registry();
+    result.and_then(|value| {
+        // Only a filter the card kept counts: a probe of the wrong span
+        // produces a filter that is not in the parsed document.
+        let mut violations = claims.violations();
+        if violations.is_empty() {
+            return Ok(value);
+        }
+        let document = comparable_debug(&format!("{value:?}"));
+        violations.retain(|obligation| document.contains(&*obligation.filter));
+        if violations.is_empty() {
+            return Ok(value);
+        }
+        // One row per filter input and caller, words in source order.
+        let mut rows: Vec<(&str, &'static Location<'static>, Vec<&str>)> = Vec::new();
+        for obligation in violations {
+            match rows.iter_mut().find(|(input, caller, _)| {
+                *input == &*obligation.input && *caller == obligation.caller
+            }) {
+                Some(row) => row.2.push(&obligation.word),
+                None => rows.push((&obligation.input, obligation.caller, vec![&obligation.word])),
+            }
+        }
+        for (input, caller, words) in &rows {
+            write_report(name, &words.join(" "), input, caller);
+        }
+        if enforce_enabled() {
+            let (input, _, words) = &rows[0];
+            return Err(crate::CardTextError::ParseError(format!(
+                "object filter does not read '{}' (full input: '{}')",
+                words.join(" "),
+                input,
+            )));
+        }
+        Ok(value)
+    })
+}
+
+/// Run one object-filter parse of `tokens`. In audit mode its claims reach
+/// the enclosing scope, and the outermost filter parse adds an obligation
+/// for each authored word of its input it did not read. A nested
+/// sub-phrase's claims are adopted by its parent, so only the outermost
+/// parse decides what was left unread. Unread words never fail the filter
+/// itself: callers probe filters speculatively and branch on the result.
+pub fn audit_filter<T: std::fmt::Debug>(
     tokens: &[OwnedLexToken],
     caller: &'static Location<'static>,
     f: impl FnOnce() -> Result<T, crate::CardTextError>,
@@ -81,35 +144,26 @@ pub fn audit_filter<T>(
     if !audit_enabled() {
         return f();
     }
-    struct Depth;
-    impl Drop for Depth {
-        fn drop(&mut self) {
-            FILTER_DEPTH.with(|depth| depth.set(depth.get() - 1));
-        }
-    }
-    let outermost = FILTER_DEPTH.with(|depth| {
-        depth.set(depth.get() + 1);
-        depth.get() == 1
-    });
-    if outermost {
+    let in_card = CARD_DEPTH.with(Cell::get) > 0;
+    let outermost = FILTER_DEPTH.with(|depth| depth.get() == 0);
+    if outermost && !in_card {
         reset_registry();
     }
-    let guard = Depth;
+    let guard = depth_guard(&FILTER_DEPTH);
     let (result, mut claims) = scoped(f);
     drop(guard);
-    if outermost {
-        CALLER_OWNED.with(|owned| owned.borrow().iter().for_each(|set| claims.extend(set)));
-    }
     if result.is_ok() {
         if outermost {
-            report(tokens, &claims, caller);
-            let unread = unclaimed_words(tokens, &claims);
-            if enforce_enabled() && !unread.is_empty() {
-                return Err(crate::CardTextError::ParseError(format!(
-                    "object filter does not read '{}' (full input: '{}')",
-                    unread.join(" "),
-                    crate::lexer::token_word_refs(tokens).join(" "),
-                )));
+            CALLER_OWNED.with(|owned| owned.borrow().iter().for_each(|set| claims.extend(set)));
+            if in_card {
+                let filter = result.as_ref().ok();
+                claims.oblige_unclaimed(
+                    tokens,
+                    || comparable_debug(&format!("{:?}", filter.expect("ok result"))),
+                    caller,
+                );
+            } else {
+                report(tokens, &claims, caller);
             }
         }
         adopt(&claims);
@@ -117,19 +171,35 @@ pub fn audit_filter<T>(
     result
 }
 
+/// A filter's debug text with the fields its callers routinely finish
+/// (the zone a static ability applies in) blanked, so a kept filter is
+/// found in the document after its caller completed it.
+fn comparable_debug(text: &str) -> String {
+    text.replace("zone: Some(Battlefield)", "zone: _")
+        .replace("zone: None", "zone: _")
+}
+
+/// Report a filter parse outside any card parse (lowering, tools), which
+/// no card-level check covers.
 fn report(tokens: &[OwnedLexToken], claims: &ClaimSet, caller: &'static Location<'static>) {
-    let unclaimed = unclaimed_words(tokens, claims);
-    let Some(path) = audit_path() else {
+    if audit_path().is_none() {
         return;
-    };
+    }
+    let unclaimed = unclaimed_words(tokens, claims);
     if unclaimed.is_empty() {
         return;
     }
-    let card = CARD.with(|card| card.borrow().clone());
+    let card = CARD.with(|card| format!("<outside> {}", card.borrow()));
+    let input = crate::lexer::token_word_refs(tokens).join(" ");
+    write_report(&card, &unclaimed.join(" "), &input, caller);
+}
+
+fn write_report(card: &str, words: &str, input: &str, caller: &'static Location<'static>) {
+    let Some(path) = audit_path() else {
+        return;
+    };
     let line = format!(
-        "{card}\t{}\t{}\t{}:{}\n",
-        unclaimed.join(" "),
-        crate::lexer::token_word_refs(tokens).join(" "),
+        "{card}\t{words}\t{input}\t{}:{}\n",
         caller.file(),
         caller.line(),
     );

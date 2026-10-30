@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LibraryActionAst;
@@ -447,7 +448,7 @@ fn parse_note(
     let words = crate::lexer::token_word_refs(tokens);
     if let ["one", "of", "its", "creature", "types", "that", rest @ ..] = words.as_slice()
         && let Some(noted_at) = rest
-            .windows(3)
+            .word_windows(3)
             .position(|window| window == ["been", "noted", "for"])
         && rest[..noted_at]
             .iter()
@@ -461,7 +462,7 @@ fn parse_note(
     // becomes the source's noted and chosen ("that") type.
     if let ["a", "creature", "type", "that", rest @ ..] = words.as_slice()
         && let Some(noted_at) = rest
-            .windows(3)
+            .word_windows(3)
             .position(|window| window == ["been", "noted", "for"])
         && noted_at > 0
         && rest[..noted_at]
@@ -1432,7 +1433,7 @@ fn parse_lose_all_player_counters(
 fn may_assign_as_unblocked_body(tokens: &[crate::lexer::OwnedLexToken]) -> Option<Until> {
     let mut words = crate::lexer::token_word_refs(tokens);
     let mut duration = Until::Forever;
-    if let Some(index) = words.windows(2).position(|pair| pair == ["this", "turn"]) {
+    if let Some(index) = words.word_windows(2).position(|pair| pair == ["this", "turn"]) {
         words.drain(index..index + 2);
         duration = Until::EndOfTurn;
     }

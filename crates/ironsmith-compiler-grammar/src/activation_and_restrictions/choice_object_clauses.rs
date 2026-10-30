@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
@@ -226,7 +227,7 @@ pub fn parse_you_choose_objects_clause_with_count_value(
     // the count reader consumes "another" as the article, but it still
     // excludes this object.
     if clause_words
-        .windows(2)
+        .word_windows(2)
         .any(|pair| pair[0] == "choose" && pair[1] == "another")
     {
         choose_filter.other = true;
@@ -763,7 +764,7 @@ pub fn parse_hand_choice_then_shuffle_remainder(
     let words = crate::lexer::parser_token_word_refs(&first);
     if filter.zone != Some(Zone::Hand)
         || !filter.card_types.is_empty()
-        || !words.windows(4).any(|words| matches!(words, ["card" | "cards", "in" | "from", word, "hand"] if *word == possessive))
+        || !words.word_windows(4).any(|words| matches!(words, ["card" | "cards", "in" | "from", word, "hand"] if *word == possessive))
     { return Ok(None); }
     let tag = crate::util::helper_tag_for_tokens(tokens, "kept_hand_cards");
     let mut remainder = filter.clone().not_tagged(tag.clone());

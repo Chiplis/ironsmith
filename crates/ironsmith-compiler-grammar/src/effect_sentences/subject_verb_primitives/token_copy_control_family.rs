@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::ForEachEffectAst;
@@ -715,10 +716,10 @@ pub fn parse_exile_source_with_counters_sentence(
         let words = crate::lexer::token_word_refs(tokens);
         if words.first() == Some(&"exile")
             && let Some(with_at) = words
-                .windows(4)
+                .word_windows(4)
                 .position(|window| window == ["with", "a", "number", "of"])
             && let Some(counters_at) = words
-                .windows(7)
+                .word_windows(7)
                 .position(|window| window == ["counters", "on", "it", "equal", "to", "its", "mana"])
             && counters_at > with_at + 4
             && words.get(counters_at + 7) == Some(&"value")

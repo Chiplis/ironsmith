@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
 use ironsmith_core::card::CardBuilder;
@@ -4085,12 +4086,22 @@ pub fn parse_text_to_semantic_document_with_context(
     card: CardBuilder,
     text: String,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    let card_name = card.name_ref().to_string();
+    crate::word_claims::audit_card(&card_name, || {
+        parse_card_text_to_semantic_document(context, card, text)
+    })
+}
+
+fn parse_card_text_to_semantic_document(
+    context: &mut ParseContext,
+    card: CardBuilder,
+    text: String,
+) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
     // A card is the unit of recognition: nothing parsed for the previous card
     // is relevant to this one, and the memo must not grow across cards.
     crate::sentence_memo::reset();
     let allow_unsupported = context.features().allow_unsupported;
     let card_name = card.name_ref().to_string();
-    crate::word_claims::begin_card(&card_name);
     let _trace_scope = parse_trace::scope(format!(
         "card parse: \"{}\" allow_unsupported={} source_lines={}",
         card_name,
@@ -5645,7 +5656,7 @@ fn parse_named_attachment_damage_grant(
     }
     let body_words = crate::lexer::parser_token_word_refs(body);
     if !body_words
-        .windows(2)
+        .word_windows(2)
         .any(|pair| matches!(pair[1], "deal" | "deals"))
     {
         return Ok(None);

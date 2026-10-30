@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::super::super::lexer::{parser_token_word_positions, parser_token_word_refs};
 use super::reference_tag_word_facts::{
     parse_last_word_choice_before, parse_phrase_anywhere, parse_phrase_at_head,
@@ -1016,7 +1017,7 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
         }
         return Ok(true);
     }
-    let Some(blocked_idx) = words.windows(4).position(|part|
+    let Some(blocked_idx) = words.word_windows(4).position(|part|
         crate::word_primitives::equals(&part, &["blocked", "or", "was", "blocked"])
             || crate::word_primitives::equals(&part, &["blocked", "or", "were", "blocked"]))
     else { return Ok(false); };
@@ -1497,7 +1498,9 @@ pub(super) fn parse_object_filter(
         crate::word_primitives::find_current_block_partner_relation(&refs)
         && crate::util::is_source_reference_words(&refs[index + relation_len..])
     {
-        let mut filter = parse_object_filter(&tokens[..words.token_start_indices()[index]], other)?;
+        let boundary = words.token_start_indices()[index];
+        crate::word_claims::claim_tokens(&tokens[boundary..]);
+        let mut filter = parse_object_filter(&tokens[..boundary], other)?;
         filter.in_combat_with_source = true;
         return Ok(filter);
     }

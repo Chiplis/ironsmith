@@ -2093,6 +2093,7 @@ where
         )));
     }
 
+    crate::word_claims::claim_words(name_words);
     Ok((name_words.join(" "), name_end))
 }
 

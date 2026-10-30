@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use crate::cards::builders::CardTextError;
 use crate::grammar::{leaf, permission_shapes};
@@ -1052,7 +1053,7 @@ fn parse_price_with_battlefield_instructions(tokens: &[OwnedLexToken]) -> Result
         cost_end = first.len();
     } else if words.get(..6) == Some(&["if", "you", "cast", "this", "spell", "for"])
         && tail == ["sacrifice", "it", "at", "the", "beginning", "of", "the", "next", "end", "step"] {
-        let Some(grant_start) = words.windows(2).position(|part| part == ["it", "gains"]) else { return Ok(None); };
+        let Some(grant_start) = words.word_windows(2).position(|part| part == ["it", "gains"]) else { return Ok(None); };
         let grant_start = view.token_start_indices()[grant_start];
         let Some(comma) = first[..grant_start].iter().rposition(|token| token.kind == crate::lexer::TokenKind::Comma) else { return Ok(None); };
         let grant = TokenWordView::new(&first[comma + 1..]).word_refs();

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::SourcePredicateAst;
@@ -26,7 +27,7 @@ fn preserve_sacrifice_domain_in_count_replacement(
     defaults: &[EffectAst], replacements: &mut [EffectAst], tokens: &[OwnedLexToken],
 ) {
     let words = LexedClause::new(tokens).word_refs();
-    let Some(index) = words.windows(2).position(|part| part == ["of", "those"]) else { return; };
+    let Some(index) = words.word_windows(2).position(|part| part == ["of", "those"]) else { return; };
     let Some(noun) = words.get(index + 2).copied() else { return; };
     let tail = &words[index + 3..];
     if !(tail == ["instead"] || tail == ["of", "their", "choice", "instead"])

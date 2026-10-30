@@ -242,7 +242,11 @@ pub fn find_window_by(
     window_len: usize,
     predicate: impl FnMut(&[&str]) -> bool,
 ) -> Option<usize> {
-    crate::slice_primitives::find_window_by(words, window_len, predicate)
+    let start = crate::slice_primitives::find_window_by(words, window_len, predicate)?;
+    if let Some(window) = words.get(start..start + window_len) {
+        crate::word_claims::claim_words(window);
+    }
+    Some(start)
 }
 
 pub fn contains_window_by(
@@ -489,4 +493,43 @@ pub fn contains_no_words(words: &[&str], expected: &[&str]) -> bool {
 
 pub fn contains_all_words(words: &[&str], expected: &[&str]) -> bool {
     expected.iter().all(|word| contains_word(words, word))
+}
+
+/// A recording window scan over words: `words.word_windows(n).position(..)`
+/// reads like `words.windows(n).position(..)` but claims the window it
+/// finds, since a reader that matched it read those words.
+pub trait WordWindows<'a> {
+    fn word_windows(&self, size: usize) -> WordWindowScan<'_, 'a>;
+}
+
+impl<'a> WordWindows<'a> for [&'a str] {
+    fn word_windows(&self, size: usize) -> WordWindowScan<'_, 'a> {
+        WordWindowScan { words: self, size }
+    }
+}
+
+pub struct WordWindowScan<'s, 'a> {
+    words: &'s [&'a str],
+    size: usize,
+}
+
+impl<'s, 'a> WordWindowScan<'s, 'a> {
+    fn claimed(&self, start: usize) -> usize {
+        crate::word_claims::claim_words(&self.words[start..start + self.size]);
+        start
+    }
+
+    pub fn position(&self, mut predicate: impl FnMut(&'s [&'a str]) -> bool) -> Option<usize> {
+        let start = self.words.windows(self.size).position(|window| predicate(window))?;
+        Some(self.claimed(start))
+    }
+
+    pub fn rposition(&self, mut predicate: impl FnMut(&'s [&'a str]) -> bool) -> Option<usize> {
+        let start = self.words.windows(self.size).rposition(|window| predicate(window))?;
+        Some(self.claimed(start))
+    }
+
+    pub fn any(&self, predicate: impl FnMut(&'s [&'a str]) -> bool) -> bool {
+        self.position(predicate).is_some()
+    }
 }

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 /// Terminal stack-object arity is an outer filter constraint, including when
@@ -913,7 +914,7 @@ fn parse_object_filter_inner_unchecked(
             .iter()
             .any(|word| matches!(*word, "was" | "were"))
             && blocked_by_words
-                .windows(5)
+                .word_windows(5)
                 .any(|window| crate::word_primitives::equals(&window, &["blocked", "by", "one", "of", "those"]));
         filter.blocked = !historical;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(
@@ -1457,7 +1458,7 @@ fn parse_object_filter_inner_unchecked(
     // "a creature card with the same total power and toughness" (Wild Pair):
     // equal to the triggering creature's power plus toughness.
     if let Some(idx) = all_words
-        .windows(5)
+        .word_windows(5)
         .position(|window| crate::word_primitives::equals(&window, &["same", "total", "power", "and", "toughness"]))
         && idx + 5 == all_words.len()
     {

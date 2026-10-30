@@ -1,10 +1,11 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 /// Splits "its name is <name>" or "named <name>" (ending at "and" or the end
 /// of the exception) out of a copy exception.
 fn split_copy_name_exception<'a>(words: &[&'a str]) -> (Option<Vec<String>>, Vec<&'a str>) {
     let marker = words
-        .windows(3)
+        .word_windows(3)
         .position(|window| window == ["its", "name", "is"])
         .map(|idx| (idx, idx + 3))
         .or_else(|| {
@@ -49,7 +50,7 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     let (name_words, kept_words) = split_copy_name_exception(raw_modifier_words);
     spec.name_words = name_words;
     let mut kept_words = kept_words;
-    if let Some(index) = kept_words.windows(5).position(|words| matches!(words, ["it" | "they", "has" | "have", "no", "mana", "cost"])) {
+    if let Some(index) = kept_words.word_windows(5).position(|words| matches!(words, ["it" | "they", "has" | "have", "no", "mana", "cost"])) {
         spec.without_mana_cost = true;
         kept_words.drain(index..index + 5);
     }

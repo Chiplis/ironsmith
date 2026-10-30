@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::KeywordActionAst;
 use crate::cards::builders::LifeResourceActionAst;
@@ -3050,7 +3051,7 @@ pub fn complete_characteristic_subject(
     if !tokens.iter().all(|token| token.as_word().is_some()) { return Ok(None); }
     let words = parser_token_word_refs(tokens);
     if words.first().is_some_and(|word| matches!(*word, "and" | "or" | "and/or"))
-        || words.windows(2).any(|pair| pair.iter().all(|word| matches!(*word, "and" | "or" | "and/or"))) {
+        || words.word_windows(2).any(|pair| pair.iter().all(|word| matches!(*word, "and" | "or" | "and/or"))) {
         return Ok(None);
     }
     if words.contains(&"instead") || words.last().is_some_and(|word| matches!(*word, "and" | "or" | "and/or")) {
@@ -6432,7 +6433,7 @@ pub fn parse_you_may_static_grant_line(
         // "you may cast the exiled card" (Null Summoner): a cast-only
         // permission never lets a land be played from the pool.
         let words = parser_token_word_refs(tokens);
-        if words.windows(3).any(|window| window == ["you", "may", "cast"])
+        if words.word_windows(3).any(|window| window == ["you", "may", "cast"])
             && !words.contains(&"play")
         {
             filter.excluded_card_types.push(crate::types::CardType::Land);
@@ -6442,7 +6443,7 @@ pub fn parse_you_may_static_grant_line(
         ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
             mana_rider: (!mode.is_normal()).then_some(rider_surface),
             source: reference.surface,
-            plural_spell_subject: parser_token_word_refs(tokens).windows(3)
+            plural_spell_subject: parser_token_word_refs(tokens).word_windows(3)
                 .any(|words| words == ["and", "cast", "spells"]),
             generic_card_pool: true, generic_cast_this_way_subject: true,
         });

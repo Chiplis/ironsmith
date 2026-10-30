@@ -11,6 +11,7 @@
 //! what disposes of the rest is the remainder statement or the sentence the
 //! statement read together with its own.
 
+use crate::word_primitives::WordWindows as _;
 use super::super::dispatch_entry::{SentenceInput, leading_may_actor_to_player};
 use super::super::looked_cards_family::{
     parse_looked_card_choice_filter, parse_looked_card_reveal_filter,
@@ -1118,7 +1119,7 @@ pub(super) fn reveal_then_conditional_move_shape(
     let condition_words = crate::lexer::token_word_refs(conditional.lowered());
     let fallback_words = crate::lexer::token_word_refs(fallback.lowered());
     condition_words.starts_with(&["if", "that", "card"])
-        && condition_words.windows(5).any(|words| words == ["you", "may", "put", "it", "onto"])
+        && condition_words.word_windows(5).any(|words| words == ["you", "may", "put", "it", "onto"])
         && matches!(fallback_words.as_slice(),
             ["if", "you", "didnt" | "didn't", "put", "the", "revealed", "card", "onto", "the", "battlefield", "this", "way", "put", "it", "into", "your", "hand"])
 }

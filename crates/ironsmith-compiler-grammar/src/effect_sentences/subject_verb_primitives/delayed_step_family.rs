@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::DelayedEffectAst;
@@ -1109,7 +1110,7 @@ pub fn try_build_unless(
     // "unless they sacrifice that artifact" (Curse Artifact) names the
     // referenced object, not any matching permanent.
     let dynamic_sacrifice_count = action_words
-        .windows(2)
+        .word_windows(2)
         .any(|window| window == ["that", "many"])
         || matches!(
             action_words.as_slice(),

@@ -28,35 +28,103 @@
 //! Outside any scope every function here is a no-op.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashMap};
-use std::panic::{self, AssertUnwindSafe};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::panic::{self, AssertUnwindSafe, Location};
+use std::rc::Rc;
 
 use crate::diagnostics::TextSpan;
 use crate::lexer::OwnedLexToken;
 
-/// Authored source positions read by a parse.
+type SpanKey = (usize, usize, usize);
+
+fn span_key(span: TextSpan) -> SpanKey {
+    (span.line, span.start, span.end)
+}
+
+/// A word an object filter was given but did not read. It is a drop only if
+/// no other reader in the same card parse claims it either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Obligation {
+    pub word: String,
+    /// The filter's whole input, for the report.
+    pub input: Rc<str>,
+    /// The filter the parse produced, so the card check can tell whether
+    /// the reading that left the word unread is the one the card kept.
+    pub filter: Rc<str>,
+    pub caller: &'static Location<'static>,
+}
+
+/// Authored source positions read by a parse, and the words its object
+/// filters left unread.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClaimSet {
-    spans: BTreeSet<(usize, usize, usize)>,
+    spans: BTreeSet<SpanKey>,
+    obligations: BTreeMap<SpanKey, Obligation>,
 }
 
 impl ClaimSet {
     fn insert(&mut self, span: TextSpan) {
         if span.end > span.start {
-            self.spans.insert((span.line, span.start, span.end));
+            self.spans.insert(span_key(span));
         }
     }
 
     pub fn contains(&self, span: TextSpan) -> bool {
-        span.end <= span.start || self.spans.contains(&(span.line, span.start, span.end))
+        span.end <= span.start || self.spans.contains(&span_key(span))
     }
 
     pub fn is_empty(&self) -> bool {
-        self.spans.is_empty()
+        self.spans.is_empty() && self.obligations.is_empty()
     }
 
     pub fn extend(&mut self, other: &ClaimSet) {
         self.spans.extend(other.spans.iter().copied());
+        for (span, obligation) in &other.obligations {
+            self.obligations
+                .entry(*span)
+                .or_insert_with(|| obligation.clone());
+        }
+    }
+
+    /// Record that a filter given `tokens` left their words outside `self`
+    /// unread. The first filter to leave a word unread names it.
+    pub fn oblige_unclaimed(
+        &mut self,
+        tokens: &[OwnedLexToken],
+        filter: impl FnOnce() -> String,
+        caller: &'static Location<'static>,
+    ) {
+        let mut filter = Some(filter);
+        let mut filter_text: Option<Rc<str>> = None;
+        let mut input: Option<Rc<str>> = None;
+        for piece in authored_pieces(tokens) {
+            if self.contains(piece.span) {
+                continue;
+            }
+            let input = input
+                .get_or_insert_with(|| Rc::from(crate::lexer::token_word_refs(tokens).join(" ")))
+                .clone();
+            let filter = filter_text
+                .get_or_insert_with(|| Rc::from(filter.take().map(|f| f()).unwrap_or_default()))
+                .clone();
+            self.obligations
+                .entry(span_key(piece.span))
+                .or_insert_with(|| Obligation {
+                    word: piece.text.clone(),
+                    input,
+                    filter,
+                    caller,
+                });
+        }
+    }
+
+    /// Obligations no claim in this set covers, in source order.
+    pub fn violations(&self) -> Vec<&Obligation> {
+        self.obligations
+            .iter()
+            .filter(|(span, _)| !self.spans.contains(span))
+            .map(|(_, obligation)| obligation)
+            .collect()
     }
 
     /// The word pieces of `tokens`.
@@ -117,9 +185,11 @@ pub fn register_tokens(tokens: &[OwnedLexToken]) {
             for piece in pieces {
                 spans.insert(key(&piece.text), vec![piece.span]);
             }
+            let whole: Vec<TextSpan> = pieces.iter().map(|piece| piece.span).collect();
             if let Some(word) = token.as_word() {
-                spans.insert(key(word), pieces.iter().map(|piece| piece.span).collect());
+                spans.insert(key(word), whole.clone());
             }
+            spans.insert(key(token.parser_text()), whole);
         }
     });
 }
@@ -247,12 +317,46 @@ pub fn observe<T>(f: impl FnOnce() -> T) -> (T, ClaimSet) {
     (result, claims)
 }
 
-/// The authored words in `tokens` that `claims` does not cover.
-pub fn unclaimed_words<'a>(tokens: &'a [OwnedLexToken], claims: &ClaimSet) -> Vec<&'a str> {
+/// A speculative reading's obligations, held until the caller decides
+/// whether it keeps the reading.
+#[must_use]
+#[derive(Debug, Default)]
+pub struct Speculative(ClaimSet);
+
+impl Speculative {
+    /// The caller kept the reading: its unread words count.
+    pub fn keep(self) {
+        adopt(&self.0);
+    }
+}
+
+/// Run a reading the caller may throw away (a probe of a filter whose
+/// result is used only in some cases). Its claims reach the enclosing scope
+/// at once, since words it read were read either way; the words it left
+/// unread count only if the caller calls [`Speculative::keep`].
+pub fn speculative<T>(f: impl FnOnce() -> T) -> (T, Speculative) {
+    if !is_recording() {
+        return (f(), Speculative::default());
+    }
+    let (result, claims) = scoped(f);
+    let mut read = claims.clone();
+    read.obligations.clear();
+    adopt(&read);
+    (result, Speculative(claims))
+}
+
+fn authored_pieces(
+    tokens: &[OwnedLexToken],
+) -> impl Iterator<Item = &crate::lexer::TokenWordPiece> {
     tokens
         .iter()
         .filter(|token| token.kind == crate::lexer::TokenKind::Word && !is_synthetic(token))
         .flat_map(|token| token.parser_word_pieces())
+}
+
+/// The authored words in `tokens` that `claims` does not cover.
+pub fn unclaimed_words<'a>(tokens: &'a [OwnedLexToken], claims: &ClaimSet) -> Vec<&'a str> {
+    authored_pieces(tokens)
         .filter(|piece| !claims.contains(piece.span))
         .map(|piece| piece.text.as_str())
         .collect()
@@ -299,6 +403,19 @@ mod tests {
         let claims = ClaimSet::default();
         assert!(claims.contains(TextSpan::synthetic()));
         assert!(!claims.contains(span(0, 4)));
+    }
+
+    #[test]
+    fn an_unread_filter_word_is_a_violation_only_if_nothing_claims_it() {
+        let tokens = crate::lexer::lex_line("if you do blorp creatures", 1).unwrap();
+        let ((), card) = scoped(|| {
+            let ((), mut filter) = scoped(|| claim_tokens(&tokens[4..]));
+            filter.oblige_unclaimed(&tokens, String::new, Location::caller());
+            adopt(&filter);
+            claim_tokens(&tokens[..3]);
+        });
+        let words: Vec<_> = card.violations().iter().map(|o| o.word.as_str()).collect();
+        assert_eq!(words, vec!["blorp"]);
     }
 
     #[test]

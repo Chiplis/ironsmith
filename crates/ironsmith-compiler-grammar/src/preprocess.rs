@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::grammar::effects::optional_companion_shapes::parse_shared_subject_optional_companion_shape;
 use super::grammar::structure::{MetadataLineKind, split_leading_result_prefix_lexed};
 use super::grammar::{line_semantic_facts, preprocess as preprocess_grammar};
@@ -448,7 +449,7 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
         let first_words = crate::lexer::TokenWordView::new(first_tokens).word_refs();
         if split.kind == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
             && second_words.starts_with(&["this", "cost", "is", "reduced", "by"])
-            && (first_words.windows(2).any(|window| window == ["unless", "you"])
+            && (first_words.word_windows(2).any(|window| window == ["unless", "you"])
                 || first_words
                     .first()
                     .is_some_and(|word| matches!(*word, "disguise" | "morph" | "megamorph")))

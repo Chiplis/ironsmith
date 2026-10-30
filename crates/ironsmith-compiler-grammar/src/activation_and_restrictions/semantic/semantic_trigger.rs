@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::PlayerPredicateAst;
 
@@ -33,7 +34,7 @@ mod paid_cost_triggers;
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
 fn owned_exile_origin_words(words: &[&str]) -> Option<(usize, Vec<Zone>)> {
-    let start = words.windows(6).position(|part| {
+    let start = words.word_windows(6).position(|part| {
         matches!(part[0], "is" | "are") && part[1..] == ["put", "into", "exile", "from", "your"]
     })?;
     let mut rest = &words[start + 6..];
@@ -121,7 +122,7 @@ fn parse_combat_damage_trigger_lexed(
     let one_or_more = has_leading_one_or_more(subject_tokens) || player_subject;
     // The singular controller is quantified outside the group of creatures.
     // A plural opponent qualifier intentionally retains one aggregate group.
-    let per_source_controller = one_or_more && subject_words.windows(3).any(|words|
+    let per_source_controller = one_or_more && subject_words.word_windows(3).any(|words|
         matches!(words, ["an", "opponent", "controls"] | ["a", "player", "controls"]));
     let source_filter = parse_attack_trigger_subject_filter_lexed(subject_tokens)?;
     let Some(damage_idx_rel) =
@@ -1608,7 +1609,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         // "from anywhere other than exile" (Rory Williams) qualify the cast
         // event by the spell's origin zone.
         let spell_idx = words
-            .windows(3)
+            .word_windows(3)
             .position(|window| matches!(window, ["cast" | "casts", "this", "spell"]))
             .map(|idx| idx + 3);
         let origin = spell_idx.and_then(|idx| {
@@ -6454,7 +6455,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         _ if trigger_pattern_accepts(words, BEGINNING_POSTCOMBAT_MAIN_TRIGGER_PATTERN) => {
             // "each of your postcombat main phases" / "each of enchanted
             // player's postcombat main phases" (Shadow of the Second Sun).
-            let each_of = words.windows(2).any(|pair| pair == ["each", "of"])
+            let each_of = words.word_windows(2).any(|pair| pair == ["each", "of"])
                 && crate::word_primitives::sequence_occurs(
                     words,
                     &["postcombat", "main", "phases"],

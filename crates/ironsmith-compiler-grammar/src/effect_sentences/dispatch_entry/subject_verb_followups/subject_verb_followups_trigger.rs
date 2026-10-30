@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::SourcePredicateAst;
 
@@ -290,7 +291,7 @@ pub(super) fn post_rule_iterated_result_followup(
         sentence_effects.as_slice(),
         [EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })]
     ) && sentence_words.starts_with(&["when", "one", "or", "more"])
-        && sentence_words.windows(2).any(|pair| pair == ["this", "way"])
+        && sentence_words.word_windows(2).any(|pair| pair == ["this", "way"])
     {
         return Ok(None);
     }
@@ -307,7 +308,7 @@ pub(super) fn post_rule_delayed_trigger_result_followup(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    if crate::lexer::parser_token_word_refs(sentence_tokens).windows(2).any(|words| words == ["that", "combat"])
+    if crate::lexer::parser_token_word_refs(sentence_tokens).word_windows(2).any(|words| words == ["that", "combat"])
         && (crate::tag_support::effects_reference_it_tag(sentence_effects)
             || crate::tag_support::effects_reference_tag(sentence_effects, crate::tag::CompilerReferenceTag::SourceExiled.as_str()))
         && let Some(body) = state.effects.last_mut().and_then(super::super::trailing_delayed_return_body_mut)

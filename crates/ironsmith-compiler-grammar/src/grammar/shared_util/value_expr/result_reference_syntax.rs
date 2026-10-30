@@ -1,12 +1,13 @@
 //! Token-complete admission for linked-card and counter-result quantities.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 fn removed_counter_descriptor_is_complete(words: &[&str]) -> bool {
     let Some(counter) = words.iter().position(|word| matches!(*word, "counter" | "counters")) else { return true; };
     if words.get(counter + 1..counter + 4) != Some(&["removed", "this", "way"][..]) { return true; }
-    let start = words[..counter].windows(2).rposition(|pair| pair == ["number", "of"])
+    let start = words[..counter].word_windows(2).rposition(|pair| pair == ["number", "of"])
         .map(|index| index + 2)
-        .or_else(|| words[..counter].windows(2).rposition(|pair| pair == ["for", "each"]).map(|index| index + 2))
+        .or_else(|| words[..counter].word_windows(2).rposition(|pair| pair == ["for", "each"]).map(|index| index + 2))
         .unwrap_or(0);
     let descriptor = &words[start..counter];
     match descriptor {
@@ -20,9 +21,9 @@ fn removed_counter_descriptor_is_complete(words: &[&str]) -> bool {
 }
 
 fn protected_reference(words: &[&str]) -> bool {
-    (words.windows(2).any(|pair| matches!(pair, ["exiled", "card" | "cards"]))
+    (words.word_windows(2).any(|pair| matches!(pair, ["exiled", "card" | "cards"]))
         && words.iter().any(|word| matches!(*word, "power" | "toughness" | "mana")))
-        || words.windows(4).any(|part| matches!(part, ["counter" | "counters", "removed", "this", "way"]))
+        || words.word_windows(4).any(|part| matches!(part, ["counter" | "counters", "removed", "this", "way"]))
 }
 
 pub(super) fn tokens_are_complete(tokens: &[OwnedLexToken]) -> bool {

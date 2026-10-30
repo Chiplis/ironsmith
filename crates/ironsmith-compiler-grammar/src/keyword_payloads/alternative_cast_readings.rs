@@ -5,6 +5,7 @@
 //! Formerly a first-match ladder in `keyword_payloads`; every reading runs,
 //! resolved by rank while the overlaps are measured.
 
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -735,7 +736,7 @@ fn read_entry_counter_countdown(input: &AlternativeCastLine<'_>) -> Result<Optio
     let view = TokenWordView::new(first);
     let words = view.word_refs();
     if words.get(..6) != Some(&["if", "you", "cast", "this", "spell", "for"]) { return Ok(None); }
-    let Some(enters) = words.windows(3).position(|w| w == ["it", "enters", "with"]) else { return Ok(None); };
+    let Some(enters) = words.word_windows(3).position(|w| w == ["it", "enters", "with"]) else { return Ok(None); };
     let Some(counters) = words.iter().position(|w| *w == "counters") else { return Ok(None); };
     if counters <= enters + 4 || !matches!(&words[counters + 1..], ["and", "isn't" | "isnt", "a", "creature", "until", "the", "last", "is", "removed"]) { return Ok(None); }
     let Some(amount) = crate::util::parse_number_word_u32(words[enters + 3]) else { return Ok(None); };

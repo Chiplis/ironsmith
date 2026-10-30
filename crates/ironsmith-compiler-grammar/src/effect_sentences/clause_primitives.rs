@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::super::clause_support::parse_triggered_line_lexed;
 use super::super::grammar::effects::{
     clause_primitive_shapes as clause_shapes, parse_unless_pays_shape_tokens,
@@ -478,7 +479,7 @@ fn apply_retarget_constraints(mut filter: ObjectFilter, tokens: &[OwnedLexToken]
     // "target spell with a single target if that target is you"
     // (Reflecting Mirror) keeps its authored conditional surface.
     if crate::lexer::token_word_refs(tokens)
-        .windows(4)
+        .word_windows(4)
         .any(|window| window == ["if", "that", "target", "is"])
     {
         filter.set_single_target_if_that_target_surface(true);

@@ -1084,6 +1084,7 @@ pub fn strip_lexed_suffix_phrase<'a>(
 
     let keep_word_count = word_refs.len().checked_sub(phrase.len())?;
     let suffix_range = words.token_span_for_words(keep_word_count, word_refs.len())?;
+    ironsmith_compiler_syntax::word_claims::claim_tokens(&tokens[suffix_range.start..]);
     Some(&tokens[..suffix_range.start])
 }
 

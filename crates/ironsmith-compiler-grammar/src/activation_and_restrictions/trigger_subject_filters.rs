@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::PermissionEffectAst;
@@ -848,7 +849,7 @@ pub fn parse_spell_activity_trigger(
         .during_combat
         .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
     let repeated_counted_spell_domain = clause_words
-        .windows(4)
+        .word_windows(4)
         .position(|part| part == ["other", "than", "the", "first"])
         .is_some_and(|other| {
             let Some(cast) = clause_words[..other]

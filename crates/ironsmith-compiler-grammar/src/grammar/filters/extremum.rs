@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use ironsmith_core::ValueSurfaceHint;
 
@@ -199,7 +200,7 @@ pub fn parse_extremum_object_filter_words(
                 split
                     .scope_words
                     .is_some_and(|words| {
-                        words.windows(3).any(|w| crate::word_primitives::equals(&w, &["on", "the", "battlefield"]))
+                        words.word_windows(3).any(|w| crate::word_primitives::equals(&w, &["on", "the", "battlefield"]))
                     })
                     .then_some(ValueSurfaceHint::ExtremumExplicitBattlefieldScope),
             )

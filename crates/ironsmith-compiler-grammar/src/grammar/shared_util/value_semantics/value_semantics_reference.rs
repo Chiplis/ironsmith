@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 pub fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
@@ -42,7 +43,7 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
     // "the number of creatures on the battlefield plus the number of
     // artifacts on the battlefield" is a sum of two counts; no typed count
     // reading may swallow the second term into one filter.
-    if let Some(operator_idx) = filter_words.windows(4).position(|window| {
+    if let Some(operator_idx) = filter_words.word_windows(4).position(|window| {
         matches!(window[0], "plus" | "minus") && window[1..] == ["the", "number", "of"]
     }) {
         if let Some(value) = equal_to_count_readings::read_value_expression(&input) {
@@ -207,7 +208,7 @@ pub fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option
 /// The standalone value reader binds that graveyard to the source controller
 /// ("you"); rebind it to the candidate's controller here.
 fn bind_candidate_controller_graveyard_count(operand: Value, operand_words: &[&str]) -> Value {
-    let names_candidate_controller_graveyard = operand_words.windows(3).any(|window| {
+    let names_candidate_controller_graveyard = operand_words.word_windows(3).any(|window| {
         matches!(
             window,
             [

@@ -4,6 +4,7 @@
 //! without the sentence loop. They were a first-match ladder in
 //! `dispatch_entry`; they are a registry whose readings all run and must agree.
 
+use crate::word_primitives::WordWindows as _;
 use super::SubjectVerbPrimitiveClause;
 use super::dispatch_entry::{
     parse_complete_become_statement, parse_complete_compound_gain_statement,
@@ -882,9 +883,9 @@ fn split_return_with_attached_auras(sentence: &[OwnedLexToken]) -> Option<Vec<Ow
         (Some(&"return"), Some(&"another"), Some(&"target")) => 3,
         _ => return None,
     };
-    let and_all = words.windows(2).position(|pair| pair == ["and", "all"])?;
+    let and_all = words.word_windows(2).position(|pair| pair == ["and", "all"])?;
     let attached = words
-        .windows(4)
+        .word_windows(4)
         .position(|window| window == ["attached", "to", "it", "to"])?;
     if attached <= and_all + 2 {
         return None;
@@ -1963,7 +1964,7 @@ fn read_optional_counter_adjustment(tokens: &[OwnedLexToken]) -> Result<Option<V
     if !words.starts_with(&["for", "each"]) || words.last() != Some(&"counter") {
         return Ok(None);
     }
-    let Some(split) = words.windows(6).position(|part| part == ["you", "may", "add", "or", "remove", "a"]) else {
+    let Some(split) = words.word_windows(6).position(|part| part == ["you", "may", "add", "or", "remove", "a"]) else {
         return Ok(None);
     };
     if split <= 2 { return Ok(None); }
@@ -2080,7 +2081,7 @@ fn read_source_counter_payment(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Ef
         || !crate::util::is_source_reference_words(&words[counter_end + 2..then])
         || words.get(then..then + 5) != Some(&["then", "sacrifice", "it", "unless", "you"]) { return Ok(None); }
     let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(&words[2..counter_end]) else { return Ok(None); };
-    let Some(each) = words.windows(2).rposition(|part| part == ["for", "each"]) else { return Ok(None); };
+    let Some(each) = words.word_windows(2).rposition(|part| part == ["for", "each"]) else { return Ok(None); };
     if each <= then + 5 || crate::grammar::filters::parse_counter_type_words(&words[each + 2..words.len() - 3]) != Some(counter_type) { return Ok(None); }
     let price = crate::util::trim_edge_punctuation_tokens(&tokens[view.token_start_indices()[then + 5]..view.token_start_indices()[each]]);
     let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(price)?;

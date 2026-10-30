@@ -91,9 +91,11 @@ fn dynamic_sequence<'a, 'p>(
     expected: &'p [&'p str],
 ) -> impl Parser<WordSliceInput<'a>, (), ErrMode<ContextError>> + 'p {
     move |input: &mut WordSliceInput<'a>| {
+        let start = *input;
         for expected_word in expected {
             dynamic_word(expected_word).void().parse_next(input)?;
         }
+        crate::word_claims::claim_words(&start[..start.len() - input.len()]);
         Ok(())
     }
 }

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
     CardTextError, ConditionalEffectAst, CounterActionAst, DelayedEffectAst, EffectAst,
@@ -454,7 +455,7 @@ pub fn validate_protection_static_line(tokens: &[OwnedLexToken]) -> Result<(), C
                     let words = TokenWordView::new(body).word_refs();
                     if !body.iter().any(|token| token.kind == crate::lexer::TokenKind::Colon)
                         && clause_grammar::parse_trigger_intro_tokens(body).body_first == 0
-                        && words.windows(5).any(|words|
+                        && words.word_windows(5).any(|words|
                             words == ["protection", "from", "each", "color", "among"])
                     {
                         return Err(CardTextError::ParseError(
@@ -780,6 +781,14 @@ pub(crate) fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<
 mod keyword_line_readings;
 
 pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let parsed = read_ability_line_lexed(tokens)?;
+    crate::word_claims::claim_tokens(tokens);
+    Some(parsed)
+}
+
+/// The complete-phrase reading behind the public reader, which claims its
+/// whole input on success.
+fn read_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_amount(tokens) {
             return Some(action);

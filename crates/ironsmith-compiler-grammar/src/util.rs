@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::TextSpan;
@@ -2268,8 +2269,10 @@ fn restore_distinct_combat_damage_controller_target(
     let Some(filter_tokens) = head.tokens().get(head.prefix.consumed..) else {
         return;
     };
-    let Ok(authored_filter) = crate::object_filters::parse_object_filter(filter_tokens, false)
-    else {
+    let (authored_filter, probe) = crate::word_claims::speculative(|| {
+        crate::object_filters::parse_object_filter(filter_tokens, false)
+    });
+    let Ok(authored_filter) = authored_filter else {
         return;
     };
     if !matches!(
@@ -2278,6 +2281,7 @@ fn restore_distinct_combat_damage_controller_target(
     ) {
         return;
     }
+    probe.keep();
 
     fn apply(target: &mut TargetAst, authored_filter: &ObjectFilter) {
         match target {
@@ -2315,7 +2319,7 @@ fn parse_one_target_per_card_type_phrase(
         return Ok(None);
     }
     let Some(start) = words
-        .windows(4)
+        .word_windows(4)
         .position(|window| window == ["of", "each", "card", "type"])
     else {
         return Ok(None);
@@ -3600,7 +3604,7 @@ fn mark_has_subtype_list_arm_union(filter: &mut ObjectFilter, words: &[&str]) {
     if filter.type_or_subtype_union || filter.card_types.is_empty() || filter.subtypes.len() != 1 {
         return;
     }
-    let Some(has_idx) = words.windows(3).position(|window| {
+    let Some(has_idx) = words.word_windows(3).position(|window| {
         matches!(window[0], "has" | "have")
             && matches!(window[1], "a" | "an")
             && parse_subtype_word(window[2]).is_some_and(|subtype| filter.subtypes[0] == subtype)

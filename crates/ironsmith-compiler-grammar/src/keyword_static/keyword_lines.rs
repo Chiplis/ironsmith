@@ -1,4 +1,12 @@
 pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let parsed = read_ability_line(tokens)?;
+    crate::word_claims::claim_tokens(tokens);
+    Some(parsed)
+}
+
+/// The complete-phrase reading behind the public reader, which claims its
+/// whole input on success.
+fn read_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     if crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens).is_some() {
         return crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_line(tokens);
     }

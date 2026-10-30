@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 pub use self::become_clause::parse_become_clause;
 use self::helpers::{parse_controller_or_owner_of_target_subject, render_lower_words};
 use self::next_turn_cant::parse_next_turn_cant_clause;
@@ -1311,10 +1312,10 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
         let subject_words = crate::lexer::parser_token_word_refs(subject_shape.subject_tokens);
         let full_words = crate::lexer::parser_token_word_refs(full_tokens);
         if subject_words
-            .windows(3)
+            .word_windows(3)
             .any(|window| window == ["attacking", "a", "player"])
             && full_words
-                .windows(2)
+                .word_windows(2)
                 .any(|window| window == ["that", "player"])
             && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                 action:

@@ -6,6 +6,7 @@
 //! and "not chosen by any player this way" is the complement of both chosen
 //! sets. Without your choice there is no power to compare against and the
 //! whole remainder does nothing.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::{ConditionalEffectAst, ForEachEffectAst, ObjectChoiceEffectAst};
 use crate::effect::ChoiceCount;
@@ -93,7 +94,7 @@ pub(super) fn read(
     else {
         return Ok(None);
     };
-    let Some(this_way) = after_if.windows(2).position(|window| window == ["this", "way"]) else {
+    let Some(this_way) = after_if.word_windows(2).position(|window| window == ["this", "way"]) else {
         return Ok(None);
     };
     let consequence = &after_if[this_way + 2..];

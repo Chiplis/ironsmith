@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::ChoiceCount;
 use crate::cards::builders::ForEachEffectAst;
@@ -407,7 +408,7 @@ pub(super) fn parse_animation_size_replacement_document(
         words.first() == Some(&"if")
             && words.last() == Some(&"instead")
             && words
-                .windows(6)
+                .word_windows(6)
                 .any(|part| part == ["it", "has", "base", "power", "and", "toughness"])
     }) else {
         return Ok(None);
@@ -928,7 +929,7 @@ fn pre_rule_search_exiled_cards_owner(
         return Ok(None);
     }
     if !words
-        .windows(3)
+        .word_windows(3)
         .any(|words| words == ["with", "that", "name"])
     {
         return Ok(None);

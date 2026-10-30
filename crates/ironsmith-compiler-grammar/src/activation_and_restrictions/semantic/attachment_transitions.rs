@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 pub(super) fn parse_attachment_transition_trigger(
@@ -5,7 +6,7 @@ pub(super) fn parse_attachment_transition_trigger(
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let view = ActivationRestrictionCompatWords::new(tokens);
     let words = view.to_word_refs();
-    let Some(index) = words.windows(3).position(|words| {
+    let Some(index) = words.word_windows(3).position(|words| {
         matches!(
             words,
             ["become" | "becomes", "attached", "to"] | ["become" | "becomes", "unattached", "from"]

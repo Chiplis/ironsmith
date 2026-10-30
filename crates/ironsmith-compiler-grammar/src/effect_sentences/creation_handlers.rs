@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
     CardTextError, ChooseOneModeAst, ConditionalEffectAst, DelayedEffectAst, EffectAst,
@@ -409,7 +410,7 @@ fn quoted_copy_sacrifice_ability_surface(
             }
             let words = token_word_refs(body);
             let end_step = if words
-                .windows(3)
+                .word_windows(3)
                 .any(|window| window == ["of", "your", "end"])
             {
                 TokenCopySacrificeEndStepSurface::Your
@@ -417,7 +418,7 @@ fn quoted_copy_sacrifice_ability_surface(
                 TokenCopySacrificeEndStepSurface::The
             };
             let subject = if words
-                .windows(2)
+                .word_windows(2)
                 .any(|window| window == ["this", "permanent"])
             {
                 TokenCopySacrificeSubjectSurface::Permanent
@@ -2530,7 +2531,7 @@ pub fn parse_create(
         })
         .filter(|_| {
             modifier_tail_words
-                .windows(2)
+                .word_windows(2)
                 .any(|pair| pair == ["if", "able"])
         });
     let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =

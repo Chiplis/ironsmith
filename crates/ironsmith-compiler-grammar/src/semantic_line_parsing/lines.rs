@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::ZoneReplacementDurationAst;
 use crate::cards::builders::ConditionalEffectAst;
@@ -1533,8 +1534,8 @@ fn parse_statement_to_chunks_impl(
     // counter choices are one replacement program with shared local results.
     let entry_words = crate::lexer::parser_token_word_refs(parse_tokens);
     if line.info.semantic_facts.statement.as_enters_effect_program.is_some()
-        && entry_words.windows(5).any(|words| words == ["instead", "of", "onto", "the", "battlefield"])
-        && entry_words.windows(3).any(|words| words == ["exiled", "this", "way"])
+        && entry_words.word_windows(5).any(|words| words == ["instead", "of", "onto", "the", "battlefield"])
+        && entry_words.word_windows(3).any(|words| words == ["exiled", "this", "way"])
     {
         let body_start = parse_tokens.iter().position(OwnedLexToken::is_comma)
             .ok_or_else(|| CardTextError::ParseError("as-enters program has no body boundary".into()))? + 1;

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 pub fn is_negated_untap_clause(words: &[&str]) -> bool {
@@ -31,13 +32,13 @@ pub fn parse_token_copy_modifier_sentence_lexed(
             Kind::SacrificeAtNextUpkeep => TokenCopyFollowup::SacrificeAtNextUpkeep(
                 crate::cards::builders::PlayerAst::Any,
                 crate::lexer::token_word_refs(tokens)
-                    .windows(2)
+                    .word_windows(2)
                     .any(|pair| pair == ["those", "tokens"]),
             ),
             Kind::SacrificeAtYourNextUpkeep => TokenCopyFollowup::SacrificeAtNextUpkeep(
                 crate::cards::builders::PlayerAst::You,
                 crate::lexer::token_word_refs(tokens)
-                    .windows(2)
+                    .word_windows(2)
                     .any(|pair| pair == ["those", "tokens"]),
             ),
             Kind::ExileAtNextEndStep => TokenCopyFollowup::ExileAtNextEndStep(

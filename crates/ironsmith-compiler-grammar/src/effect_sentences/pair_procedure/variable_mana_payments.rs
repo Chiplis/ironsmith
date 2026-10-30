@@ -13,6 +13,7 @@
 //!   (Liege of the Hollows): one player loop owns both instructions, so every
 //!   player pays in APNAP order (CR 101.4) before the tokens are created
 //!   together, each player's count reading their own payment.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::grammar::primitives;
 use crate::lexer::{OwnedLexToken, TokenKind};
@@ -299,7 +300,7 @@ pub(super) fn read_play_permission_cast_rider(
     let (Some(head), Some(next)) = (sentences.get(index), sentences.get(index + 1)) else { return Ok(None); };
     let words = crate::lexer::parser_token_word_refs(head.lowered());
     if !words.starts_with(&["until", "end", "of", "turn"])
-        || !words.windows(3).any(|words| words == ["you", "may", "play"] || words == ["you", "may", "cast"])
+        || !words.word_windows(3).any(|words| words == ["you", "may", "play"] || words == ["you", "may", "cast"])
     { return Ok(None); }
     let tokens = next.lowered();
     let Some(comma) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else { return Ok(None); };

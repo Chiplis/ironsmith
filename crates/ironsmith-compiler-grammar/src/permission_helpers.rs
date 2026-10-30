@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 #[path = "permission_helpers/collection_casts.rs"]
 pub(crate) mod collection_casts;
 pub(crate) mod effect_cast_prices;
@@ -1227,7 +1228,7 @@ fn parse_filtered_graveyard_cast_additional_cost_permission(
     if !words.starts_with(&["you", "may", "cast"]) {
         return Ok(None);
     }
-    let Some(from) = words.windows(4).position(|window| window == ["from", "your", "graveyard", "by"])
+    let Some(from) = words.word_windows(4).position(|window| window == ["from", "your", "graveyard", "by"])
     else {
         return Ok(None);
     };
@@ -2437,7 +2438,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     // collection cast reading; a single matching-spell permission would drop
     // both the count and the total.
     if words
-        .windows(3)
+        .word_windows(3)
         .any(|window| window == ["total", "mana", "value"])
     {
         return Ok(None);
@@ -2449,9 +2450,9 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     // dynamic bound ("equal to the number of coin counters on ...") still
     // lowers through this permission.
     if words
-        .windows(2)
+        .word_windows(2)
         .any(|window| matches!(window[0], "cast" | "play") && window[1] == "target")
-        && words.windows(4).any(|window| {
+        && words.word_windows(4).any(|window| {
             window[0] == "value"
                 && crate::util::parse_number_word_u32(window[1]).is_some()
                 && window[2] == "or"
@@ -2922,7 +2923,7 @@ pub fn parse_cast_or_play_tagged_clause(
         && let Some((target, tail)) = parse_tagged_cast_or_play_target_tokens(rest)
         && let Some(tail) = parse_conditional_tagged_free_cast_tail_tokens(tail)
         && tail.lifetime == PermissionLifetime::Immediate
-        && token_word_refs(tail.condition_tokens).windows(2)
+        && token_word_refs(tail.condition_tokens).word_windows(2)
             .any(|words| matches!(words, ["that" | "the", "spell's" | "spells"]))
         && let Some((operator, right)) = parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)
     {
@@ -3020,7 +3021,7 @@ pub fn parse_cast_or_play_tagged_clause(
                     .position(|word| *word == "cast")
                     .and_then(|cast| words.get(cast + 1))
                     .is_some_and(|article| matches!(*article, "a" | "an"))
-                    && words.windows(2).any(|pair| pair == ["from", "among"])
+                    && words.word_windows(2).any(|pair| pair == ["from", "among"])
             };
             if ((max_plays == Some(1) && filter.is_none()) || singular_filtered_pool)
                 && !as_copy
@@ -3072,9 +3073,9 @@ pub fn parse_cast_or_play_tagged_clause(
             // then cast in turn (CR 608.2g), not one cast of the first card.
             let plural_free_cast = {
                 let words = token_word_refs(&trimmed);
-                words.windows(3).any(|window| window == ["their", "mana", "costs"])
-                    && (words.windows(3).any(|window| window == ["cast", "those", "cards"])
-                        || words.windows(2).any(|window| window == ["cast", "them"]))
+                words.word_windows(3).any(|window| window == ["their", "mana", "costs"])
+                    && (words.word_windows(3).any(|window| window == ["cast", "those", "cards"])
+                        || words.word_windows(2).any(|window| window == ["cast", "them"]))
             };
             if plural_free_cast
                 && without_paying_mana_cost

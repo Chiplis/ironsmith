@@ -922,11 +922,15 @@ impl<'a> TokenWordView<'a> {
         self.words
             .get(start..start.saturating_add(expected.len()))
             .is_some_and(|slice| {
-                slice
+                let matched = slice
                     .iter()
                     .copied()
                     .zip(expected.iter().copied())
-                    .all(|(actual, expected)| actual == expected)
+                    .all(|(actual, expected)| actual == expected);
+                if matched {
+                    crate::word_claims::claim_words(slice);
+                }
+                matched
             })
     }
 

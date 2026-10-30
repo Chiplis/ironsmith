@@ -11,6 +11,7 @@
 //! it; how the copy was stated (in its own sentence, as "that card", with the
 //! cast in the same sentence) survives as the cast's copy-instruction surface.
 
+use crate::word_primitives::WordWindows as _;
 use super::dispatch_entry::SentenceInput;
 use super::sequence_rules::generic_subject_verb_sequences::exiled_collections::{
     contains_word_phrase, tag_first_exile_in_effects,
@@ -292,7 +293,7 @@ fn copy_statement(sentence: &SentenceInput, exiled: &TagKey) -> Option<CopyState
 fn choose_exiled_this_way_and_copy(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], u32)> {
     let words = crate::lexer::parser_token_word_refs(tokens);
     let exiled = words
-        .windows(6)
+        .word_windows(6)
         .position(|window| window == ["exiled", "this", "way", "and", "copy", "it"])?;
     if words.first() != Some(&"choose") {
         return None;

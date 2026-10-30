@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::super::super::dispatch_entry::{
     ConsultSentenceParts, consult_cast_effects, consult_stop_rule_is_single_match,
     leading_may_actor_to_player, parse_consult_cast_clause, parse_consult_traversal_sentence,
@@ -485,7 +486,7 @@ pub fn parse_for_each_color_counter_choice_then_distinct_count(
         return Ok(None);
     };
     let Some(this_way) = second_words
-        .windows(2)
+        .word_windows(2)
         .position(|pair| pair == ["this", "way"])
     else {
         return Ok(None);
@@ -661,7 +662,7 @@ pub fn parse_token_copy_of_chosen_card_with_x_mana_value(
             &words[..HEAD],
             ["create", "a", "token", "that's" | "thats", "a", "copy", "of"]
         )
-        || !words.windows(4).any(|window| window == ["exiled", "with", "cards", "named"])
+        || !words.word_windows(4).any(|window| window == ["exiled", "with", "cards", "named"])
     {
         return Ok(None);
     }
@@ -1980,7 +1981,7 @@ pub fn parse_choose_same_controller_targets_then_damage_chosen_other_cant_block(
         &trim_commas(&first_tokens[shape.target]),
     )?);
     if crate::lexer::token_word_refs(&first_tokens)
-        .windows(2)
+        .word_windows(2)
         .any(|pair| pair == ["same", "opponent"])
     {
         target = restrict_target_controller(target, PlayerFilter::Opponent);
@@ -2039,7 +2040,7 @@ fn parse_same_controller_targets_choose_sacrifice(
     // "controlled by the same opponent" (Retribution): the shared controller
     // must also be an opponent.
     if crate::lexer::token_word_refs(&first_tokens)
-        .windows(2)
+        .word_windows(2)
         .any(|pair| pair == ["same", "opponent"])
     {
         target = restrict_target_controller(target, PlayerFilter::Opponent);

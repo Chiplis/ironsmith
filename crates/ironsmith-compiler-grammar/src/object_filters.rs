@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::CardTextError;
 #[cfg(test)]
 use crate::filter::Comparison;
@@ -1220,13 +1221,13 @@ fn finalize_public_object_filter(
     split_enchanted_or_equipped_disjunction(&mut filter, tokens);
     let words = parser_token_word_refs(tokens);
     if words
-        .windows(3)
+        .word_windows(3)
         .any(|part| crate::word_primitives::equals(&part, &["that", "are", "enchanted"]))
         || words
-            .windows(2)
+            .word_windows(2)
             .any(|part| crate::word_primitives::equals(&part, &["enchanted", "creatures"]))
         || words
-            .windows(3)
+            .word_windows(3)
             .any(|part| crate::word_primitives::equals(&part, &["an", "enchanted", "creature"]))
     {
         filter
@@ -1236,10 +1237,10 @@ fn finalize_public_object_filter(
         aura.subtypes.push(crate::types::Subtype::Aura);
         // "creatures that are enchanted by an Aura you control": the Aura's
         // controller constrains the attachment, not the enchanted creature.
-        if words.windows(6).any(|part| {
+        if words.word_windows(6).any(|part| {
             crate::word_primitives::equals(&part, &["enchanted", "by", "an", "aura", "you", "control"])
         }) || words
-            .windows(5)
+            .word_windows(5)
             .any(|part| crate::word_primitives::equals(&part, &["enchanted", "by", "auras", "you", "control"]))
         {
             aura.controller = Some(PlayerFilter::You);
@@ -2043,7 +2044,7 @@ fn parse_object_filter_unaudited(
         if let Some(rel) = words_ref.iter().position(|word| matches!(*word, "that's" | "thats"))
             && rel > 0
             && let Some(or_rel) = words_ref
-                .windows(3)
+                .word_windows(3)
                 .position(|window| crate::word_primitives::equals(&window, &["or", "that", "has"]))
             && or_rel > rel + 1
             && let Some(&rel_start) = words.token_start_indices().get(rel)
@@ -2160,6 +2161,7 @@ fn parse_object_filter_unaudited(
         };
         if let Some(player) = player {
             let boundary = words.token_start_indices()[start];
+            crate::word_claims::claim_tokens(&tokens[boundary..]);
             return Ok(parse_object_filter(&tokens[..boundary], other)?.controlled_by(player));
         }
     }
@@ -2168,6 +2170,7 @@ fn parse_object_filter_unaudited(
         && crate::util::is_source_reference_words(&words_ref[index + relation_len..])
         && let Some(token_index) = words.token_start_indices().get(index)
     {
+        crate::word_claims::claim_tokens(&tokens[*token_index..]);
         let mut filter = parse_object_filter(&tokens[..*token_index], other)?;
         filter.in_combat_with_source = true;
         return Ok(filter);
@@ -2267,7 +2270,7 @@ pub(crate) fn split_enchanted_or_equipped_disjunction(
     tokens: &[OwnedLexToken],
 ) {
     let words = crate::lexer::token_word_refs(tokens);
-    let disjunction = words.windows(3).any(|window| {
+    let disjunction = words.word_windows(3).any(|window| {
         matches!(
             window,
             ["enchanted", "or", "equipped"] | ["equipped", "or", "enchanted"]
@@ -2429,7 +2432,7 @@ pub fn parse_object_filter_words(
         return result;
     }
     if word_refs
-        .windows(5)
+        .word_windows(5)
         .any(|words| crate::word_primitives::equals(&words, &["with", "the", "same", "name", "as"]))
     {
         let tokens = super::lexer::synthetic_word_tokens(word_refs.iter().copied());
@@ -2566,6 +2569,7 @@ fn parse_object_filter_lexed_unaudited(
         && crate::util::is_source_reference_words(&words_ref[index + relation_len..])
         && let Some(token_index) = words.token_start_indices().get(index)
     {
+        crate::word_claims::claim_tokens(&tokens[*token_index..]);
         let mut filter = parse_object_filter(&tokens[..*token_index], other)?;
         filter.in_combat_with_source = true;
         return Ok(filter);

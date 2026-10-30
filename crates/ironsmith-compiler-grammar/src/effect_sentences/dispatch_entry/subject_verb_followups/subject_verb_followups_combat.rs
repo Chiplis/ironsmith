@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::ForEachEffectAst;
 
@@ -452,7 +453,7 @@ pub(super) fn pre_rule_damage_recipient_choice_instead(
     }
     let filter_start = chooser_len + 2;
     let Some(have) = words[filter_start..]
-        .windows(2)
+        .word_windows(2)
         .position(|pair| pair == ["and", "have"])
         .map(|offset| filter_start + offset)
     else {

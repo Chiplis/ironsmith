@@ -1,6 +1,6 @@
 # Object-filter word consumption — implementation plan
 
-Status: proposal, 2026-10-29. Prerequisite: the uncommitted keyword-filter work
+Status: in progress (stage 4), 2026-10-29; the check moved from per-filter to per-card, see "The check is per card". Prerequisite: the uncommitted keyword-filter work
 (`ResolutionProgram.keyword`, `OFFICIAL_KEYWORD_ABILITIES`, the trailing with/without
 check in `reference_tag_stage_reference.rs`, the named-source guard in
 `anthem_grant_lines.rs`) is committed first, so its corpus baseline is the starting point.
@@ -84,14 +84,51 @@ pub(crate) fn scoped<T>(f: impl FnOnce() -> T) -> (T, ClaimSet);
   hit. This is the same rule `parse_loss` already follows, and missing it would produce
   phantom unclaimed words only on memo hits.
 
-### The check is per filter invocation
+### The check is per card, over filter obligations (revised 2026-10-29)
 
-`parse_object_filter` (and `_lexed`) runs its body inside `scoped`. On success it
-compares the input's authored spans with the claim set. Anything unclaimed is reported in
-audit mode (stage 3) and is an error once enforced (stage 5).
+The first design checked each `parse_object_filter` invocation: unread words failed that
+parse. Stage 4's dry run (`IRONSMITH_FILTER_CLAIM_ENFORCE`) showed why that is wrong. At
+its best it still broke 319 cards that compile correctly today and changed the text of
+28 more, for three reasons:
 
-Because the check is local to one invocation, probes the caller later discards don't
-matter. Each invocation answers only "did I read my own input?".
+1. **Correct readings pass through speculative filter parses of wrong spans** and need
+   them to succeed. Sarkhan, Dragon Ascendant's "becomes a Dragon in addition to its
+   other types" goes through a filter parse of a clause fragment; the target-phrase
+   parsers (`target_semantics/reference.rs:371` and `:1431`) receive many such
+   fragments.
+2. **About ten sites use filter success as a predicate** (`parse_object_filter(..)
+   .is_err()`); `reference.rs:357` decides a named surface is the source when the filter
+   fails, so a failing filter silently flips the reading.
+3. **Fallbacks after a failed filter are lossy.** Alms Beast's "Creatures blocking or
+   blocked by this creature have lifelink" became "All creatures have lifelink".
+
+So a filter parse never fails because of unread words. Instead:
+
+- Each successful outermost filter parse records an **obligation** for every authored
+  word of its input it (and any caller-owned declaration) did not read, together with
+  the input and the caller for the report. Obligations travel in the `ClaimSet` beside
+  claims, so the sentence memo stores and replays them like claims.
+- The whole card parse (recognition and assembly) runs in one recording scope. Every
+  instrumented reader anywhere in the grammar claims into it, including readers outside
+  object filters ("*if* you do", "*each turn*").
+- At the end of the card, an obligation whose word no reader claimed is a **violation**:
+  a word a filter saw that nothing in the card's parse read. It is reported in audit
+  mode and fails the card when enforced.
+
+A speculative filter over a wrong span leaves obligations, but the reading that owns
+those words claims them, so they are excused. Filter-level predicates and fallbacks run
+exactly as without the check. Claims made by abandoned probes also excuse words, which
+errs toward missing a drop rather than failing a good card.
+
+What remains are words that *no* reader recorded. These are either real drops (the
+target of this work) or words read by a reader that does not claim yet. The burn-down
+continues on the second kind, now across the whole grammar rather than only filters:
+the same mechanical conversions (`drain` → `claim_drained`, slice equality →
+`word_primitives::equals`, `kw` and the word-sequence primitives already claim).
+
+The card scope is opened only when auditing or enforcing, so the default path still
+does no recording. The address registry is reset at the card scope, not per filter,
+because readers outside filters now claim words registered before a filter parse runs.
 
 ### Callers that pass more than a filter
 
@@ -116,8 +153,8 @@ Stages 1–4 must show **zero** card changes.
 | 1 | Recorder, scopes, memo replay, `parse_object_filter` audit hook (env-gated report) | 1 day | none |
 | 2 | Claim in shared helpers (`parse_phrase_*`, `PhraseFact`, `word_primitives`, keyword/type/subtype/color readers); turn the 52 `drain` helpers into drain-and-claim | 2–3 days | none |
 | 3 | Burn-down rounds over the corpus report: claim at the remaining scan sites, ordered by how many cards each unclaimed word affects; claim redundant words explicitly as no-ops ("any", "single", "both") | 3–5 days | none |
-| 4 | Caller hygiene: trim or pre-claim at the sites the report attributes to callers (the 691-card list from the rejected check is a ready-made start) | 1–2 days | none |
-| 5 | Enforce: unclaimed authored words are an error. Retire the interim trailing with/without check. `parse_best_object_filter_suffix` may drop a prefix only if the caller claimed it or it is a connective | 1 day | intended only |
+| 4 | Card-level obligations (see the revised check above); caller-owned declarations where trimming would duplicate grammar; claim in the non-filter readers the violation report names | 2–4 days | none |
+| 5 | Enforce: card-level violations are an error. Retire the interim trailing with/without check. `parse_best_object_filter_suffix` may drop a prefix only if the caller claimed it or it is a connective | 1 day | intended only |
 
 Total: about 1.5–2 weeks of focused work.
 
@@ -127,6 +164,11 @@ One TSV row per (card, filter invocation): the unclaimed words, the full input, 
 innermost recorder site that ran. Aggregating by word gives the burn-down order;
 aggregating by caller (`#[track_caller]`, as `parse_ledger` does) separates "filter
 didn't read it" (stage 3) from "caller passed extra words" (stage 4).
+
+From stage 4 on, rows are card-level violations: one row per (card, filter input,
+caller) listing the words of that input nobody in the card's parse claimed. Filter
+parses outside any card parse (lowering, tools) still report per invocation, with the
+card column prefixed `<outside>`.
 
 ### Stage 5 acceptance
 

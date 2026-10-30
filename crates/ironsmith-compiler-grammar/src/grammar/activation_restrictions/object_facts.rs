@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use std::ops::Range;
 
 use winnow::combinator::{alt, opt, peek};
@@ -204,7 +205,7 @@ pub fn parse_target_restriction_envelope_tokens(
     {
         return None;
     }
-    if let Some(marker) = words.windows(3).position(|w| w == ["spells", "or", "abilities"])
+    if let Some(marker) = words.word_windows(3).position(|w| w == ["spells", "or", "abilities"])
         && marker >= 4
     {
         if words.len() == marker + 3 && marker == 4 {
@@ -263,7 +264,7 @@ pub fn parse_target_restriction_envelope_tokens(
 
     // "nongreen spells your opponents control or abilities from nongreen
     // sources your opponents control" retains both explicit controller tails.
-    if let Some(split) = words.windows(3).position(|words| words == ["or", "abilities", "from"])
+    if let Some(split) = words.word_windows(3).position(|words| words == ["or", "abilities", "from"])
         && split > 4
         && let Some(spell_noun) = words[4..split].iter().position(|word| matches!(*word, "spell" | "spells")).map(|index| index + 4)
         && let Some(source_noun) = words[split + 3..].iter().position(|word| matches!(*word, "source" | "sources")).map(|index| index + split + 3)

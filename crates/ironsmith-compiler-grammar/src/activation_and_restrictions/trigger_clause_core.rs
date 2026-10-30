@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::grammar::abilities as ability_grammar;
 use crate::grammar::leaf;
@@ -2211,7 +2212,7 @@ fn try_parse_championed_with_this_trigger_lexed(
     let trimmed = trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::token_word_refs(trimmed);
     let Some(is_idx) = words
-        .windows(4)
+        .word_windows(4)
         .position(|window| window == ["is", "championed", "with", "this"])
     else {
         return Ok(None);
@@ -2256,7 +2257,7 @@ fn try_parse_transforms_or_enters_transformed_trigger_lexed(
         return Ok(None);
     }
     let Some(split) = words
-        .windows(2)
+        .word_windows(2)
         .position(|window| window == ["transforms", "or"])
     else {
         return Ok(None);

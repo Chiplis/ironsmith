@@ -69,5 +69,7 @@ pub(super) fn finish_text_parse<O>(
             input.trim()
         )));
     }
+    // A word the caller took from a token reads that token.
+    ironsmith_compiler_syntax::word_claims::claim_word(raw);
     Ok(parsed)
 }

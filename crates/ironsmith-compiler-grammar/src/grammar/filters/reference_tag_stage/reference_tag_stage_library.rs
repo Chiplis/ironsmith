@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 /// This cross-zone phrase is a complete typed union, even when its caller has
@@ -18,7 +19,7 @@ pub(crate) fn parse_complete_permanent_or_suspended_card_filter(
     // Only the noun phrase before the first targeting relation can establish
     // this owner. A relation enclosing the union remains with its own reader,
     // but a union followed by a relation must consume or reject that full tail.
-    let noun_end = words.windows(2)
+    let noun_end = words.word_windows(2)
         .position(|part| matches!(part, ["that", "target" | "targets"]))
         .unwrap_or(words.len());
     let noun_words = &words[..noun_end];
@@ -43,6 +44,10 @@ pub(crate) fn parse_complete_permanent_or_suspended_card_filter(
     } else {
         None
     };
+    // The disjunction reader accepts only the complete phrase.
+    if parsed.is_some() {
+        crate::word_claims::claim_tokens(tokens);
+    }
     Some(parsed.map(|mut filter| {
         filter.other = other;
         filter

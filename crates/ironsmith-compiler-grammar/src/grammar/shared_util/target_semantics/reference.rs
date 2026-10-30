@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use winnow::Parser;
 
@@ -354,8 +355,12 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // Ordinary object phrases are intentionally excluded: even when sentence
     // capitalization uppercases their first word, their lowercase rules
     // qualifiers prevent this surface predicate from claiming them.
+    // The filter parse only decides whether the name reads as an object
+    // phrase; its words count as read by whichever reading wins.
     if let Some(surface) = crate::grammar::source_surface_shapes::parse_named_surface(tokens)
-        && parse_object_filter(tokens, false).is_err()
+        && crate::word_claims::speculative(|| parse_object_filter(tokens, false))
+            .0
+            .is_err()
     {
         return Ok(TargetAst::Object(
             ObjectFilter::source().with_source_surface(surface),
@@ -1266,7 +1271,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             filter.targets_only_any_of = true;
             let object_words = crate::lexer::token_word_refs(union.object_tokens);
             if object_words
-                .windows(3)
+                .word_windows(3)
                 .any(|window| window == ["spell", "or", "ability"])
             {
                 filter.zone = Some(Zone::Stack);

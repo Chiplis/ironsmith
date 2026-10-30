@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
@@ -557,7 +558,7 @@ fn parse_container_reference_suffix(words: &[String]) -> Option<ContainerReferen
 fn merge_from_among_pool(words: &mut Vec<String>) {
     let refs = string_word_refs(words);
     let Some(from) = refs
-        .windows(2)
+        .word_windows(2)
         .position(|pair| pair[0] == "from" && pair[1] == "among")
     else {
         return;

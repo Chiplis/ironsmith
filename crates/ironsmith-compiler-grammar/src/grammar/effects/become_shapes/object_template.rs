@@ -1,4 +1,5 @@
 //! Complete quotation-aware object descriptors, preserving unstated characteristics.
+use crate::word_primitives::WordWindows as _;
 use crate::lexer::{OwnedLexToken, TokenKind, parser_token_word_positions, parser_token_word_refs};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::color::ColorSet;
@@ -83,7 +84,7 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
     // size. It does not turn a noncreature into a creature or erase its types.
     let all_words = parser_token_word_refs(tokens);
     let mut normalized = all_words.clone();
-    if let Some(i) = normalized.windows(4).position(|w| w == ["and", "has", "base", "power"]) {
+    if let Some(i) = normalized.word_windows(4).position(|w| w == ["and", "has", "base", "power"]) {
         normalized.remove(i+1); normalized[i] = "with";
     }
     if let Some(pt) = super::parse_become_base_pt_words(&normalized) {

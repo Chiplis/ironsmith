@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 #[path = "dispatch_entry/grouped_coins.rs"]
 mod grouped_coins;
 #[path = "dispatch_entry/dynamic_keyword_instructions.rs"]
@@ -5516,7 +5517,7 @@ pub(crate) fn parse_complete_create_statement(
     // <name>. X is the mana value of that card." (Caller of the Untamed): the
     // linked-exile copy is the pair procedure's; it is no token definition.
     if crate::lexer::token_word_refs(sentence)
-        .windows(4)
+        .word_windows(4)
         .any(|window| window == ["exiled", "with", "cards", "named"])
     {
         return Ok(None);
@@ -8133,7 +8134,7 @@ pub fn parse_effect_sentences_lexed(
             || words.starts_with(&["during", "that", "turn"])
             || matches!(words.as_slice(), ["if", "they", "don't" | "dont", "pay", ..])
             || (words.starts_with(&["for", "as", "long", "as"])
-                && words.windows(4).any(|words| words == ["whenever", "you", "visit", "it"]))
+                && words.word_windows(4).any(|words| words == ["whenever", "you", "visit", "it"]))
     }) {
         return parse_effect_sentences_from_sentence_inputs(pair_sentences.iter()
             .map(|sentence| SentenceInput::from_lexed(sentence)).collect());
@@ -8237,7 +8238,7 @@ pub fn parse_effect_sentences_lexed(
             keep_conditional_search_shuffle_in_scope(&mut effects);
             bind_consult_remainders(&mut effects, None);
             sink_delayed_return_combat_followup(&mut effects, tokens);
-            if crate::lexer::parser_token_word_refs(tokens).windows(3)
+            if crate::lexer::parser_token_word_refs(tokens).word_windows(3)
                 .any(|words| words == ["their", "total", "toughness"])
             {
                 combine_shared_set_base_axes(&mut effects);
@@ -8264,14 +8265,14 @@ pub fn parse_effect_sentences_lexed(
             let aggregate_sentence = split_lexed_sentences(tokens).into_iter().find(|sentence| {
                 let words = crate::lexer::parser_token_word_refs(sentence);
                 words.starts_with(&["when", "one", "or", "more"])
-                    && words.windows(2).any(|pair| pair == ["this", "way"])
+                    && words.word_windows(2).any(|pair| pair == ["this", "way"])
             });
             let aggregate_reflexive = aggregate_sentence.is_some();
             // "cards are milled this way": the typed passive one-or-more result
             // the authored sentence names.
             let aggregate_milled = aggregate_sentence.is_some_and(|sentence| {
                 crate::lexer::parser_token_word_refs(sentence)
-                    .windows(4)
+                    .word_windows(4)
                     .any(|words| words == ["cards", "are", "milled", "this"])
             });
             if aggregate_reflexive {
@@ -11463,13 +11464,13 @@ fn split_look_then_exile_sentences(segments: Vec<&[OwnedLexToken]>) -> Vec<&[Own
         let starts_with_look = words.len() > 2
             && words[0].eq_ignore_ascii_case("look")
             && words[1].eq_ignore_ascii_case("at");
-        let then_exile = words.windows(2).any(|pair| {
+        let then_exile = words.word_windows(2).any(|pair| {
             pair[0].eq_ignore_ascii_case("then") && pair[1].eq_ignore_ascii_case("exile")
         });
         // "Pay any amount of life, then look at that many cards from the top
         // of your library. Put one of those cards ...": the look likewise
         // stands as its own instruction.
-        let then_look = words.windows(3).any(|triple| {
+        let then_look = words.word_windows(3).any(|triple| {
             triple[0].eq_ignore_ascii_case("then")
                 && triple[1].eq_ignore_ascii_case("look")
                 && triple[2].eq_ignore_ascii_case("at")
@@ -15948,7 +15949,7 @@ pub fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<
     // them; the for-each counter grammar owns that aggregate.
     if let Some(counted) = body.strip_prefix(&["the", "number", "of"][..])
         && counted
-            .windows(2)
+            .word_windows(2)
             .any(|pair| matches!(pair, ["counters" | "counter", "among"]))
     {
         let mut for_each_words = vec!["for", "each"];
@@ -16664,7 +16665,7 @@ pub fn parse_token_copy_followup_sentence(tokens: &[OwnedLexToken]) -> Option<To
     ) {
         return Some(TokenCopyFollowup::SacrificeAtNextUpkeep(
             PlayerAst::Any,
-            filtered.windows(2).any(|pair| pair == ["those", "tokens"]),
+            filtered.word_windows(2).any(|pair| pair == ["those", "tokens"]),
         ));
     }
 
@@ -16746,7 +16747,7 @@ pub fn parse_token_copy_followup_sentence_lexed(
     ) {
         return Some(TokenCopyFollowup::SacrificeAtNextUpkeep(
             PlayerAst::Any,
-            filtered.windows(2).any(|pair| pair == ["those", "tokens"]),
+            filtered.word_windows(2).any(|pair| pair == ["those", "tokens"]),
         ));
     }
 

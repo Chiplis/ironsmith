@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::ForEachEffectAst;
 use winnow::Parser as _;
 
@@ -182,13 +183,13 @@ fn parse_inline_look_exile_face_down_permission_bundle(
         look_words.starts_with(&["look", "at"]) || look_words.starts_with(&["you", "look", "at"]);
     let has_face_down_exile = exile_words.contains(&"exile")
         && exile_words
-            .windows(2)
+            .word_windows(2)
             .any(|window| window == ["face", "down"]);
     let has_persistent_play_permission = permission_words
-        .windows(3)
+        .word_windows(3)
         .any(|window| window == ["you", "may", "play"] || window == ["you", "may", "cast"])
         && permission_words
-            .windows(4)
+            .word_windows(4)
             .any(|window| window == ["for", "as", "long", "as"]);
     if !has_look_head || !has_face_down_exile || !has_persistent_play_permission {
         return Ok(None);
@@ -407,7 +408,7 @@ fn parse_exile_top_library_then_play_bundle(
     let mut look_at_collection = face_down
         && !matches!(exile_effect, EffectAst::ForEach(_))
         && words(permission_sentence)
-            .windows(3)
+            .word_windows(3)
             .any(|words| words == ["look", "at", "and"]);
     // Face-down collection permissions can spell out that the controller may
     // "look at and play" the cards. Some generic surfaces preserve the look as

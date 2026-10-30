@@ -8,6 +8,7 @@
 //! chosen card may be cast for free, each spell cast this way is exiled
 //! instead of going to the graveyard, and only after both casts (so both
 //! spells are on the stack) is each of those spells copied.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::{
     ConditionalEffectAst, FutureZoneReplacementCausePolicyAst, PermissionEffectAst, TextSpan,
@@ -67,7 +68,7 @@ fn two_slot_cast(words: &[&str]) -> Option<TwoSlots> {
     };
     let after_origin = &after_second[origin_len..];
     let without = after_origin
-        .windows(5)
+        .word_windows(5)
         .position(|window| window == ["without", "paying", "their", "mana", "costs"])?;
     if without + 5 != after_origin.len() {
         return None;

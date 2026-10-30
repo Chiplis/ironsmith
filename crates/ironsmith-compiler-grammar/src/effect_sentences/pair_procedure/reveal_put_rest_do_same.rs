@@ -9,6 +9,7 @@
 //! that library. "Do the same" repeats the procedure for the named
 //! participant with its own revealed and chosen collections, so the closing
 //! fight names each participant's arrival separately.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::{ConditionalEffectAst, ObjectChoiceEffectAst};
 use crate::lexer::OwnedLexToken;
@@ -67,7 +68,7 @@ pub(super) fn read_opening(
         return Ok(None);
     };
     let Some(among) = tail
-        .windows(3)
+        .word_windows(3)
         .position(|window| window == ["from", "among", "them"])
     else {
         return Ok(None);

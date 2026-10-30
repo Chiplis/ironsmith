@@ -1,5 +1,6 @@
 //! Readings shard 1 of 4, in rank order.
 
+use crate::word_primitives::WordWindows as _;
 use super::super::*;
 use super::{Predicate, Reading};
 use crate::cards::builders::SourcePredicateAst;
@@ -70,7 +71,7 @@ fn read_player_owns_at_least(
     // <source>" links them. Otherwise a recast Etrata (a new object) would
     // never see the hit cards its earlier incarnation exiled.
     let filter_words = crate::lexer::token_word_refs(filter_tokens);
-    if !filter_words.windows(2).any(|pair| crate::word_primitives::equals(&pair, &["exiled", "with"])) {
+    if !filter_words.word_windows(2).any(|pair| crate::word_primitives::equals(&pair, &["exiled", "with"])) {
         let linked = filter
             .tagged_constraints
             .iter()

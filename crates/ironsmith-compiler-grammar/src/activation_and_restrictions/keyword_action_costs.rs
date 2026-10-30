@@ -996,9 +996,11 @@ where
 }
 
 pub fn parse_single_word_keyword_action(word: &str) -> Option<KeywordAction> {
-    SINGLE_WORD_KEYWORD_ACTIONS
+    let action = SINGLE_WORD_KEYWORD_ACTIONS
         .iter()
-        .find_map(|(keyword, action)| keyword_head_is(word, keyword).then(|| action.clone()))
+        .find_map(|(keyword, action)| keyword_head_is(word, keyword).then(|| action.clone()))?;
+    crate::word_claims::claim_word(word);
+    Some(action)
 }
 
 pub fn is_known_keyword_action_head(word: &str) -> bool {
@@ -1420,6 +1422,14 @@ pub fn parse_suspend_keyword_action(tokens: &[OwnedLexToken]) -> Option<KeywordA
 }
 
 pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    let parsed = read_ability_phrase(tokens)?;
+    crate::word_claims::claim_tokens(tokens);
+    Some(parsed)
+}
+
+/// The complete-phrase reading behind the public reader, which claims its
+/// whole input on success.
+fn read_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     // A keyword-qualified activation modifier is not a grant of that keyword.
     // The complete static-cost reader owns its amount, actor and exclusions.
     let activation_words = crate::lexer::parser_token_word_refs(tokens);

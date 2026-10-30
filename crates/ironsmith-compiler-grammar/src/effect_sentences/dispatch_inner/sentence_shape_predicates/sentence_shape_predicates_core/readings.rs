@@ -4,6 +4,7 @@
 //! ladder of 103 rungs. Every admitted reading runs; two readings that
 //! disagree are an ambiguity. What no reading claims goes to the chain parser.
 
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -102,10 +103,10 @@ const SENTENCE_READINGS: &[Reading] = &[
             let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
             let words = crate::lexer::token_word_refs(tokens);
             let shaped = words.starts_with(&["this", "deals"])
-                && words.windows(2).any(|pair| pair == ["divided", "evenly"])
-                && words.windows(2).any(|pair| pair == ["rounded", "down"])
+                && words.word_windows(2).any(|pair| pair == ["divided", "evenly"])
+                && words.word_windows(2).any(|pair| pair == ["rounded", "down"])
                 && words
-                    .windows(2)
+                    .word_windows(2)
                     .any(|pair| pair[0] == "among" && matches!(pair[1], "all" | "each"))
                 && tokens.len() > 2;
             if !shaped {

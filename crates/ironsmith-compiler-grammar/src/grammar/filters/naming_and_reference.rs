@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::lexer::{TokenKind, parser_token_word_positions, render_token_slice};
 use winnow::error::{ContextError, ErrMode};
@@ -408,6 +409,7 @@ fn word_index_for_exact(words: &[&str], expected: &str) -> Option<usize> {
 }
 
 pub(super) fn remove_word_range(words: &mut Vec<&str>, start: usize, end: usize) {
+    crate::word_claims::claim_words(&words[start..end]);
     let mut remaining = Vec::with_capacity(words.len());
     remaining.extend_from_slice(&words[..start]);
     remaining.extend_from_slice(&words[end..]);
@@ -1446,7 +1448,7 @@ pub(super) fn build_spell_filter_power_or_toughness_disjunction(
 
 pub(crate) fn parse_source_number_spell_axes(words: &[&str]) -> Option<ObjectFilter> {
     let mut filter = ObjectFilter::default();
-    if let Some(start) = words.windows(3).position(|window| crate::word_primitives::equals(&window, &["with", "mana", "value"])) {
+    if let Some(start) = words.word_windows(3).position(|window| crate::word_primitives::equals(&window, &["with", "mana", "value"])) {
         let suffix = words[start..].iter().copied().filter(|word| !matches!(*word, "," | "the")).collect::<Vec<_>>();
         if crate::word_primitives::equals(&suffix, &["with", "mana", "value", "power", "or", "toughness", "equal", "to", "chosen", "number"]) {
             apply_spell_filter_word_atoms(&mut filter, &words[..start]);
@@ -1532,7 +1534,7 @@ fn apply_spell_filter_power_toughness_relation(filter: &mut ObjectFilter, words:
     .into_iter()
     .find_map(|([axis, cmp, than, other], relation)| {
         words
-            .windows(5)
+            .word_windows(5)
             .any(|window| {
                 window[0] == axis
                     && window[1] == cmp
@@ -1556,7 +1558,7 @@ fn apply_spell_filter_power_toughness_relation(filter: &mut ObjectFilter, words:
 /// A terminal "cast from <zone> [or [from] <zone>]" constrains the
 /// spell's origin, rather than a nested card mentioned elsewhere in the filter.
 fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]) {
-    let start = if let Some(start) = words.windows(2).rposition(|pair| crate::word_primitives::equals(&pair, &["cast", "from"])) {
+    let start = if let Some(start) = words.word_windows(2).rposition(|pair| crate::word_primitives::equals(&pair, &["cast", "from"])) {
         start + 2
     } else if words.first() == Some(&"from") {
         // Cost-modifier grammar extracts the caster phrase separately.

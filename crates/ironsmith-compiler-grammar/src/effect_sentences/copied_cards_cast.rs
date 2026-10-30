@@ -7,6 +7,7 @@
 //! copy is cast through the tagged-cast copy mode, once per copy made, and
 //! each cast is optional. The single-copy form ("You may cast the copy") stays
 //! with the copy-cast procedure; this reader owns the plural "copies".
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::{
     CardTextError, EffectAst, ForEachEffectAst, OwnedLexToken, PermissionEffectAst, PlayerAst,
 };
@@ -274,7 +275,7 @@ pub(crate) fn read(
     // "Copy them. You may cast any number of the copies." keeps its plural
     // authored instruction on the per-card optional cast.
     let any_number = parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(cast))
-        .windows(3)
+        .word_windows(3)
         .any(|window| window == ["any", "number", "of"]);
     let one_cast = if mandatory {
         mandatory_copy_cast(free)

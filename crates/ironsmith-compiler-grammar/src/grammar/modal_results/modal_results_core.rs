@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 /// Recognize prior-result clauses whose verbs are not object-filter
@@ -11,7 +12,7 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         // those proven words before parsing the independent card filter.
         let normalized = normalized_word_tokens(tokens);
         let words = normalized.iter().map(OwnedLexToken::parser_text).collect::<Vec<_>>();
-        let relative = words.windows(2).position(|pair| matches!(pair, ["that", "share" | "shares"]))?;
+        let relative = words.word_windows(2).position(|pair| matches!(pair, ["that", "share" | "shares"]))?;
         let tail = words.len().checked_sub(4)?;
         if relative <= 1 || tail <= relative + 2 || words[tail + 2..] != ["this", "way"]
             || !matches!(words[tail], "were" | "was" | "are" | "is") { return None; }
