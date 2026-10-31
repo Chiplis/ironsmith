@@ -775,17 +775,28 @@ fn reveal_top_matching(
                 ));
             group
                 .effects
-                .push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                    tag: crate::tag::TagRef::of(matched_tag.clone()),
-                    effects: vec![EffectAst::subject_verb_move_to_zone(
-                        it(),
+                .push(if matched_zone == Zone::Battlefield {
+                    EffectAst::subject_verb_move_all_to_zone(
+                        TargetAst::Tagged(crate::tag::TagRef::of(matched_tag.clone()), None),
                         matched_zone,
                         false,
-                        ReturnControllerAst::Preserve,
-                        false,
+                        ReturnControllerAst::You,
+                        shape.matched_tapped,
                         None,
-                    )],
-                }));
+                    )
+                } else {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                        tag: crate::tag::TagRef::of(matched_tag.clone()),
+                        effects: vec![EffectAst::subject_verb_move_to_zone(
+                            it(),
+                            matched_zone,
+                            false,
+                            ReturnControllerAst::Preserve,
+                            false,
+                            None,
+                        )],
+                    })
+                });
             group.effects.push(
                 EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                     crate::tag::TagRef::of(group.tag.clone()),

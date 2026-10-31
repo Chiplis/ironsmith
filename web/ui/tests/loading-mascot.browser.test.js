@@ -66,7 +66,7 @@ test('loading mascot and normal icons resolve under the deployed subdirectory', 
   }
 });
 
-test('smith cadence follows progress and finishes after six cycles; reduced motion completes immediately', async () => {
+test('smith keeps a steady cadence while each impact shapes the letter from progress', async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'error' });
   await vite.listen();
   const browser = await chromium.launch();
@@ -75,22 +75,46 @@ test('smith cadence follows progress and finishes after six cycles; reduced moti
     const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
     await page.goto(`${origin}/tests/loading-smith.html`);
     await page.waitForFunction(() => document.querySelector('object')?.contentDocument?.getAnimations().length > 0);
-    const hammerTime = () => page.evaluate(() => document.querySelector('object').contentDocument.getAnimations().find(a => a.animationName === 'strike').currentTime);
-    await page.waitForTimeout(1000);
-    const initial = await hammerTime();
-    await page.waitForTimeout(1000);
-    const stalled = await hammerTime();
-    for (let i = 1; i <= 8; i++) {
-      await page.evaluate(progress => window.setSmithInput({ progress, ready: false }), i / 10);
-      await page.waitForTimeout(125);
-    }
-    const downloading = await hammerTime();
-    assert.ok(downloading - stalled > (stalled - initial) * 1.3, 'faster progress increases hammer cadence');
-    assert.equal(await page.evaluate(() => !!window.smithComplete), false);
+    const snapshot = () => page.locator('object').evaluate(el => {
+      const doc = el.contentDocument;
+      const animations = doc.getAnimations();
+      const hammer = animations.find(a => a.animationName === 'strike');
+      const letter = animations.find(a => a.animationName === 'forge-letter');
+      return {
+        clock: hammer.currentTime,
+        letter: letter.currentTime,
+        path: doc.defaultView.getComputedStyle(doc.querySelector('.forged-letter')).d,
+        strikeIterations: animations.filter(a => a.animationName.startsWith('visor-impact-') || a.animationName.startsWith('traveling-spark-')).map(a => String(a.effect.getTiming().iterations)),
+      };
+    });
+    await page.clock.install();
+    await page.evaluate(() => window.setSmithInput({ progress: 0.1, ready: false }));
+    await page.clock.runFor(4000);
+    const slow = await snapshot();
+    assert.ok(Math.abs(slow.letter - 0.1) < 0.001);
+    assert.ok(slow.strikeIterations.every(value => value === 'Infinity'));
+    await page.clock.runFor(1600);
+    const stalled = await snapshot();
+    assert.equal(stalled.letter, slow.letter, 'stalled download holds the shape');
+    assert.ok(Math.abs(stalled.clock - slow.clock - 1600) < 40);
+    await page.evaluate(() => window.setSmithInput({ progress: 0.8, ready: false }));
+    await page.clock.runFor(1600);
+    const fast = await snapshot();
+    assert.ok(Math.abs(fast.clock - stalled.clock - 1600) < 40, 'faster download does not change the cadence');
+    assert.ok(fast.letter > stalled.letter && fast.letter < 1);
+    assert.notEqual(fast.path, stalled.path, 'the rendered glyph changes before loading finishes');
     await page.evaluate(() => window.setSmithInput({ progress: 1, ready: true }));
-    await page.waitForTimeout(100);
-    assert.equal(await page.evaluate(() => !!window.smithComplete), false, 'does not finish before six cycles');
-    await page.waitForFunction(() => window.smithComplete, null, { timeout: 10000 });
+    // Sample through the remaining impacts to verify continuous intermediate
+    // shapes, rather than a discrete swap at the last hit.
+    const shapes = new Set();
+    for (let i = 0; i < 60; i++) {
+      await page.clock.runFor(100);
+      shapes.add((await snapshot()).path);
+    }
+    assert.ok(shapes.size > 6, 'impacts smoothly interpolate the glyph');
+    assert.equal((await snapshot()).letter, 1);
+    assert.equal(await page.evaluate(() => !!window.smithComplete), true);
+    await page.clock.resume();
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.reload();
     await page.waitForFunction(() => !!window.setSmithInput);

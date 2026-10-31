@@ -1871,6 +1871,7 @@
                 describe_until(&regenerate.duration)
             )
         };
+        let base = format!("{base}{}", choose_spec_dynamic_count_value_where_clause(&regenerate.target).unwrap_or_default());
         fn follow_up_inner(effect: &Effect) -> &Effect {
             effect
                 .downcast_ref::<crate::effects::TaggedEffect>()
@@ -3008,7 +3009,7 @@
         };
     }
     if let Some(detain) = effect.downcast_ref::<crate::effects::DetainEffect>() {
-        return format!("Detain {}", describe_choose_spec(&detain.target));
+        return format!("Detain {}{}", describe_choose_spec(&detain.target), choose_spec_dynamic_count_value_where_clause(&detain.target).unwrap_or_default());
     }
     if let Some(goad) = effect.downcast_ref::<crate::effects::GoadEffect>() {
         if goad.spelled_out_requirement
@@ -3023,7 +3024,7 @@
             );
         }
         let target = describe_goad_target(&goad.target);
-        return match goad.duration {
+        let rendered = match goad.duration {
             crate::effect::Until::Forever => format!(
                 "{} is goaded for the rest of the game",
                 capitalize_first(&target)
@@ -3047,6 +3048,7 @@
             ),
             _ => format!("Goad {target}"),
         };
+        return format!("{rendered}{}", choose_spec_dynamic_count_value_where_clause(&goad.target).unwrap_or_default());
     }
     if let Some(requirement) =
         effect.downcast_ref::<crate::effects::MustAttackPlayerThisTurnEffect>()
@@ -3081,7 +3083,7 @@
                 return format!("Suspect {} creature", constraint.tag.as_str());
             }
         }
-        return format!("Suspect {}", describe_choose_spec(&suspect.target));
+        return format!("Suspect {}{}", describe_choose_spec(&suspect.target), choose_spec_dynamic_count_value_where_clause(&suspect.target).unwrap_or_default());
     }
     if let Some(permission) =
         effect.downcast_ref::<crate::effects::GrantTapUncontrolledLandsForManaEffect>()
@@ -8106,7 +8108,8 @@
             return format!("Choose a counter on {}. Give that permanent or player another counter of that kind", describe_choose_spec(&chosen_kind.target));
         }
         if matches!(&chosen_kind.target, ChooseSpec::Target(_)) {
-            return "Choose a counter on target permanent. Put an additional counter of that kind on that permanent".to_string();
+            let target = describe_choose_spec(&chosen_kind.target);
+            return format!("Choose a counter on {target}. Put an additional counter of that kind on that permanent");
         }
         let target = describe_choose_spec(&chosen_kind.target);
         return format!(

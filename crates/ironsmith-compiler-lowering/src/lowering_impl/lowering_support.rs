@@ -6643,10 +6643,22 @@ fn lower_compiler_activated_ability_core(
 }
 
 pub(crate) fn lower_compiler_child_effect(effect: EffectAst) -> Result<Effect, CardTextError> {
-    let (mut effects, choices) = crate::compile_support::compile_effect(
-        &effect,
-        &mut crate::model::facts::EffectLoweringContext::new(),
-    )?;
+    lower_compiler_child_effect_with_deferred_reference(effect, false)
+}
+
+/// Resolution-time payments inherit their instruction's object antecedent.
+/// Keep the placeholder while materializing the child; the enclosing payment
+/// resolver will bind it to an iteration, a choice, a target, or the source.
+/// Explicit source references are already `Source` and remain unchanged.
+pub(crate) fn lower_compiler_child_effect_with_deferred_reference(
+    effect: EffectAst,
+    defer_unbound_it: bool,
+) -> Result<Effect, CardTextError> {
+    let mut ctx = crate::model::facts::EffectLoweringContext::new();
+    if defer_unbound_it {
+        ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+    }
+    let (mut effects, choices) = crate::compile_support::compile_effect(&effect, &mut ctx)?;
     if !choices.is_empty() || effects.is_empty() {
         return Err(CardTextError::InvariantViolation(
             "compiler ability child must lower to one choice-free runtime effect".to_string(),

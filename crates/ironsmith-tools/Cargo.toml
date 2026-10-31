@@ -6,7 +6,13 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 autobins = false
 
+[[bin]]
+name = "card_score_probe"
+path = "src/bin/card_score_probe.rs"
+test = false
+
 [dependencies]
+ironsmith-core = { path = "../ironsmith-core", default-features = false }
 ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime", default-features = false, features = ["serialization", "analysis", "compiler-bridge"] }
 ironsmith-registry = { path = "../ironsmith-registry", default-features = false }
 ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }

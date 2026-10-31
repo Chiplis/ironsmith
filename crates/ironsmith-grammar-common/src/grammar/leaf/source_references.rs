@@ -88,6 +88,15 @@ pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourc
                 short_name,
                 SourceReferenceSurface::ShortName(short_name.to_string()),
             );
+            // A comma epithet does not change the established rank/surname
+            // abbreviation of the personal name before it.
+            if let Some(titled_short_name) = parse_titled_personal_name(short_name) {
+                push_leaf_source_reference_alias(
+                    &mut aliases,
+                    &titled_short_name,
+                    SourceReferenceSurface::ShortName(titled_short_name.clone()),
+                );
+            }
             if let Some(unmarked) = parse_name_prefix(short_name, parse_digital_variant_name) {
                 push_leaf_source_reference_alias(
                     &mut aliases,

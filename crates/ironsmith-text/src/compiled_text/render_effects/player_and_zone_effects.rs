@@ -927,6 +927,24 @@ pub(super) fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
 pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<String> {
     let player = describe_player_filter(&draw.player);
     let verb = player_verb(&player, "draw", "draws");
+    // Integer division of a nonnegative distinct-type count is exactly one
+    // card per complete group of N types. Keep the unit and filter visible.
+    if let Value::DividedRoundedDown(inner, divisor) = draw.count.unhinted()
+        && *divisor > 1
+    {
+        let basis = match inner.unhinted() {
+            Value::CreatureTypesAmong(filter) => Some(("creature types", filter)),
+            Value::CardTypesAmong(filter) => Some(("card types", filter)),
+            Value::PermanentTypesAmong(filter) => Some(("permanent types", filter)),
+            Value::BasicLandTypesAmong(filter) => Some(("basic land types", filter)),
+            _ => None,
+        };
+        if let Some((unit, filter)) = basis {
+            let count = number_word(*divisor).unwrap_or_else(|| divisor.to_string());
+            return Some(format!("{player} {verb} a card for every {count} {unit} among {}",
+                describe_count_filter_value_subject(filter)));
+        }
+    }
     if let Value::Count(filter) = draw.count.unhinted()
         && filter.zone == Some(Zone::Hand)
         && matches!(draw.player, PlayerFilter::Target(_))
@@ -4103,22 +4121,25 @@ pub(super) fn append_battlefield_entry_counter_surface(
     let mut rendered = base.trim_end_matches('.').to_string();
     let mut index = 0usize;
     while index < counters.len() {
-        if counters[index].surface
-            == ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters
+        if matches!(counters[index].surface,
+            ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters |
+            ironsmith_core::BattlefieldEntryCounterSurface::ItEntersIfObject)
             && counters[index].object_filter.is_some()
         {
             let end = counters[index..]
                 .iter()
                 .position(|counter| {
-                    counter.surface
-                        != ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters
+                    counter.surface != counters[index].surface
                         || counter.object_filter.is_none()
                 })
                 .map(|offset| index + offset)
                 .unwrap_or(counters.len());
             let conditional_counters = &counters[index..end];
             if conditional_counters.len() >= 2 {
-                let each_return_surface = if rendered.starts_with("Return ") {
+                let plural = counters[index].surface == ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters;
+                let each_return_surface = if !plural {
+                    None
+                } else if rendered.starts_with("Return ") {
                     rendered
                         .split_once(" to the battlefield")
                         .map(|(_, suffix)| ("Return", "to", suffix))
@@ -4137,7 +4158,9 @@ pub(super) fn append_battlefield_entry_counter_surface(
                     );
                     rendered = format!("{verb} each of them {destination} the battlefield{suffix}");
                 }
-                rendered.push_str(". Each of them enters with ");
+                rendered.push_str(if plural { ". Each of them enters with " } else { ". It enters with " });
+                let shared_x = conditional_counters.iter().all(|counter| counter.amount == conditional_counters[0].amount)
+                    && conditional_counters[0].amount.has_surface_hint(ValueSurfaceHint::WhereXIs);
                 for (arm_index, counter) in conditional_counters.iter().enumerate() {
                     if arm_index > 0 {
                         if arm_index + 1 == conditional_counters.len() {
@@ -4149,10 +4172,20 @@ pub(super) fn append_battlefield_entry_counter_surface(
                     let additional = counter
                         .amount
                         .has_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
-                    rendered.push_str(&battlefield_entry_counter_phrase(counter, additional));
+                    if shared_x {
+                        let modifier = if additional { "additional " } else { "" };
+                        rendered.push_str(&format!("X {modifier}{} counters", describe_counter_type(counter.counter_type)));
+                    } else {
+                        rendered.push_str(&battlefield_entry_counter_phrase(counter, additional));
+                    }
                     rendered.push_str(" on it if it's ");
                     let noun = battlefield_entry_object_noun(counter.object_filter.as_ref());
                     rendered.push_str(&with_indefinite_article(&noun));
+                }
+                if shared_x {
+                    let amount = &conditional_counters[0].amount;
+                    let basis = describe_where_x_basis(amount).unwrap_or_else(|| describe_value(amount));
+                    rendered.push_str(&format!(", where X is {basis}"));
                 }
                 index = end;
                 continue;
@@ -4345,6 +4378,23 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
     choose: &crate::effects::ChooseObjectsEffect,
     move_to_zone: &crate::effects::MoveToZoneEffect,
 ) -> Option<String> {
+    if !move_to_zone.enters_with_counters.is_empty() {
+        let mut bare_move = move_to_zone.clone();
+        let mut counters = std::mem::take(&mut bare_move.enters_with_counters);
+        let base = describe_choose_then_move_to_battlefield(choose, &bare_move)?;
+        // A tagged movement loses the selector's cardinality. Recover it from
+        // the actual choice before describing a conditional entry modifier.
+        if choose.count.max == Some(1) {
+            for counter in &mut counters {
+                if counter.surface == ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters
+                    && counter.object_filter.is_some()
+                {
+                    counter.surface = ironsmith_core::BattlefieldEntryCounterSurface::ItEntersIfObject;
+                }
+            }
+        }
+        return Some(append_battlefield_entry_counter_surface(base, &counters));
+    }
     if choose.is_search || !move_to_battlefield_uses_chosen_tag(move_to_zone, choose.tag.as_str()) {
         return None;
     }

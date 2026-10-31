@@ -111,3 +111,9 @@ fn multiword_name_before_an_epithet_stays_intact() {
     assert_ne!(parse_short_self_reference_name("Oath of the Gatewatch"), "Oath of");
     assert_ne!(parse_short_self_reference_name("Journey to the Unknown"), "Journey to");
 }
+
+#[test]
+fn titled_short_name_ignores_comma_epithet() {
+    assert_eq!(parse_short_self_reference_name("Ensign Ada Example, Operations"), "Ensign Example");
+    assert_eq!(parse_short_self_reference_name("Brago, King Eternal"), "Brago");
+}

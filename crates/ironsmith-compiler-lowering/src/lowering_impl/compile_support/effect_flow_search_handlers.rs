@@ -1058,6 +1058,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
 
             let previous_last_player_filter = ctx.last_player_filter.clone();
+            // The payment is offered before the consequence executes. Preserve
+            // the enclosing object binding before lowering a sacrifice/destroy
+            // can replace it with that future action's result tag.
+            let cost_reference_env = current_reference_env(ctx);
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
             let (player_filter, mut player_choices) = match player {
                 // The payer is determined before the conditional effects
@@ -1098,18 +1102,6 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let runtime_cost =
                 crate::lowering::cost_materialization::materialize_compiler_core_payment_cost(cost)?;
             let payer_relative_cost = normalize_unless_cost_for_payer(runtime_cost);
-            let mut cost_reference_env = current_reference_env(ctx);
-            // A payment clause is evaluated after its primary instruction.
-            // If that instruction declared and tagged a target, an authored
-            // `it` in the payment names that exact target even when a wrapper
-            // (for example ExecuteWithSource) restored the ambient lowering
-            // frame after producing the runtime tag.
-            if let Some((tag, _)) =
-                super::prepared_effects::last_tagged_default_target(&inner_effects)
-            {
-                cost_reference_env.last_object_tag =
-                    crate::model::reference_state::RefState::Known(tag);
-            }
             // A possessive "it" in a payment for one announced object target
             // reads that target's characteristic at payment time. Do not
             // infer a target when multiple distinct object targets exist.

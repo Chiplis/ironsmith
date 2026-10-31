@@ -8479,9 +8479,13 @@ pub fn parse_enter_as_copy_as_enters_line(
                             }
                         }
                         keyword_static_lines::CopyExceptionShape::Abilities {
+                            remove_legendary,
                             ability_tokens,
                             source_filter_tokens,
                         } => {
+                            if remove_legendary {
+                                removed_supertypes.push(crate::types::Supertype::Legendary);
+                            }
                             added_abilities_source_filter =
                                 if let Some(tokens) = source_filter_tokens {
                                     let (subject, missing) =
@@ -8575,9 +8579,14 @@ pub fn parse_enter_as_copy_as_enters_line(
                                     continue;
                                 }
                                 if let Some(subtype) =
-                                    parse_subtype_word(characteristic_words[cursor]).or_else(|| {
-                                        parse_subtype_flexible(characteristic_words[cursor])
-                                    })
+                                    // A copy characteristic is an explicit type
+                                    // declaration, so retain subtype words such
+                                    // as Spy that broad English filters reject.
+                                    crate::grammar::leaf::classify_token_definition_subtype(
+                                        characteristic_words[cursor],
+                                    )
+                                    .or_else(|| parse_subtype_word(characteristic_words[cursor]))
+                                    .or_else(|| parse_subtype_flexible(characteristic_words[cursor]))
                                 {
                                     crate::slice_primitives::push_unique(
                                         &mut added_subtypes,

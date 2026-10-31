@@ -56,3 +56,11 @@ test('a Yavimaya Forest keeps the colors its rules text produces', () => {
   // Live snapshots omit identity; a land without basic land types (Spirebluff Canal) uses its rules text.
   assert.equal(cardFrameTone({cards: [{oracle_text: '{T}: Add {U} or {R}.'}], typeLine: 'Land'}).tone, 'gold');
 });
+
+test('land panels retain land stock with colored pinlines and gold only for three colors', () => {
+ const land = colors => cardFrameTone({cards:[{colors:[],color_identity:colors}],typeLine:'Land'}).style;
+ assert.notEqual(land(['U'])['--card-frame-paper'],cardFrameToneStyle('blue',['U'])['--card-frame-paper']);
+ assert.equal(land(['U','R'])['--card-frame-bar'],cardFrameToneStyle('land')['--card-frame-bar']);
+ assert.match(land(['U','R'])['--card-frame-edge-fill'],/linear-gradient/);
+ assert.equal(land(['W','U','R'])['--card-frame-bar'],cardFrameToneStyle('gold')['--card-frame-bar']);
+});

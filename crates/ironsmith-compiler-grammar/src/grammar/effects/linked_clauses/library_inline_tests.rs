@@ -6,6 +6,20 @@ fn lex(raw: &str) -> Vec<OwnedLexToken> {
 }
 
 #[test]
+fn revealed_matching_partition_preserves_battlefield_destination_and_tapped_state() {
+    for tapped in [false, true] {
+        let text = format!(
+            "Put all permanent cards revealed this way onto the battlefield{} and the rest on the bottom of your library in a random order",
+            if tapped { " tapped" } else { "" }
+        );
+        let shape = parse_reveal_top_matching_followup_shape(&lex(&text)).unwrap();
+        assert_eq!(shape.matched_zone, crate::zone::Zone::Battlefield);
+        assert_eq!(shape.matched_tapped, tapped);
+        assert_eq!(shape.remainder, RevealTopRemainder::LibraryBottom(LibraryBottomOrderAst::Random));
+    }
+}
+
+#[test]
 fn parses_looked_card_dispositions_and_from_among_filter() {
     assert_eq!(
         parse_looked_card_disposition(&lex(

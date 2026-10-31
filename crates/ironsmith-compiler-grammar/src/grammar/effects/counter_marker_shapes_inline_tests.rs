@@ -65,13 +65,24 @@ fn parses_put_and_tagged_additional_shapes() {
         .unwrap();
     let shape = parse_tagged_conditional_entry_counters_tokens(&conditional).unwrap();
     assert_eq!(shape.arms.len(), 2);
-    assert_eq!(shape.arms[0].object_type, CardType::Creature);
+    assert_eq!(shape.arms[0].object_filter.card_types, vec![CardType::Creature]);
     assert_eq!(
         shape.arms[0].descriptor.counter_type,
         CounterType::PlusOnePlusOne
     );
-    assert_eq!(shape.arms[1].object_type, CardType::Planeswalker);
+    assert_eq!(shape.arms[1].object_filter.card_types, vec![CardType::Planeswalker]);
     assert_eq!(shape.arms[1].descriptor.counter_type, CounterType::Loyalty);
+}
+
+#[test]
+fn coordinated_entry_counters_preserve_dynamic_counts_and_subtype_conditions() {
+    let tokens = lex_line("It enters with X additional +1/+1 counters on it if it's a creature and X additional charge counters on it if it's a Spacecraft.", 0).unwrap();
+    let shape = parse_tagged_conditional_entry_counters_tokens(&tokens).unwrap();
+    assert_eq!(shape.arms.len(), 2);
+    assert!(shape.arms.iter().all(|arm| arm.x_count));
+    assert_eq!(shape.arms[0].object_filter.card_types, vec![CardType::Creature]);
+    assert_eq!(shape.arms[1].object_filter.subtypes, vec![crate::types::Subtype::Spacecraft]);
+    assert_eq!(shape.arms[1].descriptor.counter_type, CounterType::Charge);
 }
 
 #[test]

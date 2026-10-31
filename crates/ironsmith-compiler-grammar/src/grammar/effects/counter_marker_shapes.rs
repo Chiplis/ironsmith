@@ -90,13 +90,14 @@ pub struct ConditionalAdditionalCounterShape {
     pub object_filter: ObjectFilter,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalEntryCounterArmShape {
     pub descriptor: CounterDescriptorShape,
-    pub object_type: CardType,
+    pub x_count: bool,
+    pub object_filter: ObjectFilter,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaggedConditionalEntryCountersShape {
     pub arms: Vec<ConditionalEntryCounterArmShape>,
 }
@@ -179,6 +180,13 @@ fn parse_counter_descriptor_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<CounterDescriptorShape> {
     let count = amount.parse_next(input)?;
+    counter_descriptor_after_amount(input, count)
+}
+
+fn counter_descriptor_after_amount<'a>(
+    input: &mut LexStream<'a>,
+    count: u32,
+) -> WResult<CounterDescriptorShape> {
     let additional = opt(primitives::kw("additional"))
         .parse_next(input)?
         .is_some();
@@ -812,24 +820,21 @@ pub fn parse_tagged_enters_additional_tokens(
     )
 }
 
-fn conditional_entry_object_type<'a>(input: &mut LexStream<'a>) -> WResult<CardType> {
-    alt((
-        primitives::kw("artifact").value(CardType::Artifact),
-        primitives::kw("battle").value(CardType::Battle),
-        primitives::kw("creature").value(CardType::Creature),
-        primitives::kw("enchantment").value(CardType::Enchantment),
-        primitives::kw("instant").value(CardType::Instant),
-        primitives::kw("land").value(CardType::Land),
-        primitives::kw("planeswalker").value(CardType::Planeswalker),
-        primitives::kw("sorcery").value(CardType::Sorcery),
-    ))
-    .parse_next(input)
-}
-
 fn conditional_entry_counter_arm<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ConditionalEntryCounterArmShape> {
-    let descriptor = additional_descriptor_on_tagged.parse_next(input)?;
+    let x_count = opt(primitives::kw("x")).parse_next(input)?.is_some();
+    let descriptor = if x_count {
+        let descriptor = counter_descriptor_after_amount(input, 0)?;
+        if !descriptor.additional {
+            return Err(primitives::backtrack_err("entry counters", "additional counters"));
+        }
+        primitives::kw("on").parse_next(input)?;
+        tagged_reference.parse_next(input)?;
+        descriptor
+    } else {
+        additional_descriptor_on_tagged.parse_next(input)?
+    };
     primitives::kw("if").parse_next(input)?;
     alt((
         primitives::kw("it's").void(),
@@ -838,17 +843,18 @@ fn conditional_entry_counter_arm<'a>(
     ))
     .parse_next(input)?;
     opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
-    let object_type = conditional_entry_object_type.parse_next(input)?;
+    let object_filter = entry_object_kind.parse_next(input)?;
     Ok(ConditionalEntryCounterArmShape {
         descriptor,
-        object_type,
+        x_count,
+        object_filter,
     })
 }
 
 fn parse_tagged_conditional_entry_counters_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<TaggedConditionalEntryCountersShape> {
-    primitives::phrase(&["each", "of", "them", "enters", "with"]).parse_next(input)?;
+    tagged_enters_prefix.parse_next(input)?;
     let first = conditional_entry_counter_arm.parse_next(input)?;
     primitives::kw("and").parse_next(input)?;
     let second = conditional_entry_counter_arm.parse_next(input)?;

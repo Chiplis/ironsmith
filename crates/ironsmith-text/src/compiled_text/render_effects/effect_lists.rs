@@ -17449,6 +17449,35 @@ mod fixed_and_chosen_counter_tests {
 pub(crate) fn describe_owner_subject_shuffle_with_shared_target(
     effects: &[Effect],
 ) -> Option<String> {
+    // A tagged optional singleton makes the owner draw conditional on an
+    // actual target. The loop preserves draw-before-shuffle ordering.
+    if let [declaration, loop_effect] = effects
+        && let Some(tagged) = declaration.downcast_ref::<crate::effects::TaggedEffect>()
+        && tagged.outcome_only
+        && let Some(target) = tagged.effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && target.chooser.is_none() && !target.explicit_declaration
+        && target.target.is_target() && target.target.count_value().is_none()
+        && target.target.count().max == Some(1) && target.target.count().min <= 1
+        && !target.target.count().dynamic_x && !target.target.count().random
+        && let Some(each) = loop_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        && each.tag == tagged.tag && each.controller_at_last_blocked_by.is_none()
+        && let [draw_effect, shuffle_effect] = each.effects.as_slice()
+        && let Some(draw) = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+        && matches!(&draw.player, PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
+            if tag.as_str() == "__it__")
+        && let Some(shuffle) = structural_unwrap_render_wrappers(shuffle_effect)
+            .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
+        && shuffle.player == draw.player && !shuffle.shuffle_subject_library
+        && matches!(&shuffle.target, ChooseSpec::Tagged(tag) if tag == &tagged.tag)
+    {
+        let object = match target.target.base() {
+            ChooseSpec::Object(filter) if filter.card_types == [CardType::Creature]
+                && filter.zone == Some(Zone::Battlefield) => "that creature",
+            _ => "it",
+        };
+        return Some(format!("The owner of {} draws {}, then shuffles {object} into their library",
+            describe_choose_spec(&target.target), describe_card_count(&draw.count)));
+    }
     if let [effect] = effects
         && let Some(sequence) = structural_unwrap_render_wrappers(effect)
             .downcast_ref::<crate::effects::SequenceEffect>()

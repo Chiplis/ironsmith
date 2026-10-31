@@ -1,7 +1,11 @@
+import { playPreferenceStorage, readPlayPreference, writePlayPreference } from './play-preferences.js';
 import { createResolveGroup, observeResolveGroup, rememberGroupChoice, replayGroupChoice } from './resolve-group.js';
 import { priorityCommandForAction } from './sync-commands.js';
 import { normalizePhaseStep } from './constants.js';
 import { priorityStepKey } from './priority-stops.js';
+
+export const STACK_PRIORITY_MODES = ['hold', 'countdown', 'pass'];
+export const STACK_PRIORITY_LABELS = {hold: 'Hold', countdown: 'Countdown', pass: 'Pass'};
 
 export const YIELD_LABELS = {
   responses: 'Pass until a response is needed this turn',
@@ -32,7 +36,11 @@ export function booleanChoice(decision, yes) {
   return option ? { type: 'select_options', option_indices: [index] } : null;
 }
 
-export function createPriorityPolicy({ stops } = {}) {
+export function createPriorityPolicy({ stops, storage = playPreferenceStorage() } = {}) {
+  const modesKey = 'ironsmith.stackPriorityModes';
+  const saved = readPlayPreference(modesKey, storage);
+  const savedModes = new Map(saved && typeof saved === 'object' && !Array.isArray(saved)
+    ? Object.entries(saved).filter(([, mode]) => STACK_PRIORITY_MODES.includes(mode)) : []);
   const listeners = new Set();
   const seats = new Map();
   let revision = 0;
@@ -41,7 +49,7 @@ export function createPriorityPolicy({ stops } = {}) {
   const seat = player => {
     const key = id(player);
     if (!seats.has(key)) seats.set(key, { yield: null, fullControl: false, held: null,
-      maintain: false, holdNextAction: false, rules: [], groupTriggers: false, resolveGroup: null });
+      stackMode: savedModes.get(key) || 'hold', maintain: false, holdNextAction: false, rules: [], groupTriggers: false, resolveGroup: null });
     return seats.get(key);
   };
   const observe = state => {
@@ -75,8 +83,11 @@ export function createPriorityPolicy({ stops } = {}) {
       }
     }
   };
-  const ruleFor = (state, entry, field) => seat(state.perspective).rules.find(rule =>
-    rule.key === abilityKey(entry, rule.scope) && rule[field] != null);
+  const ruleFor = (state, entry, field) => {
+    const matches = seat(state.perspective).rules.filter(rule =>
+      rule.key === abilityKey(entry, rule.scope) && rule[field] != null);
+    return matches.find(rule => rule.scope === 'source') || matches[0];
+  };
   const evaluate = (state, canAct = state?.decision?.can_act ?? null) => {
     observe(state);
     const decision = state?.decision;
@@ -118,8 +129,11 @@ export function createPriorityPolicy({ stops } = {}) {
     const top = state.stack_objects?.[0];
     if (Number(state.stack_size || 0) > 0) {
       if (!top) return null;
-      if (ruleFor(state, top, 'yield')) return command;
-      return same(top.controller, state.perspective) ? command : null;
+      const rule = ruleFor(state, top, 'yield');
+      const mode = rule ? (rule.yield === 'countdown' ? 'countdown' : rule.yield ? 'pass' : 'hold') : intent?.mode === 'responses' ? (same(top.controller, state.perspective) ? 'pass' : 'hold') : current.stackMode;
+      if (mode === 'countdown') { stops?.requestPriorityWindow(state); return null; }
+      stops?.cancelPriorityWindow();
+      return mode === 'pass' ? command : null;
     }
     if (intent?.mode === 'responses') return command;
     return stops?.stopReason(state, canAct) ? null : command;
@@ -184,7 +198,23 @@ export function createPriorityPolicy({ stops } = {}) {
       publish();
     },
     holdNextAction(enabled, state) { seat(state?.perspective).holdNextAction = enabled; publish(); },
-    setFullControl(enabled, state) { seat(state?.perspective).fullControl = enabled; publish(); },
+    setStackMode(mode, state) {
+      if (!STACK_PRIORITY_MODES.includes(mode)) return;
+      const current = seat(state?.perspective);
+      current.stackMode = mode;
+      savedModes.set(id(state?.perspective), mode);
+      writePlayPreference(modesKey, Object.fromEntries(savedModes), storage);
+      current.held = null;
+      current.yield = null;
+      current.resolveGroup = null;
+      stops?.resume(state);
+      publish();
+    },
+    setFullControl(enabled, state) {
+      seat(state?.perspective).fullControl = enabled;
+      if (enabled) stops?.cancelPriorityWindow();
+      publish();
+    },
     setGroupTriggers(enabled, state) { seat(state?.perspective).groupTriggers = enabled; publish(); },
     setRule(entry, scope, values, state, untilEndOfTurn = false) {
       const key = abilityKey(entry, scope);

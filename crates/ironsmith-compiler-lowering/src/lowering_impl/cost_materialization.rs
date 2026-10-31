@@ -1266,13 +1266,19 @@ fn lower_materialization_costs_with(
             MaterializationCost::Effect(effect) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::effect(
-                    crate::lowering_support::lower_compiler_child_effect((**effect).clone())?,
+                    crate::lowering_support::lower_compiler_child_effect_with_deferred_reference(
+                        (**effect).clone(),
+                        defer_unbound_it,
+                    )?,
                 ));
             }
             MaterializationCost::ValidatedEffect(effect) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(
-                    crate::lowering_support::lower_compiler_child_effect((**effect).clone())?,
+                    crate::lowering_support::lower_compiler_child_effect_with_deferred_reference(
+                        (**effect).clone(),
+                        defer_unbound_it,
+                    )?,
                 ));
             }
             MaterializationCost::PutCounters {

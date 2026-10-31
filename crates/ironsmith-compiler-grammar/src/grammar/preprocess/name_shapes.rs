@@ -115,7 +115,10 @@ pub fn parse_short_self_reference_name_tokens(name: &str, tokens: &[OwnedLexToke
     if let Some((_, comma, _)) = primitives::find_prefix(tokens, primitives::comma) {
         let alias = trimmed.get(..comma.span.start).unwrap_or(trimmed).trim();
         if !alias.is_empty() {
-            return alias.to_string();
+            // The epithet is outside the personal name; preserve the same
+            // rank/surname abbreviation used for a name without an epithet.
+            return crate::grammar::leaf::parse_titled_personal_name(alias)
+                .unwrap_or_else(|| alias.to_string());
         }
     }
 

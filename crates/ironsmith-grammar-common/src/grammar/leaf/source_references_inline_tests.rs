@@ -208,3 +208,14 @@ fn leading_function_words_never_become_short_name_aliases() {
         assert_eq!(exact(&aliases, &[word]), None, "{name}");
     }
 }
+
+#[test]
+fn titled_name_alias_survives_comma_epithet() {
+    let aliases = parse_leaf_source_reference_aliases_for_name("Ensign Ada Example, Operations");
+    assert_eq!(exact(&aliases, &["ensign", "example"]),
+        Some(SourceReferenceSurface::ShortName("Ensign Example".into())));
+    assert_eq!(exact(&aliases, &["ensign", "ada", "example"]),
+        Some(SourceReferenceSurface::ShortName("Ensign Ada Example".into())));
+    assert!(exact(&aliases, &["ensign"]).is_none());
+    assert!(exact(&aliases, &["operations"]).is_none());
+}

@@ -11,6 +11,11 @@ test('priority controls, keyboard, ability rules, stops and mobile layout', {tim
   const page=await browser.newPage({viewport:{width:1280,height:1000},deviceScaleFactor:1});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/priority-system.html`);
+  await page.getByRole('button',{name:'Stack priority: Hold',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.__priorityFixture.status().stackMode),'countdown');
+  await page.getByRole('button',{name:'Stack priority: Countdown',exact:true}).press('Enter');
+  assert.equal(await page.evaluate(()=>window.__priorityFixture.status().stackMode),'pass');
+  await page.getByRole('button',{name:'Stack priority: Pass',exact:true}).click();
   await page.getByRole('button',{name:'Priority and yields',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Priority and yields'});await dialog.waitFor();
   await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/01-priority-controls.png`});

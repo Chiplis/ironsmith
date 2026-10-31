@@ -43,7 +43,7 @@ function Fixture() {
     setBusy(false);
   };
   const cancelBackgroundDispatch=()=>{setStops(n=>n+1);setPayment(old=>({...old,planning_complete:true}));};
-  return <GameContext.Provider value={{state,loading:busy,dispatch,dispatchInBackground:()=>setStarts(n=>n+1),cancelBackgroundDispatch,cancelDecision:async options=>{setCommands(old=>[...old,{type:"cancel_decision",options}]);setPayment(null);releases.current.splice(0).forEach(resolve=>resolve());}}}>
+  return <GameContext.Provider value={{state,requestResolveAfterPayment:id=>{window.resolvePaymentSource=id;},loading:busy,dispatch,dispatchInBackground:()=>setStarts(n=>n+1),cancelBackgroundDispatch,cancelDecision:async options=>{setCommands(old=>[...old,{type:"cancel_decision",options}]);setPayment(null);releases.current.splice(0).forEach(resolve=>resolve());}}}>
     <ManaPaymentEditorProvider state={state} dispatch={dispatch} cancelBackgroundDispatch={cancelBackgroundDispatch}>
     <HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
       <button onClick={()=>{

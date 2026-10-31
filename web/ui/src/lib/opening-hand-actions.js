@@ -38,13 +38,16 @@ export function findPregameActions(actions = []) {
   );
 }
 
-export function canShowPhasePass(state) {
-  const decision = state?.decision;
+export function isPregameDecision(decision) {
   const actions = decision?.actions || [];
   const pregameKinds = ["keep_opening_hand", "take_mulligan", "use_pregame_action", "continue_pregame", "begin_game"];
-  return decision?.kind === "priority"
+  return isOpeningHandDecision(actions)
+    || actions.some(action => pregameKinds.includes(action.kind) || pregameKinds.includes(action.action_ref?.kind));
+}
+
+export function canShowPhasePass(state) {
+  return state?.decision?.kind === "priority"
     && !state?.game_over
     && Number(state?.stack_size || 0) === 0
-    && !isOpeningHandDecision(actions)
-    && !actions.some(action => pregameKinds.includes(action.kind) || pregameKinds.includes(action.action_ref?.kind));
+    && !isPregameDecision(state.decision);
 }

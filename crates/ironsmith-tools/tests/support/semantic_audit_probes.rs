@@ -546,6 +546,26 @@ pub(crate) fn executable_mutations(def: &CardDefinition) -> Vec<(usize, String, 
     ) -> Option<&'static str> {
         use ironsmith_core::{AmountModifierSpec, AnthemValue};
         match &mut model.payload {
+            P::SetBasePowerToughness { power, .. } | P::SetBasePower { power, .. } => {
+                *power = power.saturating_add(7);
+                Some("base power")
+            }
+            P::SetBaseToughness { toughness, .. } => {
+                *toughness = toughness.saturating_add(7);
+                Some("base toughness")
+            }
+            P::SetBasePowerToughnessValue { power, .. } => {
+                value(power);
+                Some("base power value")
+            }
+            P::AddCardTypes { filter, .. } | P::SetCardTypes { filter, .. } => {
+                filter.controller = Some(if filter.controller == Some(ironsmith_core::PlayerFilter::You) {
+                    ironsmith_core::PlayerFilter::Opponent
+                } else {
+                    ironsmith_core::PlayerFilter::You
+                });
+                Some("type-change controller")
+            }
             P::Conditional { condition: c, .. }
             | P::EntersTappedUnlessCondition { condition: c, .. }
             | P::EntersWithCountersIfCondition { condition: c, .. } => {
@@ -569,8 +589,56 @@ pub(crate) fn executable_mutations(def: &CardDefinition) -> Vec<(usize, String, 
                 Some("attached condition")
             }
             P::GrantObjectAbilityForFilter(g) => {
-                condition(g.condition.as_mut()?);
-                Some("filter grant condition")
+                if let Some(gate) = &mut g.condition {
+                    condition(gate);
+                    Some("filter grant condition")
+                } else if let ironsmith_core::AbilityKind::Activated(activated) = &mut g.ability.kind
+                    && let Some(mana) = &mut activated.mana_output
+                {
+                    mana.push(ironsmith::mana::ManaSymbol::Colorless);
+                    Some("granted mana output")
+                } else {
+                    g.filter.controller = Some(if g.filter.controller == Some(ironsmith_core::PlayerFilter::You) {
+                        ironsmith_core::PlayerFilter::Opponent
+                    } else {
+                        ironsmith_core::PlayerFilter::You
+                    });
+                    Some("grant recipient controller")
+                }
+            }
+            P::AddSubtypesAndGrantAbilities { filter, .. } => {
+                filter.controller = Some(if filter.controller == Some(ironsmith_core::PlayerFilter::You) {
+                    ironsmith_core::PlayerFilter::Opponent
+                } else {
+                    ironsmith_core::PlayerFilter::You
+                });
+                Some("subtype grant recipient controller")
+            }
+            P::DoubleTokenCreationReplacement { controller, .. } => {
+                *controller = if *controller == ironsmith_core::PlayerFilter::You {
+                    ironsmith_core::PlayerFilter::Opponent
+                } else {
+                    ironsmith_core::PlayerFilter::You
+                };
+                Some("token replacement controller")
+            }
+            P::TokenCreationTemplates { mode, .. } => {
+                use ironsmith_core::TokenCreationTemplateMode as Mode;
+                *mode = if *mode == Mode::AppendOnce { Mode::AppendForEach } else { Mode::AppendOnce };
+                Some("token replacement multiplicity")
+            }
+            P::CreateOneOfEachTokenReplacement { kinds, .. } => {
+                let squirrel = ironsmith_core::AdditionalTokenKind::Squirrel;
+                if kinds.contains(&squirrel) {
+                    kinds.retain(|kind| *kind != squirrel);
+                } else {
+                    kinds.push(squirrel);
+                }
+                Some("replacement token kinds")
+            }
+            P::ReplaceDamageWithCountersInstead { combat_only, .. } => {
+                *combat_only = Some(!combat_only.unwrap_or(false));
+                Some("replacement combat scope")
             }
             P::EventAmountReplacement { modifier, .. } => {
                 *modifier = match modifier {
@@ -578,6 +646,10 @@ pub(crate) fn executable_mutations(def: &CardDefinition) -> Vec<(usize, String, 
                     _ => AmountModifierSpec::SetTo(9),
                 };
                 Some("event amount")
+            }
+            P::CostReduction(c) => {
+                value(&mut c.amount);
+                Some("cost reduction")
             }
             P::CostIncrease(c) => {
                 value(&mut c.amount);
@@ -597,6 +669,16 @@ pub(crate) fn executable_mutations(def: &CardDefinition) -> Vec<(usize, String, 
                 Some("activation cost")
             }
             P::Grants(g) => {
+                // Alternative prices use their explicit origin at runtime;
+                // their enclosing grant zone does not constrain cast origin.
+                if let ironsmith_core::Grantable::AlternativePrice { origin, .. } = &mut g.grantable {
+                    *origin = Some(if *origin == Some(ironsmith::zone::Zone::Hand) {
+                        ironsmith::zone::Zone::Exile
+                    } else {
+                        ironsmith::zone::Zone::Hand
+                    });
+                    return Some("alternative price origin");
+                }
                 g.zone = if g.zone == ironsmith::zone::Zone::Graveyard {
                     ironsmith::zone::Zone::Exile
                 } else {

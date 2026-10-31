@@ -12,7 +12,7 @@ const stack = (top = entry()) => base({ stack_size: 1, stack_objects: [top] });
 test('normal stops wait without a timer; off steps pass; opponent additions stop', () => {
  const { policy, stops } = setup(); assert.equal(policy.evaluate(base()), null); assert.equal(stops.getSnapshot().window, null);
  assert.ok(policy.evaluate(base({ phase: 'Beginning', step: 'Upkeep' }))); assert.equal(policy.evaluate(stack()), null);
- assert.ok(policy.evaluate(stack(entry({ controller: 0 }))));
+ assert.equal(policy.evaluate(stack(entry({ controller: 0 }))), null);
 });
 test('passing releases a stop; casting does not consume main phase', () => {
  const { policy, stops } = setup(); stops.beforeCommand({ type: 'priority_action', action_ref: { kind: 'cast_spell' } }, base());
@@ -45,7 +45,7 @@ test('current-phase target waits for next occurrence rather than stack changes',
  policy.observe(base({ phase: 'Combat', step: 'BeginCombat' })); assert.equal(policy.evaluate(base({ turn_number: 3 })), null);
 });
 test('Ctrl hold survives payment and stops when the action reaches the stack', () => {
- const { policy } = setup(); policy.beforeCommand({ type: 'priority_action', action_ref: { kind: 'cast_spell' } }, base(), { maintain: true });
+ const { policy } = setup(); policy.setStackMode('pass', base()); policy.beforeCommand({ type: 'priority_action', action_ref: { kind: 'cast_spell' } }, base(), { maintain: true });
  assert.equal(policy.evaluate(base({ decision: { kind: 'mana_payment', player: 0 } })), null);
  policy.beforeCommand({ type: 'mana_payment' }, base()); const state = stack(entry({ controller: 0 })); assert.equal(policy.evaluate(state), null);
  policy.beforeCommand({ type: 'priority_action', action_ref: pass.action_ref }, state); assert.ok(policy.evaluate(state));
@@ -138,4 +138,43 @@ test('temporary ability yields do not shorten a permanent optional-answer prefer
  policy.setRule(entry(),'source',{yield:true},base(),true);
  const rules=policy.status(base({turn_number:2})).rules;
  assert.equal(rules.length,1);assert.equal(rules[0].answer,'yes');
+});
+
+test('an explicit wait rule stops an own trigger and can be changed back to yield', () => {
+ const { policy } = setup();
+ policy.setStackMode('pass', base());
+ const own = entry({ controller: 0 });
+ policy.setRule(own, 'source', { yield: false }, base());
+ assert.equal(policy.evaluate(stack(own)), null);
+ assert.ok(policy.evaluate(stack(entry({ controller: 0, automation_identity: 'trigger:other' }))));
+ policy.setRule(own, 'source', { yield: true }, base());
+ assert.ok(policy.evaluate(stack(own)));
+});
+
+
+test('stack modes default to hold, and pass is explicit for either controller', () => {
+ const {policy}=setup();
+ assert.equal(policy.status(base()).stackMode,'hold');
+ for (const controller of [0,1]) assert.equal(policy.evaluate(stack(entry({controller}))),null);
+ policy.setStackMode('pass',base());
+ for (const controller of [0,1]) assert.ok(policy.evaluate(stack(entry({controller}))));
+ policy.setStackMode('hold',base());assert.equal(policy.evaluate(stack()),null);
+ assert.equal(policy.status(base({perspective:1})).stackMode,'hold');
+});
+
+test('countdown arms a single window, and hold/full control/ability overrides cancel it', () => {
+ const {policy,stops}=setup();const state=stack();
+ policy.setStackMode('countdown',state);
+ assert.equal(policy.evaluate(state),null);
+ const first=stops.getSnapshot().window;assert.equal(first.kind,'policy-resolve');
+ policy.evaluate(state);assert.equal(stops.getSnapshot().window.id,first.id);
+ policy.setStackMode('hold',state);assert.equal(stops.getSnapshot().window,null);
+ policy.setRule(entry(),'source',{yield:'countdown'},state);policy.evaluate(state);
+ assert.equal(stops.getSnapshot().window.kind,'policy-resolve');
+ policy.setFullControl(true,state);assert.equal(stops.getSnapshot().window,null);
+ assert.equal(policy.evaluate(state),null);
+ policy.setFullControl(false,state);policy.evaluate(state);
+ policy.setRule(entry(),'source',{yield:false},state);assert.equal(policy.evaluate(state),null);
+ assert.equal(stops.getSnapshot().window,null);
+ policy.setRule(entry(),'source',{yield:true},state);assert.ok(policy.evaluate(state));
 });

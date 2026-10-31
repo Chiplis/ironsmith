@@ -1,3 +1,4 @@
+import { isPregameDecision } from './opening-hand-actions.js';
 import { resolvableTriggerGroup } from './resolve-group.js';
 import { booleanChoice } from './priority-policy.js';
 import { isHandOpen } from './hand-open.js';
@@ -10,8 +11,9 @@ export function installPriorityShortcuts(document, actions) {
     if (event.type !== 'keydown' || event.repeat || event.defaultPrevented || event.isComposing
       || event.ctrlKey || event.metaKey || typing(event.target)) return;
     const mtgo = readShortcutPreset() === 'mtgo';
-    // The raised hand owns plain digits, including positions without a card.
-    if (mtgo && isHandOpen() && !event.altKey) return;
+    // The raised hand owns digits during play; pregame keeps its primary command.
+    if (mtgo && isHandOpen() && !event.altKey
+      && !(event.key === '1' && isPregameDecision(actions.state()?.decision))) return;
     // Classic retains hand numbers; Alt+number offers the same commands.
     if (mtgo ? event.altKey : !event.altKey) return;
     if (event.shiftKey || !'12345678'.includes(event.key) || !actions.state()?.decision) return;

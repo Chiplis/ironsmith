@@ -178,7 +178,7 @@ export const messages = {
   "action.hold": "Hold",
   "action.keepHand": "Keep hand",
   "action.mulligan": "Mulligan",
-  "action.passPriority": "Pass priority",
+  "action.passPriority": "Pass",
   "action.resolve": "Resolve",
   "action.priority": "Priority",
   "action.action": "Action",

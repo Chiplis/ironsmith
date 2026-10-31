@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('ordering rails stay bounded while the battlefield reserves their lane', { timeout: 60000 }, async () => {
+test('ordering rails stay bounded while overlaying the battlefield', { timeout: 60000 }, async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
   const browser = await chromium.launch();
@@ -23,8 +23,7 @@ test('ordering rails stay bounded while the battlefield reserves their lane', { 
       assert.ok(bounds.width > 150 && bounds.width <= 360, JSON.stringify({ compactCards, kind, bounds }));
       await page.waitForTimeout(800);
       assert.ok(Math.abs((await panel.boundingBox()).width - bounds.width) < 1, 'width does not grow as cards reflow');
-      const leftmost = await page.locator('[data-my-zone] .battlefield-row-card').evaluateAll(cards => Math.min(...cards.map(card => card.getBoundingClientRect().left)));
-      assert.ok(leftmost >= bounds.x + bounds.width, 'battlefield clears the bounded ordering lane');
+      assert.equal(await page.locator('[data-my-zone] .battlefield-row').evaluate(row => getComputedStyle(row).clipPath), 'none');
       assert.deepEqual(errors, []);
       await page.close();
     }

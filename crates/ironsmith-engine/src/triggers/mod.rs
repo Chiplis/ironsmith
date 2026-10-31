@@ -61,7 +61,7 @@ pub mod tokens;
 pub mod zone_changes;
 
 // Re-export core types
-pub(crate) use check::check_triggers_batch;
+pub(crate) use check::{check_triggers_batch, compute_trigger_matching_identity};
 pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, PendingDelayedTriggerPayment, TriggerIdentity,
     TriggerQueue, TriggeredAbilityEntry, TriggeredAbilitySourceKind, check_delayed_triggers,

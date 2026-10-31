@@ -231,6 +231,8 @@ fn is_put_additional_on_same_object(sentence: &SentenceInput) -> bool {
         crate::lexer::token_word_refs(trim(sentence.lowered())).as_slice(),
         ["put", "an", "additional", "counter", "of", "that", "kind", "on", "that", "permanent"]
             | ["put", "an", "additional", "counter", "of", "that", "kind", "on", "it"]
+            | ["put", "another", "counter", "of", "that", "kind", "on", "it"]
+            | ["put", "another", "counter", "of", "that", "kind", "on", "that", "permanent"]
     )
 }
 

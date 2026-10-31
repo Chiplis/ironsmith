@@ -1773,7 +1773,7 @@ function MobileBattleDecisionLayer({
         ? "Resolve"
         : hasCustomPassLabel
           ? passAction.label
-          : "Pass priority"
+          : "Pass"
     )
     : passAdvanceLabel;
   const objectNameById = useMemo(
@@ -2560,9 +2560,9 @@ function PriorityBar({
     : (
       hasCustomPassLabel
         ? passAction.label
-        : "Pass priority"
+        : "Pass"
     );
-  const passPhaseLabel = passCurrentLabel === "Pass priority"
+  const passPhaseLabel = passCurrentLabel === "Pass"
     ? currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t)
     : "";
   const battlefieldFamilies = useMemo(
@@ -3219,6 +3219,7 @@ function PriorityBar({
                         type="button"
                         variant="ghost"
                         size="sm"
+                        data-secondary-priority-action="true"
                         className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         data-local-action={localDecisionButton ? "true" : "false"}
                         disabled={!canAct || multiplayer?.submittingAction}
@@ -3234,7 +3235,6 @@ function PriorityBar({
                       <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
                           <ActionStripMainTitleText>{ui(openingHandMulliganLabel)}</ActionStripMainTitleText>
-                          <PriorityShortcutHint number="1" />
                         </div>
                       </div>
                     </div>
@@ -3247,6 +3247,7 @@ function PriorityBar({
                         type="button"
                         variant="ghost"
                         size="sm"
+                        data-secondary-priority-action="true"
                         className="pass-priority-btn decision-main-button action-strip-pregame-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         data-local-action={localDecisionButton ? "true" : "false"}
                         disabled={!canAct || multiplayer?.submittingAction}
@@ -3262,7 +3263,6 @@ function PriorityBar({
                       <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
                           <ActionStripMainTitleText>{ui(action.label)}</ActionStripMainTitleText>
-                          <PriorityShortcutHint number="1" />
                         </div>
                       </div>
                     </div>
@@ -3597,6 +3597,7 @@ function PriorityBar({
                       type="button"
                       variant="ghost"
                       size="sm"
+                      data-secondary-priority-action="true"
                       className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full min-w-[132px] rounded-none px-3 text-[14px] font-bold uppercase"
                       data-local-action={localDecisionButton ? "true" : "false"}
                       disabled={!canAct || peerWaitLocked}
@@ -3604,7 +3605,6 @@ function PriorityBar({
                       onClick={() => triggerPriorityAction(openingHandMulliganAction)}
                     >
                       {ui(openingHandMulliganLabel)}
-                      <PriorityShortcutHint number="1" />
                     </Button>
                   )}
                   {pregameActions.map((action) => (
@@ -3613,6 +3613,7 @@ function PriorityBar({
                       type="button"
                       variant="ghost"
                       size="sm"
+                      data-secondary-priority-action="true"
                       className="pass-priority-btn decision-main-button action-strip-pregame-button h-full min-w-[132px] rounded-none px-3 text-[14px] font-bold uppercase"
                       data-local-action={localDecisionButton ? "true" : "false"}
                       disabled={!canAct || peerWaitLocked}
@@ -3620,7 +3621,6 @@ function PriorityBar({
                       onClick={() => triggerPriorityAction(action)}
                     >
                       <SymbolText text={ui(action.label)} style={{ whiteSpace: "inherit" }} />
-                      <PriorityShortcutHint number="1" />
                     </Button>
                   ))}
               </>

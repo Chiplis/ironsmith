@@ -175,6 +175,17 @@ fn describe_enters_with_counters_equal_to_value(count: &Value) -> String {
 
 fn describe_matching_object_count_for_each_basis(value: &Value) -> Option<(i32, String)> {
     match value.unhinted() {
+        Value::CreatureTypesAmong(_)
+        | Value::CardTypesAmong(_)
+        | Value::BasicLandTypesAmong(_)
+        | Value::PlaneswalkerTypesAmong(_) => {
+            // These count distinct types, not objects. Preserve that unit
+            // when rendering a structurally annotated "for each" value.
+            let description = describe_value(value.unhinted());
+            let basis = description.strip_prefix("the number of ")?;
+            let (types, objects) = basis.split_once(" among ")?;
+            Some((1, format!("{} among {objects}", types.strip_suffix('s')?)))
+        }
         Value::Count(filter) => {
             let description = if is_revealed_this_way_count_filter(filter) {
                 // `for each` takes a singular basis. The shared count

@@ -497,6 +497,29 @@ pub fn parse_shuffle_object_into_library_sentence(
     let target_tokens = shape.target_tokens;
     if let Some(target) = owner_of_subject_target {
         if shape.reference == search_grammar::SearchShuffleObjectReference::SingularBackReference {
+            if let Some(draw_tokens) = shape.owner_subject_draw_tokens {
+                let draw = super::verb_handlers::parse_draw(
+                    draw_tokens,
+                    Some(SubjectAst::Player(PlayerAst::ItsOwner)),
+                )?;
+                let tag = helper_tag_for_tokens(tokens, "owner_subject_object");
+                let shuffle = EffectAst::subject_verb_shuffle_objects_into_owner_library(
+                    TargetAst::Tagged(tag.clone(), span_from_tokens(target_tokens)),
+                );
+                // Resolve the declared target once. A zero-target choice must
+                // perform neither the draw nor the shuffle; owner binding is
+                // the same object's owner throughout the ordered program.
+                return append_trailing(vec![
+                    EffectAst::TagAffected {
+                        tag: tag.clone(),
+                        effect: Box::new(EffectAst::subject_verb_target_only(target)),
+                    },
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                        tag,
+                        effects: vec![draw, shuffle],
+                    }),
+                ]);
+            }
             let shuffle = if owner_library_destination {
                 EffectAst::subject_verb_shuffle_objects_into_owner_library(target)
             } else if shape.possessive_owner_subject {

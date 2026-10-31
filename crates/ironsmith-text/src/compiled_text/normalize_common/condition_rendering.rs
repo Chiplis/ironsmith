@@ -2529,6 +2529,29 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
     {
         return format!("{owner_text} created a token this way");
     }
+    // A completed draw's affected-card count, restricted to the drawing
+    // player, supports the direct "draw N or more cards this way" clause.
+    if !negated
+        && let Condition::ValueComparison { left, operator, right } = result_condition
+        && *operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+        && let Value::Fixed(count) = right.unhinted()
+        && *count > 0
+        && let Value::PriorEffectMetric { query, .. } = left.unhinted()
+        && query.action == Some(crate::effect::PriorEffectAction::Drawn)
+        && query.source == crate::effect::EffectMetricSource::AffectedObjects
+        && query.metric == crate::effect::EffectMetric::Count
+        && query.player == Some(PlayerFilter::You)
+        && query.counter_type.is_none() && query.original_destination.is_none()
+        && !query.use_origin_memory && query.color_choice.is_none()
+        && query.filter.as_ref().is_none_or(|filter| {
+            let mut filter = filter.clone();
+            filter.set_explicit_card_noun(false);
+            filter == ObjectFilter::default()
+        })
+    {
+        return format!("you draw {} or more cards this way",
+            number_word(*count).unwrap_or_else(|| count.to_string()));
+    }
     // "If you return a nonland card this way" (Vengeful Rebirth).
     if !negated
         && let Condition::ValueComparison { left, operator, right } = result_condition

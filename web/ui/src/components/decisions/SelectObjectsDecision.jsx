@@ -1,3 +1,4 @@
+import { groupDecisionCards, nextGroupedCardChoice } from '@/lib/decision-card-groups';
 import DecisionObjectLabel from "./DecisionObjectLabel";
 import { isObjectSelectionValid } from "@/lib/object-selection-validation";
 import useUiText from "@/i18n/useUiText";
@@ -63,18 +64,19 @@ export default function SelectObjectsDecision({
     [state]
   );
 
+  const candidateGroups = useMemo(() => groupDecisionCards(candidates, state, decision), [candidates, state, decision]);
   const scopedCandidates = useMemo(() => {
     if (stripLayout) return candidates;
     if (hoveredObjectId == null) return candidates;
     const hoveredStr = String(hoveredObjectId);
     const hasHoveredCandidate = candidates.some((c) => String(c.id) === hoveredStr);
     if (!hasHoveredCandidate) return candidates;
-    return candidates.filter(
-      (c) => String(c.id) === hoveredStr || isObjectChosen(selected, c.id)
-    );
-  }, [candidates, hoveredObjectId, selected, stripLayout]);
+    return candidateGroups.filter(group => group.members.some(c => String(c.id) === hoveredStr || isObjectChosen(selected, c.id)))
+      .flatMap(group => group.members);
+  }, [candidates, candidateGroups, hoveredObjectId, selected, stripLayout]);
   const showRows = scopedCandidates.length > 0;
   const [visibleCandidates, setVisibleCandidates] = useState(scopedCandidates);
+  const visibleGroups = useMemo(() => groupDecisionCards(visibleCandidates, state, decision), [visibleCandidates, state, decision]);
   const focusedToHover = hoveredObjectId != null
     && candidates.some((c) => String(c.id) === String(hoveredObjectId));
   const showHeader = !stripLayout;
@@ -195,8 +197,10 @@ export default function SelectObjectsDecision({
               ? "decision-strip-options-row decision-strip-options-row--vertical-objects flex w-full min-w-full flex-col items-stretch gap-1 py-0.5 pr-1"
               : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
-            {visibleCandidates.map((c) => {
-              const isSelected = isObjectChosen(selected, c.id);
+            {visibleGroups.map(({candidate: c, members}) => {
+              const selectedMembers = members.filter(member => isObjectChosen(selected, member.id));
+              const isSelected = selectedMembers.length > 0;
+              const chooseGroup = () => chooseObject(nextGroupedCardChoice(members, selected, max));
               const isUnavailable = !isSelected && selected.length >= max;
               const isDisabled = !canAct || !c.legal || isUnavailable;
               const controllerId = c?.object_controller != null
@@ -209,8 +213,8 @@ export default function SelectObjectsDecision({
                 playerAccentOverrides,
               );
               return (
+                <div key={c.id} className="decision-card-group">
                 <Button
-                  key={c.id}
                   data-decision-option-object={String(c.id)}
                   aria-pressed={isSelected}
                   variant="ghost"
@@ -231,11 +235,11 @@ export default function SelectObjectsDecision({
                   onPointerDown={(event) => {
                     if (isDisabled || event.button !== 0) return;
                     event.preventDefault();
-                    chooseObject(c.id);
+                    chooseGroup();
                   }}
                   onClick={(event) => {
                     if (isDisabled || event.detail !== 0) return;
-                    chooseObject(c.id);
+                    chooseGroup();
                   }}
                   onMouseEnter={() => {
                     hoverCard(c.id);
@@ -248,7 +252,7 @@ export default function SelectObjectsDecision({
                   }}
                   onBlur={clearHover}
                 >
-                  <DecisionObjectLabel objectId={c.id} object={c} nameOnly>
+                  <DecisionObjectLabel objectId={c.id} object={c} nameOnly count={members.length} selectedCount={selectedMembers.length}>
                   <HighlightedDecisionText
                     className="decision-option-label"
                     text={localizeCardName(c.name)}
@@ -256,6 +260,11 @@ export default function SelectObjectsDecision({
                   />
                   </DecisionObjectLabel>
                 </Button>
+                {members.length > 1 && selectedMembers.length > 0 && <Button type="button" variant="ghost" size="sm"
+                  className="decision-card-group-remove" disabled={!canAct}
+                  aria-label={`Remove one selected ${localizeCardName(c.name)}`}
+                  onClick={() => chooseObject(selectedMembers.at(-1).id, 'remove')}>−</Button>}
+                </div>
               );
             })}
             {visibleCandidates.length === 0 && (

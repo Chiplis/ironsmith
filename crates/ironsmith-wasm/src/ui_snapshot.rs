@@ -2679,6 +2679,7 @@ pub(super) struct ObjectDetailsSnapshot {
     pub(super) counters: Vec<CounterSnapshot>,
     pub(super) compiled_text: Vec<String>,
     pub(super) abilities: Vec<String>,
+    pub(super) ability_preferences: Vec<serde_json::Value>,
     pub(super) chosen_color: Option<String>,
     pub(super) chosen_values: Vec<String>,
     pub(super) raw_compilation: String,
@@ -3863,6 +3864,23 @@ pub(super) fn build_object_details_snapshot(
     };
     let oracle_text = compiled_text.join("\n");
 
+    // Use the same structural trigger identity as stack entries, so a rule
+    // chosen on the permanent applies when that ability later triggers.
+    let live_abilities = current.as_ref().map(|chars| chars.abilities.to_vec())
+        .unwrap_or_else(|| obj.abilities_vec());
+    let ability_preferences = live_abilities.iter().filter_map(|ability| {
+        let ironsmith::ability::AbilityKind::Triggered(triggered) = &ability.kind else { return None; };
+        let identity = ironsmith::triggers::compute_trigger_identity(triggered);
+        Some(serde_json::json!({
+            "name": current_name,
+            "controller": current_controller.0,
+            "source_stable_id": obj.stable_id.0.0,
+            "ability_kind": "Triggered",
+            "automation_identity": format!("trigger:{}", identity.0),
+            "source_ability_text": ironsmith::runtime_display::ability_surface_text(ability),
+        }))
+    }).collect();
+
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,
         stable_id: obj.stable_id.0.0,
@@ -3888,6 +3906,7 @@ pub(super) fn build_object_details_snapshot(
         counters,
         compiled_text,
         abilities,
+        ability_preferences,
         chosen_values: public_chosen_values(game, obj.id),
         chosen_color: game
             .chosen_color(obj.id)

@@ -38,6 +38,7 @@ import { counterDisplayLabel } from "@/lib/mana-assets";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import {
   Sheet,
@@ -305,26 +306,22 @@ function toggleChoice(values, item) {
 
 function LayoutPicker({ value, onChange }) {
   const ui = useUiText();
+  const options = LAYOUT_OPTIONS.map(option => ({ ...option, label: ui(option.label) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   return (
-    <div className="grid min-w-0 gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 140px), 1fr))" }}>
-      {LAYOUT_OPTIONS.map((option) => {
-        const active = value === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            className={cn("card-forge-choice min-w-0 whitespace-normal", active && "is-active")}
-            onClick={() => onChange(option.value)}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <CardLayoutIcon layout={option.value} />
-              <span className="min-w-0 whitespace-normal">{ui(option.label)}</span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger aria-label={ui("Layout")} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent position="popper" className="z-[18000]">
+        {options.map(option => (
+          <SelectItem key={option.value} value={option.value} textValue={option.label}>
+            <CardLayoutIcon layout={option.value} />
+            <span>{option.label}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

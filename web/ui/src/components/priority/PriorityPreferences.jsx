@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetCl
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useGame } from '@/context/GameContext';
-import { abilityKey, yieldDescription } from '@/lib/priority-policy.js';
+import { abilityKey, yieldDescription, STACK_PRIORITY_MODES, STACK_PRIORITY_LABELS } from '@/lib/priority-policy.js';
 import { readShortcutPreset, setShortcutPreset } from '@/lib/keyboard-preferences.js';
 import { PRIORITY_STOP_KEYS, priorityStopMode } from '@/lib/priority-stops.js';
 import './priority-preferences.css';
@@ -38,10 +38,15 @@ export default function PriorityPreferences() {
         <SheetClose asChild><Button variant="ghost" size="icon" className="priority-preferences-close" aria-label="Close priority controls"><X /></Button></SheetClose>
       </SheetHeader>
       <div className="priority-preferences-body">
-    {entry ? <>
+    {menu.abilities ? <div className="priority-options">
+      {menu.abilities.map(ability => <Button key={ability.automation_identity} variant="ghost"
+        onClick={() => setMenu({entry: ability})}>{ability.source_ability_text}</Button>)}
+    </div> : entry ? <>
       <p className="priority-help">{entry.source_ability_text || entry.ability_text}</p>
       {!valid && <p>Automation becomes available when this ability has a structural identity.</p>}
       <div className="priority-options">
+        <Button variant="ghost" disabled={!valid} onClick={() => rule('source', { yield: false })}>Always wait for this ability</Button>
+        <Button variant="ghost" disabled={!valid} onClick={() => rule('source', { yield: 'countdown' })}>Countdown before passing this ability</Button>
         <Button variant="ghost" disabled={!valid} onClick={() => rule('source', { yield: true }, true)}>Yield to this ability until end of turn</Button>
         <Button variant="ghost" disabled={!valid} onClick={() => rule('source', { yield: true })}>Always yield to this ability</Button>
         <Button variant="ghost" disabled={!abilityKey(entry, 'name')} onClick={() => rule('name', { yield: true })}>Yield to this ability from cards named {entry.name}</Button>
@@ -49,6 +54,13 @@ export default function PriorityPreferences() {
         <Button variant="ghost" disabled={!valid} onClick={() => rule('source', { answer: 'no' })}>Always no to this ability’s optional choices</Button>
       </div><p className="priority-help">Yielding passes priority only. Yes/no preferences apply to this ability while it resolves. Targets, payments and other selections still require your input.</p>
     </> : <>
+      <label className="priority-check">Stack priority
+        <select aria-label="Stack priority behavior" value={status.stackMode || 'hold'}
+          onChange={event => priorityPolicy.setStackMode(event.target.value, state)}>
+          {STACK_PRIORITY_MODES.map(mode => <option key={mode} value={mode}>{STACK_PRIORITY_LABELS[mode]}</option>)}
+        </select>
+      </label>
+      <p className="priority-help">Hold waits for your response. Countdown gives you two seconds to hold or hover to pause. Pass yields immediately. Ability-specific preferences override this setting.</p>
       <div className="priority-current" role="status">{status.resolveGroup ? 'Resolve group — repeating only identical choices'
         : status.fullControl ? 'Full control — every priority stays manual'
         : status.holdNextAction ? 'Priority will be held after your next spell or ability'

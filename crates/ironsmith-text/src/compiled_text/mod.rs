@@ -199,7 +199,24 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                     vec![(index, ability)]
                 })
                 .collect::<Vec<_>>();
+            let mut composed_through = None;
             for (index, ability) in abilities {
+                if composed_through.is_some_and(|end| index <= end) { continue; }
+                if std::ptr::eq(ability, &def.abilities[index])
+                    && let AbilityKind::Static(marker) = &ability.kind
+                    && let Some(ironsmith_core::StaticAbilityPayload::SourceLineStaticGroup { member_count }) =
+                        marker.compiled_model().map(|model| &model.payload)
+                    && let Some(members) = def.abilities.get(index + 1..index + 1 + member_count)
+                    && let Some(text) = describe_audited_source_line_static_group(
+                        members, subject_for_card(&def.card))
+                {
+                    composed_through = Some(index + member_count);
+                    let text = audit_static_subject_surface(
+                        &text, subject_for_card(&def.card), audit_attached_subject(def).as_deref());
+                    lines.push((AuditLine::Rendered,
+                        format!("{}.", capitalize_first(text.trim_end_matches('.')))));
+                    continue;
+                }
                 let mut single = def.clone();
                 single.spell_effect = None;
                 single.alternative_casts.clear();

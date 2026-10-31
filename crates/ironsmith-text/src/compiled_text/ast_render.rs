@@ -44682,6 +44682,211 @@ fn describe_source_line_ability_loss_subtype_transform_group(
     Some(text)
 }
 
+fn describe_audited_permission_pair(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::{StaticAbilityPayload as P, ManaSpendScope as S};
+    let [first, second] = members else { return None; };
+    let AbilityKind::Static(first) = &first.kind else { return None; };
+    let AbilityKind::Static(second) = &second.kind else { return None; };
+    let first = first.compiled_model()?;
+    let second = second.compiled_model()?;
+    match (&first.payload, &second.payload) {
+        (P::ManaSpendPermission { permission: left, .. }, P::ManaSpendPermission { permission: right, .. }) => {
+            let (S::CastingSpellsMatching(_), S::ActivationCostsOf(_)) = (&left.scope, &right.scope) else { return None; };
+            let mut left_config = left.clone();
+            let mut right_config = right.clone();
+            left_config.scope = S::AllCosts;
+            right_config.scope = S::AllCosts;
+            if left_config != right_config { return None; }
+            let scope = format!("{} or{}",
+                super::audit_readings::mana_spend_scope(&left.scope),
+                super::audit_readings::mana_spend_scope(&right.scope));
+            Some(super::audit_readings::mana_spend_permission_for_scope(left, &scope))
+        }
+        (P::Grants(grant), P::ManaSpendPermission { permission, .. }) => {
+            let S::CastingSpellsMatching(filter) = &permission.scope else { return None; };
+            if !matches!(grant.grantable, ironsmith_core::Grantable::PlayFrom)
+                || filter != &grant.filter || permission.player != grant.beneficiary
+                || grant.usage_limit.is_some() || grant.max_plays.is_some()
+                || !grant.cast_mana_spend_mode.is_normal()
+                || permission.other_mana_only_as_colorless
+                || grant.top_card_only || !grant.additional_zones.is_empty()
+            { return None; }
+            // Keep the complete permission reading, including any linked
+            // provenance, and only bind the identical spell set anaphorically.
+            let grant_text = super::audit_readings::audit_payload_reading(first)?;
+            let mana_text = super::audit_readings::mana_spend_permission_for_scope(permission, " to cast those spells");
+            Some(format!("{}, and {}", grant_text.trim_end_matches('.'), lowercase_first(&mana_text)))
+        }
+        _ => None,
+    }
+}
+
+/// A shared recipient set proves that an unconditional stat change and
+/// keyword grant are one predicate list. Render the base anthem through the
+/// same audit-aware typed reader used for standalone statics.
+fn describe_audited_anthem_keyword_pair(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [anthem_ability, grant_ability] = members else { return None; };
+    if anthem_ability.functional_zones.as_slice() != [Zone::Battlefield] { return None; }
+    let AbilityKind::Static(ability) = &anthem_ability.kind else { return None; };
+    let model = ability.compiled_model()?.clone();
+    let P::Anthem(anthem) = &model.payload else { return None; };
+    let filter = anthem.filter.as_ref()?;
+    let (grant_filter, grant_condition, granted) = modeled_object_static_grant(grant_ability)?;
+    if filter != grant_filter || anthem.condition.as_ref() != grant_condition
+        // Conditional anthems have specialized subject bindings (a sole
+        // creature, an attachment's recipient). Keep those existing readers.
+        || anthem.condition.is_some()
+        || !granted.is_keyword() || anthem.set_quantifier_surface.is_some()
+        || anthem.count_uses_where_x || anthem.replacement_surface.is_some()
+        || !matches!((&anthem.power, &anthem.toughness),
+            (ironsmith_core::AnthemValue::Fixed(_), ironsmith_core::AnthemValue::Fixed(_)))
+    { return None; }
+    let singular = filter == &ObjectFilter::source()
+        || exact_attached_creature_subject(filter).is_some();
+    // Other tagged objects can denote one object or a set. Preserve their
+    // individual readings rather than guessing the number of the referent.
+    if !singular && (filter.source || !filter.tagged_constraints.is_empty()) { return None; }
+    let base = crate::static_abilities::StaticAbility::from_model(model).display();
+    if base.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX) { return None; }
+    let text = format!("{} and {} {}", base.trim().trim_end_matches('.'),
+        if singular { "has" } else { "have" },
+        granted.display().trim().trim_end_matches('.').to_ascii_lowercase());
+    Some(text)
+}
+
+fn describe_audited_reduction_counter_protection_pair(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [reduction_member, protection_member] = members else { return None; };
+    if reduction_member.functional_zones.as_slice() != [Zone::Battlefield] { return None; }
+    let AbilityKind::Static(reduction_ability) = &reduction_member.kind else { return None; };
+    let AbilityKind::Static(protection_ability) = &protection_member.kind else { return None; };
+    let P::CostReduction(reduction) = &reduction_ability.compiled_model()?.payload else { return None; };
+    let P::RuleRestriction {
+        restriction: crate::effect::Restriction::BeCountered(protected),
+        additional_restrictions, ..
+    } = &protection_ability.compiled_model()?.payload else { return None; };
+    // A condition on just the reduction must never acquire scope over the
+    // independent counter protection when the two predicates are joined.
+    if reduction.condition.is_some() || reduction.per_target
+        || reduction.characteristic_intersection.is_some()
+        || !matches!(reduction.amount, Value::Fixed(_))
+        || !additional_restrictions.is_empty() || protected != &reduction.filter
+    { return None; }
+    let reduction_text = reduction_ability.display();
+    if reduction_text.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX) {
+        return None;
+    }
+    Some(format!("{} and can't be countered", reduction_text.trim().trim_end_matches('.')))
+}
+
+/// Combine a base characteristic setter and keyword grants only when every
+/// recipient and gate agrees. No authored condition or grant text is read.
+fn describe_audited_base_pt_keyword_group(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [base_member, grants @ ..] = members else { return None; };
+    if grants.is_empty() || base_member.functional_zones.as_slice() != [Zone::Battlefield] {
+        return None;
+    }
+    let AbilityKind::Static(base_ability) = &base_member.kind else { return None; };
+    let (base_model, condition) = unwrapped_static_model(base_ability)?;
+    let P::SetBasePowerToughness { filter, .. } = &base_model.payload else { return None; };
+    if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) { return None; }
+    let singular = filter == &ObjectFilter::source()
+        || exact_attached_creature_subject(filter).is_some();
+    if !singular && (filter.source || !filter.tagged_constraints.is_empty()) { return None; }
+    let mut keywords = Vec::with_capacity(grants.len());
+    for member in grants {
+        let (grant_filter, grant_condition, granted) = modeled_object_static_grant(member)?;
+        if grant_filter != filter || grant_condition != condition || !granted.is_keyword() {
+            return None;
+        }
+        keywords.push(granted.display().trim().trim_end_matches('.').to_ascii_lowercase());
+    }
+    let base = crate::static_abilities::StaticAbility::from_model(base_model.clone()).display();
+    if base.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX) { return None; }
+    let text = format!("{} and {} {}", base.trim().trim_end_matches('.'),
+        if singular { "has" } else { "have" }, join_with_and(&keywords));
+    Some(match condition {
+        Some(condition) => format!("As long as {}, {}",
+            describe_condition(condition), lowercase_first(&text)),
+        None => text,
+    })
+}
+
+/// Audit-only entry point: each composer below reads executable payloads.
+/// Never route this through the general dispatcher, which also supports
+/// retained presentation surfaces.
+pub(super) fn describe_audited_source_line_static_group(
+    members: &[Ability], subject: &str,
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    if members.len() < 2 || members.iter().any(|member|
+        member.functional_zones != members[0].functional_zones)
+    { return None; }
+    if let Some(text) = describe_audited_permission_pair(members) { return Some(text); }
+    if let Some(text) = describe_audited_base_pt_keyword_group(members) { return Some(text); }
+    if let Some(text) = describe_audited_reduction_counter_protection_pair(members) {
+        return Some(text);
+    }
+    if let Some(text) = describe_audited_anthem_keyword_pair(members)
+        .or_else(|| describe_carried_attached_additional_grant(members))
+    { return Some(text); }
+    if let Some(text) = describe_source_line_conditional_animation_group(members, subject)
+        .or_else(|| {
+            // Attachment filters normally name battlefield objects. The
+            // ordinary composer elides that zone; never erase another zone.
+            let battlefield_filters = members.iter().all(|member| {
+                let AbilityKind::Static(ability) = &member.kind else { return false; };
+                let Some(model) = ability.compiled_model() else { return false; };
+                let filter = match &model.payload {
+                    P::GrantObjectAbilityForFilter(grant) => &grant.filter,
+                    P::AddCardTypes { filter, .. } | P::AddSubtypes { filter, .. }
+                    | P::SetColors { filter, .. } | P::SetBasePowerToughness { filter, .. } => filter,
+                    _ => return false,
+                };
+                filter.zone.is_none_or(|zone| zone == Zone::Battlefield)
+            });
+            battlefield_filters.then(|| describe_source_line_attached_animation_group(members)).flatten()
+        })
+        .or_else(|| describe_source_line_chosen_object_anthem_keyword_grant_group(members))
+        .or_else(|| describe_complementary_entry_counter_group(members, subject))
+    { return Some(text); }
+
+    // The ordinary self-animation composer assumes an unrestricted source.
+    // Prove that assumption here, including the keyword-only grants.
+    let exact_source_animation = members.iter().all(|member| {
+        if let Some((filter, _, granted)) = modeled_object_static_grant(member) {
+            return filter == &ObjectFilter::source() && granted.is_keyword();
+        }
+        let AbilityKind::Static(ability) = &member.kind else { return false; };
+        let Some((model, _)) = unwrapped_static_model(ability) else { return false; };
+        match &model.payload {
+            P::SetCardTypes { filter, .. } | P::AddCardTypes { filter, .. }
+            | P::SetCreatureSubtypes { filter, .. } | P::AddSubtypes { filter, .. }
+            | P::SetBasePowerToughness { filter, .. } => filter == &ObjectFilter::source(),
+            _ => false,
+        }
+    });
+    if exact_source_animation {
+        if let Some(text) = describe_source_line_conditional_self_animation_group(members, subject) {
+            return Some(text);
+        }
+    }
+    // Strip the optional authored condition surface. The composer then
+    // describes the shared executable condition and typed counter values.
+    let entries = members.iter().map(|member| {
+        let AbilityKind::Static(ability) = &member.kind else { return None; };
+        let mut model = ability.compiled_model()?.clone();
+        let P::EntersWithCountersIfCondition { display, .. } = &mut model.payload else { return None; };
+        display.clear();
+        let mut member = member.clone();
+        member.kind = AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(model));
+        Some(member)
+    }).collect::<Option<Vec<_>>>();
+    entries.and_then(|entries| describe_shared_condition_entry_counter_list(&entries))
+}
+
 fn describe_source_line_static_group(
     abilities: &[Ability],
     member_count: usize,

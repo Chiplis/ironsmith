@@ -353,3 +353,14 @@
 .decision-object-label .decision-object-name { color: var(--decision-object-controller, inherit); -webkit-text-fill-color: var(--decision-object-controller, currentColor); }
 .decision-option-row:hover .decision-object-zone,
 .decision-option-row:focus-visible .decision-object-zone { filter: drop-shadow(0 0 4px currentColor); }
+
+.decision-card-group { display: flex; width: 100%; min-width: 0; align-items: stretch; }
+.decision-card-group > .decision-option-row { flex: 1; }
+.decision-card-group-remove { flex: 0 0 30px; padding: 0; }
+.decision-object-count { flex: 0 0 auto; margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.decision-object-count + .decision-object-zone { margin-left: 0; }
+.decision-object-selected-count { font-size: 10px; opacity: .8; }
+.battlefield-human-decision-panel .decision-card-group > .decision-option-row {
+  width: 0 !important;
+  flex: 1 1 0 !important;
+}

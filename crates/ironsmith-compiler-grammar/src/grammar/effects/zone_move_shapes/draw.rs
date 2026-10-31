@@ -217,6 +217,30 @@ pub fn parse_draw_head_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<DrawHeadShape<'_>, DrawHeadShapeError> {
     let tokens = trimmed(tokens);
+    // "a card for every N <aggregate>" draws once per complete group,
+    // not once per object in the aggregate's scope.
+    if let Some((divisor, aggregate_tokens)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["a", "card", "for", "every"]),
+            leaf::parse_leaf_number_prefix_lexed,
+        )
+            .map(|(_, divisor)| divisor),
+    )
+        && divisor > 0
+        && let Ok(divisor) = i32::try_from(divisor)
+        && let Some(value) =
+            crate::grammar::shared_util::value_semantics::parse_aggregate_scope_value_lexed(
+                aggregate_tokens,
+            )
+    {
+        return Ok(DrawHeadShape {
+            count: DrawHeadCountShape::Resolved(Value::DividedRoundedDown(Box::new(value), divisor)),
+            additional: false,
+            tail_tokens: &tokens[tokens.len()..],
+            parsed_offset: None,
+        });
+    }
     let mut parsed_offset = None;
     let (count, used, embedded_card) = if let Some(((), rest)) =
         primitives::parse_prefix(tokens, event_amount_prefix)

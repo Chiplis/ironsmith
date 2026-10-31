@@ -26,8 +26,8 @@ export function createBattlefieldScene(root, registry) {
   const media = matchMedia('(prefers-reduced-motion: reduce)');
   let config, geometry, viewport, growTimer, frame = 0, lastTime = 0, disposed = false;
   let configurationDirty = false;
-  let growCandidate = null, targetScale = null, leftInset = 0, reservedStackWidth = 0, stackResizeFrame = 0;
-  const sceneOptions = () => ({ ...config.options, leftInset });
+  let growCandidate = null, targetScale = null;
+  const sceneOptions = () => ({ ...config.options, leftInset: 0 });
   function sizeRenderer(width, height) {
     const size = renderer.getSize();
     if (size.width === width && size.height === height) return;
@@ -142,32 +142,8 @@ export function createBattlefieldScene(root, registry) {
   }
   function resize() {
     const next = { width: root.clientWidth, height: root.clientHeight };
-    const shell = root.closest('[data-my-zone] .my-zone-board-shell');
-    const dock = shell?.querySelector(':scope > .my-zone-stack-rail');
-    const dockRect = dock?.getBoundingClientRect();
-    const rootLeft = root.getBoundingClientRect().left;
-    const pileWidth = Number(dock?.dataset.stackLaneWidth) || 0;
-    const stackActive = shell?.classList.contains('my-zone-board-shell--with-stack') || pileWidth > 0;
-    // Keep one reservation for the entire nonempty Stack. Ordering swaps the
-    // renderer, not the battlefield's available space. Entry counts cannot
-    // resize this reservation; release it only after the final exit.
-    if (stackActive) {
-      const initialWidth = Math.max(240, Math.min(360, window.innerWidth * .24));
-      reservedStackWidth ||= Math.max(initialWidth, pileWidth);
-      shell.style.setProperty('--stack-reserved-width', `${reservedStackWidth}px`);
-    } else {
-      reservedStackWidth = 0;
-      shell?.style.removeProperty('--stack-reserved-width');
-    }
-    const laneWidth = reservedStackWidth;
-    const inset = laneWidth > 0
-      ? Math.max(0, (dockRect?.left || 0) + laneWidth + 12 - rootLeft)
-      : 0;
-    if (viewport?.width === next.width && viewport?.height === next.height && leftInset === inset) return;
-    leftInset = inset;
-    // Horizontal scrolling on a crowded field must not expose cards beneath
-    // the reserved lane. The clip belongs to the viewport, not its content.
-    root.style.setProperty('clip-path', inset > 0 ? `inset(0 0 0 ${inset}px)` : 'none', 'important');
+    // The stack overlays the field; its presence never changes card geometry.
+    if (viewport?.width === next.width && viewport?.height === next.height) return;
     viewport = next;
     // Viewport growth is intentional; hysteresis is for changing card counts.
     solve(true);
@@ -175,18 +151,6 @@ export function createBattlefieldScene(root, registry) {
   }
   const observer = new ResizeObserver(resize);
   observer.observe(root);
-  const stackShell = root.closest('[data-my-zone] .my-zone-board-shell');
-  const stackDock = stackShell?.querySelector(':scope > .my-zone-stack-rail');
-  if (stackDock) observer.observe(stackDock);
-  // Renderer teardown/setup happens in the same React commit. Measure after
-  // both complete so the transient missing pile does not release the lane.
-  function scheduleStackResize() {
-    cancelAnimationFrame(stackResizeFrame);
-    stackResizeFrame = requestAnimationFrame(() => { stackResizeFrame = 0; resize(); });
-  }
-  const stackObserver = new MutationObserver(scheduleStackResize);
-  if (stackShell) stackObserver.observe(stackShell, { attributes: true, attributeFilter: ['class'], childList: true });
-  window.addEventListener('ironsmith:stack-lane-changed', scheduleStackResize);
   window.addEventListener('resize', resize);
   function visibility() { if (document.hidden) { cancelAnimationFrame(frame); frame = 0; lastTime = 0; } else wake(); }
   function motion() { wake(); }
@@ -234,8 +198,7 @@ export function createBattlefieldScene(root, registry) {
       return result;
     },
     dispose() {
-      disposed = true; cancelAnimationFrame(stackResizeFrame); stackShell?.style.removeProperty('--stack-reserved-width'); cancelAnimationFrame(frame); clearTimeout(growTimer); observer.disconnect(); stackObserver.disconnect();
-      window.removeEventListener('ironsmith:stack-lane-changed', scheduleStackResize);
+      disposed = true; cancelAnimationFrame(frame); clearTimeout(growTimer); observer.disconnect();
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', visibility); media.removeEventListener('change', motion);
       for (const entry of objects.values()) scene.remove(entry.object);

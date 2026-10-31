@@ -15,7 +15,7 @@ export default function CardFrameRules({name,rulesView,onActivate,highlighted}) 
       const status=abilityActionState(action);
       const available=clickable&&status==='available';
       const selected=highlighted?.has(index)||chosen===action;
-      return <p key={index} className="inspector-ability-section" data-stack-highlighted={highlighted?.has(index)?'true':undefined}>
+      return <p key={index} data-rules-line-index={index} className="inspector-ability-section" data-stack-highlighted={highlighted?.has(index)?'true':undefined}>
         {rulesView.manaGroups?.has(index)?<GroupedManaAbility group={rulesView.manaGroups.get(index)} name={name} onActivate={onActivate}/>
           :action?<button type="button" className="inspector-oracle-line-action" data-available={available?'true':'false'} data-ability-state={selected?'selected':status} aria-pressed={selected}
             title={status==='unavailable'||status==='pending'?abilityActionReason(action):'Activate ability'}

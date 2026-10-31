@@ -453,6 +453,9 @@ mod source_ability_tests {
         let second = StackEntry::ability(source, alice, Vec::new())
             .with_ability_index(1)
             .with_source_snapshot(captured.clone());
+        let preferences = crate::ui_snapshot::build_object_details_snapshot(&game, source, None)
+            .unwrap().ability_preferences;
+        assert_eq!(preferences.len(), 1);
         // The source no longer has the abilities that were activated.
         game.object_mut(source).unwrap().abilities = Default::default();
         let first_view = build_stack_object_snapshot(&game, alice, None, &first);
@@ -474,10 +477,15 @@ mod source_ability_tests {
             panic!("expected third ability to be triggered");
         };
         let trigger = StackEntry::ability(source, alice, Vec::new())
+            .with_source_stable_id(captured.stable_id)
             .with_trigger_identity(ironsmith::triggers::compute_trigger_identity(triggered))
             .with_source_snapshot(captured);
         let trigger_view = build_stack_object_snapshot(&game, alice, None, &trigger);
         assert!(trigger_view.automation_identity.as_ref().unwrap().starts_with("trigger:"));
+        assert_eq!(preferences[0]["automation_identity"], trigger_view.automation_identity.clone().unwrap());
+        assert_eq!(preferences[0]["source_stable_id"], trigger_view.source_stable_id.unwrap());
+        assert!(crate::ui_snapshot::build_object_details_snapshot(&game, source, None)
+            .unwrap().ability_preferences.is_empty(), "ability loss removes inspector preferences");
         assert_eq!(
             trigger_view.source_ability_text.as_deref(),
             Some(expected[2].as_str())

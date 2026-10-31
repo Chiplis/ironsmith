@@ -3316,6 +3316,34 @@ mod subgame_host_tests {
 mod mulligan_policy_tests {
     use super::*;
 
+    #[test]
+    fn puzzle_setup_preserves_imported_zones_and_skips_opening_hand_choices() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 7);
+        let alice = PlayerId::from_index(0);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(), "Puzzle artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let hand = game.game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let library = game.game.create_object_from_definition(&definition, alice, Zone::Library);
+        let permanent = game.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+        game.finish_puzzle_setup().expect("finish imported position");
+
+        assert!(game.pregame.is_none());
+        assert_eq!(game.game.object(hand).unwrap().zone, Zone::Hand);
+        assert_eq!(game.game.object(library).unwrap().zone, Zone::Library);
+        assert_eq!(game.game.object(permanent).unwrap().zone, Zone::Battlefield);
+        let Some(DecisionContext::Priority(context)) = &game.pending_decision else {
+            panic!("expected normal turn priority");
+        };
+        assert!(context.actions.contains(&LegalAction::PassPriority));
+        assert!(!context.actions.contains(&LegalAction::KeepOpeningHand));
+        assert!(!context.actions.contains(&LegalAction::TakeMulligan));
+    }
+
     fn game_at_counted_mulligans(count: u32) -> (WasmGame, PlayerId) {
         let mut game = WasmGame::new();
         game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 7);

@@ -2228,7 +2228,6 @@
                 filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
             && let Some(tag_matching) =
                 filtered[idx + 2].downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
-            && let Some((_, move_matching)) = for_each_tagged_for_compaction(filtered[idx + 3])
             && let Some(remainder) = filtered[idx + 4]
                 .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
             )
@@ -2237,7 +2236,7 @@
                     look_at_top,
                     reveal_tagged,
                     tag_matching,
-                    move_matching,
+                    filtered[idx + 3],
                     remainder,
                 )
         {

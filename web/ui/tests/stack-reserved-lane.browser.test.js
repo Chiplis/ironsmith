@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('local field reserves the Stack lane and smoothly restores its space', { timeout: 90000 }, async () => {
+test('local field stays stationary throughout Stack arrival, ordering, and exit', { timeout: 90000 }, async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
   const browser = await chromium.launch({ args: ['--disable-webgl'] });
@@ -31,14 +31,10 @@ test('local field reserves the Stack lane and smoothly restores its space', { ti
       const before = await measure();
       await page.evaluate(() => window.setStackLaneVisible(true));
       await page.waitForFunction(() => Number(document.querySelector('[data-card-stack-anchor]')?.dataset.stackLaneWidth) > 0);
-      await page.waitForFunction(() => document.querySelector('[data-my-zone] .battlefield-row')?.dataset.sceneMoving === 'true');
       await settle();
       const active = await measure();
-      const edge = await page.locator('[data-card-stack-anchor]').evaluate(dock => dock.getBoundingClientRect().left + Number(dock.dataset.stackLaneWidth));
-      assert.ok(active.cards.every(card => card.left >= edge), JSON.stringify({ compactCards, edge, active }));
-      assert.ok(active.cards[0].left > before.cards[0].left, 'cards reflow away from the Stack');
-      // At the minimum card size, scrolling still cannot expose cards in the lane.
-      assert.notEqual(await field.evaluate(row => getComputedStyle(row).clipPath), 'none');
+      assert.deepEqual(active, before, 'stack arrival preserves all card positions and scale');
+      assert.equal(await field.evaluate(row => getComputedStyle(row).clipPath), 'none');
       // Switching renderers must preserve every displayed pose, including
       // intermediate animation frames, in both directions.
       for (const mode of ['trigger', 'replacement', null, 'replacement', null]) {
@@ -61,7 +57,7 @@ test('local field reserves the Stack lane and smoothly restores its space', { ti
         }
       }
       const reservedWidth = await field.evaluate(row => row.closest('.my-zone-board-shell').style.getPropertyValue('--stack-reserved-width'));
-      // A large count forces the old pile-footprint calculation to grow;
+      // A large count grows the pile footprint;
       // sample throughout arrival and exit, not only at rest.
       for (const count of [20, 19, 3, 1]) {
         const samples = await page.evaluate(async count => {
@@ -82,7 +78,7 @@ test('local field reserves the Stack lane and smoothly restores its space', { ti
           assert.equal(sample.scale, active.scale);
         }
       }
-      // Refill during the final exit: the same reservation must survive.
+      // Refilling during the final exit must not introduce a reservation.
       await page.evaluate(() => window.setStackCount(0));
       await page.waitForTimeout(100);
       assert.equal(await field.evaluate(row => row.closest('.my-zone-board-shell').style.getPropertyValue('--stack-reserved-width')), reservedWidth);
@@ -95,7 +91,7 @@ test('local field reserves the Stack lane and smoothly restores its space', { ti
       await settle();
       const after = await measure();
       assert.ok(Math.abs(after.scale - before.scale) < .001);
-      assert.ok(Math.abs(after.cards[0].left - before.cards[0].left) < 1, 'field restores its original space');
+      assert.ok(Math.abs(after.cards[0].left - before.cards[0].left) < 1, 'field retains its original position');
       assert.equal(await field.evaluate(row => getComputedStyle(row).clipPath), 'none');
       assert.deepEqual(errors, []);
       await page.close();

@@ -162,6 +162,9 @@ inherits = "release"
 [profile.artifact-bake.package.ironsmith-engine]
 opt-level = 0
 
+[profile.artifact-bake.package.ironsmith-tools]
+opt-level = 1
+
 [profile.artifact-bake.package.ironsmith-compiler-grammar]
 opt-level = 1
 

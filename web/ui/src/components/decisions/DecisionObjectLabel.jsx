@@ -5,7 +5,7 @@ import { buildObjectLocationById, decisionObjectLocation } from '@/lib/decision-
 import { getPlayerAccent } from '@/lib/player-colors';
 import useUiText from '@/i18n/useUiText';
 
-export default function DecisionObjectLabel({ objectId, object, children, nameOnly = false }) {
+export default function DecisionObjectLabel({ objectId, object, children, nameOnly = false, count = 1, selectedCount = 0 }) {
   const { state, playerAccentOverrides } = useGame();
   const ui = useUiText();
   const locations = useMemo(() => buildObjectLocationById(state), [state]);
@@ -22,6 +22,9 @@ export default function DecisionObjectLabel({ objectId, object, children, nameOn
   ].filter(Boolean).join(' · ');
   return <span className="decision-object-label" style={{ '--decision-object-controller': differentController ? color(location.controller) : undefined }}>
     <span className={`decision-object-label-text${nameOnly ? ' decision-object-name' : ''}`}>{children}</span>
+    {count > 1 && <span className="decision-object-count" aria-label={`${count} copies${selectedCount ? `, ${selectedCount} selected` : ''}`}>
+      {selectedCount > 0 && <span className="decision-object-selected-count">{selectedCount} selected · </span>}x{count}
+    </span>}
     <span className="decision-object-zone" style={{ color: color(location.owner) }} title={description} role="img" aria-label={description}>
       <ZoneIcon zone={location.zone} />
     </span>

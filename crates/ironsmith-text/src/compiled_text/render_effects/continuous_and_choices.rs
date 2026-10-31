@@ -2033,30 +2033,34 @@ pub(crate) fn describe_look_at_top_then_reveal_put_all_matching_onto_battlefield
     look_at_top: &crate::effects::LookAtTopCardsEffect,
     reveal_tagged: &crate::effects::RevealTaggedEffect,
     tag_matching: &crate::effects::TagMatchingObjectsEffect,
-    move_matching: &crate::effects::ForEachTaggedEffect,
+    movement: &Effect,
     remainder: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
 ) -> Option<String> {
+    let movement = unwrap_basic_tag_wrappers(movement);
+    let (move_to_zone, iterated) = if let Some(each) = movement.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+        if each.tag != tag_matching.tag || each.effects.len() != 1 { return None; }
+        (each.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?, true)
+    } else {
+        (movement.downcast_ref::<crate::effects::MoveToZoneEffect>()?, false)
+    };
     if look_at_top.reveal
         || reveal_tagged.tag != look_at_top.tag
-        || tag_matching.tag != move_matching.tag
         || tag_matching.zone != Some(Zone::Library)
         || !tag_matching.additional_zones.is_empty()
         || remainder.tag != look_at_top.tag
         || remainder.keep_tagged.as_ref() != Some(&tag_matching.tag)
         || remainder.player != look_at_top.player
-        || move_matching.effects.len() != 1
     {
         return None;
     }
 
-    let move_to_zone =
-        move_matching.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_to_zone.zone != Zone::Battlefield
         || move_to_zone.to_top
         || move_to_zone.enters_face_down
         || move_to_zone.transfer_exiled_with_source_links
-        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
-        || !matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+        || !matches!(move_to_zone.battlefield_controller, crate::effects::BattlefieldController::Preserve | crate::effects::BattlefieldController::You)
+        || (move_to_zone.battlefield_controller == crate::effects::BattlefieldController::You && look_at_top.player != PlayerFilter::You)
+        || if iterated { !matches!(move_to_zone.target.base(), ChooseSpec::Iterated) } else { !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if *tag == tag_matching.tag) }
     {
         return None;
     }
@@ -2086,7 +2090,7 @@ pub(crate) fn describe_look_at_top_then_reveal_put_all_matching_onto_battlefield
                 crate::filter::TaggedOpbjectRelation::IsTaggedObject
             ))
     });
-    let matching = pluralize_noun_phrase(&describe_search_selection_with_cards(
+    let matching = pluralize_noun_phrase(&describe_revealed_selection_with_cards(
         &matching_filter.description(),
     ));
     let owner = describe_possessive_player_filter(&look_at_top.player);

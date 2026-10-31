@@ -16,7 +16,8 @@ test('Meld builder edits all three cards and submits both components with their 
     await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
     await page.getByRole('button', { name: 'Build', exact: true }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByRole('button', { name: 'Meld', exact: true }).click();
+    await dialog.getByRole('combobox', { name: 'Layout', exact: true }).click();
+    await page.getByRole('option', { name: 'Meld', exact: true }).click();
     await dialog.getByRole('textbox', { name: 'Card name', exact: true }).fill('Forge Left');
     await dialog.getByRole('textbox', { name: 'Rules text', exact: true }).fill('{T}: If you both own and control this creature and a creature named Forge Right, exile them, then meld them into Forge Whole.');
     await dialog.getByRole('tab', { name: /Second Card/ }).click({ force: true });
