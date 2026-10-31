@@ -914,12 +914,25 @@ fn parse_object_filter_inner_unchecked(
         // "each creature that was blocked by one of those creatures this
         // turn" (Triton Tactics) is block history: the creature need not
         // still be blocked once its blocker has left combat.
-        let historical = blocked_by_words
-            .iter()
-            .any(|word| matches!(*word, "was" | "were"))
-            && blocked_by_words
+        // "creatures that were blocked by that creature this turn" (Glyph of
+        // Doom) is the same block history.
+        let passive_blocked = |words: &[&str]| {
+            words
+                .windows(2)
+                .position(|pair| matches!(pair, ["was" | "were", "blocked"]))
+        };
+        let historical = passive_blocked(&blocked_by_words).is_some()
+            && (blocked_by_words
                 .word_windows(5)
-                .any(|window| crate::word_primitives::equals(&window, &["blocked", "by", "one", "of", "those"]));
+                .any(|window| crate::word_primitives::equals(&window, &["blocked", "by", "one", "of", "those"]))
+                || crate::word_primitives::ends_with(&blocked_by_words, &["this", "turn"]));
+        // "creatures that were blocked by that creature this combat" (Ride
+        // Down): attackers stay blocked for the rest of combat (CR 509.1h),
+        // so the passive is read as the current blocked state.
+        let this_combat = crate::word_primitives::ends_with(&blocked_by_words, &["this", "combat"]);
+        if (historical || this_combat) && let Some(passive) = passive_blocked(&all_words) {
+            crate::word_claims::claim_word(all_words[passive]);
+        }
         filter.blocked = !historical;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(
             (crate::tag::CompilerReferenceTag::It.bind()).into(),
@@ -1461,8 +1474,11 @@ fn parse_object_filter_inner_unchecked(
                     _ => {}
                 }
             }
+            // "the top creature card of your graveyard" (Necratog, Spinning
+            // Darkness): "of" places the card in the owned zone.
             if owner_start > 0
-                && matches!(all_words[owner_start - 1], "from" | "in" | "on" | "into" | "onto")
+                && (matches!(all_words[owner_start - 1], "from" | "in" | "on" | "into" | "onto")
+                    || (all_words[owner_start - 1] == "of" && owner_start < idx))
             {
                 owner_start -= 1;
             }
@@ -1882,6 +1898,33 @@ fn parse_object_filter_inner_unchecked(
         filter.attacked_this_turn = true;
         filter.attacked_player_this_turn = Some(PlayerFilter::You);
     }
+    // "creatures that attacked during their controller's last turn" (Halls
+    // of Mist): the controller's most recent turn's attack record.
+    {
+        let segment_words = non_article_parser_word_refs(&segment_tokens);
+        for possessive in ["their", "its"] {
+            for controller in ["controller's", "controllers", "controller’s"] {
+                let phrase = ["attacked", "during", possessive, controller, "last", "turn"];
+                if let Some(fact) = parse_phrase_anywhere(&segment_words, &phrase) {
+                    crate::word_claims::claim_words(
+                        &segment_words[fact.span.start..fact.span.end],
+                    );
+                    filter.attacked_during_controllers_last_turn = true;
+                }
+            }
+        }
+        // "creatures that don't have a name" (Pompous Gadabout): face-down
+        // objects (CR 708.2a).
+        for negation in ["don't", "dont", "doesn't", "doesnt"] {
+            let phrase = ["that", negation, "have", "name"];
+            if let Some(fact) = parse_phrase_anywhere(&segment_words, &phrase)
+                && fact.span.end == segment_words.len()
+            {
+                crate::word_claims::claim_words(&segment_words[fact.span.start..fact.span.end]);
+                filter.nameless = true;
+            }
+        }
+    }
 
     let blocked_this_turn_word_indices = all_words
         .iter()
@@ -1898,6 +1941,10 @@ fn parse_object_filter_inner_unchecked(
         })
         .collect::<std::collections::HashSet<_>>();
     if !blocked_this_turn_word_indices.is_empty() {
+        // "target creature that blocked this turn" (Sizzling Barrage).
+        for idx in &blocked_this_turn_word_indices {
+            crate::word_claims::claim_words(&all_words[*idx..*idx + 3]);
+        }
         filter.blocked_this_turn = true;
     }
     // "a creature that fought this turn" (Boxing Ring).
@@ -1937,6 +1984,12 @@ fn parse_object_filter_inner_unchecked(
         {
             filter.didnt_attack_this_turn = true;
             filter.attacked_this_turn = false;
+            if let Some(attack) = segment_tokens.iter().rposition(|token| token.is_word("attack"))
+                && attack > 0
+                && segment_tokens[attack - 1].is_any_word(&["didn't", "didnt"])
+            {
+                crate::word_claims::claim_tokens(&segment_tokens[attack - 1..=attack]);
+            }
         }
     }
 
@@ -1976,6 +2029,11 @@ fn parse_object_filter_inner_unchecked(
                     .is_some_and(|next| *next == COLOR_WORD) =>
             {
                 crate::word_claims::claim_word(all_words[idx + 1]);
+                // "creatures you control of the chosen color" (Hall of
+                // Triumph): the "of" introduces the color.
+                if idx > 0 && all_words[idx - 1] == "of" {
+                    crate::word_claims::claim_word(all_words[idx - 1]);
+                }
                 filter.chosen_color = true;
             }
             word if word == THAT_WORD
@@ -1984,6 +2042,9 @@ fn parse_object_filter_inner_unchecked(
                     .is_some_and(|next| *next == COLOR_WORD) =>
             {
                 crate::word_claims::claim_word(all_words[idx + 1]);
+                if idx > 0 && all_words[idx - 1] == "of" {
+                    crate::word_claims::claim_word(all_words[idx - 1]);
+                }
                 // A demonstrative color after a color choice ("creatures of
                 // that color") refers to the source program's chosen color.
                 filter.chosen_color = true;
@@ -2093,10 +2154,20 @@ fn parse_object_filter_inner_unchecked(
                         Some("their") => filter.owner = Some(pronoun_player_filter.clone()),
                         _ => {}
                     }
+                    // "your commander" (Tome of Legends): the owner word
+                    // read above.
+                    if filter.owner.is_some()
+                        && matches!(prev, Some("your" | "opponent" | "opponents" | "their"))
+                    {
+                        crate::word_claims::claim_words(&all_words[idx - 1..idx]);
+                    }
                 }
             }
             "noncommander" | "noncommanders" => filter.noncommander = true,
             "basic" if set_has(&basic_land_type_basic_indices, &idx) => {
+                // "a land card with a basic land type" (Boseiju, Who
+                // Endures): the whole "basic land type" phrase.
+                crate::word_claims::claim_words(&all_words[idx + 1..idx + 3]);
                 filter.has_basic_land_type = true;
             }
             "nonbasic" => {
@@ -2123,6 +2194,14 @@ fn parse_object_filter_inner_unchecked(
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
             crate::keyword_forms::GOADED if !is_negated_word => filter.goaded = true,
+            // "cards ... that are instant cards, are sorcery cards, and/or
+            // have an Adventure" (Candlekeep Inspiration): a list item that
+            // repeats the relative clause's copula.
+            copula @ ("are" | "is")
+                if all_words_with_articles.iter().filter(|word| **word == copula).count() >= 2
+                    && all_words_with_articles
+                        .windows(2)
+                        .any(|pair| pair[0] == "that" && pair[1] == copula) => {}
             _ => unread_word = true,
         }
         if !unread_word {
@@ -2130,6 +2209,7 @@ fn parse_object_filter_inner_unchecked(
         }
 
         if is_non_outlaw_word(word) {
+            crate::word_claims::claim_word(word);
             push_outlaw_subtypes(&mut filter.excluded_subtypes);
             continue;
         }
@@ -2138,7 +2218,9 @@ fn parse_object_filter_inner_unchecked(
             continue;
         }
 
+        // "your first outlaw spell each turn" (Discreet Retreat).
         if is_outlaw_word(word) {
+            crate::word_claims::claim_word(word);
             push_outlaw_subtypes(&mut filter.subtypes);
             saw_subtype = true;
             continue;
@@ -3318,6 +3400,14 @@ fn claim_relation(all_words: &[&str], idx: usize, consumed: usize) {
     crate::word_claims::claim_words(&all_words[idx..end]);
     if idx > 1 && all_words[idx - 1] == "but" {
         crate::word_claims::claim_words(&all_words[idx - 1..idx]);
+    }
+    // "nonland permanent that one of your opponents controls" (Bladegriff
+    // Prototype): one member of the plural subject, as the relation reads it.
+    if idx >= 2
+        && all_words[idx - 2..idx] == ["one", "of"]
+        && matches!(all_words.get(idx), Some(&("your" | "their" | "those" | "opponents")))
+    {
+        crate::word_claims::claim_words(&all_words[idx - 2..idx]);
     }
 }
 

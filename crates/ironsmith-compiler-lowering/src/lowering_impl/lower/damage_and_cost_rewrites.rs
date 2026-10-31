@@ -279,6 +279,14 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
                 && choice.count_value.is_none())
             .then(|| choice.clone());
         }
+        // "As this creature enters, you may choose a nonland permanent"
+        // (Scheming Fence): the optional choice is still the one remembered.
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
+            let [inner] = may.effects.as_slice() else {
+                return None;
+            };
+            return single_choice(inner);
+        }
         let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
         single_choice(&with_id.effect)
     }
@@ -368,6 +376,14 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
             return Some(crate::effect::Effect::new(
                 choice.clone().remember_as_chosen_object(),
             ));
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
+            let [inner] = may.effects.as_slice() else {
+                return None;
+            };
+            let mut optional = may.clone();
+            optional.effects = vec![remember_choice(inner, choice)?];
+            return Some(crate::effect::Effect::new(optional));
         }
         let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
         Some(crate::effect::Effect::new(

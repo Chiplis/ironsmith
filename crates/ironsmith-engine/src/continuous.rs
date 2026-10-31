@@ -691,6 +691,9 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
         exclude_source_name: bool,
         exclude_source_id: bool,
         force_once_each_turn: bool,
+        /// "... except for loyalty abilities" (Scheming Fence).
+        #[cfg_attr(feature = "serialization", serde(default))]
+        exclude_loyalty: bool,
     },
 
     /// Copy selected complete static-ability instances from matching objects.
@@ -868,6 +871,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 exclude_source_name,
                 exclude_source_id,
                 force_once_each_turn,
+                exclude_loyalty,
             } => ContinuousModification::CopyActivatedAbilities {
                 filter,
                 counter,
@@ -876,6 +880,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 exclude_source_name,
                 exclude_source_id,
                 force_once_each_turn,
+                exclude_loyalty,
             },
             Self::CopyStaticAbilityVariants {
                 filter,
@@ -5521,6 +5526,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::Teammate
         | PlayerFilter::PlayerToYourLeft
         | PlayerFilter::OpponentToYourLeft
+        | PlayerFilter::Monarch
         | PlayerFilter::PlayerToYourRight
         | PlayerFilter::Active
         | PlayerFilter::Defending
@@ -6264,6 +6270,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.attacked_player_this_turn.is_some()
         || filter.was_blocked_this_turn
         || filter.didnt_attack_this_turn
+        || filter.attacked_during_controllers_last_turn
         || filter.could_have_attacked_this_turn
         || filter
             .attacking_player_or_planeswalker_controlled_by
@@ -6842,6 +6849,7 @@ fn apply_modification_to_chars(
             exclude_source_name,
             exclude_source_id,
             force_once_each_turn,
+            exclude_loyalty,
         } => {
             use crate::ability::AbilityKind;
 
@@ -6904,6 +6912,9 @@ fn apply_modification_to_chars(
                         continue;
                     };
                     if *only_loyalty && !activated.is_loyalty_ability() {
+                        continue;
+                    }
+                    if *exclude_loyalty && activated.is_loyalty_ability() {
                         continue;
                     }
                     if ability_is_mana_for_object(ability, game, candidate) && !*include_mana {

@@ -53417,6 +53417,7 @@ fn cr_201_5b_c_borrowed_self_named_activated_abilities_act_on_the_new_bearer() {
                                         exclude_source_name: false,
                                         exclude_source_id: false,
                                         force_once_each_turn: false,
+                                        exclude_loyalty: false,
                                     },
                                     Until::EndOfTurn,
                                 )

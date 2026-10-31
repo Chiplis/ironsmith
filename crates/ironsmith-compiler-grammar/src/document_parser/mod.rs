@@ -487,13 +487,15 @@ fn probe_triggered_split(
 
     // Split candidates are speculative. A rejected comma boundary must not
     // leak lossy-recovery diagnostics into the ultimately committed trigger.
-    let trigger_error = crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens))
-        .0
-        .err();
-    let effect_error =
-        crate::parse_loss::capture(|| parse_effect_sentences_lexed(effect_candidate_tokens))
-            .0
-            .err();
+    // Nor may its readings claim words: the committed split re-reads them.
+    let trigger_error = crate::word_claims::probe_only(|| {
+        crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0
+    })
+    .err();
+    let effect_error = crate::word_claims::probe_only(|| {
+        crate::parse_loss::capture(|| parse_effect_sentences_lexed(effect_candidate_tokens)).0
+    })
+    .err();
     if trigger_error.is_none()
         && (effect_error.is_none()
             || triggered_effect_tokens_have_trailing_static_sentences(effect_candidate_tokens))
@@ -548,9 +550,10 @@ fn triggered_effect_tokens_have_trailing_static_sentences(tokens: &[OwnedLexToke
     }
 
     sentences[..first_static_idx].iter().all(|sentence| {
-        crate::parse_loss::capture(|| parse_effect_sentences_lexed(sentence))
-            .0
-            .is_ok()
+        crate::word_claims::probe_only(|| {
+            crate::parse_loss::capture(|| parse_effect_sentences_lexed(sentence)).0
+        })
+        .is_ok()
     })
 }
 
@@ -576,8 +579,9 @@ fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
         // static ability merely because the exception itself looks static.
         return false;
     }
-    if crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens))
-        .0
+    if crate::word_claims::probe_only(|| {
+        crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens)).0
+    })
         .is_ok_and(|effects| {
             matches!(
                 effects.as_slice(),
@@ -595,7 +599,9 @@ fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
     }
     semantic_grammar::parse_self_counter_entry_tokens(tokens).is_some()
         || matches!(
-            crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(tokens)).0,
+            crate::word_claims::probe_only(|| {
+                crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(tokens)).0
+            }),
             Ok(Some(_))
         )
 }
@@ -2596,17 +2602,25 @@ fn looks_like_ability_word_label(
 fn recognize_labeled_qualified_ability_trigger(
     line: &PreprocessedLine,
 ) -> Option<RecognizedTriggeredLine> {
+    // The labeled line keeps the authored source name ("Munda or another
+    // Ally", Munda, Ambush Leader), so a probe that doesn't own the line
+    // must not leave its filters' unread words behind, and what either half
+    // read counts only when this shape owns the line.
+    crate::word_claims::speculative_keep_if(
+        || labeled_qualified_ability_trigger_reading(line),
+        Option::is_some,
+    )
+}
+
+fn labeled_qualified_ability_trigger_reading(
+    line: &PreprocessedLine,
+) -> Option<RecognizedTriggeredLine> {
     let (trigger_with_intro, effect_tokens) = grammar::split_lexed_once_on_comma(&line.tokens)?;
     let trigger_tokens = trigger_with_intro.get(1..)?;
     // This is a deliberately speculative fast-path probe. A diagnostic from
     // either half means only that this narrow qualified-trigger shape does
     // not own the line; the committing triggered-line parser runs below.
-    // The labeled line keeps the authored source name ("Munda or another
-    // Ally", Munda, Ambush Leader), so a probe that doesn't own the line
-    // must not leave its filters' unread words behind.
-    let (trigger, probe) = crate::word_claims::speculative(|| {
-        crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0
-    });
+    let trigger = crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0;
     let trigger = match trigger {
         Ok(trigger) => trigger,
         Err(_) => return None,
@@ -2630,7 +2644,6 @@ fn recognize_labeled_qualified_ability_trigger(
         return None;
     }
     let candidate = render_triggered_split_candidate(trigger_tokens, effect_tokens, None, None)?;
-    probe.keep();
     Some(candidate.into_recognized_line(line, &line.tokens))
 }
 
@@ -4168,6 +4181,11 @@ fn parse_card_text_to_semantic_document(
     } else {
         None
     };
+    // The parse stream of every rules line, for the whole-line claim check.
+    crate::word_claims::note_card_lines(preprocessed.items.iter().filter_map(|item| match item {
+        PreprocessedItem::Metadata(_) => None,
+        PreprocessedItem::Line(line) => Some((line.info.raw_line.as_str(), line.tokens.as_slice())),
+    }));
     parse_trace::event(format!(
         "preprocessed document: {} item(s)",
         preprocessed.items.len()

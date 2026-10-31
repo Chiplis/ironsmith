@@ -598,13 +598,42 @@ fn trigger_gerund(trigger: &crate::triggers::Trigger) -> String {
     words.join(" ").replacen("entering the battlefield", "entering", 1)
 }
 
+/// "Creatures your opponents control with hexproof can be the targets of
+/// spells and abilities you control as though they didn't have hexproof":
+/// read from the protected players and objects, the controller of the
+/// sources allowed to target, and the ignored ability.
+pub(crate) fn targeting_as_though_no_ability(
+    spec: &ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
+) -> String {
+    let ability = ironsmith_core::semantic_audit::humanize_variant(&spec.ignored_ability);
+    let protected = spec.objects.as_ref().map(set_subject);
+    let (subject, singular) = match (&spec.players, protected) {
+        (Some(players), Some((objects, _, _))) => (
+            format!("{} and {}", capitalize_first(&player(players)), lowercase_first(&objects)),
+            false,
+        ),
+        (Some(players), None) => (capitalize_first(&player(players)), false),
+        (None, Some((objects, verb, _))) => (objects, verb == "is"),
+        (None, None) => ("Permanents".to_string(), false),
+    };
+    let sources = match &spec.sources_controlled_by {
+        PlayerFilter::Any => String::new(),
+        PlayerFilter::You => " you control".to_string(),
+        other => format!(" controlled by {}", player(other)),
+    };
+    let (target, pronoun) = if singular { ("target", "it") } else { ("targets", "they") };
+    format!(
+        "{subject} can be the {target} of spells and abilities{sources} as though {pronoun} didn't have {ability}"
+    )
+}
+
 fn mana_symbol_name(symbol: &ironsmith_core::ManaSymbol) -> String {
     format!("{symbol:?}").to_ascii_lowercase()
 }
 
 /// "You may spend mana as though it were mana of any color to cast
 /// planeswalker spells."
-fn mana_spend_permission(permission: &ironsmith_core::ManaSpendPermission) -> String {
+pub(crate) fn mana_spend_permission(permission: &ironsmith_core::ManaSpendPermission) -> String {
     use ironsmith_core::{value_model::ManaSpendMode as Mode, ManaSpendScope as Scope};
     let subject = match &permission.player {
         PlayerFilter::You => "You may spend".to_string(),
@@ -661,7 +690,7 @@ fn mana_spend_permission(permission: &ironsmith_core::ManaSpendPermission) -> St
 /// "If a land is tapped for mana, it produces {B} instead of any other type":
 /// a mana production rewrite read from its source, provenance, input,
 /// output and quantity.
-fn mana_output_rewrite(rule: &ironsmith_core::ManaOutputRewrite) -> String {
+pub(crate) fn mana_output_rewrite(rule: &ironsmith_core::ManaOutputRewrite) -> String {
     use ironsmith_core::{ManaRewriteInput as In, ManaRewriteOutput as Out, ManaRewriteQuantity as Qty};
     let by = rule
         .controller
@@ -1349,6 +1378,9 @@ pub(crate) fn audit_payload_reading(
             if spec.exclude_mana_abilities {
                 text.push_str(" except mana abilities");
             }
+            if spec.exclude_loyalty_abilities {
+                text.push_str(" except loyalty abilities");
+            }
             // A card in exile or a graveyard is never this battlefield object.
             if spec.exclude_source_id
                 && !spec.exclude_source_name
@@ -1997,6 +2029,7 @@ pub(crate) fn audit_payload_reading(
             )
         }
         P::ManaSpendPermission { permission, .. } => mana_spend_permission(permission),
+        P::TargetingAsThoughNoAbility(spec) => targeting_as_though_no_ability(spec),
         P::PreventDamageToSelfPutCountersInstead { counter_type, .. } => format!(
             "If damage would be dealt to this permanent, prevent it and put that many {} counters on it",
             describe_counter_type(*counter_type)

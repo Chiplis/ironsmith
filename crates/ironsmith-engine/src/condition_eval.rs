@@ -4066,6 +4066,7 @@ fn resolve_condition_player_simple(
             .closest_in_game_player_to_left_matching(controller, |candidate| {
                 game.are_opponents(controller, candidate)
             }),
+        PlayerFilter::Monarch => game.monarch,
         PlayerFilter::PlayerToYourRight => {
             game.closest_in_game_player_to_right_matching(controller, |_| true)
         }

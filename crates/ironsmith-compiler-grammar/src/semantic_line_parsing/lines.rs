@@ -2464,8 +2464,9 @@ fn sentence_is_conditional_self_replacement_effect(sentence: &[OwnedLexToken]) -
         return true;
     }
 
-    crate::parse_loss::capture(|| parse_effect_sentences_lexed(sentence))
-        .0
+    crate::word_claims::probe_only(|| {
+        crate::parse_loss::capture(|| parse_effect_sentences_lexed(sentence)).0
+    })
         .is_ok_and(|effects| {
             matches!(
                 effects.as_slice(),
@@ -2571,8 +2572,9 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
         if is_copy_creation(&default_words)
             && is_copy_creation(&replacement_words)
             && crate::word_primitives::contains_word(&replacement_words, "instead")
-            && crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens))
-                .0
+            && crate::word_claims::probe_only(|| {
+                crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens)).0
+            })
                 .is_ok_and(|effects| {
                     effects
                         .iter()

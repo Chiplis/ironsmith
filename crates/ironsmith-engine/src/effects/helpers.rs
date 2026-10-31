@@ -2437,6 +2437,9 @@ pub fn resolve_player_filter(
                     "there is no in-game opponent to the effect controller's left".to_string(),
                 )
             }),
+        PlayerFilter::Monarch => game.monarch.ok_or_else(|| {
+            ExecutionError::UnresolvableValue("there is no monarch".to_string())
+        }),
         PlayerFilter::PlayerToYourRight => game
             .closest_in_game_player_to_right_matching(ctx.controller, |_| true)
             .ok_or_else(|| {
@@ -4809,6 +4812,8 @@ pub(crate) fn resolve_player_filter_to_list(
         PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
             Ok(vec![resolve_player_filter(game, filter, ctx)?])
         }
+        // No monarch: the set of players is empty, not an error.
+        PlayerFilter::Monarch => Ok(game.monarch.into_iter().collect()),
         PlayerFilter::MostLifeTied => {
             let max_life = game
                 .players

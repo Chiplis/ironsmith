@@ -2,6 +2,31 @@ use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
 
+/// "return that card and the sacrificed card to the battlefield under your
+/// control" (Rescue from the Underworld): two definite references share one
+/// destination. Each is its own return; read as one phrase, the second
+/// reference was dropped.
+fn split_reference_pair_return(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    let left_words = crate::lexer::token_word_refs(&tokens[..and_idx]);
+    if !matches!(left_words.as_slice(), ["that", "card" | "creature"] | ["it"]) {
+        return None;
+    }
+    let right = &tokens[and_idx + 1..];
+    let right_words = crate::lexer::token_word_refs(right);
+    let ["the", participle, "card" | "creature", "to", ..] = right_words.as_slice() else {
+        return None;
+    };
+    if !participle.ends_with("ed") {
+        return None;
+    }
+    let mut left = tokens[..and_idx].to_vec();
+    left.extend_from_slice(right.get(3..)?);
+    Some((left, right.to_vec()))
+}
+
 /// "return a creature card and a land card from your graveyard to your hand"
 /// (Sudden Reclamation): two independently articled card selections share
 /// one origin and destination. Each is its own return.
@@ -123,7 +148,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
     if let Some(effect) = parse_half_the_objects_return(tokens)? {
         return Ok(effect);
     }
-    if let Some((left, right)) = split_articled_card_pair_return(tokens) {
+    if let Some((left, right)) = split_articled_card_pair_return(tokens)
+        .or_else(|| split_reference_pair_return(tokens))
+    {
         return Ok(EffectAst::Sequence {
             effects: vec![parse_return(&left)?, parse_return(&right)?],
         });

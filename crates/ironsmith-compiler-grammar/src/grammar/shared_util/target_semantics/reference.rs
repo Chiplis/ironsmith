@@ -38,6 +38,25 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             token_slice_span(tokens),
         ));
     }
+    // "return that card and the sacrificed card to the battlefield" (Rescue
+    // from the Underworld): the card sacrificed to pay this spell's
+    // additional cost, which that cost tags `sacrificed_0`. "the sacrificed
+    // creature" keeps its existing readers, which bind an activated
+    // ability's own cost tag (Cleaver Skaab).
+    if matches!(
+        crate::lexer::parser_token_word_refs(tokens).as_slice(),
+        ["the", "sacrificed", "card"] | ["sacrificed", "card"]
+    ) {
+        crate::word_claims::claim_tokens(tokens);
+        // The reference keeps its wording ("the sacrificed card"), as a
+        // demonstrative return target does, rather than rendering as "it".
+        let mut filter =
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Sacrificed0.bind());
+        filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
+            "the sacrificed card".to_string(),
+        ));
+        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+    }
     if matches!(
         crate::lexer::parser_token_word_refs(tokens).as_slice(),
         ["defending", "player"] | ["the", "defending", "player"]
@@ -356,7 +375,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // capitalization uppercases their first word, their lowercase rules
     // qualifiers prevent this surface predicate from claiming them.
     // The filter parse only decides whether the name reads as an object
-    // phrase; its words count as read by whichever reading wins.
+    // phrase; nothing it read counts, since the reading that wins reads
+    // the words itself.
     if let Some(surface) = crate::grammar::source_surface_shapes::parse_named_surface(tokens)
         && crate::word_claims::speculative(|| parse_object_filter(tokens, false))
             .0
@@ -409,7 +429,10 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         // object selection, so parse it through the same prefix grammar.
         crate::recognition::ParseOutcome::NoMatch
             if bare_singular_object_noun_head(tokens)
-                && parse_object_filter(tokens, false).is_ok() =>
+                // A yes/no probe: the leaf head below reads the words.
+                && crate::word_claims::speculative(|| parse_object_filter(tokens, false))
+                    .0
+                    .is_ok() =>
         {
             leaf::parse_leaf_target_head_tokens(tokens)?
         }
@@ -1370,6 +1393,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // Tunnel) constrains the chosen set, not each candidate.
     let shared_creature_type_words = ["that", "share", "a", "creature", "type"];
     let remaining_word_count = TokenWordView::new(remaining).len();
+    let shared_type_storage: Vec<OwnedLexToken>;
     let (remaining, target_set_shared_creature_type) = if remaining_word_count
         > shared_creature_type_words.len()
         && crate::word_primitives::parse_sequence_suffix(
@@ -1383,6 +1407,32 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             .copied()
             .unwrap_or(remaining.len());
         (&remaining[..cut], true)
+    } else if let Some(phrase_start) = TokenWordView::new(remaining)
+        .to_word_refs()
+        .windows(shared_creature_type_words.len() + 1)
+        .position(|window| {
+            window[..shared_creature_type_words.len()] == shared_creature_type_words
+                && window[shared_creature_type_words.len()] == "from"
+        })
+        .filter(|start| *start > 0)
+    {
+        // "two target creature cards that share a creature type from your
+        // graveyard" (Unbury, Raise the Draugr): the set constraint sits
+        // before the zone phrase, which stays with the candidate filter.
+        let view = TokenWordView::new(remaining);
+        let starts = view.token_start_indices();
+        let cut_start = starts[phrase_start];
+        let cut_end = starts
+            .get(phrase_start + shared_creature_type_words.len())
+            .copied()
+            .unwrap_or(remaining.len());
+        crate::word_claims::claim_tokens(&remaining[cut_start..cut_end]);
+        shared_type_storage = remaining[..cut_start]
+            .iter()
+            .chain(&remaining[cut_end..])
+            .cloned()
+            .collect();
+        (shared_type_storage.as_slice(), true)
     } else {
         (remaining, false)
     };
@@ -1442,7 +1492,43 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         }
     }
 
-    let mut filter = parse_object_filter(remaining, other)?;
+    // "counter each spell you don't control" (Counterflux), "blocks each
+    // attacking creature" (Blaze of Glory): a leading `each` is the set
+    // quantifier of this untargeted selection, read here, not by the filter.
+    let mut selection_owned: Vec<&OwnedLexToken> = Vec::new();
+    if !explicit_target {
+        selection_owned.extend(remaining.first().filter(|token| token.is_word("each")));
+        // "attach this Aura to a land of their choice" (Kudzu, Steam Vines):
+        // an untargeted selection is already made by the acting player, whom
+        // the caller binds as chooser, so "of their choice" restates it. A
+        // target's chooser is the ability's controller instead (Death Match),
+        // which this does not cover.
+        if let Some(choice) =
+            crate::grammar::choices::parse_possessive_object_choice_tokens(remaining)
+            && choice.actor
+                == crate::grammar::choices::PossessiveObjectChoiceActor::SubjectPlayer
+        {
+            selection_owned.extend(remaining.iter().filter(|token| {
+                !choice.object_tokens.iter().any(|kept| kept.span == token.span)
+            }));
+        }
+        // "each player gains control of each permanent for which they were
+        // chosen" (Scrambleverse): the per-player pairing with the preceding
+        // per-object random choice. Normalization folds that pair into one
+        // loop (`fold_per_object_random_player_control_changes`), which needs
+        // this selection to stay the bare domain filter.
+        let pairing = ["for", "which", "they", "were", "chosen"];
+        let view = TokenWordView::new(remaining);
+        let words = view.to_word_refs();
+        if words.len() > pairing.len() && words.ends_with(&pairing) {
+            if let Some(start) = view.token_start_indices().get(words.len() - pairing.len()) {
+                selection_owned.extend(&remaining[*start..]);
+            }
+        }
+    }
+    let mut filter = crate::word_claims::with_caller_owned(selection_owned, || {
+        parse_object_filter(remaining, other)
+    })?;
     // "target enchanted permanent" (Venomous Vines, Cut the Earthly Bond):
     // a targeted object described as enchanted is any permanent with an Aura
     // attached, not the object this source enchants.

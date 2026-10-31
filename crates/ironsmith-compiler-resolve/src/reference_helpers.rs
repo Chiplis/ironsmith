@@ -373,6 +373,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::Teammate
         | PlayerFilter::PlayerToYourLeft
         | PlayerFilter::OpponentToYourLeft
+        | PlayerFilter::Monarch
         | PlayerFilter::PlayerToYourRight
         | PlayerFilter::Active
         | PlayerFilter::Defending

@@ -759,7 +759,17 @@ fn prepend_missing_target_choice_prelude(
             .iter()
             .filter(|effect| effect_exposes_target_choice(effect, choice))
             .count();
-        if correlated_fight_target || exposed_count != 1 {
+        // "its controller may have target creature of their choice get
+        // -3/-3" (Death Match): a delegated target-only declaration that
+        // comes first already declares the choice the later action reuses.
+        // An earlier action announcing the same spec is its own target
+        // ("destroy target creature, then destroy target creature of an
+        // opponent's choice", Diaochan), so the prelude stays then.
+        let declared = compiled
+            .iter()
+            .find(|effect| effect_exposes_target_choice(effect, choice))
+            .is_some_and(|effect| effect_declares_target_choice(effect, choice));
+        if correlated_fight_target || (exposed_count != 1 && !declared) {
             missing_targets.push(Effect::new(crate::effects::TargetOnlyEffect::new(
                 choice.clone(),
             )));
@@ -773,6 +783,17 @@ fn prepend_missing_target_choice_prelude(
     }
     missing_targets.append(&mut compiled);
     missing_targets
+}
+
+/// Whether `effect` is a target-only declaration of `choice` whose choice is
+/// delegated to another player. Plain declarations keep the usual prelude.
+fn effect_declares_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_declares_target_choice(&tagged.effect, choice);
+    }
+    effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        .is_some_and(|target_only| target_only.chooser.is_some() && target_only.target == *choice)
 }
 
 fn effect_exposes_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {

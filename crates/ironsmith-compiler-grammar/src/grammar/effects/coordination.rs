@@ -1355,7 +1355,12 @@ fn classify_boundary<'a>(
                     || word == "non-token"
                     || crate::word_primitives::parse_word_prefix(word, "non-")
             })
-        && crate::object_filters::parse_object_filter(after, false).is_ok()
+        // A yes/no probe; the chosen filter is read for real later.
+        && crate::word_claims::speculative(|| {
+            crate::object_filters::parse_object_filter(after, false)
+        })
+        .0
+        .is_ok()
     {
         // A serial negative modifier is still part of the chosen object
         // filter: `choose two nontoken, non-Vehicle creatures ...`.  The
@@ -1890,7 +1895,13 @@ fn comma_continues_for_each_object_filter(
     let mut filter_tokens = filter_prefix.to_vec();
     filter_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
     filter_tokens.extend_from_slice(after);
-    crate::object_filters::parse_object_filter(&filter_tokens, false).is_ok()
+    // A yes/no probe: the comma's reading is decided here, the filter is
+    // read for real by whoever parses the joined phrase.
+    crate::word_claims::speculative(|| {
+        crate::object_filters::parse_object_filter(&filter_tokens, false)
+    })
+    .0
+    .is_ok()
 }
 
 fn comma_continues_excluded_literal_name(

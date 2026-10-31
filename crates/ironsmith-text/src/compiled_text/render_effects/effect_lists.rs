@@ -20111,6 +20111,35 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(rendered) = describe_conditional_optional_then_if_you_dont(effects) {
         return rendered;
     }
+    // "return that card and the sacrificed card to the battlefield under your
+    // control" (Rescue from the Underworld): two referenced objects moved to
+    // the same place share one return clause.
+    if let [first, second] = effects
+        && let Some(first_move) =
+            structural_unwrap_render_wrappers(first).downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && let Some(second_move) =
+            structural_unwrap_render_wrappers(second).downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && first_move.zone == Zone::Battlefield
+        && second_move.zone == Zone::Battlefield
+        && first_move.battlefield_controller == second_move.battlefield_controller
+        && !first_move.target.is_target()
+        && !second_move.target.is_target()
+    {
+        let first_text = describe_effect(first);
+        let second_text = describe_effect(second);
+        let split = |text: &str| {
+            let text = text.trim_end_matches('.');
+            let rest = text.strip_prefix("Return ").or_else(|| text.strip_prefix("return "))?;
+            let idx = rest.find(" to ")?;
+            Some((rest[..idx].to_string(), rest[idx..].to_string()))
+        };
+        if let (Some((first_object, tail)), Some((second_object, second_tail))) =
+            (split(&first_text), split(&second_text))
+            && tail == second_tail
+        {
+            return format!("Return {first_object} and {second_object}{tail}");
+        }
+    }
     // "return it to the battlefield flipped" (Homura, Human Ascendant): the
     // flip of the object just returned is part of the return instruction.
     if let [head @ .., returned, flip] = effects

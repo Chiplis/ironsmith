@@ -659,6 +659,27 @@ fn parse_exile_inner(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    // "Exile those tokens when this creature leaves the battlefield"
+    // (Mysterio, Master of Illusion): a delayed exile of the tokens the
+    // ability created, never an immediate exile of "those tokens when ...".
+    if subject.is_none()
+        && let Some(when) = tokens.iter().position(|token| token.is_word("when"))
+        && matches!(
+            crate::lexer::token_word_refs(&tokens[..when]).as_slice(),
+            ["those", "tokens"] | ["that", "token"] | ["them"] | ["it"]
+        )
+    {
+        let tail = crate::lexer::token_word_refs(&tokens[when + 1..]);
+        if let Some(source) = tail.strip_suffix(&["leaves", "the", "battlefield"][..])
+            && crate::util::is_source_reference_words(source)
+        {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(EffectAst::subject_verb_exile_when_source_leaves(TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                crate::util::span_from_tokens(&tokens[..when]),
+            )));
+        }
+    }
     if let Some(equal) = tokens.iter().position(|token| token.is_word("equal")) {
         let tail = crate::lexer::token_word_refs(&tokens[equal..]);
         if tail.as_slice() == ["equal", "to", "the", "difference"] {

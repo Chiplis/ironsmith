@@ -2070,6 +2070,8 @@ fn tagged_constraint_matches_subject(
         // "another permanent it can enchant" (Aura Graft): the tagged Aura's
         // enchant restriction and protection allow attaching it to the
         // candidate (CR 303.4), judged for the Aura's current controller.
+        // "Another" is relative to the Aura's current host: re-attaching to
+        // that permanent does nothing (CR 701.3b), so it is never a new host.
         TaggedOpbjectRelation::CouldBeEnchantedByTagged => tagged_snapshots.iter().any(|snapshot| {
             let aura_id = if game.object(snapshot.object_id).is_some() {
                 Some(snapshot.object_id)
@@ -2079,6 +2081,13 @@ fn tagged_constraint_matches_subject(
             let Some(aura_id) = aura_id else {
                 return false;
             };
+            let current_host = game
+                .object(aura_id)
+                .and_then(|aura| aura.attached_to)
+                .and_then(|target| target.object_id());
+            if current_host == Some(subject.subject_object_id()) {
+                return false;
+            }
             let controller = game
                 .object(aura_id)
                 .map(|aura| game.controller_of(aura))
@@ -3586,6 +3595,10 @@ impl PlayerFilterExt for PlayerFilter {
             // order and are handled by `player_filter_matches_game`.
             PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => false,
 
+            // The monarch designation is game state, read by
+            // `player_filter_matches_game`.
+            PlayerFilter::Monarch => false,
+
             PlayerFilter::Active => ctx.active_player.is_some_and(|ap| player == ap),
 
             PlayerFilter::Defending => {
@@ -3896,6 +3909,7 @@ pub(crate) fn player_filter_matches_game(
                 game.are_opponents(you, candidate)
             }) == Some(player)
         }),
+        PlayerFilter::Monarch => game.is_monarch(player),
         PlayerFilter::PlayerToYourRight => ctx.you.is_some_and(|you| {
             game.closest_in_game_player_to_right_matching(you, |_| true) == Some(player)
         }),
@@ -4377,6 +4391,10 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(required_set_name) = &self.name_originally_printed_in_set
             && !subject_has_name_originally_printed_in_set(subject, required_set_name, game)
         {
+            return false;
+        }
+        // "creatures that don't have a name" (Pompous Gadabout, CR 708.2a).
+        if self.nameless && !name_is_nameless(subject.tail_name()) {
             return false;
         }
 
@@ -5474,7 +5492,7 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 // "target creature the player to your left controls".
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight | PlayerFilter::Monarch => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
                     }
@@ -5634,7 +5652,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight | PlayerFilter::Monarch => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::Defending => "the defending player owns".to_string(),
@@ -6255,6 +6273,16 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.was_blocked_this_turn {
             post_noun_qualifiers.push("that was blocked this turn".to_string());
+        }
+        if self.attacked_during_controllers_last_turn {
+            post_noun_qualifiers.push(
+                if self.union_surface.plural_object_noun() {
+                    "that attacked during their controller's last turn"
+                } else {
+                    "that attacked during its controller's last turn"
+                }
+                .to_string(),
+            );
         }
         if self.didnt_attack_this_turn {
             let clause = if self.could_have_attacked_this_turn {

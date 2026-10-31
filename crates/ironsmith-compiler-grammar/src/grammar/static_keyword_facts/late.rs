@@ -313,6 +313,8 @@ pub struct CopyActivatedAbilitiesFact {
     pub filter_end_token: usize,
     pub only_loyalty: bool,
     pub exclude_mana_abilities: bool,
+    /// "... except for loyalty abilities" (Scheming Fence).
+    pub exclude_loyalty_abilities: bool,
     pub once_each_turn_word_start: Option<usize>,
     pub exclude_source_name: bool,
 }
@@ -967,6 +969,20 @@ pub fn parse_copy_activated_abilities_tokens(
     ).map(|(relative, _, _)| filter_start_token + relative);
     let exclude_mana_abilities = excluded_mana_start.is_some();
     let filter_end_token = excluded_mana_start.unwrap_or(filter_end_token);
+    let excluded_loyalty_start = primitives::find_prefix(
+        &tokens[filter_start_token..filter_end_token],
+        || {
+            (
+                alt((
+                    semantic_phrase(&["except", "for", "loyalty", "abilities"]),
+                    semantic_phrase(&["except", "loyalty", "abilities"]),
+                )),
+                semantic_finish,
+            )
+        },
+    ).map(|(relative, _, _)| filter_start_token + relative);
+    let exclude_loyalty_abilities = excluded_loyalty_start.is_some();
+    let filter_end_token = excluded_loyalty_start.unwrap_or(filter_end_token);
     let once_each_turn_word_start = once_each_turn_token_start
         .and_then(|token_start| semantic_word_count(&tokens[..token_start]));
     let exclude_source_name = tokens_have_parser(tokens, || {
@@ -983,6 +999,7 @@ pub fn parse_copy_activated_abilities_tokens(
         filter_end_token,
         only_loyalty,
         exclude_mana_abilities,
+        exclude_loyalty_abilities,
         once_each_turn_word_start,
         exclude_source_name,
     })

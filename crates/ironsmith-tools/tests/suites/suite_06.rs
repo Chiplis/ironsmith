@@ -71,6 +71,9 @@ mod r#runtime_return_morph_kicker_reproductions;
 #[path = "../runtime_semantic_reproductions.rs"]
 mod r#runtime_semantic_reproductions;
 
+#[path = "../runtime_smoke_names.rs"]
+mod r#runtime_smoke_names;
+
 #[path = "../runtime_spell_alt_tap_reproductions.rs"]
 mod r#runtime_spell_alt_tap_reproductions;
 

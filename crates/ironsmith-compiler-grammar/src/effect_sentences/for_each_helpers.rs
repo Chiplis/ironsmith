@@ -105,8 +105,19 @@ pub fn parse_for_each_object_subject(
 pub fn parse_for_each_object_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
-    let mut filter = parse_object_filter(filter_tokens, false)?;
     let words = crate::lexer::token_word_refs(filter_tokens);
+    // "for each card type among noncreature spells you've cast this turn"
+    // (Hurkyl, Master Wizard) iterates characteristics, not objects.
+    if matches!(
+        words.as_slice(),
+        ["card" | "creature", "type" | "types", "among", ..] | ["color" | "colors", "among", ..]
+    ) {
+        return Err(CardTextError::ParseError(format!(
+            "for-each characteristic iteration is not an object filter (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+    let mut filter = parse_object_filter(filter_tokens, false)?;
     if crate::word_primitives::sequence_occurs(&words, &["chosen", "this", "way"]) {
         filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Chosen));
         filter = filter.match_tagged(

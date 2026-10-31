@@ -3349,6 +3349,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::OpponentToYourLeft => {
                 "as long as the opponent to your left is the monarch".to_string()
             }
+            crate::target::PlayerFilter::Monarch => {
+                "as long as there is a monarch".to_string()
+            }
             crate::target::PlayerFilter::PlayerToYourRight => {
                 "as long as the player to your right is the monarch".to_string()
             }
@@ -5611,6 +5614,27 @@ impl StaticAbilityKind for SoulbondSharedBonus {
     }
 }
 
+/// The semantic audit's reading of a list of abilities ("flying and first
+/// strike"): each from the installed structural reader, or an explicit
+/// marker when none handles it.
+fn audited_ability_list(abilities: &[Ability]) -> String {
+    let readings = abilities
+        .iter()
+        .map(|ability| {
+            ironsmith_core::semantic_audit::audited_value("Ability", ability, ability)
+                .trim()
+                .trim_end_matches('.')
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    match readings.as_slice() {
+        [] => String::new(),
+        [only] => only.clone(),
+        [first, second] => format!("{first} and {second}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    }
+}
+
 /// Remove ability: "Creatures lose [ability]"
 #[derive(Debug, Clone)]
 pub struct RemoveAbilityForFilter {
@@ -5702,13 +5726,20 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
             || subject.starts_with("this ")
             || subject.starts_with("that ");
         let verb = if singular_subject { "loses" } else { "lose" };
+        // `display` is the authored list of lost abilities; an audit reads
+        // each lost ability from its model instead.
+        let lost = if ironsmith_core::semantic_audit::semantic_audit_active() {
+            audited_ability_list(&self.abilities)
+        } else {
+            self.display.clone()
+        };
         // Keyword names render lowercase mid-sentence ("lose trample", not
         // "lose Trample"); non-keyword displays (quoted ability text) keep
         // their original casing.
         let ability_text = if self.abilities.iter().all(object_ability_is_static_keyword) {
-            self.display.to_ascii_lowercase()
+            lost.to_ascii_lowercase()
         } else {
-            self.display.clone()
+            lost
         };
         let suffix = match self.mode {
             ironsmith_core::AbilityLossMode::Lose => String::new(),
@@ -6155,6 +6186,8 @@ pub struct CopyActivatedAbilities {
     pub force_once_each_turn: bool,
     pub condition: Option<crate::ConditionExpr>,
     pub display: String,
+    /// "... except for loyalty abilities" (Scheming Fence).
+    pub exclude_loyalty: bool,
 }
 
 impl CopyActivatedAbilities {
@@ -6167,6 +6200,7 @@ impl CopyActivatedAbilities {
             exclude_source_name: false,
             exclude_source_id: true,
             force_once_each_turn: false,
+            exclude_loyalty: false,
             condition: None,
             display: "Has all activated abilities of matching objects".to_string(),
         }
@@ -6240,6 +6274,7 @@ impl StaticAbilityKind for CopyActivatedAbilities {
                     exclude_source_name: self.exclude_source_name,
                     exclude_source_id: self.exclude_source_id,
                     force_once_each_turn: self.force_once_each_turn,
+                    exclude_loyalty: self.exclude_loyalty,
                 },
             )
             .with_source_type(EffectSourceType::StaticAbility),

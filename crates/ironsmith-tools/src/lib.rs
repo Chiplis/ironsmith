@@ -2,6 +2,10 @@ pub mod corpus;
 pub mod serde_tag_keys;
 pub mod runtime_audit;
 mod tooling;
+// Shared with the renderer regressions and the corpus audit example; the
+// corpus sync uses it to find semantic audit lines that read retained prose.
+#[path = "../tests/support/semantic_audit_probes.rs"]
+pub(crate) mod semantic_audit_probes;
 
 pub use ironsmith_registry::{
     CompilerIntegrationError, compile_builder_to_runtime_definition, compile_to_runtime_definition,

@@ -902,7 +902,20 @@ fn read_untap_each_other_players_untap_step_line(
     let tokens = input.tokens;
     if let Some(spec) = split_untap_each_other_players_untap_step_line_lexed(tokens) {
         let subject_tokens = trim_commas(spec.subject_tokens);
-        let filter = parse_object_filter(&subject_tokens, false)?;
+        // "Untap each creature you control ..." (Prop Room): the
+        // distributive "each" quantifies the group, like "all" above.
+        let filter_tokens = match subject_tokens.split_first() {
+            Some((each, rest))
+                if !rest.is_empty()
+                    && !rest[0].as_word().is_some_and(|word| word.eq_ignore_ascii_case("of"))
+                    && each.is_word("each") =>
+            {
+                crate::word_claims::claim_tokens(std::slice::from_ref(each));
+                rest
+            }
+            _ => &subject_tokens[..],
+        };
+        let filter = parse_object_filter(filter_tokens, false)?;
         let subject_text = crate::lexer::token_word_refs(&subject_tokens).join(" ");
         let step = if spec.opponents_only { "each opponent's" } else { "each other player's" };
         let display = if spec.untap_all {

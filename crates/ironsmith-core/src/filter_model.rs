@@ -1469,8 +1469,9 @@ pub enum TaggedOpbjectRelation {
     /// Runesword). Appended for wire stability.
     WasDealtDamageByTaggedThisTurn,
     /// The tagged Aura could legally be attached to the candidate (its
-    /// enchant ability and protection, CR 303.4): "another permanent it can
-    /// enchant" (Aura Graft). Appended for wire stability.
+    /// enchant ability and protection, CR 303.4) and is not the permanent it
+    /// is attached to now: "another permanent it can enchant" (Aura Graft).
+    /// Appended for wire stability.
     CouldBeEnchantedByTagged,
 }
 
@@ -1863,6 +1864,10 @@ pub enum PlayerFilter {
     /// `PlayerToYourLeft` when a teammate sits there. Appended to preserve
     /// serialized ordinals.
     OpponentToYourLeft,
+    /// "the monarch" (Azure Fleet Admiral, CR 724): the player who currently
+    /// has the monarch designation; matches no one while there is none.
+    /// Appended to preserve serialized ordinals.
+    Monarch,
 }
 
 /// A per-player quantity compared by [`PlayerFilter::QuantityGreaterThanPlayer`].
@@ -2070,6 +2075,7 @@ impl PlayerFilter {
             | Self::Teammate
             | Self::PlayerToYourLeft
             | Self::OpponentToYourLeft
+            | Self::Monarch
             | Self::PlayerToYourRight
             | Self::Active
             | Self::Defending
@@ -2103,6 +2109,7 @@ impl PlayerFilter {
             Self::Teammate => "a teammate".to_string(),
             Self::PlayerToYourLeft => "the player to your left".to_string(),
             Self::OpponentToYourLeft => "the opponent to your left".to_string(),
+            Self::Monarch => "the monarch".to_string(),
             Self::PlayerToYourRight => "the player to your right".to_string(),
             Self::Active => "the active player".to_string(),
             Self::Defending => "the defending player".to_string(),
@@ -2581,7 +2588,7 @@ impl SectorPredicate {
 
 /// Filter for selecting objects (permanents, spells, cards).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+#[derive(Clone, PartialEq, Default, TagKeyWalk)]
 pub struct ObjectFilter {
     pub zone: Option<Zone>,
     /// Match a saved reference only while that exact object still exists,
@@ -2787,6 +2794,11 @@ pub struct ObjectFilter {
     #[cfg_attr(feature = "serde", serde(default))]
     pub was_blocked_this_turn: bool,
     pub didnt_attack_this_turn: bool,
+    /// Requires a creature that attacked during its controller's most recent
+    /// turn ("creatures that attacked during their controller's last turn",
+    /// Halls of Mist).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub attacked_during_controllers_last_turn: bool,
     /// Requires a creature that is legally able to attack. This is used with
     /// turn history for instructions that affect creatures that did not
     /// attack, except for creatures that couldn't attack.
@@ -3009,6 +3021,10 @@ pub struct ObjectFilter {
     /// The candidate's current name must belong to an oracle identity whose
     /// earliest eligible paper printing was in this expansion.
     pub name_originally_printed_in_set: Option<String>,
+    /// The candidate has no name ("creatures that don't have a name",
+    /// Pompous Gadabout): a face-down object (CR 708.2a).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub nameless: bool,
     pub distinct_names: bool,
     /// Selection-set constraint: chosen objects must have pairwise distinct
     /// mana values. This does not change whether an individual object matches.
@@ -3095,6 +3111,527 @@ pub struct ObjectFilter {
     /// to any of these source-owned rule modifications.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub excluded_rules: Vec<crate::value_model::ObjectRule>,
+    /// The audited filter parse that produced this filter (compiler
+    /// word-claim audit only); never part of the filter's meaning.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    #[tag_walk(skip)]
+    pub claim_origin: ClaimOrigin,
+}
+
+/// Which audited object-filter parse produced a filter, for the compiler's
+/// word-claim audit: a card check traces an obligation ("this parse left
+/// these words unread") to the filter the card kept by this id rather than
+/// by matching debug text. Pure metadata: filters compare equal and hash
+/// alike whatever their origin, serde skips it, and `Debug` shows it only
+/// inside [`with_claim_origins_in_debug`], so every other debug-text use
+/// (identities, digests, the audit's own text comparisons) is unchanged.
+#[derive(Clone, Copy, Default)]
+pub struct ClaimOrigin(Option<u32>);
+
+impl ClaimOrigin {
+    pub const fn new(id: u32) -> Self {
+        Self(Some(id))
+    }
+
+    pub const fn id(self) -> Option<u32> {
+        self.0
+    }
+
+    pub const fn is_none(self) -> bool {
+        self.0.is_none()
+    }
+}
+
+impl PartialEq for ClaimOrigin {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for ClaimOrigin {}
+
+impl std::hash::Hash for ClaimOrigin {
+    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
+}
+
+impl std::fmt::Debug for ClaimOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Some(id) => write!(f, "ClaimOrigin({id})"),
+            None => f.write_str("ClaimOrigin(-)"),
+        }
+    }
+}
+
+thread_local! {
+    static SHOW_CLAIM_ORIGINS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `f` with `ObjectFilter`'s `Debug` including each stamped
+/// [`ClaimOrigin`] (`claim_origin: ClaimOrigin(<id>)`), on this thread only.
+pub fn with_claim_origins_in_debug<T>(f: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SHOW_CLAIM_ORIGINS.with(|show| show.set(self.0));
+        }
+    }
+    let _restore = Restore(SHOW_CLAIM_ORIGINS.with(|show| show.replace(true)));
+    f()
+}
+
+// Written out only so `claim_origin` stays out of the output (see
+// `ClaimOrigin`); otherwise exactly the derived form. The destructuring is
+// exhaustive, so a new field does not compile until it is listed here.
+impl std::fmt::Debug for ObjectFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            zone,
+            match_current_state,
+            use_face_up_characteristics,
+            renowned,
+            controller,
+            cast_by,
+            excluded_cast_origin_zone,
+            cast_this_turn,
+            first_spell_cast_each_turn,
+            shares_color_with_last_spell_cast_this_turn,
+            spell_cast_ordinal_each_turn,
+            spell_cast_minimum_each_turn,
+            mana_from_source_spent_to_cast,
+            owner,
+            single_graveyard,
+            targets_player,
+            targets_object,
+            targets_any_of,
+            stack_kind,
+            target_count,
+            target_set_same_controller,
+            target_set_different_controllers,
+            target_controller_fixed_on_announcement,
+            target_set_shared_creature_type,
+            target_set_equal_metric,
+            target_set_aggregate_constraint,
+            targets_only_player,
+            targets_only_object,
+            targets_only_any_of,
+            could_be_targeted_by,
+            not_targeted_by_ability_from,
+            would_destroy_object,
+            card_types,
+            all_card_types,
+            card_type_count,
+            creature_type_count,
+            excluded_card_types,
+            subtypes,
+            all_subtypes,
+            type_or_subtype_union,
+            union_surface,
+            excluded_subtypes,
+            supertypes,
+            excluded_supertypes,
+            colors,
+            required_colors,
+            chosen_color,
+            colors_chosen_while_drafting_named,
+            name_noted_while_drafting_named,
+            creature_types_noted_while_drafting_named,
+            exiled_with_cards_named,
+            chosen_land_type,
+            has_basic_land_type,
+            has_nonbasic_land_type,
+            chosen_creature_type,
+            chosen_card_type,
+            excluded_chosen_creature_type,
+            excluded_any_chosen_creature_type,
+            excluded_colors,
+            colorless,
+            multicolored,
+            double_faced,
+            monocolored,
+            all_colors,
+            exactly_two_colors,
+            color_count,
+            historic,
+            nonhistoric,
+            modified,
+            suspected,
+            transformed,
+            goaded,
+            prepared,
+            ring_bearer,
+            sector,
+            sticker,
+            token,
+            nontoken,
+            face_down,
+            foretold,
+            warped,
+            other,
+            tapped,
+            untapped,
+            attacking,
+            attacking_alone,
+            blocking_alone,
+            attacked_this_turn,
+            attacked_player_this_turn,
+            ability_activated_this_turn,
+            blocked_this_turn,
+            was_blocked_this_turn,
+            didnt_attack_this_turn,
+            attacked_during_controllers_last_turn,
+            could_have_attacked_this_turn,
+            attacking_player_or_planeswalker_controlled_by,
+            attacking_player_only,
+            protected_by,
+            attached_to_object,
+            attached_to_player,
+            with_attached_object,
+            without_attached_object,
+            could_enchant_object,
+            controller_controls,
+            nonattacking,
+            enlist_eligible,
+            blocking,
+            nonblocking,
+            blocked,
+            blocked_by,
+            blocked_by_source,
+            blocked_source_this_turn,
+            crewed_by_source_this_turn,
+            tapped_to_pay_for_source_abilities_this_turn,
+            not_phased_out_with_source,
+            blocked_or_was_blocked_by_this_turn,
+            unblocked,
+            is_target_object,
+            in_combat_with_source,
+            attacking_same_defender_as_source,
+            could_be_enchanted_by_source,
+            in_combat_with,
+            entered_since_your_last_turn_ended,
+            controlled_continuously_since_turn_began,
+            didnt_enter_battlefield_this_turn,
+            entered_battlefield_this_turn,
+            entered_battlefield_controller,
+            turned_face_up_this_turn,
+            put_onto_battlefield_with_source,
+            put_onto_battlefield_with_source_surface,
+            assimilated_with_source,
+            assimilated_with_source_surface,
+            created_with_source,
+            created_with_source_surface,
+            entered_graveyard_this_turn,
+            entered_graveyard_from_battlefield_this_turn,
+            entered_graveyard_from_library_this_turn,
+            entered_graveyard_not_from_battlefield_this_turn,
+            not_put_into_graveyard_this_combat,
+            milled_into_graveyard_this_turn,
+            surveilled_this_turn,
+            fought_this_turn,
+            attacking_battle,
+            counters_put_on_this_turn,
+            counter_source_history,
+            discarded_or_cycled_this_turn_by,
+            was_dealt_damage_this_turn,
+            dealt_damage_this_turn,
+            dealt_damage_by_source_this_turn,
+            was_dealt_damage_by_source_this_game,
+            dealt_damage_to_player_this_turn,
+            dealt_damage_to_player_this_turn_combat_only,
+            drawn_this_turn,
+            power,
+            power_parity,
+            power_reference,
+            power_relative_to_source,
+            power_greater_than_base_power,
+            power_comparison_to_base,
+            power_toughness_relation,
+            toughness,
+            toughness_reference,
+            total_power_toughness,
+            mana_value,
+            mana_value_parity,
+            mana_value_eq_counters_on_source,
+            exact_mana_cost,
+            mana_cost_payable_with,
+            has_mana_cost,
+            has_phyrexian_mana_symbol,
+            could_produce_mana,
+            has_tap_activated_ability,
+            has_non_mana_activated_ability,
+            no_abilities,
+            no_x_in_cost,
+            has_x_in_cost,
+            with_counter,
+            without_counter,
+            total_counters_parity,
+            name,
+            name_surface,
+            excluded_name,
+            excluded_name_surface,
+            name_originally_printed_in_set,
+            nameless,
+            distinct_names,
+            distinct_mana_values,
+            distinct_powers,
+            distinct_creature_types,
+            shares_land_type,
+            one_per_card_type,
+            alternative_cast,
+            static_abilities,
+            excluded_static_abilities,
+            has_cumulative_upkeep,
+            ability_markers,
+            excluded_ability_markers,
+            no_shared_creature_types_with,
+            characteristic_relations,
+            shares_creature_type_with_source,
+            is_commander,
+            noncommander,
+            tagged_constraints,
+            specific,
+            any_of,
+            source,
+            source_surface,
+            shares_name,
+            shares_color,
+            has_activated_ability,
+            shares_card_type,
+            last_drawn_this_turn,
+            mana_symbol_count,
+            colored_mana_symbol_count,
+            physical_card,
+            not_cast,
+            match_captured_public_destination,
+            castable_face_match,
+            excluded_rules,
+            claim_origin,
+        } = self;
+        let mut out = f.debug_struct("ObjectFilter");
+        out.field("zone", zone);
+        out.field("match_current_state", match_current_state);
+        out.field("use_face_up_characteristics", use_face_up_characteristics);
+        out.field("renowned", renowned);
+        out.field("controller", controller);
+        out.field("cast_by", cast_by);
+        out.field("excluded_cast_origin_zone", excluded_cast_origin_zone);
+        out.field("cast_this_turn", cast_this_turn);
+        out.field("first_spell_cast_each_turn", first_spell_cast_each_turn);
+        out.field("shares_color_with_last_spell_cast_this_turn", shares_color_with_last_spell_cast_this_turn);
+        out.field("spell_cast_ordinal_each_turn", spell_cast_ordinal_each_turn);
+        out.field("spell_cast_minimum_each_turn", spell_cast_minimum_each_turn);
+        out.field("mana_from_source_spent_to_cast", mana_from_source_spent_to_cast);
+        out.field("owner", owner);
+        out.field("single_graveyard", single_graveyard);
+        out.field("targets_player", targets_player);
+        out.field("targets_object", targets_object);
+        out.field("targets_any_of", targets_any_of);
+        out.field("stack_kind", stack_kind);
+        out.field("target_count", target_count);
+        out.field("target_set_same_controller", target_set_same_controller);
+        out.field("target_set_different_controllers", target_set_different_controllers);
+        out.field("target_controller_fixed_on_announcement", target_controller_fixed_on_announcement);
+        out.field("target_set_shared_creature_type", target_set_shared_creature_type);
+        out.field("target_set_equal_metric", target_set_equal_metric);
+        out.field("target_set_aggregate_constraint", target_set_aggregate_constraint);
+        out.field("targets_only_player", targets_only_player);
+        out.field("targets_only_object", targets_only_object);
+        out.field("targets_only_any_of", targets_only_any_of);
+        out.field("could_be_targeted_by", could_be_targeted_by);
+        out.field("not_targeted_by_ability_from", not_targeted_by_ability_from);
+        out.field("would_destroy_object", would_destroy_object);
+        out.field("card_types", card_types);
+        out.field("all_card_types", all_card_types);
+        out.field("card_type_count", card_type_count);
+        out.field("creature_type_count", creature_type_count);
+        out.field("excluded_card_types", excluded_card_types);
+        out.field("subtypes", subtypes);
+        out.field("all_subtypes", all_subtypes);
+        out.field("type_or_subtype_union", type_or_subtype_union);
+        out.field("union_surface", union_surface);
+        out.field("excluded_subtypes", excluded_subtypes);
+        out.field("supertypes", supertypes);
+        out.field("excluded_supertypes", excluded_supertypes);
+        out.field("colors", colors);
+        out.field("required_colors", required_colors);
+        out.field("chosen_color", chosen_color);
+        out.field("colors_chosen_while_drafting_named", colors_chosen_while_drafting_named);
+        out.field("name_noted_while_drafting_named", name_noted_while_drafting_named);
+        out.field("creature_types_noted_while_drafting_named", creature_types_noted_while_drafting_named);
+        out.field("exiled_with_cards_named", exiled_with_cards_named);
+        out.field("chosen_land_type", chosen_land_type);
+        out.field("has_basic_land_type", has_basic_land_type);
+        out.field("has_nonbasic_land_type", has_nonbasic_land_type);
+        out.field("chosen_creature_type", chosen_creature_type);
+        out.field("chosen_card_type", chosen_card_type);
+        out.field("excluded_chosen_creature_type", excluded_chosen_creature_type);
+        out.field("excluded_any_chosen_creature_type", excluded_any_chosen_creature_type);
+        out.field("excluded_colors", excluded_colors);
+        out.field("colorless", colorless);
+        out.field("multicolored", multicolored);
+        out.field("double_faced", double_faced);
+        out.field("monocolored", monocolored);
+        out.field("all_colors", all_colors);
+        out.field("exactly_two_colors", exactly_two_colors);
+        out.field("color_count", color_count);
+        out.field("historic", historic);
+        out.field("nonhistoric", nonhistoric);
+        out.field("modified", modified);
+        out.field("suspected", suspected);
+        out.field("transformed", transformed);
+        out.field("goaded", goaded);
+        out.field("prepared", prepared);
+        out.field("ring_bearer", ring_bearer);
+        out.field("sector", sector);
+        out.field("sticker", sticker);
+        out.field("token", token);
+        out.field("nontoken", nontoken);
+        out.field("face_down", face_down);
+        out.field("foretold", foretold);
+        out.field("warped", warped);
+        out.field("other", other);
+        out.field("tapped", tapped);
+        out.field("untapped", untapped);
+        out.field("attacking", attacking);
+        out.field("attacking_alone", attacking_alone);
+        out.field("blocking_alone", blocking_alone);
+        out.field("attacked_this_turn", attacked_this_turn);
+        out.field("attacked_player_this_turn", attacked_player_this_turn);
+        out.field("ability_activated_this_turn", ability_activated_this_turn);
+        out.field("blocked_this_turn", blocked_this_turn);
+        out.field("was_blocked_this_turn", was_blocked_this_turn);
+        out.field("didnt_attack_this_turn", didnt_attack_this_turn);
+        out.field("attacked_during_controllers_last_turn", attacked_during_controllers_last_turn);
+        out.field("could_have_attacked_this_turn", could_have_attacked_this_turn);
+        out.field("attacking_player_or_planeswalker_controlled_by", attacking_player_or_planeswalker_controlled_by);
+        out.field("attacking_player_only", attacking_player_only);
+        out.field("protected_by", protected_by);
+        out.field("attached_to_object", attached_to_object);
+        out.field("attached_to_player", attached_to_player);
+        out.field("with_attached_object", with_attached_object);
+        out.field("without_attached_object", without_attached_object);
+        out.field("could_enchant_object", could_enchant_object);
+        out.field("controller_controls", controller_controls);
+        out.field("nonattacking", nonattacking);
+        out.field("enlist_eligible", enlist_eligible);
+        out.field("blocking", blocking);
+        out.field("nonblocking", nonblocking);
+        out.field("blocked", blocked);
+        out.field("blocked_by", blocked_by);
+        out.field("blocked_by_source", blocked_by_source);
+        out.field("blocked_source_this_turn", blocked_source_this_turn);
+        out.field("crewed_by_source_this_turn", crewed_by_source_this_turn);
+        out.field("tapped_to_pay_for_source_abilities_this_turn", tapped_to_pay_for_source_abilities_this_turn);
+        out.field("not_phased_out_with_source", not_phased_out_with_source);
+        out.field("blocked_or_was_blocked_by_this_turn", blocked_or_was_blocked_by_this_turn);
+        out.field("unblocked", unblocked);
+        out.field("is_target_object", is_target_object);
+        out.field("in_combat_with_source", in_combat_with_source);
+        out.field("attacking_same_defender_as_source", attacking_same_defender_as_source);
+        out.field("could_be_enchanted_by_source", could_be_enchanted_by_source);
+        out.field("in_combat_with", in_combat_with);
+        out.field("entered_since_your_last_turn_ended", entered_since_your_last_turn_ended);
+        out.field("controlled_continuously_since_turn_began", controlled_continuously_since_turn_began);
+        out.field("didnt_enter_battlefield_this_turn", didnt_enter_battlefield_this_turn);
+        out.field("entered_battlefield_this_turn", entered_battlefield_this_turn);
+        out.field("entered_battlefield_controller", entered_battlefield_controller);
+        out.field("turned_face_up_this_turn", turned_face_up_this_turn);
+        out.field("put_onto_battlefield_with_source", put_onto_battlefield_with_source);
+        out.field("put_onto_battlefield_with_source_surface", put_onto_battlefield_with_source_surface);
+        out.field("assimilated_with_source", assimilated_with_source);
+        out.field("assimilated_with_source_surface", assimilated_with_source_surface);
+        out.field("created_with_source", created_with_source);
+        out.field("created_with_source_surface", created_with_source_surface);
+        out.field("entered_graveyard_this_turn", entered_graveyard_this_turn);
+        out.field("entered_graveyard_from_battlefield_this_turn", entered_graveyard_from_battlefield_this_turn);
+        out.field("entered_graveyard_from_library_this_turn", entered_graveyard_from_library_this_turn);
+        out.field("entered_graveyard_not_from_battlefield_this_turn", entered_graveyard_not_from_battlefield_this_turn);
+        out.field("not_put_into_graveyard_this_combat", not_put_into_graveyard_this_combat);
+        out.field("milled_into_graveyard_this_turn", milled_into_graveyard_this_turn);
+        out.field("surveilled_this_turn", surveilled_this_turn);
+        out.field("fought_this_turn", fought_this_turn);
+        out.field("attacking_battle", attacking_battle);
+        out.field("counters_put_on_this_turn", counters_put_on_this_turn);
+        out.field("counter_source_history", counter_source_history);
+        out.field("discarded_or_cycled_this_turn_by", discarded_or_cycled_this_turn_by);
+        out.field("was_dealt_damage_this_turn", was_dealt_damage_this_turn);
+        out.field("dealt_damage_this_turn", dealt_damage_this_turn);
+        out.field("dealt_damage_by_source_this_turn", dealt_damage_by_source_this_turn);
+        out.field("was_dealt_damage_by_source_this_game", was_dealt_damage_by_source_this_game);
+        out.field("dealt_damage_to_player_this_turn", dealt_damage_to_player_this_turn);
+        out.field("dealt_damage_to_player_this_turn_combat_only", dealt_damage_to_player_this_turn_combat_only);
+        out.field("drawn_this_turn", drawn_this_turn);
+        out.field("power", power);
+        out.field("power_parity", power_parity);
+        out.field("power_reference", power_reference);
+        out.field("power_relative_to_source", power_relative_to_source);
+        out.field("power_greater_than_base_power", power_greater_than_base_power);
+        out.field("power_comparison_to_base", power_comparison_to_base);
+        out.field("power_toughness_relation", power_toughness_relation);
+        out.field("toughness", toughness);
+        out.field("toughness_reference", toughness_reference);
+        out.field("total_power_toughness", total_power_toughness);
+        out.field("mana_value", mana_value);
+        out.field("mana_value_parity", mana_value_parity);
+        out.field("mana_value_eq_counters_on_source", mana_value_eq_counters_on_source);
+        out.field("exact_mana_cost", exact_mana_cost);
+        out.field("mana_cost_payable_with", mana_cost_payable_with);
+        out.field("has_mana_cost", has_mana_cost);
+        out.field("has_phyrexian_mana_symbol", has_phyrexian_mana_symbol);
+        out.field("could_produce_mana", could_produce_mana);
+        out.field("has_tap_activated_ability", has_tap_activated_ability);
+        out.field("has_non_mana_activated_ability", has_non_mana_activated_ability);
+        out.field("no_abilities", no_abilities);
+        out.field("no_x_in_cost", no_x_in_cost);
+        out.field("has_x_in_cost", has_x_in_cost);
+        out.field("with_counter", with_counter);
+        out.field("without_counter", without_counter);
+        out.field("total_counters_parity", total_counters_parity);
+        out.field("name", name);
+        out.field("name_surface", name_surface);
+        out.field("excluded_name", excluded_name);
+        out.field("excluded_name_surface", excluded_name_surface);
+        out.field("name_originally_printed_in_set", name_originally_printed_in_set);
+        out.field("nameless", nameless);
+        out.field("distinct_names", distinct_names);
+        out.field("distinct_mana_values", distinct_mana_values);
+        out.field("distinct_powers", distinct_powers);
+        out.field("distinct_creature_types", distinct_creature_types);
+        out.field("shares_land_type", shares_land_type);
+        out.field("one_per_card_type", one_per_card_type);
+        out.field("alternative_cast", alternative_cast);
+        out.field("static_abilities", static_abilities);
+        out.field("excluded_static_abilities", excluded_static_abilities);
+        out.field("has_cumulative_upkeep", has_cumulative_upkeep);
+        out.field("ability_markers", ability_markers);
+        out.field("excluded_ability_markers", excluded_ability_markers);
+        out.field("no_shared_creature_types_with", no_shared_creature_types_with);
+        out.field("characteristic_relations", characteristic_relations);
+        out.field("shares_creature_type_with_source", shares_creature_type_with_source);
+        out.field("is_commander", is_commander);
+        out.field("noncommander", noncommander);
+        out.field("tagged_constraints", tagged_constraints);
+        out.field("specific", specific);
+        out.field("any_of", any_of);
+        out.field("source", source);
+        out.field("source_surface", source_surface);
+        out.field("shares_name", shares_name);
+        out.field("shares_color", shares_color);
+        out.field("has_activated_ability", has_activated_ability);
+        out.field("shares_card_type", shares_card_type);
+        out.field("last_drawn_this_turn", last_drawn_this_turn);
+        out.field("mana_symbol_count", mana_symbol_count);
+        out.field("colored_mana_symbol_count", colored_mana_symbol_count);
+        out.field("physical_card", physical_card);
+        out.field("not_cast", not_cast);
+        out.field("match_captured_public_destination", match_captured_public_destination);
+        out.field("castable_face_match", castable_face_match);
+        out.field("excluded_rules", excluded_rules);
+        if !claim_origin.is_none() && SHOW_CLAIM_ORIGINS.with(std::cell::Cell::get) {
+            out.field("claim_origin", claim_origin);
+        }
+        out.finish()
+    }
 }
 
 impl ObjectFilter {
@@ -3836,6 +4373,7 @@ impl ObjectFilter {
             || self.name.is_some()
             || self.excluded_name.is_some()
             || self.name_originally_printed_in_set.is_some()
+            || self.nameless
             || self.distinct_mana_values
             || self.shares_land_type
             || self.one_per_card_type
@@ -5411,7 +5949,7 @@ impl ObjectFilter {
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 // "target creature the player to your left controls".
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight | PlayerFilter::Monarch => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
                     }
@@ -5646,7 +6184,7 @@ impl ObjectFilter {
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight | PlayerFilter::Monarch => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::Defending => "the defending player owns".to_string(),
@@ -5808,6 +6346,16 @@ impl ObjectFilter {
             post_noun_qualifiers.push(format!(
                 "with a name originally printed in the {set_name} expansion"
             ));
+        }
+        if self.nameless {
+            post_noun_qualifiers.push(
+                if self.union_surface.plural_object_noun() {
+                    "that don't have a name"
+                } else {
+                    "that doesn't have a name"
+                }
+                .to_string(),
+            );
         }
         if let Some(card_name) = &self.creature_types_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("of a type you noted for cards named {card_name}"));
@@ -6490,6 +7038,16 @@ impl ObjectFilter {
                 "that had an ability activated this turn"
             };
             post_noun_qualifiers.push(clause.to_string());
+        }
+        if self.attacked_during_controllers_last_turn {
+            post_noun_qualifiers.push(
+                if self.union_surface.plural_object_noun() {
+                    "that attacked during their controller's last turn"
+                } else {
+                    "that attacked during its controller's last turn"
+                }
+                .to_string(),
+            );
         }
         if self.blocked_this_turn {
             post_noun_qualifiers.push("that blocked this turn".to_string());
@@ -8878,6 +9436,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Teammate => "a teammate's".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left's".to_string(),
         PlayerFilter::OpponentToYourLeft => "the opponent to your left's".to_string(),
+        PlayerFilter::Monarch => "the monarch's".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right's".to_string(),
         PlayerFilter::Active => "the active player's".to_string(),
         PlayerFilter::Defending => "the defending player's".to_string(),
@@ -8995,6 +9554,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Teammate => "teammate".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
         PlayerFilter::OpponentToYourLeft => "the opponent to your left".to_string(),
+        PlayerFilter::Monarch => "the monarch".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::Active => "active player".to_string(),
         PlayerFilter::Defending => "defending player".to_string(),
@@ -11061,6 +11621,32 @@ mod tests {
             surfaced.description(),
             "a creature card you own in exile with a memory counter on it"
         );
+    }
+
+    #[test]
+    fn claim_origin_is_invisible_outside_the_audit_debug_scope() {
+        let plain = ObjectFilter::default().in_zone(Zone::Graveyard);
+        let mut stamped = plain.clone();
+        stamped.claim_origin = super::ClaimOrigin::new(42);
+        assert_eq!(plain, stamped);
+        assert_eq!(format!("{plain:?}"), format!("{stamped:?}"));
+        assert_eq!(format!("{plain:#?}"), format!("{stamped:#?}"));
+        assert!(!format!("{plain:?}").contains("claim_origin"));
+        let shown = super::with_claim_origins_in_debug(|| format!("{stamped:?}"));
+        assert!(shown.contains("claim_origin: ClaimOrigin(42)"));
+        assert!(!format!("{stamped:?}").contains("ClaimOrigin"));
+        // Unstamped filters print nothing even inside the scope.
+        let unstamped = super::with_claim_origins_in_debug(|| format!("{plain:?}"));
+        assert_eq!(unstamped, format!("{plain:?}"));
+        // A clone keeps the stamp.
+        assert_eq!(stamped.clone().claim_origin.id(), Some(42));
+    }
+
+    #[test]
+    fn hand_written_debug_matches_the_derived_layout() {
+        let text = format!("{:?}", ObjectFilter::default());
+        assert!(text.starts_with("ObjectFilter { zone: None, match_current_state: false, "));
+        assert!(text.ends_with("excluded_rules: [] }"));
     }
 }
 

@@ -59,6 +59,10 @@ pub struct Obligation {
     /// the reading that left the word unread is the one the card kept.
     pub filter: Rc<str>,
     pub caller: &'static Location<'static>,
+    /// The ids (`ClaimOrigin`) stamped on the filters the parses that left
+    /// the word unread returned, so the card check can find those exact
+    /// filters in the document whatever lowering did to their text.
+    pub origins: Vec<u32>,
 }
 
 /// Authored source positions read by a parse, and the words its object
@@ -101,8 +105,22 @@ impl ClaimSet {
 
     fn add_obligation(&mut self, span: SpanKey, obligation: &Obligation) {
         let existing = self.obligations.entry(span).or_default();
-        if !existing.contains(obligation) {
-            existing.push(obligation.clone());
+        // The same reading reached twice (a memo replay, a re-parse) is one
+        // obligation that any of its filters can show was kept.
+        match existing.iter_mut().find(|known| {
+            known.word == obligation.word
+                && known.input == obligation.input
+                && known.filter == obligation.filter
+                && known.caller == obligation.caller
+        }) {
+            Some(known) => {
+                for origin in &obligation.origins {
+                    if !known.origins.contains(origin) {
+                        known.origins.push(*origin);
+                    }
+                }
+            }
+            None => existing.push(obligation.clone()),
         }
     }
 
@@ -123,11 +141,12 @@ impl ClaimSet {
     }
 
     /// Record that a filter given `tokens` left their words outside `self`
-    /// unread.
+    /// unread. `origin` is the id stamped on the filter the parse returned.
     pub fn oblige_unclaimed(
         &mut self,
         tokens: &[OwnedLexToken],
         filter: impl FnOnce() -> String,
+        origin: Option<u32>,
         caller: &'static Location<'static>,
     ) {
         let mut filter = Some(filter);
@@ -150,6 +169,7 @@ impl ClaimSet {
                     input,
                     filter,
                     caller,
+                    origins: origin.into_iter().collect(),
                 },
             );
         }
@@ -169,6 +189,7 @@ impl ClaimSet {
         &mut self,
         words: &[&str],
         filter: impl FnOnce() -> String,
+        origin: Option<u32>,
         caller: &'static Location<'static>,
     ) {
         let mut filter = Some(filter);
@@ -190,6 +211,7 @@ impl ClaimSet {
                         input,
                         filter,
                         caller,
+                        origins: origin.into_iter().collect(),
                     },
                 );
             }
@@ -248,17 +270,58 @@ thread_local! {
     // Set while a caller asked for enforcement on this thread
     // (`with_enforcement`), independent of the process environment.
     static ENFORCED: Cell<bool> = const { Cell::new(false) };
+    // Set while a caller asked for whole-line enforcement on this thread
+    // (`with_line_enforcement`).
+    static LINE_ENFORCED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Whether claims are recorded: when auditing
-/// (`IRONSMITH_FILTER_CLAIM_AUDIT`) or enforcing, for the process
-/// (`IRONSMITH_FILTER_CLAIM_ENFORCE`) or inside [`with_enforcement`].
+/// (`IRONSMITH_FILTER_CLAIM_AUDIT`, `IRONSMITH_LINE_CLAIM_AUDIT`) or
+/// enforcing, for the process (`IRONSMITH_FILTER_CLAIM_ENFORCE`,
+/// `IRONSMITH_LINE_CLAIM_ENFORCE`) or inside [`with_enforcement`] /
+/// [`with_line_enforcement`].
 pub fn audit_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {
         std::env::var_os("IRONSMITH_FILTER_CLAIM_AUDIT").is_some()
             || std::env::var_os("IRONSMITH_FILTER_CLAIM_ENFORCE").is_some()
+            || line_audit_env()
     }) || enforcement_requested()
+        || line_enforcement_requested()
+}
+
+/// Whether the process asked for the whole-line audit or its enforcement.
+fn line_audit_env() -> bool {
+    std::env::var_os("IRONSMITH_LINE_CLAIM_AUDIT").is_some()
+        || std::env::var_os("IRONSMITH_LINE_CLAIM_ENFORCE").is_some()
+}
+
+/// Whether the card check covers every authored word of a card's lines, not
+/// only its object filters' inputs: for the process
+/// (`IRONSMITH_LINE_CLAIM_AUDIT`, `IRONSMITH_LINE_CLAIM_ENFORCE`) or inside
+/// [`with_line_enforcement`].
+pub fn line_audit_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(line_audit_env) || line_enforcement_requested()
+}
+
+/// Compile inside `f` with whole-line enforcement: a card with an authored
+/// word no reader reads fails, as under `IRONSMITH_LINE_CLAIM_ENFORCE`, but
+/// only for this call on this thread. Independent of [`with_enforcement`].
+pub fn with_line_enforcement<T>(f: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            LINE_ENFORCED.with(|enforced| enforced.set(self.0));
+        }
+    }
+    let _restore = Restore(LINE_ENFORCED.with(|enforced| enforced.replace(true)));
+    f()
+}
+
+/// Whether a caller on this thread asked for whole-line enforcement.
+pub fn line_enforcement_requested() -> bool {
+    LINE_ENFORCED.with(Cell::get)
 }
 
 /// Compile inside `f` in the strict mode: a card whose object filters leave
@@ -509,33 +572,44 @@ pub fn observe<T>(f: impl FnOnce() -> T) -> (T, ClaimSet) {
     (result, claims)
 }
 
-/// A speculative reading's obligations, held until the caller decides
-/// whether it keeps the reading.
+/// A speculative reading's claims, obligations and clean filters, held
+/// until the caller decides whether it keeps the reading.
 #[must_use]
 #[derive(Debug, Default)]
 pub struct Speculative(ClaimSet);
 
 impl Speculative {
-    /// The caller kept the reading: its unread words count.
+    /// The caller kept the reading: the words it read count as read, and
+    /// the words its filters left unread count as left unread.
     pub fn keep(self) {
         adopt(&self.0);
     }
 }
 
-/// Run a reading the caller may throw away (a probe of a filter whose
-/// result is used only in some cases). Its claims reach the enclosing scope
-/// at once, since words it read were read either way; the words it left
-/// unread count only if the caller calls [`Speculative::keep`].
+/// Run a reading the caller may throw away (a probe whose result is used
+/// only in some cases). Nothing it recorded reaches the enclosing scope
+/// unless the caller calls [`Speculative::keep`]: an abandoned reading must
+/// neither excuse a word for the reading the card keeps (by claiming it) nor
+/// blame one (by leaving it unread).
 pub fn speculative<T>(f: impl FnOnce() -> T) -> (T, Speculative) {
     if !is_recording() {
         return (f(), Speculative::default());
     }
     let (result, claims) = scoped(f);
-    let mut read = claims.clone();
-    read.obligations.clear();
-    read.clean_filters.clear();
-    adopt(&read);
     (result, Speculative(claims))
+}
+
+/// [`speculative`] for a reading kept exactly when `keep` accepts its
+/// result (a recognizer whose failure means "not this shape").
+pub fn speculative_keep_if<T>(f: impl FnOnce() -> T, keep: impl FnOnce(&T) -> bool) -> T {
+    if !is_recording() {
+        return f();
+    }
+    let (result, probe) = speculative(f);
+    if keep(&result) {
+        probe.keep();
+    }
+    result
 }
 
 fn authored_pieces(
@@ -553,6 +627,13 @@ pub fn unclaimed_words<'a>(tokens: &'a [OwnedLexToken], claims: &ClaimSet) -> Ve
         .filter(|piece| !claims.contains(piece.span))
         .map(|piece| piece.text.as_str())
         .collect()
+}
+
+/// The authored word pieces of `tokens` (word tokens, not synthetic ones),
+/// as source span and text: what the whole-line check expects some reader
+/// to claim.
+pub fn authored_word_pieces(tokens: &[OwnedLexToken]) -> Vec<(TextSpan, String)> {
+    authored_pieces(tokens).map(|piece| (piece.span, piece.text.clone())).collect()
 }
 
 #[cfg(test)]
@@ -603,12 +684,91 @@ mod tests {
         let tokens = crate::lexer::lex_line("if you do blorp creatures", 1).unwrap();
         let ((), card) = scoped(|| {
             let ((), mut filter) = scoped(|| claim_tokens(&tokens[4..]));
-            filter.oblige_unclaimed(&tokens, String::new, Location::caller());
+            filter.oblige_unclaimed(&tokens, String::new, None, Location::caller());
             adopt(&filter);
             claim_tokens(&tokens[..3]);
         });
         let words: Vec<_> = card.violations().iter().map(|o| o.word.as_str()).collect();
         assert_eq!(words, vec!["blorp"]);
+    }
+
+    #[test]
+    fn a_discarded_speculative_reading_claims_nothing() {
+        let ((), outer) = scoped(|| {
+            let ((), abandoned) = speculative(|| claim(span(0, 4)));
+            drop(abandoned);
+            let ((), kept) = speculative(|| claim(span(5, 9)));
+            kept.keep();
+        });
+        assert!(!outer.contains(span(0, 4)));
+        assert!(outer.contains(span(5, 9)));
+    }
+
+    #[test]
+    fn speculative_obligations_and_clean_filters_count_only_when_kept() {
+        let tokens = crate::lexer::lex_line("blorp creatures", 1).unwrap();
+        let probe = |keep: bool| {
+            scoped(|| {
+                let ((), probe) = speculative(|| {
+                    let mut filter = ClaimSet::default();
+                    filter.oblige_unclaimed(&tokens[..1], || "F".into(), Some(7), Location::caller());
+                    filter.note_clean_filter("G");
+                    adopt(&filter);
+                });
+                if keep {
+                    probe.keep();
+                }
+            })
+            .1
+        };
+        let dropped = probe(false);
+        assert!(dropped.violations().is_empty());
+        assert!(!dropped.has_clean_filter("G"));
+        let kept = probe(true);
+        assert_eq!(kept.violations().len(), 1);
+        assert_eq!(kept.violations()[0].origins, vec![7]);
+        assert!(kept.has_clean_filter("G"));
+    }
+
+    #[test]
+    fn speculative_keep_if_keeps_by_result() {
+        let ((), outer) = scoped(|| {
+            let _ = speculative_keep_if(|| { claim(span(0, 4)); None::<()> }, Option::is_some);
+            let _ = speculative_keep_if(|| { claim(span(5, 9)); Some(()) }, Option::is_some);
+        });
+        assert!(!outer.contains(span(0, 4)));
+        assert!(outer.contains(span(5, 9)));
+    }
+
+    #[test]
+    fn one_reading_reached_twice_is_one_obligation_with_both_origins() {
+        let tokens = crate::lexer::lex_line("blorp creatures", 1).unwrap();
+        let caller = Location::caller();
+        let mut claims = ClaimSet::default();
+        claims.oblige_unclaimed(&tokens[..1], || "F".into(), Some(1), caller);
+        claims.oblige_unclaimed(&tokens[..1], || "F".into(), Some(2), caller);
+        let violations = claims.violations();
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].origins, vec![1, 2]);
+    }
+
+    #[test]
+    fn line_enforcement_is_scoped_to_the_call() {
+        assert!(!line_enforcement_requested());
+        with_line_enforcement(|| {
+            assert!(line_enforcement_requested());
+            assert!(line_audit_enabled());
+            assert!(audit_enabled());
+        });
+        assert!(!line_enforcement_requested());
+    }
+
+    #[test]
+    fn authored_word_pieces_are_the_word_pieces_only() {
+        let tokens = crate::lexer::lex_line("Draw a card.", 1).unwrap();
+        let pieces = authored_word_pieces(&tokens);
+        assert_eq!(pieces.len(), 3);
+        assert!(pieces.iter().all(|(span, _)| span.end > span.start));
     }
 
     #[test]

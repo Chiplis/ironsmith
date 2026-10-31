@@ -1207,6 +1207,18 @@ pub(super) fn matches_subject(
     if filter.didnt_attack_this_turn && game.creature_attacked_this_turn(subject.object_id()) {
         return false;
     }
+    // "creatures that attacked during their controller's last turn" (Halls
+    // of Mist): the controller's most recent turn's attack record.
+    if filter.attacked_during_controllers_last_turn
+        && !subject.controller(game).is_some_and(|controller| {
+            game.last_turn_history_for_player(controller)
+                .is_some_and(|history| {
+                    history.creatures_attacked_this_turn.contains(&subject.object_id())
+                })
+        })
+    {
+        return false;
+    }
     if filter.could_have_attacked_this_turn && !subject.can_attack(game) {
         return false;
     }

@@ -1467,7 +1467,16 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
                     condition,
                 )));
             }
-            let Ok(filter) = parse_object_filter(filter_tokens, false) else {
+            // "instead only creatures your opponents control get -2/-2"
+            // (Golden Demise): "only" narrows the replaced set to this one.
+            let only = filter_tokens
+                .first()
+                .filter(|token| {
+                    filter_tokens.len() > 1
+                        && token.as_word().is_some_and(|word| word.eq_ignore_ascii_case("only"))
+                });
+            let filter_input = if only.is_some() { &filter_tokens[1..] } else { filter_tokens };
+            let Ok(filter) = parse_object_filter(filter_input, false) else {
                 return Ok(None);
             };
             let directional_combat_relation = (filter.blocking && filter.in_combat_with_source)
@@ -1479,6 +1488,9 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
                 || (disallowed_pronoun && !filter.other && !directional_combat_relation)
             {
                 return Ok(None);
+            }
+            if let Some(only) = only {
+                crate::word_claims::claim_tokens(std::slice::from_ref(only));
             }
             EffectAst::subject_verb_pump_all(filter, power, toughness, duration)
         }

@@ -1281,6 +1281,13 @@ pub fn is_source_reference_words(words: &[&str]) -> bool {
     is_this_source_reference_words(words) || source_reference_surface_for_words(words).is_some()
 }
 
+/// The source as the partner of "blocking or blocked by": a source
+/// reference, or bare "it" ("creatures blocking or blocked by it", Abu
+/// Ja'far, Steadfast Armasaur, Vortex Elemental), as "blocking it" reads.
+pub fn is_block_partner_source_words(words: &[&str]) -> bool {
+    words == ["it"] || is_source_reference_words(words)
+}
+
 fn is_this_source_reference_words(words: &[&str]) -> bool {
     leaf::parse_leaf_this_source_reference_words(words).is_some()
 }

@@ -143,6 +143,17 @@ fn mixed_permanent_private_card_exile(
 pub(crate) fn parse_prefix(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // The whole reading is a probe: what it read (the count, the body's
+    // effects) counts only when it returns a program.
+    crate::word_claims::speculative_keep_if(
+        || parse_prefix_reading(tokens),
+        |parsed| matches!(parsed, Ok(Some(_))),
+    )
+}
+
+fn parse_prefix_reading(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if crate::lexer::split_lexed_sentences(tokens).len() != 1 {
         return Ok(None);
     }

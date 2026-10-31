@@ -2279,6 +2279,10 @@ fn parse_object_filter_unaudited(
             ["opponent", "to", "your", "left", "controls" | "control"] => {
                 Some(PlayerFilter::OpponentToYourLeft)
             }
+            // "creatures the monarch controls" (Azure Fleet Admiral).
+            ["monarch", "controls" | "control"] | ["controlled", "by", "the", "monarch"] => {
+                Some(PlayerFilter::Monarch)
+            }
             [
                 "player" | "opponent",
                 "to",
@@ -2310,7 +2314,7 @@ fn parse_object_filter_unaudited(
     }
     if let Some((index, relation_len)) =
         crate::word_primitives::find_current_block_partner_relation(&words_ref)
-        && crate::util::is_source_reference_words(&words_ref[index + relation_len..])
+        && crate::util::is_block_partner_source_words(&words_ref[index + relation_len..])
         && let Some(token_index) = words.token_start_indices().get(index)
     {
         crate::word_claims::claim_tokens(&tokens[*token_index..]);
@@ -2742,7 +2746,7 @@ fn parse_object_filter_lexed_unaudited(
     let words_ref = words.word_refs();
     if let Some((index, relation_len)) =
         crate::word_primitives::find_current_block_partner_relation(&words_ref)
-        && crate::util::is_source_reference_words(&words_ref[index + relation_len..])
+        && crate::util::is_block_partner_source_words(&words_ref[index + relation_len..])
         && let Some(token_index) = words.token_start_indices().get(index)
     {
         crate::word_claims::claim_tokens(&tokens[*token_index..]);

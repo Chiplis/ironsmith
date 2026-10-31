@@ -46,7 +46,13 @@ pub fn parse_damage_amount_replacement(
         && !self_source
         && source.len() >= 2
         && action.first().is_some_and(|token| token.is_word("the"))
-        && crate::object_filters::parse_object_filter(&action[1..deal], false).is_ok();
+        // A yes/no probe of the source phrase; it reads nothing for the
+        // reading that uses the answer.
+        && crate::word_claims::speculative(|| {
+            crate::object_filters::parse_object_filter(&action[1..deal], false)
+        })
+        .0
+        .is_ok();
     if !repeats_source && !self_source && !definite_source {
         return None;
     }

@@ -990,6 +990,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::Teammate => "a teammate".to_string(),
                 PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
                 PlayerFilter::OpponentToYourLeft => "the opponent to your left".to_string(),
+                PlayerFilter::Monarch => "the monarch".to_string(),
                 PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
                 PlayerFilter::Active => "the active player".to_string(),
                 PlayerFilter::Defending => "the defending player".to_string(),

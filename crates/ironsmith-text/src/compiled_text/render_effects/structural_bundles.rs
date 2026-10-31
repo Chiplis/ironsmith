@@ -175,6 +175,11 @@ mod source_exiled_retyped_keyword_token_copy_tests {
 pub(super) fn describe_retyped_token_copy_with_granted_activated_ability(
     copy: &crate::effects::CreateTokenCopyEffect,
 ) -> Option<String> {
+    // Prints the grant's retained prose; the semantic audit takes the
+    // structural path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     if copy.count.unhinted() != &Value::Fixed(1)
         || copy.controller != PlayerFilter::You
         || copy.enters_tapped

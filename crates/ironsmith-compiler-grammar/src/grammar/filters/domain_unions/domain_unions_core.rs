@@ -337,6 +337,20 @@ pub fn parse_elided_shared_domain_union(
                 0
             };
             relative_copula.extend_from_slice(&tail[..copula_len]);
+            // "that are instant cards, are sorcery cards, and/or have an
+            // Adventure" (Candlekeep Inspiration): the copula repeated on a
+            // later list item is the same relative clause.
+            if copula_len == 2 {
+                for (index, token) in tail.iter().enumerate().skip(2) {
+                    if tail[index - 1].is_comma()
+                        && token.as_word().is_some_and(|word| {
+                            tail[1].as_word().is_some_and(|copula| word.eq_ignore_ascii_case(copula))
+                        })
+                    {
+                        relative_copula.push(token.clone());
+                    }
+                }
+            }
         }
         if !outer.any_of.is_empty() {
             let Some(leading_scope) = leading_scope.as_ref() else {

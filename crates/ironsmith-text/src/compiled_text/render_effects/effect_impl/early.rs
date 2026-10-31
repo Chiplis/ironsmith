@@ -12589,6 +12589,30 @@ if filter.zone == Some(Zone::Hand)
                         return format!("{who} may have {subject}deal {rest}");
                     }
                 }
+                // "that creature's controller may have target creature of
+                // their choice get -3/-3 until end of turn" (Death Match): the
+                // deciding player also declares the target the action uses.
+                let delegates_target = may.effects.iter().any(|effect| {
+                    unwrap_basic_tag_wrappers(effect)
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        .is_some_and(|target_only| target_only.chooser.as_ref() == Some(decider))
+                });
+                if delegates_target && lowered.starts_with("target ") {
+                    for (from, to) in [
+                        (" gets ", "get"),
+                        (" gains ", "gain"),
+                        (" loses ", "lose"),
+                        (" becomes ", "become"),
+                        (" deals ", "deal"),
+                        (" fights ", "fight"),
+                    ] {
+                        if let Some(idx) = lowered.find(from) {
+                            let subject = &lowered[..idx];
+                            let rest = &lowered[idx + from.len()..];
+                            return format!("{who} may have {subject} of their choice {to} {rest}");
+                        }
+                    }
+                }
             }
             inner = normalize_you_verb_phrase(&inner);
             inner = lowercase_may_clause(&inner);

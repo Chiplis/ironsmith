@@ -423,6 +423,13 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
     // Preserve the score at threshold boundaries for cohort verification.
     outln!("Similarity: {}", similarity);
     outln!("Semantic mismatch: {}", semantic_mismatch);
+    if let Some(snapshot) = job.authoritative_snapshot.as_ref() {
+        let score = |score: Option<f32>| score.map_or_else(|| "n/a".to_string(), |s| s.to_string());
+        outln!("Display similarity: {}", score(snapshot.display_similarity_score));
+        outln!("Strict semantic similarity: {}", score(snapshot.semantic_similarity_score));
+        outln!("Presentation-dependent audit lines: {}", snapshot.presentation_dependent_lines);
+        outln!("Display masks semantics: {}", snapshot.display_masks_semantics);
+    }
     outln!("Scoring surface: semantic audit (executable model)");
     outln!("Original oracle text:");
     outln!("{}", job.oracle_text.trim());

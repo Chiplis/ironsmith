@@ -1,6 +1,7 @@
 use ironsmith_tools::corpus::{aggregate_face_snapshots, load_corpus_cards};
 use ironsmith_tools::{
-    CardStatusDb, CompilationSnapshot, compile_authoritative_snapshot_from_payload,
+    CardStatusDb, CompilationSnapshot, DISPLAY_MASK_DISPLAY_FLOOR, DISPLAY_MASK_MIN_GAP,
+    DisplayMaskedCard, compile_authoritative_snapshot_from_payload,
     compile_strict_snapshot_from_payload, default_db_path,
 };
 use rayon::prelude::*;
@@ -22,6 +23,9 @@ struct Args {
     tag: Option<String>,
     names: BTreeSet<String>,
     strict_only: bool,
+    /// Print the stored "display masks semantics" report and exit without
+    /// syncing; `Some(limit)` caps the rows printed.
+    report_masked: Option<Option<usize>>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -30,6 +34,8 @@ fn parse_args() -> Result<Args, String> {
     let mut tag = None;
     let mut names = BTreeSet::new();
     let mut strict_only = false;
+    let mut report_masked = None;
+    let mut report_limit = None;
 
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -76,18 +82,36 @@ fn parse_args() -> Result<Args, String> {
             "--strict-only" => {
                 strict_only = true;
             }
+            "--report-masked" => {
+                report_masked = Some(None);
+            }
+            "--limit" => {
+                let raw = iter
+                    .next()
+                    .ok_or_else(|| "--limit requires a row count".to_string())?;
+                report_limit = Some(
+                    raw.parse::<usize>()
+                        .map_err(|err| format!("invalid --limit {raw}: {err}"))?,
+                );
+            }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--db-path <path>] [--tag <slug>] [--name <card>] [--names-file <path>] [--cards <path>] [--strict-only]"
+                    "usage: cargo run --release -p ironsmith-tools --bin sync_card_status_db -- [--db-path <path>] [--tag <slug>] [--name <card>] [--names-file <path>] [--cards <path>] [--strict-only]\n       sync_card_status_db [--db-path <path>] --report-masked [--limit <n>]   (read-only; lists cards whose display masks their semantics)"
                         .to_string(),
                 );
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --cards/--db-path/--tag/--name/--names-file/--strict-only"
+                    "unknown argument '{arg}'. expected --cards/--db-path/--tag/--name/--names-file/--strict-only/--report-masked/--limit"
                 ));
             }
         }
+    }
+    if let Some(limit) = report_limit {
+        if report_masked.is_none() {
+            return Err("--limit only applies to --report-masked".to_string());
+        }
+        report_masked = Some(Some(limit));
     }
 
     Ok(Args {
@@ -96,12 +120,19 @@ fn parse_args() -> Result<Args, String> {
         tag,
         names,
         strict_only,
+        report_masked,
     })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total_start = Instant::now();
     let args = parse_args().map_err(std::io::Error::other)?;
+    if let Some(limit) = args.report_masked {
+        let db = CardStatusDb::open_read_only(&args.db_path)?;
+        let cards = db.latest_display_masked_cards()?;
+        print!("{}", format_masked_report(&cards, limit));
+        return Ok(());
+    }
 
     let db_open_start = Instant::now();
     let mut db = CardStatusDb::open(&args.db_path)?;
@@ -262,6 +293,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("- Rayon threads: {rayon_threads}");
     println!("- Rayon worker stack: {RAYON_WORKER_STACK_SIZE} bytes");
     println!("- New compilation rows inserted: {inserted}");
+    let masked_cards = compiled_snapshots
+        .iter()
+        .filter(|(card, _)| card.display_masks_semantics)
+        .count();
+    let presentation_dependent_cards = compiled_snapshots
+        .iter()
+        .filter(|(card, _)| card.presentation_dependent_lines > 0)
+        .count();
+    println!(
+        "- Cards whose display masks semantics: {masked_cards} (list with --report-masked)"
+    );
+    println!(
+        "- Cards with presentation-dependent semantic audit lines: {presentation_dependent_cards}"
+    );
     println!(
         "- Strict-compiled semantic score avg before: {} across {} cards",
         format_average(strict_scores_before.values().copied()),
@@ -343,6 +388,35 @@ fn format_card_progress(completed: usize, total: usize, snapshot: &CompilationSn
         snapshot.parse_status.as_str(),
         snapshot.similarity_score
     )
+}
+
+/// Masked cards, widest gap first (the DB query's order).
+fn format_masked_report(cards: &[DisplayMaskedCard], limit: Option<usize>) -> String {
+    let mut out = format!(
+        "Display masks semantics: {} card(s) (display >= {DISPLAY_MASK_DISPLAY_FLOOR:.2} and display - semantic >= {DISPLAY_MASK_MIN_GAP:.2})\n",
+        cards.len()
+    );
+    if cards.is_empty() {
+        return out;
+    }
+    out.push_str("gap\tdisplay\tsemantic\taudit\tprose_lines\tcard\n");
+    for card in cards.iter().take(limit.unwrap_or(usize::MAX)) {
+        out.push_str(&format!(
+            "{:.4}\t{:.4}\t{:.4}\t{:.4}\t{}\t{}\n",
+            card.gap(),
+            card.display_similarity_score,
+            card.semantic_similarity_score,
+            card.similarity_score,
+            card.presentation_dependent_lines,
+            card.card_name
+        ));
+    }
+    if let Some(limit) = limit
+        && cards.len() > limit
+    {
+        out.push_str(&format!("... {} more\n", cards.len() - limit));
+    }
+    out
 }
 
 fn format_duration(duration: Duration) -> String {
@@ -460,11 +534,44 @@ mod tests {
             parse_loss_reasons: String::new(),
             parse_loss_count: 0,
             content_hash: String::new(),
+            display_similarity_score: None,
+            semantic_similarity_score: None,
+            presentation_dependent_lines: 0,
+            display_masks_semantics: false,
         };
 
         assert_eq!(
             format_card_progress(17, 42, &snapshot),
             "[17/42] Progress Test — strict_compiled (similarity 0.9973)"
+        );
+    }
+
+    fn masked(name: &str, display: f32, semantic: f32) -> DisplayMaskedCard {
+        DisplayMaskedCard {
+            card_name: name.to_string(),
+            similarity_score: semantic,
+            display_similarity_score: display,
+            semantic_similarity_score: semantic,
+            presentation_dependent_lines: 1,
+        }
+    }
+
+    #[test]
+    fn masked_report_lists_gap_scores_and_truncates_to_limit() {
+        let cards = [masked("Wide Gap", 1.0, 0.5), masked("Narrow Gap", 0.995, 0.98)];
+        let report = format_masked_report(&cards, Some(1));
+        let lines = report.lines().collect::<Vec<_>>();
+        assert_eq!(
+            lines[0],
+            "Display masks semantics: 2 card(s) (display >= 0.99 and display - semantic >= 0.01)"
+        );
+        assert_eq!(lines[1], "gap\tdisplay\tsemantic\taudit\tprose_lines\tcard");
+        assert_eq!(lines[2], "0.5000\t1.0000\t0.5000\t0.5000\t1\tWide Gap");
+        assert_eq!(lines[3], "... 1 more");
+        assert_eq!(lines.len(), 4);
+        assert_eq!(
+            format_masked_report(&[], None),
+            "Display masks semantics: 0 card(s) (display >= 0.99 and display - semantic >= 0.01)\n"
         );
     }
 }

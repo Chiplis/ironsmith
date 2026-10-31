@@ -130,6 +130,9 @@ pub(super) fn read_object_filter(
     input: &RestrictionSubject<'_>,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(filter) = read_target_player_or_planeswalker_controller_subject(tokens) {
+        return Ok(Some(filter));
+    }
     if let Ok(mut filter) = parse_object_filter(tokens, false)
         && filter != ObjectFilter::default()
     {
@@ -139,4 +142,39 @@ pub(super) fn read_object_filter(
         return Ok(Some(filter));
     }
     Ok(None)
+}
+
+/// "creatures controlled by that player or by that planeswalker's
+/// controller" (Concussive Bolt): the controller of the earlier "target
+/// player or planeswalker". Read before the plain filter, whose "or" would
+/// otherwise split the subject into a creature/planeswalker union.
+fn read_target_player_or_planeswalker_controller_subject(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
+    let view = crate::grammar::primitives::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let relation_start = words.iter().position(|word| *word == "controlled")?;
+    if relation_start == 0 {
+        return None;
+    }
+    let planeswalkers = |word: &str| matches!(word, "planeswalker's" | "planeswalker’s" | "planeswalkers");
+    match &words[relation_start..] {
+        ["controlled", "by", "that", "player" | "opponent", "or", "that", walker, "controller"]
+        | ["controlled", "by", "that", "player" | "opponent", "or", "by", "that", walker, "controller"]
+            if planeswalkers(*walker) => {}
+        _ => return None,
+    }
+    let base_end = view.map_word_or_end_to_token_boundary(relation_start)?;
+    let base_tokens = &tokens[..base_end];
+    let mut filter = parse_object_filter(base_tokens, false).ok()?;
+    if filter == ObjectFilter::default() {
+        return None;
+    }
+    crate::word_claims::claim_tokens(&tokens[base_end..]);
+    filter.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    filter.zone = Some(crate::zone::Zone::Battlefield);
+    if crate::grammar::filters::reference_tag_stage::has_plural_object_head_surface(tokens) {
+        filter.set_plural_object_noun_surface(true);
+    }
+    Some(filter)
 }

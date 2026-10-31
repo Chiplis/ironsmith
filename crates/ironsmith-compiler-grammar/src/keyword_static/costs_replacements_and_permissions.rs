@@ -940,7 +940,10 @@ pub fn parse_spells_cost_modifier_line(
             crate::word_primitives::parse_sequence_start(&remaining_words, &["for", "each"])
                 .is_some_and(|each| each < boundary)
         })
-        && let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)?
+        && let Some(dynamic_value) = parse_dynamic_cost_modifier_value(
+            cost_reduction_cap_sentence_start(remaining_tokens)
+                .map_or(remaining_tokens, |start| &remaining_tokens[..start]),
+        )?
     {
         tail_read_by_amount = true;
         // A colored per-count reduction ("costs {U} less to cast for each
@@ -994,6 +997,10 @@ pub fn parse_spells_cost_modifier_line(
         && let Some(cap) = parse_cost_reduction_cap(remaining_tokens)
     {
         amount_value = Value::Min(Box::new(amount_value), Box::new(Value::Fixed(cap)));
+        // The separate cap sentence is read as this cap.
+        if let Some(start) = cost_reduction_cap_sentence_start(remaining_tokens) {
+            crate::word_claims::claim_tokens(&remaining_tokens[start..]);
+        }
     }
 
     if !is_this_spell {
@@ -2130,6 +2137,29 @@ pub fn parse_cost_reduction_cap(tokens: &[OwnedLexToken]) -> Option<i32> {
         };
     }
     None
+}
+
+/// Where a cost-reduction cap in its own sentence starts ("... for each
+/// creature type among creatures you control. This effect can't reduce the
+/// amount of mana this spell costs by more than {5}.", Valiant Changeling),
+/// so the amount before it is read without the cap sentence.
+pub(crate) fn cost_reduction_cap_sentence_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let than = (2..tokens.len()).find(|idx| {
+        tokens[idx - 2].as_word().is_some_and(|word| word.eq_ignore_ascii_case("by"))
+            && tokens[idx - 1].as_word().is_some_and(|word| word.eq_ignore_ascii_case("more"))
+            && tokens[*idx].as_word().is_some_and(|word| word.eq_ignore_ascii_case("than"))
+    })?;
+    if let Some(period) = tokens[..than - 2].iter().rposition(OwnedLexToken::is_period) {
+        return Some(period);
+    }
+    // The lowered line can join its sentences without a period token: the
+    // cap sentence then starts at its "this effect can't" subject.
+    tokens[..than - 2].windows(3).position(|window| {
+        let word = |index: usize| window[index].as_word().map(str::to_ascii_lowercase);
+        word(0).as_deref() == Some("this")
+            && word(1).as_deref() == Some("effect")
+            && matches!(word(2).as_deref(), Some("can't" | "cant" | "can\u{2019}t"))
+    })
 }
 
 /// Parse the object description counted by a "for each <description>" cost
@@ -8743,7 +8773,74 @@ pub fn parse_copy_activated_and_triggered_abilities_line(
     ]))
 }
 
+/// "<source> has all activated abilities of <objects>. You may spend mana as
+/// though it were mana of any color to activate those abilities." (Drana and
+/// Linvala): the copy, plus a permission for the copied abilities' activation
+/// costs, which are the source's own (CR 609.4b). The source has no other
+/// activated ability on these cards, so the source's activation costs are
+/// exactly those abilities.
+/// The head and tail token ranges of a copy line followed by "You may spend
+/// mana as though it were mana of any color to activate those abilities."
+fn copy_activated_spend_tail_split(
+    tokens: &[OwnedLexToken],
+) -> Option<(std::ops::Range<usize>, std::ops::Range<usize>)> {
+    const SPEND_TAIL: &[&str] = &[
+        "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+        "color", "to", "activate", "those", "abilities",
+    ];
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let tail_start = words.len().checked_sub(SPEND_TAIL.len())?;
+    if tail_start == 0 || words[tail_start..] != *SPEND_TAIL {
+        return None;
+    }
+    Some((
+        view.token_span_for_words(0, tail_start)?,
+        view.token_span_for_words(tail_start, words.len())?,
+    ))
+}
+
+pub fn parse_copy_activated_abilities_with_spend_permission_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some((head_range, tail_range)) = copy_activated_spend_tail_split(tokens) else {
+        return Ok(None);
+    };
+    let Some(copy) = parse_copy_activated_abilities_core(&tokens[head_range])? else {
+        return Ok(None);
+    };
+    let StaticAbilityAst::Static(copy_ability) = &copy else {
+        return Ok(None);
+    };
+    if copy_ability.id() != crate::static_abilities::StaticAbilityId::CopyActivatedAbilities {
+        return Ok(None);
+    }
+    crate::word_claims::claim_tokens(&tokens[tail_range]);
+    let permission = crate::effect::ManaSpendPermission::any_color_for_activation(
+        PlayerFilter::You,
+        ObjectFilter::source(),
+    );
+    Ok(Some(vec![
+        copy,
+        StaticAbilityAst::Static(StaticAbility::mana_spend_permission(
+            permission,
+            "You may spend mana as though it were mana of any color to activate those abilities"
+                .to_string(),
+        )),
+    ]))
+}
+
 pub fn parse_copy_activated_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    // A trailing spend permission belongs to the two-ability rule above.
+    if copy_activated_spend_tail_split(tokens).is_some() {
+        return Ok(None);
+    }
+    parse_copy_activated_abilities_core(tokens)
+}
+
+fn parse_copy_activated_abilities_core(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(fact) = late_static_facts::parse_copy_activated_abilities_tokens(tokens) else {
@@ -8845,6 +8942,7 @@ pub fn parse_copy_activated_abilities_line(
         .with_exclude_source_name(fact.exclude_source_name)
         .with_exclude_source_id(true)
         .with_exclude_mana_abilities(exclude_mana_abilities)
+        .with_exclude_loyalty_abilities(fact.exclude_loyalty_abilities)
         .with_display(display);
     if let Some(counter) = counter {
         ability = ability.with_counter(counter);

@@ -219,6 +219,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Teammate => "a teammate".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
         PlayerFilter::OpponentToYourLeft => "the opponent to your left".to_string(),
+        PlayerFilter::Monarch => "the monarch".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {

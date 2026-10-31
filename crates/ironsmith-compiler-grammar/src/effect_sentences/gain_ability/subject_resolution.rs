@@ -1175,7 +1175,14 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         if let Some(filter) = parse_bare_card_type_subtype_union_filter(real_subject_tokens) {
             filter
         } else {
-            parse_object_filter(real_subject_tokens, false).map_err(|_| {
+            // "each creature you control gets +2/+2 and gains trample" (Full
+            // Steam Ahead): the set quantifier belongs to this grant-to-all
+            // reading, which applies to every matching object.
+            let set_quantifier = real_subject_tokens.first().filter(|token| token.is_word("each"));
+            crate::word_claims::with_caller_owned(set_quantifier, || {
+                parse_object_filter(real_subject_tokens, false)
+            })
+            .map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported subject in {}-ability clause (clause: '{}')",
                     if losing { "lose" } else { "gain" },

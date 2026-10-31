@@ -941,6 +941,36 @@ impl GrantObjectAbilityForFilter {
         }
     }
 
+    /// A grant to every player's permanents gated on a count of "that
+    /// player's" objects ("... each player controls ... as long as that player
+    /// controls three or fewer lands").
+    fn has_per_controller_count(&self) -> bool {
+        !self.applies_to_source()
+            && self.filter.controller.is_none()
+            && matches!(
+                &self.condition,
+                Some(crate::ConditionExpr::CountComparison {
+                    count: crate::static_abilities::AnthemCountExpression::MatchingFilter(counted),
+                    ..
+                }) if counted.controller == Some(crate::target::PlayerFilter::IteratedPlayer)
+            )
+    }
+
+    /// The grant restricted to `player`'s permanents, with "that player" in
+    /// its count bound to `player`.
+    fn for_controller(&self, player: PlayerId) -> Self {
+        let mut split = self.clone();
+        split.filter.controller = Some(crate::target::PlayerFilter::Specific(player));
+        if let Some(crate::ConditionExpr::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(counted),
+            ..
+        }) = &mut split.condition
+        {
+            counted.controller = Some(crate::target::PlayerFilter::Specific(player));
+        }
+        split
+    }
+
     fn effect_target(&self, source: ObjectId) -> EffectTarget {
         if self.applies_to_source() {
             EffectTarget::Source
@@ -997,7 +1027,8 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
     /// you control a Wizard") would impose its restrictions even while the
     /// condition is false.
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
-        if self.condition_is_receiver_qualification() {
+        // A per-controller count is decided by each player's split grant.
+        if self.condition_is_receiver_qualification() || self.has_per_controller_count() {
             return true;
         }
         let Some(condition) = &self.condition else {
@@ -1028,6 +1059,16 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) {
+        if self.has_per_controller_count() {
+            let players: Vec<_> = game.players.iter().map(|player| player.id).collect();
+            for player in players {
+                let split = self.for_controller(player);
+                if split.is_active(game, source) {
+                    split.apply_restrictions(game, source, controller);
+                }
+            }
+            return;
+        }
         let granted = self
             .additional_abilities
             .iter()
@@ -1310,6 +1351,21 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        // "Basic lands each player controls have shroud as long as that
+        // player controls three or fewer lands" (Sheltering Prayers): "that
+        // player" is each recipient's controller, so the grant splits into one
+        // effect per player, reaching only their permanents and counting only
+        // theirs. A single source-level condition has no player to read.
+        if self.has_per_controller_count() {
+            return game
+                .players
+                .iter()
+                .flat_map(|player| {
+                    self.for_controller(player.id)
+                        .generate_effects(source, controller, game)
+                })
+                .collect();
+        }
         let mut target = self.effect_target(source);
         let mut condition = self.condition.clone();
         let mut receiver_condition = if std::iter::once(&self.ability).chain(self.additional_abilities.iter())

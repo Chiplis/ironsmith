@@ -147,6 +147,11 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 .or_else(|| value.downcast_ref::<ironsmith_core::ThisSpellCostCondition>()
                     .and_then(crate::static_abilities::describe_this_spell_cost_condition))
                 .or_else(|| value.downcast_ref::<crate::effect::Value>().map(describe_value))
+                .or_else(|| {
+                    value
+                        .downcast_ref::<ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec>()
+                        .map(audit_readings::targeting_as_though_no_ability)
+                })
                 // A delayed effect program (opening-hand reveals).
                 .or_else(|| {
                     value
@@ -10696,3 +10701,95 @@ mod tests {
 
 #[cfg(test)]
 mod rescue_regressions;
+
+/// Semantic audit sites that once returned an ability's retained `display`
+/// prose. Each fixture carries prose that no structural reading produces;
+/// the ordinary rendering may print it, the audit never does.
+#[cfg(test)]
+mod display_fallback_audit_tests {
+    use super::*;
+
+    const PROSE: &str = "Retained prose sentinel";
+
+    fn spell(name: &str, effect: crate::Effect) -> CardDefinition {
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .with_spell_effect(vec![effect])
+            .build()
+    }
+
+    fn assert_audit_reads_model(definition: &CardDefinition, expected: &str) {
+        let audit = semantic_audit_lines(definition).join("\n");
+        assert!(!audit.contains(PROSE), "audit quoted retained prose: {audit}");
+        assert!(audit.contains(expected), "expected {expected:?} in audit: {audit}");
+    }
+
+    #[test]
+    fn mana_spend_permission_registration_reads_its_permission() {
+        let definition = spell(
+            "Permission Probe",
+            crate::Effect::new(crate::effects::RegisterManaSpendPermissionEffect {
+                permission: ironsmith_core::ManaSpendPermission::any_color(PlayerFilter::You),
+                until: Until::EndOfTurn,
+                display: PROSE.to_string(),
+            }),
+        );
+        assert!(compiled_text_lines(&definition).join("\n").contains(PROSE));
+        assert_audit_reads_model(&definition, "spend mana as though it were mana of any color");
+    }
+
+    #[test]
+    fn draw_replacement_registration_reads_its_replaced_event() {
+        let definition = spell(
+            "Loss Replacement Probe",
+            crate::Effect::new(crate::effects::RegisterDrawReplacementEffect {
+                player: PlayerFilter::You,
+                replacement_effects: vec![crate::Effect::draw(2)],
+                mode: crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+                player_target: None,
+                display: Some(PROSE.to_string()),
+                lose_game: true,
+            }),
+        );
+        assert_audit_reads_model(&definition, "would lose the game this turn");
+    }
+
+    #[test]
+    fn targeting_as_though_static_reads_its_spec() {
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Spotlight Probe",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::targeting_as_though_no_ability(
+                ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec {
+                    objects: Some(ObjectFilter::creature().opponent_controls()),
+                    players: None,
+                    sources_controlled_by: PlayerFilter::You,
+                    ignored_ability: crate::static_abilities::StaticAbilityId::Hexproof,
+                    display: PROSE.to_string(),
+                },
+            ),
+        ))
+        .build();
+        assert_audit_reads_model(
+            &definition,
+            "spells and abilities you control as though they didn't have hexproof",
+        );
+    }
+
+    #[test]
+    fn text_only_statics_are_reported_not_quoted() {
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Fallback Probe",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::rule_fallback_text(PROSE),
+        ))
+        .build();
+        assert_audit_reads_model(&definition, ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX);
+    }
+}

@@ -2108,6 +2108,7 @@ fn complete_modification_schema_round_trip_keeps_payloads_and_control_semantics(
             exclude_source_name: true,
             exclude_source_id: true,
             force_once_each_turn: true,
+            exclude_loyalty: false,
         },
         Model::ModifyPowerToughnessByColorCount {
             power_multiplier: -2,
@@ -2705,7 +2706,7 @@ fn ability_copying_respects_donor_zone_and_linked_identity() {
         } else {
             Modification::CopyActivatedAbilities { filter, counter: None, include_mana: true,
                 only_loyalty: false, exclude_source_name: false, exclude_source_id: true,
-                force_once_each_turn: false }
+                force_once_each_turn: false, exclude_loyalty: false }
         };
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
             receiver, payer, EffectTarget::Specific(receiver), modification,
@@ -3182,7 +3183,7 @@ fn craft_material_links_transfer_to_each_independently_limited_borrowed_ability(
         receiver, alice, EffectTarget::Specific(receiver),
         Modification::CopyActivatedAbilities { filter, counter: None, include_mana: true,
             only_loyalty: false, exclude_source_name: false, exclude_source_id: true,
-            force_once_each_turn: true },
+            force_once_each_turn: true, exclude_loyalty: false },
     ));
     game.refresh_continuous_state().unwrap();
     let chars = game.calculated_characteristics(receiver).unwrap();

@@ -571,6 +571,17 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             &all_words.iter().copied().filter(|word| SHARE_WORDS.contains(word)).collect::<Vec<_>>(),
         );
     }
+    // "each other creature that shares a color with it" (Cleansing Beam):
+    // the "with it" operand is the tagged object the relation compares to.
+    if has_share_card_type || has_share_creature_type || has_share_color {
+        crate::word_claims::claim_words(
+            &all_words
+                .windows(2)
+                .filter(|pair| pair[0] == "with" && IT_OR_THEM_WORDS.contains(&pair[1]))
+                .map(|pair| pair[1])
+                .collect::<Vec<_>>(),
+        );
+    }
     if has_share_card_type {
         let tag = if references_additional_cost_object {
             crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()
@@ -668,7 +679,10 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     }
     if has_lt_mana_value_as_tagged {
         // "with lesser mana value than the creature that died" (Death's
-        // Oasis): the comparand is the clause's antecedent.
+        // Oasis): the comparand is the clause's antecedent. "that died" names
+        // the dies trigger's creature itself, never the latest tagged objects
+        // (the cards milled just before).
+        let mut comparand_died = false;
         if let Some(start) = find_phrase_start(all_words, LESSER_MANA_VALUE_PHRASE) {
             let rest = &all_words[start + 3..];
             let head = usize::from(rest.get(1).is_some_and(|word| matches!(*word, "the" | "that")));
@@ -680,12 +694,17 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 let mut end = start + 3 + 2 + head;
                 if all_words[end..].starts_with(&["that", "died"]) {
                     end += 2;
+                    comparand_died = true;
                 }
                 crate::word_claims::claim_words(&all_words[start..end]);
             }
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            tag: if comparand_died {
+                (crate::tag::CompilerReferenceTag::Triggering.bind()).into()
+            } else {
+                (crate::tag::CompilerReferenceTag::It.bind()).into()
+            },
             relation: TaggedOpbjectRelation::ManaValueLtTagged,
         });
     }
@@ -802,12 +821,24 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         // "each creature that had a +1/+1 counter put on it this way" (Fangs
         // of Kalonia): the counter recipients of the producing effect, which
         // already fixes the counter kind.
+        // "that had counters put on it this way" (Agitator Ant) names no
+        // kind; "that had a double strike counter put on it this way"
+        // (Spectacular Showdown) a two-word one.
         if action == ironsmith_core::PriorEffectAction::CountersPut
-            && action_start >= 2
-            && matches!(all_words[action_start - 2], "had" | "has" | "have")
-            && crate::grammar::filters::counter_constraints::parse_counter_type_word(all_words[action_start - 1]).is_some()
+            && let Some(had) = all_words[..action_start]
+                .iter()
+                .rposition(|word| matches!(*word, "had" | "has" | "have"))
+            && match &all_words[had + 1..action_start] {
+                [] => true,
+                [kind] | ["a" | "an", kind] => {
+                    crate::grammar::filters::counter_constraints::parse_counter_type_word(kind)
+                        .is_some()
+                }
+                [first, "strike"] | ["a", first, "strike"] => matches!(*first, "double" | "first"),
+                _ => false,
+            }
         {
-            crate::word_claims::claim_words(&all_words[action_start - 2..action_start]);
+            crate::word_claims::claim_words(&all_words[had..action_start]);
         }
         // Tapping is only meaningful for objects on the battlefield. Preserve
         // that semantic zone when a later clause refers to the objects tapped

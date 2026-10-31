@@ -1054,8 +1054,12 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
         // The clause reader retains delegated target choice before parsing
         // the optional body. Do not strip its actor here first.
         let words = crate::lexer::parser_token_word_refs(tokens);
+        // "may have target creature of their choice get -3/-3" (Death
+        // Match) delegates the choice from inside the clause.
         if !matches!(player, PlayerAst::You | PlayerAst::Implicit)
-            && words.ends_with(&["of", "their", "choice"])
+            && (words.ends_with(&["of", "their", "choice"])
+                || words.windows(2).any(|pair| pair == ["have", "target"])
+                    && words.windows(3).any(|window| window == ["of", "their", "choice"]))
             && words.contains(&"target")
         {
             return super::super::clause_dispatch::parse_effect_clause(tokens)

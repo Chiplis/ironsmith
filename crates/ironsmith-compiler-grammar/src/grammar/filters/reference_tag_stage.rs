@@ -303,8 +303,9 @@ fn word_is_in_ranges(word_idx: usize, ranges: &[std::ops::Range<usize>]) -> bool
 /// the filter its attachment target must satisfy. This is deliberately done
 /// before the ordinary type pass so `Aura attached to a creature` cannot be
 /// flattened into the impossible conjunction `Aura creature`.
-/// Split "<subject> with a <inner> attached to it" into the subject tokens
-/// and the attachment's inner filter tokens.
+/// Split "<subject> with a <inner> attached to it" (or "to them" after a
+/// plural subject: "other creatures you control with a Communicator attached
+/// to them") into the subject tokens and the attachment's inner filter tokens.
 fn split_with_attached_object_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
@@ -313,7 +314,7 @@ fn split_with_attached_object_filter(
     if n < 5
         || !(trimmed[n - 3].is_word("attached")
             && trimmed[n - 2].is_word("to")
-            && trimmed[n - 1].is_word("it"))
+            && (trimmed[n - 1].is_word("it") || trimmed[n - 1].is_word("them")))
     {
         return None;
     }
@@ -1499,7 +1500,7 @@ pub(super) fn parse_object_filter(
     }
     if let Some((index, relation_len)) =
         crate::word_primitives::find_current_block_partner_relation(&refs)
-        && crate::util::is_source_reference_words(&refs[index + relation_len..])
+        && crate::util::is_block_partner_source_words(&refs[index + relation_len..])
     {
         let boundary = words.token_start_indices()[index];
         crate::word_claims::claim_tokens(&tokens[boundary..]);

@@ -1252,8 +1252,16 @@ pub fn parse_put_counter_sequence_tokens(
     )
 }
 
-fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<CounterPlacementShape<'a>> {
-    let descriptor = parse_counter_descriptor_lexed.parse_next(input)?;
+/// One placement group: one or more counter kinds sharing one recipient
+/// ("a +1/+1 counter and a lifelink counter on that creature", Arwen, Mortal
+/// Queen), as one placement per kind.
+fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<Vec<CounterPlacementShape<'a>>> {
+    let first = parse_counter_descriptor_lexed.parse_next(input)?;
+    let more: Vec<CounterDescriptorShape> = repeat(
+        0..,
+        (primitives::kw("and"), parse_counter_descriptor_lexed).map(|(_, descriptor)| descriptor),
+    )
+    .parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
     let target_tokens = repeat_till(
         1..,
@@ -1267,18 +1275,21 @@ fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<CounterPlacementS
     .map(|((), _)| ())
     .take()
     .parse_next(input)?;
-    Ok(CounterPlacementShape {
-        descriptor,
-        target_tokens,
-    })
+    Ok(std::iter::once(first)
+        .chain(more)
+        .map(|descriptor| CounterPlacementShape {
+            descriptor,
+            target_tokens,
+        })
+        .collect())
 }
 
 fn parse_counter_placement_sequence_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<Vec<CounterPlacementShape<'a>>> {
     primitives::kw("put").parse_next(input)?;
-    let first = counter_placement.parse_next(input)?;
-    let rest: Vec<CounterPlacementShape<'a>> = repeat(
+    let mut placements = counter_placement.parse_next(input)?;
+    let rest: Vec<Vec<CounterPlacementShape<'a>>> = repeat(
         1..,
         (
             alt((
@@ -1287,13 +1298,11 @@ fn parse_counter_placement_sequence_lexed<'a>(
             )),
             counter_placement,
         )
-            .map(|(_, placement)| placement),
+            .map(|(_, group)| group),
     )
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    let mut placements = Vec::with_capacity(rest.len() + 1);
-    placements.push(first);
-    placements.extend(rest);
+    placements.extend(rest.into_iter().flatten());
     Ok(placements)
 }
 

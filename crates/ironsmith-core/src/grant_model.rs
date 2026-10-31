@@ -1472,6 +1472,7 @@ where
                 PlayerFilter::Teammate => "A teammate may".to_string(),
                 PlayerFilter::PlayerToYourLeft => "The player to your left may".to_string(),
                 PlayerFilter::OpponentToYourLeft => "The opponent to your left may".to_string(),
+                PlayerFilter::Monarch => "The monarch may".to_string(),
                 PlayerFilter::PlayerToYourRight => "The player to your right may".to_string(),
                 PlayerFilter::Active => "The active player may".to_string(),
                 PlayerFilter::Defending => "The defending player may".to_string(),

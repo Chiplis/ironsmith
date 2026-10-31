@@ -74,6 +74,7 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
         }
         PlayerFilter::Any | PlayerFilter::You | PlayerFilter::NotYou | PlayerFilter::Opponent
         | PlayerFilter::Teammate | PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight
+        | PlayerFilter::Monarch
         | PlayerFilter::Active | PlayerFilter::Defending | PlayerFilter::Attacking
         | PlayerFilter::DamagedPlayer | PlayerFilter::EffectController | PlayerFilter::Specific(_)
         | PlayerFilter::MostLifeTied | PlayerFilter::LowestLifeTied | PlayerFilter::MostCardsInHand
@@ -124,6 +125,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         attacking, attacking_alone, blocking_alone, attacked_this_turn, attacked_player_this_turn,
         ability_activated_this_turn,
         blocked_this_turn, was_blocked_this_turn, didnt_attack_this_turn,
+        attacked_during_controllers_last_turn,
         could_have_attacked_this_turn, attacking_player_or_planeswalker_controlled_by,
         attacking_player_only, protected_by, attached_to_object, attached_to_player,
         with_attached_object, without_attached_object, could_enchant_object,
@@ -152,7 +154,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         has_phyrexian_mana_symbol, could_produce_mana, has_tap_activated_ability,
         has_non_mana_activated_ability, no_abilities, no_x_in_cost, has_x_in_cost,
         with_counter, without_counter, total_counters_parity, name, name_surface,
-        excluded_name, excluded_name_surface, name_originally_printed_in_set,
+        excluded_name, excluded_name_surface, name_originally_printed_in_set, nameless,
         distinct_names, distinct_mana_values, distinct_powers, distinct_creature_types,
         shares_land_type, one_per_card_type, alternative_cast,
         static_abilities, excluded_static_abilities,

@@ -495,6 +495,7 @@ pub(super) fn calculate_with_layers(
                     exclude_source_name,
                     exclude_source_id,
                     force_once_each_turn,
+                    exclude_loyalty,
                 } => {
                     use crate::ability::AbilityKind;
                     // Reuse this derivation's effect set. Re-entering static
@@ -551,6 +552,9 @@ pub(super) fn calculate_with_layers(
                                 continue;
                             };
                             if *only_loyalty && !activated.is_loyalty_ability() {
+                                continue;
+                            }
+                            if *exclude_loyalty && activated.is_loyalty_ability() {
                                 continue;
                             }
                             if ability_is_mana_for_object(ability, ctx.game, candidate)

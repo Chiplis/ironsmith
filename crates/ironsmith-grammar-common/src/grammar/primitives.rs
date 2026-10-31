@@ -246,18 +246,30 @@ pub fn take_leaf<I, O>(
 where
     I: Stream + Clone,
 {
-    let mut probe = input.clone();
-    match parser.parse_next(&mut probe) {
-        Ok(value) => {
-            *input = probe;
-            Some(value)
-        }
-        Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
-        Err(ErrMode::Cut(error)) => {
-            report_committed_leaf_failure(&error);
-            None
-        }
-    }
+    kept_if_read(
+        || {
+            let mut probe = input.clone();
+            match parser.parse_next(&mut probe) {
+                Ok(value) => {
+                    *input = probe;
+                    Some(value)
+                }
+                Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
+                Err(ErrMode::Cut(error)) => {
+                    report_committed_leaf_failure(&error);
+                    None
+                }
+            }
+        },
+        Option::is_some,
+    )
+}
+
+/// Run a recognizer whose words count as read (its word claims reach the
+/// caller's reading) only when `keep` accepts its outcome: a shape that
+/// backtracked, failed or left trailing tokens read nothing.
+fn kept_if_read<T>(f: impl FnOnce() -> T, keep: impl FnOnce(&T) -> bool) -> T {
+    ironsmith_compiler_syntax::word_claims::speculative_keep_if(f, keep)
 }
 
 /// Recognize a complete token slice as one shape.
@@ -272,16 +284,21 @@ pub fn probe_all<'a, O>(
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
 ) -> Option<O> {
-    let mut input = LexStream::new(tokens);
-    let mut parser = maybe_trace(label, parser);
-    match parser.parse_next(&mut input) {
-        Ok(value) => input.is_empty().then_some(value),
-        Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
-        Err(ErrMode::Cut(error)) => {
-            report_committed_leaf_failure(&error);
-            None
-        }
-    }
+    kept_if_read(
+        || {
+            let mut input = LexStream::new(tokens);
+            let mut parser = maybe_trace(label, parser);
+            match parser.parse_next(&mut input) {
+                Ok(value) => input.is_empty().then_some(value),
+                Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
+                Err(ErrMode::Cut(error)) => {
+                    report_committed_leaf_failure(&error);
+                    None
+                }
+            }
+        },
+        Option::is_some,
+    )
 }
 
 pub fn parse_all<'a, O>(
@@ -289,10 +306,15 @@ pub fn parse_all<'a, O>(
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
 ) -> Result<O, CardTextError> {
-    let mut parser = maybe_trace(label, parser);
-    parser
-        .parse(LexStream::new(tokens))
-        .map_err(|err| format_parse_error(label, err, None))
+    kept_if_read(
+        || {
+            let mut parser = maybe_trace(label, parser);
+            parser
+                .parse(LexStream::new(tokens))
+                .map_err(|err| format_parse_error(label, err, None))
+        },
+        Result::is_ok,
+    )
 }
 
 pub fn parse_all_with_display_line<'a, O>(
@@ -301,10 +323,15 @@ pub fn parse_all_with_display_line<'a, O>(
     label: &str,
     display_line_index: usize,
 ) -> Result<O, CardTextError> {
-    let mut parser = maybe_trace(label, parser);
-    parser
-        .parse(LexStream::new(tokens))
-        .map_err(|err| format_parse_error(label, err, Some(display_line_index)))
+    kept_if_read(
+        || {
+            let mut parser = maybe_trace(label, parser);
+            parser
+                .parse(LexStream::new(tokens))
+                .map_err(|err| format_parse_error(label, err, Some(display_line_index)))
+        },
+        Result::is_ok,
+    )
 }
 
 /// Peek a leaf at the front of `tokens` without consuming the caller's slice.
@@ -315,14 +342,17 @@ fn peek_leaf<'a, O>(
     parser: &mut impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     tokens: &'a [LexToken],
 ) -> Option<(LexStream<'a>, O)> {
-    match parser.parse_peek(LexStream::new(tokens)) {
-        Ok(parsed) => Some(parsed),
-        Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
-        Err(ErrMode::Cut(error)) => {
-            report_committed_leaf_failure(&error);
-            None
-        }
-    }
+    kept_if_read(
+        || match parser.parse_peek(LexStream::new(tokens)) {
+            Ok(parsed) => Some(parsed),
+            Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
+            Err(ErrMode::Cut(error)) => {
+                report_committed_leaf_failure(&error);
+                None
+            }
+        },
+        Option::is_some,
+    )
 }
 
 pub fn parse_prefix<'a, O>(
@@ -339,36 +369,41 @@ pub fn parse_all_or_none<'a, O>(
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
 ) -> Result<Option<O>, CardTextError> {
-    let mut input = LexStream::new(tokens);
-    let mut parser = maybe_trace(label, parser);
-    match parser.parse_next(&mut input) {
-        Ok(value) => {
-            if input.is_empty() {
-                Ok(Some(value))
-            } else {
-                let (span, token) = failure_location(&input, 0);
-                let found = token
-                    .map(|t| format!(" near {:?}", t.slice))
-                    .unwrap_or_default();
-                Err(CardTextError::ParseError(format!(
-                    "rewrite {label} parse matched but has trailing tokens at {}..{}{found}",
-                    span.start, span.end,
-                )))
+    kept_if_read(
+        || {
+            let mut input = LexStream::new(tokens);
+            let mut parser = maybe_trace(label, parser);
+            match parser.parse_next(&mut input) {
+                Ok(value) => {
+                    if input.is_empty() {
+                        Ok(Some(value))
+                    } else {
+                        let (span, token) = failure_location(&input, 0);
+                        let found = token
+                            .map(|t| format!(" near {:?}", t.slice))
+                            .unwrap_or_default();
+                        Err(CardTextError::ParseError(format!(
+                            "rewrite {label} parse matched but has trailing tokens at {}..{}{found}",
+                            span.start, span.end,
+                        )))
+                    }
+                }
+                Err(ErrMode::Backtrack(_)) => Ok(None),
+                Err(ErrMode::Cut(inner)) => {
+                    let (span, token) = failure_location(&input, 0);
+                    let found = token
+                        .map(|t| format!(" near {:?}", t.slice))
+                        .unwrap_or_else(|| " at end of input".to_string());
+                    Err(CardTextError::ParseError(format!(
+                        "rewrite {label} parse failed at {}..{}{found}: {inner}",
+                        span.start, span.end,
+                    )))
+                }
+                Err(ErrMode::Incomplete(_)) => Ok(None),
             }
-        }
-        Err(ErrMode::Backtrack(_)) => Ok(None),
-        Err(ErrMode::Cut(inner)) => {
-            let (span, token) = failure_location(&input, 0);
-            let found = token
-                .map(|t| format!(" near {:?}", t.slice))
-                .unwrap_or_else(|| " at end of input".to_string());
-            Err(CardTextError::ParseError(format!(
-                "rewrite {label} parse failed at {}..{}{found}: {inner}",
-                span.start, span.end,
-            )))
-        }
-        Err(ErrMode::Incomplete(_)) => Ok(None),
-    }
+        },
+        |parsed| matches!(parsed, Ok(Some(_))),
+    )
 }
 
 #[cfg(test)]

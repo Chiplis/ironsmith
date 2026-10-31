@@ -1868,7 +1868,7 @@ fn find_tapped_to_pay_for_source_abilities_phrase(words: &[&str]) -> Option<usiz
 fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
     words.iter().enumerate().find_map(|(idx, _)| {
         let len = crate::word_primitives::current_block_partner_relation_prefix_len(&words[idx..])?;
-        is_source_reference_words(&words[idx + len..]).then_some(idx)
+        crate::util::is_block_partner_source_words(&words[idx + len..]).then_some(idx)
     })
 }
 

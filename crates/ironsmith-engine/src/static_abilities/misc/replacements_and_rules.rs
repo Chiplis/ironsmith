@@ -490,19 +490,25 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
     }
 
     fn display(&self) -> String {
+        // The modeled reading lives in the payload reader; an audit that
+        // reaches this display reports the fields instead of the prose.
+        let display = ironsmith_core::semantic_audit::retained(
+            "ModifyDamageAmountReplacement",
+            &self.display,
+            self,
+        );
         let Some(condition) = &self.condition else {
-            return self.display.clone();
+            return display;
         };
         let condition = super::super::describe_static_condition(condition);
         if let Some(rest) = condition.strip_prefix("as long as ")
-            && let Some(if_tail) = self
-                .display
+            && let Some(if_tail) = display
                 .strip_prefix("If ")
-                .or_else(|| self.display.strip_prefix("if "))
+                .or_else(|| display.strip_prefix("if "))
         {
             return format!("As long as {rest}, if {if_tail}");
         }
-        format!("{} {}", self.display, condition)
+        format!("{display} {condition}")
     }
 
     fn with_static_condition(
@@ -4379,12 +4385,19 @@ impl StaticAbilityKind for PregameAction {
             crate::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => {
                 render_begin_on_battlefield_pregame(spec)
             }
+            // The kind alone fixes this action's meaning (Serum Powder).
+            crate::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
+                if ironsmith_core::semantic_audit::semantic_audit_active() =>
+            {
+                "Any time you could mulligan and this card is in your hand, you may exile all the cards from your hand, then draw that many cards".to_string()
+            }
             crate::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount => {
                 self.text.clone()
             }
+            // No structural reading: an audit reports the typed kind.
             crate::static_abilities::PregameActionKind::ChooseColor
             | crate::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_) => {
-                self.text.clone()
+                ironsmith_core::semantic_audit::retained("PregameAction", &self.text, &self.kind)
             }
             crate::static_abilities::PregameActionKind::RevealFromOpeningHand(spec) => {
                 render_reveal_from_opening_hand_pregame(*spec, &self.effects)
@@ -4568,7 +4581,8 @@ impl StaticAbilityKind for KeywordText {
     }
 
     fn display(&self) -> String {
-        self.text.clone()
+        // Nothing but retained prose backs this ability: an audit reports it.
+        ironsmith_core::semantic_audit::retained("KeywordText", &self.text, self)
     }
 }
 
@@ -4601,7 +4615,8 @@ impl StaticAbilityKind for DraftRuleText {
     }
 
     fn display(&self) -> String {
-        self.text.clone()
+        // Nothing but retained prose backs this ability: an audit reports it.
+        ironsmith_core::semantic_audit::retained("DraftRuleText", &self.text, self)
     }
 }
 
@@ -4626,6 +4641,10 @@ impl StaticAbilityKind for StaticEffectsContinueUntilEndOfTurnAfterLeaving {
     }
 
     fn display(&self) -> String {
+        // The ability's identity fixes its meaning.
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return "If this permanent leaves the battlefield, its static effects continue until end of turn".to_string();
+        }
         self.text.clone()
     }
 }
@@ -5131,7 +5150,8 @@ impl StaticAbilityKind for KeywordFallbackText {
     }
 
     fn display(&self) -> String {
-        self.text.clone()
+        // Nothing but retained prose backs this ability: an audit reports it.
+        ironsmith_core::semantic_audit::retained("KeywordFallbackText", &self.text, self)
     }
 }
 
@@ -5153,7 +5173,8 @@ impl StaticAbilityKind for RuleFallbackText {
     }
 
     fn display(&self) -> String {
-        self.text.clone()
+        // Nothing but retained prose backs this ability: an audit reports it.
+        ironsmith_core::semantic_audit::retained("RuleFallbackText", &self.text, self)
     }
 }
 

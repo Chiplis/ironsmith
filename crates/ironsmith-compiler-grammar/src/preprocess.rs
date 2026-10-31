@@ -213,6 +213,56 @@ struct SelfReferenceName {
     tokens: Option<Vec<OwnedLexToken>>,
 }
 
+/// Parse-stream tokens normalization put in place of the card's name ("this"
+/// for "Grizzly Bears", or a typed "this creature"): preprocessing read the
+/// name, so the whole-line claim check counts these words as read. A token
+/// whose authored text is unchanged (a name kept as a literal surface) is
+/// not one.
+fn self_reference_replacement_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+    normalized: &NormalizedLine,
+    names: [&SelfReferenceName; 2],
+) -> Vec<&'a OwnedLexToken> {
+    // Names are ASCII-lowercased, which keeps byte offsets.
+    let original = normalized.original.to_ascii_lowercase();
+    let occurrences: Vec<(usize, usize)> = names
+        .iter()
+        .filter(|name| !name.text.is_empty())
+        .flat_map(|name| {
+            original
+                .match_indices(name.text.as_str())
+                .map(|(at, text)| (at, at + text.len()))
+        })
+        .collect();
+    if occurrences.is_empty() {
+        return Vec::new();
+    }
+    tokens
+        .iter()
+        .filter(|token| {
+            if token.kind != TokenKind::Word {
+                return false;
+            }
+            let source = crate::util::map_span_to_original(
+                token.span,
+                &normalized.normalized,
+                &normalized.original,
+                &normalized.char_map,
+            );
+            if normalized
+                .original
+                .get(source.start..source.end)
+                .is_some_and(|authored| authored.eq_ignore_ascii_case(&token.slice))
+            {
+                return false;
+            }
+            occurrences
+                .iter()
+                .any(|&(start, end)| start <= source.start && source.end <= end)
+        })
+        .collect()
+}
+
 impl SelfReferenceName {
     fn new(text: String) -> Self {
         let tokens = stage_tokens(text.as_str());
@@ -2666,6 +2716,13 @@ pub fn preprocess_document_with_provenance(
                 token.set_literal_surface(authored);
             }
         }
+        if crate::word_claims::line_audit_enabled() {
+            crate::word_claims::claim_for_line(self_reference_replacement_tokens(
+                &tokens,
+                &normalized,
+                [full_name, short_name],
+            ));
+        }
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
         semantic_facts.intrinsic_basic_land_mana_reminder =
             preprocess_grammar::parse_intrinsic_basic_land_mana_reminder_tokens(
@@ -3018,6 +3075,29 @@ mod tests {
     use crate::ids::CardId;
     use ironsmith_core::card::CardBuilder;
 
+
+    #[test]
+    fn normalized_card_name_is_a_self_reference_replacement() {
+        let name = SelfReferenceName::new("grizzly bears".to_string());
+        let normalized = normalize_line_for_parse(
+            "When Grizzly Bears enters, draw a card.",
+            &name,
+            &name,
+            false,
+            "this",
+        )
+        .unwrap();
+        let tokens = lex_line(normalized.normalized.as_str(), 0).unwrap();
+        let replaced: Vec<&str> = self_reference_replacement_tokens(&tokens, &normalized, [&name, &name])
+            .into_iter()
+            .map(|token| token.slice.as_str())
+            .collect();
+        assert_eq!(replaced, vec!["this"]);
+        // No name in the line: nothing was replaced.
+        let plain = normalize_line_for_parse("Draw a card.", &name, &name, false, "this").unwrap();
+        let tokens = lex_line(plain.normalized.as_str(), 0).unwrap();
+        assert!(self_reference_replacement_tokens(&tokens, &plain, [&name, &name]).is_empty());
+    }
 
     #[test]
     fn intrinsic_reminder_survives_cst_exclusion_as_typed_source_evidence() {

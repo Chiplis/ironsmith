@@ -872,7 +872,14 @@ pub struct DefinedFaceDown {
 }
 impl StaticAbilityKind for DefinedFaceDown {
     fn id(&self) -> StaticAbilityId { StaticAbilityId::KeywordMarker }
-    fn display(&self) -> String { self.text.clone() }
+    fn display(&self) -> String {
+        // An audit reads the face-down keyword its canonical model names.
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            let keyword = if self.ward { "Disguise" } else if self.counter { "Megamorph" } else { "Morph" };
+            return format!("{keyword} {}", self.cost.display());
+        }
+        self.text.clone()
+    }
     fn turn_face_up_cost(&self) -> Option<&crate::cost::TotalCost> { Some(&self.cost) }
     fn defined_face_down_ward(&self) -> Option<bool> { Some(self.ward) }
     fn turn_face_up_adds_counter(&self) -> bool { self.counter }

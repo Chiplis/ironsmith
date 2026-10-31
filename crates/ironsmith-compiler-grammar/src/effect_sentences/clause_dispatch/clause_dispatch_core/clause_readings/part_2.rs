@@ -108,6 +108,35 @@ pub(super) fn read_leading_may_additional_land_plays(
                 }
             }
         }
+        // "that creature's controller may have target creature of their
+        // choice get -3/-3 until end of turn" (Death Match): the same
+        // delegated declaration when the choice phrase closes the object of
+        // "have" rather than the clause (the shape already dropped "have").
+        let mut without_choice = Vec::new();
+        if delegated_target_declaration.is_none()
+            && let clause_grammar::LeadingMayActorShape::Player(player) = shape.actor
+            && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
+            && effect_tokens.first().is_some_and(|token| token.is_word("target"))
+            && let Some(choice_idx) = effect_tokens.windows(3).position(|window| {
+                window[0].is_word("of") && window[1].is_word("their") && window[2].is_word("choice")
+            })
+            && choice_idx > 1
+            && choice_idx + 3 < effect_tokens.len()
+            && let Ok(target) = parse_target_phrase(&effect_tokens[..choice_idx])
+        {
+            crate::word_claims::claim_tokens(&effect_tokens[choice_idx..choice_idx + 3]);
+            delegated_target_declaration = Some(EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::Chooser,
+                player,
+                crate::cards::builders::SubjectVerbActionAst::TargetOnly {
+                    target,
+                    explicit_declaration: false,
+                },
+            ));
+            without_choice.extend_from_slice(&effect_tokens[..choice_idx]);
+            without_choice.extend_from_slice(&effect_tokens[choice_idx + 3..]);
+            effect_tokens = without_choice.as_slice();
+        }
         let mut effects = parse_effect_chain_with_subject_verb_primitives(effect_tokens)?;
         if let Some(declaration) = delegated_target_declaration {
             effects.insert(0, declaration);

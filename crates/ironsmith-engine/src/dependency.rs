@@ -1093,6 +1093,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::Teammate
             | PlayerFilter::PlayerToYourLeft
             | PlayerFilter::OpponentToYourLeft
+            | PlayerFilter::Monarch
             | PlayerFilter::PlayerToYourRight
             | PlayerFilter::Active
             | PlayerFilter::Defending
@@ -2790,6 +2791,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                 filter.name.is_some()
                     || filter.excluded_name.is_some()
                     || filter.name_originally_printed_in_set.is_some()
+                    || filter.nameless
                     || filter.distinct_names
                     || filter.shares_name
                     || filter.tagged_constraints.iter().any(|constraint| matches!(
@@ -3491,6 +3493,7 @@ mod tests {
             filter: ObjectFilter::default().in_zone(crate::zone::Zone::Exile),
             counter: None, include_mana: true, only_loyalty: false,
             exclude_source_name: false, exclude_source_id: false, force_once_each_turn: false,
+            exclude_loyalty: false,
         });
         let mut grant = create_test_effect(2, 2, Modification::AddAbility(StaticAbility::haste()));
         assert!(!needs_baseline_dependency_sort(&[&copy, &grant], &game));
@@ -3738,6 +3741,7 @@ mod tests {
                 exclude_source_name: false,
                 exclude_source_id: false,
                 force_once_each_turn: false,
+                exclude_loyalty: false,
             },
             timestamp: 1,
             group: None,
@@ -3874,6 +3878,7 @@ mod tests {
                 exclude_source_name: false,
                 exclude_source_id: false,
                 force_once_each_turn: false,
+                exclude_loyalty: false,
             },
             timestamp: 1,
             group: None,

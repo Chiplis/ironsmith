@@ -1165,9 +1165,14 @@ pub fn split_trailing_if_clause_lexed<'a>(
     if super::effects::split_conditional_sentence_family_head_lexed(tokens).is_some() {
         return None;
     }
+    // A yes/no probe: the coordination only decides whether to split here,
+    // and the readers of each member read its words ("put it onto the
+    // battlefield with X additional +1/+1 counters on it if X", Vision Quest).
     if tokens.iter().filter(|token| token.is_word("if")).count() > 1
         && let crate::recognition::ParseOutcome::Match(matched) =
-            super::effects::coordination::recognize_coordination(tokens)
+            crate::word_claims::probe_only(|| {
+                super::effects::coordination::recognize_coordination(tokens)
+            })
         && matched.value.members.len() > 1
         && matched
             .value

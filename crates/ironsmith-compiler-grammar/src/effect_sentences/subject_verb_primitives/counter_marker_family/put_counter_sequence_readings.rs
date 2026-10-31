@@ -62,7 +62,13 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("shared-counter-target"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        // "a +1/+1 counter and a lifelink counter on that creature and a
+        // +1/+1 counter and a lifelink counter on Arwen" (Arwen, Mortal
+        // Queen) is a placement sequence; read as one shared target, the
+        // second recipient is lost.
+        admits: |input| {
+            counter_shapes::parse_counter_placement_sequence_tokens(input.tokens).is_none()
+        },
         read: |input| input.outcome(read_shared_counter_target(input)),
     },
     Reading {

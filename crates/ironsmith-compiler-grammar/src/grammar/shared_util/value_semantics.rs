@@ -376,6 +376,14 @@ fn history_filter_from_word_prefix(
     words: &TokenWordView<'_>,
     end_word: usize,
 ) -> Option<ObjectFilter> {
+    // "card type among noncreature spells you've cast this turn" (Hurkyl,
+    // Master Wizard) counts characteristics of the spells, never the spells.
+    if matches!(
+        words.to_word_refs().as_slice(),
+        ["card" | "creature", "type" | "types", "among", ..] | ["color" | "colors", "among", ..]
+    ) {
+        return None;
+    }
     let range = words.token_span_for_words(0, end_word)?;
     let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
         &trim_edge_punctuation(&tokens[range]),

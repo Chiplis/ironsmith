@@ -30,7 +30,19 @@ pub(crate) const POISON: &str = "POISON";
 /// conditions). Arms were generated from every `StaticAbilityPayload` variant
 /// with such a field; extend them when a variant gains one.
 fn poison_model(model: &mut ironsmith::static_abilities::CompiledStaticAbility) -> bool {
-    model.label = POISON.into();
+    poison_model_with(model, true)
+}
+
+/// [`poison_model`], optionally keeping `label`: ability-word labels print
+/// as presentation prefixes and legacy `keyword:` labels select behavior, so
+/// a caller judging individual audit lines keeps them.
+fn poison_model_with(
+    model: &mut ironsmith::static_abilities::CompiledStaticAbility,
+    labels: bool,
+) -> bool {
+    if labels {
+        model.label = POISON.into();
+    }
     match &mut model.payload {
         P::Anthem(anthem) => anthem.condition.iter_mut().for_each(poison_condition),
         P::AttachedAbilityGrant(grant) => {
@@ -58,7 +70,7 @@ fn poison_model(model: &mut ironsmith::static_abilities::CompiledStaticAbility) 
             condition, ability, ..
         } => {
             poison_condition(condition);
-            poison_model(ability);
+            poison_model_with(ability, labels);
         }
         P::CostIncreaseLife { display, .. } => {
             *display = POISON.into();
@@ -343,6 +355,14 @@ fn poison_model(model: &mut ironsmith::static_abilities::CompiledStaticAbility) 
         P::AddSubtypesAndGrantAbilities { display, .. } => {
             *display = POISON.into();
         }
+        P::ActivatedAbilityCostReduction { display, .. } => {
+            if display.is_some() {
+                *display = Some(POISON.into());
+            }
+        }
+        P::PregameAction { text, .. } => {
+            *text = POISON.into();
+        }
         _ => {}
     }
     true
@@ -410,6 +430,34 @@ fn poison_effect(effect: ironsmith::Effect) -> ironsmith::Effect {
         poison_all(&mut for_players.effects);
         return ironsmith::Effect::new(for_players);
     }
+    // Resolving registrations that retain their authored sentence.
+    if let Some(register) = effect.downcast_ref::<fx::RegisterManaSpendPermissionEffect>() {
+        let mut register = register.clone();
+        register.display = POISON.into();
+        return ironsmith::Effect::new(register);
+    }
+    if let Some(register) = effect.downcast_ref::<fx::RegisterManaRewriteEffect>() {
+        let mut register = register.clone();
+        register.display = POISON.into();
+        return ironsmith::Effect::new(register);
+    }
+    if let Some(register) = effect.downcast_ref::<fx::RegisterDrawReplacementEffect>() {
+        let mut register = register.clone();
+        if register.display.is_some() {
+            register.display = Some(POISON.into());
+        }
+        poison_all(&mut register.replacement_effects);
+        return ironsmith::Effect::new(register);
+    }
+    if let Some(redirect) = effect.downcast_ref::<fx::RedirectAllDamageThisTurnToTargetEffect>()
+        && redirect.scope.is_some()
+    {
+        let mut redirect = redirect.clone();
+        if let Some(scope) = &mut redirect.scope {
+            scope.display = POISON.into();
+        }
+        return ironsmith::Effect::new(redirect);
+    }
     effect
 }
 
@@ -423,7 +471,27 @@ fn poison_program(program: &mut ironsmith::resolution::ResolutionProgram) {
 /// Poison the supported retained-text fields the audit renderer must not print:
 /// static payloads, intervening-if conditions, and resolution conditions.
 pub(crate) fn poison_definition(def: &CardDefinition) -> CardDefinition {
-    let (mut poisoned, _) = map_static_models(def, poison_model);
+    poison_definition_with(def, true)
+}
+
+/// [`poison_definition`] keeping static labels (see [`poison_model_with`]):
+/// an audit line that changes under this poison read retained prose.
+pub(crate) fn poison_presentation_prose(def: &CardDefinition) -> CardDefinition {
+    poison_definition_with(def, false)
+}
+
+fn poison_definition_with(def: &CardDefinition, labels: bool) -> CardDefinition {
+    // Without label poisoning only a model whose prose actually changed is
+    // rebuilt, so a rebuilt-from-model static never stands in for an
+    // unchanged original.
+    let (mut poisoned, _) = map_static_models(def, |model| {
+        if labels {
+            return poison_model_with(model, true);
+        }
+        let original = model.clone();
+        poison_model_with(model, false);
+        *model != original
+    });
     if let Some(program) = &mut poisoned.spell_effect {
         poison_program(program);
     }

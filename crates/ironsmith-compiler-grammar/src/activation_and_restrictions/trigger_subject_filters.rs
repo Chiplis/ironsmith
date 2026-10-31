@@ -609,6 +609,22 @@ pub fn parse_trigger_subject_filter_lexed(
         normalized_subject_tokens.drain(start..end);
     }
 
+    // "this creature or another creature with the same name" (Pirated
+    // Copy): the elided comparison object is this creature.
+    let same_name_boundary = {
+        let view = crate::grammar::primitives::TokenWordView::new(&normalized_subject_tokens);
+        let words = view.word_refs();
+        if words.len() > 4 && words.ends_with(&["with", "the", "same", "name"]) {
+            view.map_word_or_end_to_token_boundary(words.len() - 4)
+                .filter(|boundary| *boundary > 0)
+        } else {
+            None
+        }
+    };
+    let same_name_tokens = same_name_boundary
+        .map(|boundary| normalized_subject_tokens.split_off(boundary))
+        .unwrap_or_default();
+
     parse_object_filter_lexed(&normalized_subject_tokens, other)
         .map(|mut filter| {
             if filter.zone.is_none()
@@ -617,6 +633,16 @@ pub fn parse_trigger_subject_filter_lexed(
                 && !filter.source
             {
                 filter.zone = Some(Zone::Battlefield);
+            }
+            if !same_name_tokens.is_empty() {
+                crate::word_claims::claim_tokens(&same_name_tokens);
+                filter.zone.get_or_insert(Zone::Battlefield);
+                filter
+                    .tagged_constraints
+                    .push(crate::filter::TaggedObjectConstraint {
+                        tag: crate::tag::CompilerReferenceTag::SourceObject.bind().into(),
+                        relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+                    });
             }
             if let Some(controller) = controller_override {
                 filter.controller = Some(controller);
@@ -993,6 +1019,25 @@ pub fn parse_spell_activity_trigger(
                         .iter()
                         .filter(|token| token.is_word(crate::keyword_forms::KICKED)),
                 );
+                // "you cast your next instant or sorcery spell this turn"
+                // (Twinferno): the possessive restates the caster.
+                if let Some(first) = filter_tokens.first()
+                    && first.is_word("your")
+                    && matches!(actor, PlayerFilter::You)
+                    && !owned.iter().any(|token| std::ptr::eq(*token, first))
+                {
+                    owned.push(first);
+                }
+                // "a spell from their hand" (Possibility Storm): the cast
+                // origin and its owner are read by the origin filter below.
+                if filter_facts.origin.is_some()
+                    && let Some(from) = filter_tokens.iter().position(|token| token.is_word("from"))
+                    && let Some(zone) = filter_tokens[from..].iter().position(|token| {
+                        token.is_any_word(&["hand", "graveyard", "exile", "library"])
+                    })
+                {
+                    owned.extend(&filter_tokens[from..=from + zone]);
+                }
                 match crate::word_claims::with_caller_owned(owned, || {
                     parse_object_filter(filter_tokens, false)
                 }) {
@@ -2411,6 +2456,14 @@ fn cast_count_qualifier_tokens<'a>(
         && turn.is_word("turn")
     {
         owned.extend([when, turn]);
+    }
+    // "the first noncreature spell of a turn" (Nullstone Gargoyle).
+    if let [.., of, a, turn] = tokens
+        && of.is_word("of")
+        && a.is_word("a")
+        && turn.is_word("turn")
+    {
+        owned.extend([of, a, turn]);
     }
     owned
 }

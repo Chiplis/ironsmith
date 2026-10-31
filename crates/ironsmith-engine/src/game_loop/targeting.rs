@@ -4579,6 +4579,7 @@ pub fn player_matches_filter_with_combat(
                 game.are_opponents(controller, candidate)
             }) == Some(player_id)
         }
+        PlayerFilter::Monarch => game.is_monarch(player_id),
         PlayerFilter::PlayerToYourRight => {
             game.closest_in_game_player_to_right_matching(controller, |_| true) == Some(player_id)
         }

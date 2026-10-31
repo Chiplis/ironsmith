@@ -926,6 +926,26 @@ pub fn parse_choose_card_name_clause(
     let filter = shape
         .filter_tokens
         .map(|filter_tokens| {
+            // "a card name other than a basic land card name" (Booby Trap):
+            // the leading "card name" is the chosen thing; the filter is the
+            // card the name may not belong to.
+            let article = usize::from(
+                filter_tokens
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["a", "an"])),
+            );
+            let mut owned_filter_tokens;
+            let filter_tokens = if filter_tokens.get(article).is_some_and(|token| token.is_word("card"))
+                && filter_tokens.get(article + 1).is_some_and(|token| token.is_word("name"))
+                && filter_tokens.get(article + 2).is_some_and(|token| token.is_word("other"))
+            {
+                crate::word_claims::claim_tokens(&filter_tokens[article + 1..article + 2]);
+                owned_filter_tokens = filter_tokens.to_vec();
+                owned_filter_tokens.remove(article + 1);
+                owned_filter_tokens.as_slice()
+            } else {
+                filter_tokens
+            };
             parse_object_filter(filter_tokens, false).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported choose-card-name filter (clause: '{}')",

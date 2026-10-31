@@ -1290,6 +1290,7 @@ impl StaticAbilityModelInterpreter {
                 }
                 // CR 605.1a: mana abilities are excluded from the copy.
                 converted.include_mana = !copy.exclude_mana_abilities;
+                converted.exclude_loyalty = copy.exclude_loyalty_abilities;
                 StaticAbility::copy_activated_abilities(converted)
             }
             ironsmith_core::StaticAbilityPayload::CopyStaticAbilityVariants(copy) => {

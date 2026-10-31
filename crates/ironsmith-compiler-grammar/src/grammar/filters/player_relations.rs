@@ -233,6 +233,10 @@ fn parse_relation_subject_word_slice(
                 relation_phrase(&["another", "player"]).value(PlayerFilter::NotYou),
                 // "basic lands each player controls" (Sheltering Prayers).
                 relation_phrase(&["each", "player"]).value(PlayerFilter::Any),
+                // "target artifact a player controls" (Goblin Welder): any
+                // player, once the article is read; a qualified player
+                // ("that player") is matched from its qualifier first.
+                relation_phrase(&["player"]).value(PlayerFilter::Any),
                 relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
                 // "one of their opponents controls": opponents of the
                 // pronoun's player, not of the ability's controller.
@@ -1181,6 +1185,16 @@ pub(super) fn try_apply_graveyard_from_battlefield_this_turn_clause(
         return false;
     };
     filter.entered_graveyard_from_battlefield_this_turn = true;
+    // "creature cards that were put into your graveyard from the
+    // battlefield this turn" (Fell Shepherd): the passive verb is this
+    // history, before the zone's "into your graveyard".
+    if let Some(into) = (word_start.saturating_sub(2)..word_start).find(|idx| all_words[*idx] == "into")
+        && into >= 2
+        && all_words[into - 1] == "put"
+        && matches!(all_words[into - 2], "was" | "were")
+    {
+        crate::word_claims::claim_words(&all_words[into - 2..into]);
+    }
     crate::word_claims::claim_drained(all_words.drain(word_start + 1..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,

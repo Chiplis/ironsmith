@@ -4513,6 +4513,7 @@ pub fn player_filter_matches_with_context(
                 game.are_opponents(controller, candidate)
             }) == Some(player)
         }
+        PlayerFilter::Monarch => game.is_monarch(player),
         PlayerFilter::PlayerToYourRight => {
             game.closest_in_game_player_to_right_matching(controller, |_| true) == Some(player)
         }

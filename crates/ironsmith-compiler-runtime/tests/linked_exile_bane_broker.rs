@@ -176,7 +176,7 @@ fn independently_borrowed_activated_pairs_cannot_return_each_others_exiles() {
         let donors = [game.create_object_from_definition(&definition, A, Zone::Exile), game.create_object_from_definition(&definition, A, Zone::Exile)];
         for donor in donors { game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(host, A, EffectTarget::Specific(host),
             Modification::CopyActivatedAbilities { filter: ObjectFilter::specific(donor), counter: None, include_mana: true,
-                only_loyalty: false, exclude_source_name: false, exclude_source_id: true, force_once_each_turn: false })); }
+                only_loyalty: false, exclude_source_name: false, exclude_source_id: true, force_once_each_turn: false, exclude_loyalty: false })); }
         game.refresh_continuous_state().unwrap(); let first = card(&mut game, A, Zone::Hand); let second = card(&mut game, A, Zone::Hand);
         let (first, first_owner) = produce(&mut game, host, A, 0, first); let (second, second_owner) = produce(&mut game, host, A, 2, second);
         assert_ne!(first_owner, second_owner); assert!(!look(&game, first, A)); assert!(!look(&game, second, A));

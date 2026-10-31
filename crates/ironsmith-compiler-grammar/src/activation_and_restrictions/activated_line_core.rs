@@ -1122,8 +1122,19 @@ fn parse_cost_reduction_line_inner(
             let remaining_tokens = amount_tokens.get(used..).unwrap_or_default();
             if activated_line_grammar::parse_this_cost_reduction_remainder_tokens(remaining_tokens)
                 == ThisCostReductionRemainder::ForEach
-                && let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)?
+                && let Some(dynamic) = parse_dynamic_cost_modifier_value(
+                    // "... This effect can't reduce the amount of mana this
+                    // spell costs by more than {5}." (Valiant Changeling): the
+                    // cap sentence is the line's reduction cap, not the count.
+                    crate::keyword_static::cost_reduction_cap_sentence_start(remaining_tokens)
+                        .map_or(remaining_tokens, |start| &remaining_tokens[..start]),
+                )?
             {
+                if let Some(start) =
+                    crate::keyword_static::cost_reduction_cap_sentence_start(remaining_tokens)
+                {
+                    crate::word_claims::claim_tokens(&remaining_tokens[start..]);
+                }
                 let reduction = scale_dynamic_cost_modifier_value(dynamic, amount_fixed);
                 return Ok(Some(StaticAbility::new(
                     crate::static_abilities::ThisSpellCostReduction::new(
@@ -1355,7 +1366,12 @@ fn parse_cost_reduction_line_inner(
             if remainder == ThisSpellReductionRemainder::NotReduction {
                 return Ok(None);
             }
-            if let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
+            // The count stops before a cap sentence (Valiant Changeling). This
+            // reading doesn't apply the cap, so it leaves those words unclaimed.
+            if let Some(dynamic) = parse_dynamic_cost_modifier_value(
+                crate::keyword_static::cost_reduction_cap_sentence_start(remaining_tokens)
+                    .map_or(remaining_tokens, |start| &remaining_tokens[..start]),
+            )? {
                 let reduction =
                     crate::model::CompilerCostReduction::new(ObjectFilter::default(), dynamic);
                 return Ok(Some(StaticAbility::new(reduction)));

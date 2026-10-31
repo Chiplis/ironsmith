@@ -1115,6 +1115,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // subjects. Its own grammar requires the "has/have all activated
         // abilities of" marker, which guards the whole-line candidacy.
         "parse_copy_activated_abilities_line"
+        | "parse_copy_activated_abilities_with_spend_permission_line"
         | "parse_copy_activated_and_triggered_abilities_line" => Vec::new(),
         "parse_attached_untap_and_activation_restrictions_line"
         | "parse_attached_has_and_loses_keywords_line"
@@ -1710,6 +1711,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_pay_life_or_enter_tapped_line),
         single_static_ability_ast_rule!(parse_reveal_card_or_enter_tapped_line),
         multi_static_ability_ast_passthrough_rule!(parse_copy_activated_and_triggered_abilities_line),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_copy_activated_abilities_with_spend_permission_line
+        ),
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
         multi_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_lines),
         single_static_ability_ast_passthrough_rule!(parse_enchanted_has_activated_ability_line),

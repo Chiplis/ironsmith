@@ -186,6 +186,154 @@ pub struct CompilationSnapshot {
     pub parse_loss_reasons: String,
     pub parse_loss_count: usize,
     pub content_hash: String,
+    /// Similarity of the ordinary display rendering (`compiled_text_lines`)
+    /// to Oracle, scored exactly like `similarity_score` (which scores the
+    /// semantic audit rendering). Derived from hashed fields, so it is kept
+    /// out of `content_hash`; `None` when nothing compiled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_similarity_score: Option<f32>,
+    /// Similarity of the strict semantic rendering to Oracle: the semantic
+    /// audit lines with every presentation-dependent line replaced by
+    /// [`PRESENTATION_DEPENDENT_LINE_MARKER`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_similarity_score: Option<f32>,
+    /// Semantic audit lines that changed when the definition's retained
+    /// presentation prose was poisoned: lines read from authored text rather
+    /// than from the executable model.
+    #[serde(default, skip_serializing_if = "is_zero_count")]
+    pub presentation_dependent_lines: usize,
+    /// See [`display_masks_semantics`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub display_masks_semantics: bool,
+}
+
+fn is_zero_count(count: &usize) -> bool {
+    *count == 0
+}
+
+/// The similarity floor every corpus campaign gates on.
+pub const DISPLAY_MASK_DISPLAY_FLOOR: f32 = 0.99;
+/// The smallest display-over-semantic gap that counts as masking: the width
+/// of the passing band `[0.99, 1.0]`. With the display at or above the floor,
+/// a gap this large puts the semantic reading at or below the floor, so the
+/// display is what makes the card look passing.
+pub const DISPLAY_MASK_MIN_GAP: f32 = 0.01;
+
+/// Replaces a semantic audit line that reads retained presentation prose
+/// instead of the executable model. It never resembles Oracle text, so it
+/// scores as a mismatch.
+pub const PRESENTATION_DEPENDENT_LINE_MARKER: &str = "⟦unverified presentation-dependent line⟧";
+
+/// "Display masks semantics": the display rendering would pass the corpus
+/// similarity floor ([`DISPLAY_MASK_DISPLAY_FLOOR`]) while the strict
+/// semantic rendering scores at least [`DISPLAY_MASK_MIN_GAP`] lower. Such a
+/// card prints correctly while its executable model (or the part of it the
+/// audit can read) does not say what the card says.
+pub fn display_masks_semantics(display_similarity: f32, semantic_similarity: f32) -> bool {
+    // Scores are f32: 1.0 - 0.99 is just under 0.01, so compare with a
+    // tolerance far below any meaningful score difference.
+    const EPSILON: f32 = 1e-6;
+    display_similarity >= DISPLAY_MASK_DISPLAY_FLOOR - EPSILON
+        && display_similarity - semantic_similarity >= DISPLAY_MASK_MIN_GAP - EPSILON
+}
+
+/// Replace each `audit` line with no unclaimed equal line in `poisoned` (the
+/// audit of the same definition with its presentation prose poisoned) by
+/// [`PRESENTATION_DEPENDENT_LINE_MARKER`]. Lines are matched as a multiset so
+/// a poisoned line that moved still claims at most one original. Returns the
+/// strict lines and how many were replaced.
+pub fn mark_presentation_dependent_lines(
+    audit: &[String],
+    poisoned: &[String],
+) -> (Vec<String>, usize) {
+    let mut unclaimed = BTreeMap::<&str, usize>::new();
+    for line in poisoned {
+        *unclaimed.entry(line.as_str()).or_default() += 1;
+    }
+    let mut dependent = 0usize;
+    let mut strict = Vec::with_capacity(audit.len());
+    for line in audit {
+        match unclaimed.get_mut(line.as_str()) {
+            Some(count) if *count > 0 => {
+                *count -= 1;
+                strict.push(line.clone());
+            }
+            _ => {
+                dependent += 1;
+                strict.push(PRESENTATION_DEPENDENT_LINE_MARKER.to_string());
+            }
+        }
+    }
+    (strict, dependent)
+}
+
+/// The semantic audit of `definition` with presentation-dependent lines
+/// marked (see [`mark_presentation_dependent_lines`]). A renderer that
+/// panics only once retained prose is poisoned depends on that prose, so a
+/// panic marks every line.
+pub fn presentation_strict_audit_lines(
+    definition: &CardDefinition,
+    audit: &[String],
+) -> (Vec<String>, usize) {
+    let poisoned = panic::catch_unwind(AssertUnwindSafe(|| {
+        ironsmith::compiled_text::semantic_audit_lines(
+            &crate::semantic_audit_probes::poison_presentation_prose(definition),
+        )
+    }));
+    match poisoned {
+        Ok(poisoned) => mark_presentation_dependent_lines(audit, &poisoned),
+        Err(_) => (
+            vec![PRESENTATION_DEPENDENT_LINE_MARKER.to_string(); audit.len()],
+            audit.len(),
+        ),
+    }
+}
+
+/// A card whose display rendering masks its semantics, as stored by the
+/// corpus sync (`display_masks_semantics = 1`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayMaskedCard {
+    pub card_name: String,
+    pub similarity_score: f32,
+    pub display_similarity_score: f32,
+    pub semantic_similarity_score: f32,
+    pub presentation_dependent_lines: usize,
+}
+
+impl DisplayMaskedCard {
+    pub fn gap(&self) -> f32 {
+        self.display_similarity_score - self.semantic_similarity_score
+    }
+}
+
+const SEMANTIC_RENDER_COLUMNS: [(&str, &str); 4] = [
+    ("display_similarity_score", "REAL"),
+    ("semantic_similarity_score", "REAL"),
+    ("presentation_dependent_lines", "INTEGER NOT NULL DEFAULT 0"),
+    ("display_masks_semantics", "INTEGER NOT NULL DEFAULT 0"),
+];
+
+/// Derived scores are refreshed on the stored row even when the snapshot's
+/// content hash already exists, so a sync fills them in for rows written
+/// before the columns existed without minting a new observation.
+const UPDATE_SEMANTIC_RENDER_SCORES_SQL: &str = "UPDATE card_compilation
+     SET display_similarity_score = ?2,
+         semantic_similarity_score = ?3,
+         presentation_dependent_lines = ?4,
+         display_masks_semantics = ?5
+     WHERE id = ?1";
+
+fn semantic_render_score_params(
+    compilation_id: i64,
+    snapshot: &CompilationSnapshot,
+) -> (i64, Option<f32>, Option<f32>, i64, bool) {
+    (
+        compilation_id,
+        snapshot.display_similarity_score,
+        snapshot.semantic_similarity_score,
+        snapshot.presentation_dependent_lines as i64,
+        snapshot.display_masks_semantics,
+    )
 }
 
 #[derive(Debug)]
@@ -601,6 +749,10 @@ fn mark_authoritative_snapshot_parse_failed(
     snapshot.similarity_score = 0.0;
     snapshot.line_delta = 0;
     snapshot.semantic_mismatch = false;
+    snapshot.display_similarity_score = None;
+    snapshot.semantic_similarity_score = None;
+    snapshot.presentation_dependent_lines = 0;
+    snapshot.display_masks_semantics = false;
     snapshot.content_hash = snapshot.compute_content_hash();
 }
 
@@ -998,38 +1150,64 @@ impl CompilationSnapshot {
             line_delta,
             semantic_mismatch,
             has_unimplemented,
+            (
+                display_similarity_score,
+                semantic_similarity_score,
+                presentation_dependent_lines,
+                display_masks_semantics_flag,
+            ),
         ) = if let Some(definition) = definition {
             let normalized_oracle = normalized_oracle_source_lines(oracle_text);
             let normalized_oracle_text = normalized_oracle.join("\n");
             let compiled = compiled_text_lines(definition);
             let compiled_text = compiled.join("\n");
-            // Presentation can retain correct Oracle prose beside an incorrect
-            // executable model. Score the independent structural reading;
-            // keep ordinary text only as the user-facing display snapshot.
-            let audit = ironsmith::compiled_text::semantic_audit_lines(definition);
-            let mut comparison = compare_card_semantics_scored(
-                card_name,
-                &normalized_oracle_text,
-                &audit,
-                report_embedding_config(),
-            );
-            // Keyword expansions ("Renown 1", "Evoke {cost}") only match when
-            // the comparer can see the reminder text; keep whichever oracle
-            // surface scores better.
-            if !raw_oracle_text.trim().is_empty() {
-                let scoring_oracle_text = scoring_oracle_source_lines(raw_oracle_text).join("\n");
-                if scoring_oracle_text != normalized_oracle_text {
+            // Every rendering is scored the same way. Keyword expansions
+            // ("Renown 1", "Evoke {cost}") only match when the comparer can
+            // see the reminder text; keep whichever oracle surface scores
+            // better.
+            let scoring_oracle_text = (!raw_oracle_text.trim().is_empty())
+                .then(|| scoring_oracle_source_lines(raw_oracle_text).join("\n"))
+                .filter(|scoring| *scoring != normalized_oracle_text);
+            let score = |lines: &[String]| {
+                let mut comparison = compare_card_semantics_scored(
+                    card_name,
+                    &normalized_oracle_text,
+                    lines,
+                    report_embedding_config(),
+                );
+                if let Some(scoring_oracle_text) = scoring_oracle_text.as_deref() {
                     let raw_comparison = compare_card_semantics_scored(
                         card_name,
-                        &scoring_oracle_text,
-                        &audit,
+                        scoring_oracle_text,
+                        lines,
                         report_embedding_config(),
                     );
                     if raw_comparison.2 > comparison.2 {
                         comparison = raw_comparison;
                     }
                 }
-            }
+                comparison
+            };
+            // Presentation can retain correct Oracle prose beside an incorrect
+            // executable model. Score the independent structural reading;
+            // keep ordinary text only as the user-facing display snapshot.
+            let audit = ironsmith::compiled_text::semantic_audit_lines(definition);
+            let comparison = score(audit.as_slice());
+            // Diagnostics beside the score: how the display rendering scores,
+            // and how the audit scores once lines that read retained prose
+            // count as mismatches. Identical line sets share a score.
+            let display_similarity = if compiled == audit {
+                comparison.2
+            } else {
+                score(compiled.as_slice()).2
+            };
+            let (strict_audit, dependent_lines) =
+                presentation_strict_audit_lines(definition, &audit);
+            let semantic_similarity = if dependent_lines == 0 {
+                comparison.2
+            } else {
+                score(strict_audit.as_slice()).2
+            };
             let (
                 oracle_coverage,
                 compiled_coverage,
@@ -1051,6 +1229,12 @@ impl CompilationSnapshot {
                     || compiled
                         .iter()
                         .any(|line| line.to_ascii_lowercase().contains("unsupported effect")),
+                (
+                    Some(display_similarity),
+                    Some(semantic_similarity),
+                    dependent_lines,
+                    display_masks_semantics(display_similarity, semantic_similarity),
+                ),
             )
         } else {
             (
@@ -1063,6 +1247,7 @@ impl CompilationSnapshot {
                 0,
                 false,
                 false,
+                (None, None, 0, false),
             )
         };
 
@@ -1085,9 +1270,25 @@ impl CompilationSnapshot {
             parse_loss_reasons: parse_loss.reasons_text(),
             parse_loss_count: parse_loss.count(),
             content_hash: String::new(),
+            display_similarity_score,
+            semantic_similarity_score,
+            presentation_dependent_lines,
+            display_masks_semantics: display_masks_semantics_flag,
         };
         snapshot.content_hash = snapshot.compute_content_hash();
         snapshot
+    }
+
+    /// This snapshot without the scores derived from its hashed fields, so a
+    /// serialization of it matches one written before those scores existed.
+    pub fn without_derived_scores(&self) -> Self {
+        Self {
+            display_similarity_score: None,
+            semantic_similarity_score: None,
+            presentation_dependent_lines: 0,
+            display_masks_semantics: false,
+            ..self.clone()
+        }
     }
 
     fn compute_content_hash(&self) -> String {
@@ -1326,6 +1527,28 @@ impl CardStatusDb {
         Ok(())
     }
 
+    /// Semantic-render diagnostics (see [`CompilationSnapshot`]). Additive
+    /// and idempotent, so the schema version stays put: older binaries and
+    /// `ironsmith-status-db` keep opening the DB, and rows written before
+    /// these columns existed read as NULL / 0 until the next sync refreshes
+    /// them in place.
+    fn add_semantic_render_columns_if_needed(&self) -> Result<(), Box<dyn Error>> {
+        for (column, definition) in SEMANTIC_RENDER_COLUMNS {
+            if !self.card_compilation_has_column(column) {
+                self.conn.execute_batch(&format!(
+                    "ALTER TABLE card_compilation ADD COLUMN {column} {definition};"
+                ))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn has_semantic_render_columns(&self) -> bool {
+        SEMANTIC_RENDER_COLUMNS
+            .iter()
+            .all(|(column, _)| self.card_compilation_has_column(column))
+    }
+
     pub fn initialize(&self) -> Result<(), Box<dyn Error>> {
         let version: i64 = self
             .conn
@@ -1493,6 +1716,7 @@ impl CardStatusDb {
             [],
         )?;
         self.add_parse_loss_columns_if_needed()?;
+        self.add_semantic_render_columns_if_needed()?;
         self.conn.execute_batch(
             "DROP VIEW IF EXISTS latest_card_compilation;
              CREATE VIEW latest_card_compilation AS
@@ -1533,7 +1757,14 @@ impl CardStatusDb {
             "content_hash",
         ]
         .iter()
-        .map(|field| format!("json_extract(f.snapshot, '$.{field}') AS {field}"))
+        .chain(SEMANTIC_RENDER_COLUMNS.iter().map(|(column, _)| column))
+        .map(|field| match *field {
+            // Serialized only when set.
+            "presentation_dependent_lines" | "display_masks_semantics" => {
+                format!("COALESCE(json_extract(f.snapshot, '$.{field}'), 0) AS {field}")
+            }
+            _ => format!("json_extract(f.snapshot, '$.{field}') AS {field}"),
+        })
         .collect::<Vec<_>>()
         .join(", ");
         self.conn.execute_batch(&format!(
@@ -1617,6 +1848,10 @@ impl CardStatusDb {
              LIMIT 1",
             params![snapshot.card_name, snapshot.content_hash],
             |row| row.get(0),
+        )?;
+        self.conn.execute(
+            UPDATE_SEMANTIC_RENDER_SCORES_SQL,
+            semantic_render_score_params(compilation_id, snapshot),
         )?;
         self.conn.execute(
             "INSERT INTO latest_card_observation (card_name, compilation_id, agent_running)
@@ -1706,6 +1941,7 @@ impl CardStatusDb {
                 "INSERT OR REPLACE INTO card_face_compilation (compilation_id, face_index, snapshot)
                  VALUES (?1, ?2, ?3)",
             )?;
+            let mut update_semantic_render_scores = tx.prepare(UPDATE_SEMANTIC_RENDER_SCORES_SQL)?;
             for (snapshot, faces) in snapshots {
                 let previous_latest_id = select_previous_latest
                     .query_row([snapshot.card_name.as_str()], |row| row.get::<_, i64>(0))
@@ -1736,6 +1972,8 @@ impl CardStatusDb {
                     params![snapshot.card_name.as_str(), snapshot.content_hash.as_str()],
                     |row| row.get(0),
                 )?;
+                update_semantic_render_scores
+                    .execute(semantic_render_score_params(compilation_id, snapshot))?;
 
                 for (index, face) in faces.iter().enumerate() {
                     insert_face.execute(params![
@@ -1805,6 +2043,42 @@ impl CardStatusDb {
             })?
             .collect::<Result<BTreeMap<String, f32>, _>>()?;
         Ok(scores)
+    }
+
+    /// Latest observations flagged `display_masks_semantics`, widest
+    /// display-over-semantic gap first. Works on a read-only handle; a DB
+    /// never synced by a build that records semantic-render scores is an
+    /// error rather than an empty report.
+    pub fn latest_display_masked_cards(&self) -> Result<Vec<DisplayMaskedCard>, Box<dyn Error>> {
+        if !self.has_semantic_render_columns() {
+            return Err("status DB has no semantic-render score columns; run sync_card_status_db with a build that records them first".into());
+        }
+        let mut stmt = self.conn.prepare(
+            "SELECT cc.card_name,
+                    cc.similarity_score,
+                    cc.display_similarity_score,
+                    cc.semantic_similarity_score,
+                    cc.presentation_dependent_lines
+             FROM latest_card_observation latest
+             JOIN card_compilation cc ON cc.id = latest.compilation_id
+             WHERE cc.display_masks_semantics = 1
+               AND cc.display_similarity_score IS NOT NULL
+               AND cc.semantic_similarity_score IS NOT NULL
+             ORDER BY cc.display_similarity_score - cc.semantic_similarity_score DESC,
+                      cc.card_name ASC",
+        )?;
+        let cards = stmt
+            .query_map([], |row| {
+                Ok(DisplayMaskedCard {
+                    card_name: row.get(0)?,
+                    similarity_score: row.get(1)?,
+                    display_similarity_score: row.get(2)?,
+                    semantic_similarity_score: row.get(3)?,
+                    presentation_dependent_lines: row.get::<_, i64>(4)?.max(0) as usize,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(cards)
     }
 
     pub fn replace_tag_rows(
@@ -5242,6 +5516,180 @@ CardDefinition {
             "Flying (This creature can't be blocked except by creatures with flying or reach.)"
         ));
 
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn display_masks_semantics_needs_a_passing_display_and_a_full_band_gap() {
+        assert!(display_masks_semantics(1.0, 0.99));
+        assert!(display_masks_semantics(0.995, 0.5));
+        // The semantic reading still passes beside a perfect display.
+        assert!(!display_masks_semantics(1.0, 0.995));
+        // A display under the floor masks nothing, however large the gap.
+        assert!(!display_masks_semantics(0.98, 0.1));
+        assert!(!display_masks_semantics(0.99, 0.99));
+    }
+
+    #[test]
+    fn presentation_dependent_lines_are_matched_as_a_multiset() {
+        let lines = |raw: &[&str]| raw.iter().map(|line| line.to_string()).collect::<Vec<_>>();
+        let audit = lines(&["Flying.", "Draw a card.", "Draw a card.", "Prose line."]);
+        // One duplicate and the prose line changed; order does not matter.
+        let poisoned = lines(&["Draw a card.", "Flying.", "POISON."]);
+        let (strict, dependent) = mark_presentation_dependent_lines(&audit, &poisoned);
+        assert_eq!(dependent, 2);
+        assert_eq!(
+            strict,
+            lines(&[
+                "Flying.",
+                "Draw a card.",
+                PRESENTATION_DEPENDENT_LINE_MARKER,
+                PRESENTATION_DEPENDENT_LINE_MARKER,
+            ])
+        );
+        let (unchanged, none) = mark_presentation_dependent_lines(&audit, &audit);
+        assert_eq!((unchanged, none), (audit.clone(), 0));
+    }
+
+    #[test]
+    fn snapshot_records_display_and_strict_semantic_scores() {
+        let snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        assert_eq!(snapshot.display_similarity_score, Some(snapshot.similarity_score));
+        assert_eq!(snapshot.semantic_similarity_score, Some(snapshot.similarity_score));
+        assert_eq!(snapshot.presentation_dependent_lines, 0);
+        assert!(!snapshot.display_masks_semantics);
+        // Derived scores never enter the content hash.
+        let mut rescored = snapshot.clone();
+        rescored.display_similarity_score = Some(0.25);
+        rescored.display_masks_semantics = true;
+        assert_eq!(rescored.compute_content_hash(), snapshot.content_hash);
+
+        let failed = compile_strict_snapshot_from_payload(&unsupported_policy_payload());
+        assert_eq!(failed.parse_status, ParseStatus::ParseFailed);
+        assert_eq!(failed.display_similarity_score, None);
+        assert_eq!(failed.semantic_similarity_score, None);
+        assert!(!failed.display_masks_semantics);
+    }
+
+    #[test]
+    fn db_refreshes_semantic_render_scores_in_place_and_reports_masked_cards() {
+        let path = unique_temp_path("semantic-render");
+        let db = CardStatusDb::open(&path).expect("open db");
+        let base = compile_snapshot_from_payload(&lightning_bolt_payload());
+        assert!(db.insert_snapshot_if_changed(&base).expect("insert base"));
+        assert!(db.latest_display_masked_cards().expect("report").is_empty());
+
+        // Same content hash, new derived scores: refreshed without a new row.
+        let mut masked = base.clone();
+        masked.display_similarity_score = Some(1.0);
+        masked.semantic_similarity_score = Some(0.4);
+        masked.presentation_dependent_lines = 1;
+        masked.display_masks_semantics = true;
+        assert!(!db.insert_snapshot_if_changed(&masked).expect("rescore"));
+        let rows: i64 = db
+            .connection()
+            .query_row("SELECT COUNT(*) FROM card_compilation", [], |row| row.get(0))
+            .expect("count rows");
+        assert_eq!(rows, 1);
+
+        let mut other = compile_snapshot_from_payload(&lightning_bolt_payload());
+        other.card_name = "Narrow Gap".to_string();
+        other.display_similarity_score = Some(0.995);
+        other.semantic_similarity_score = Some(0.9);
+        other.display_masks_semantics = true;
+        other.content_hash = other.compute_content_hash();
+        let mut db = db;
+        db.insert_snapshots_if_changed(&[other]).expect("batch insert");
+
+        let report = db.latest_display_masked_cards().expect("report");
+        assert_eq!(
+            report.iter().map(|card| card.card_name.as_str()).collect::<Vec<_>>(),
+            vec!["Lightning Bolt", "Narrow Gap"]
+        );
+        assert!((report[0].gap() - 0.6).abs() < 1e-6);
+        assert_eq!(report[0].presentation_dependent_lines, 1);
+        assert_eq!(report[0].similarity_score, base.similarity_score);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn db_without_semantic_render_columns_migrates_and_old_rows_stay_readable() {
+        let path = unique_temp_path("semantic-render-legacy");
+        {
+            let conn = Connection::open(&path).expect("open legacy db");
+            conn.execute_batch(
+                "CREATE TABLE card_compilation (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    card_name TEXT NOT NULL,
+                    oracle_text TEXT NOT NULL,
+                    raw_oracle_text TEXT NOT NULL,
+                    parse_status TEXT NOT NULL,
+                    parse_error TEXT,
+                    normalized_oracle_text TEXT,
+                    compiled_text TEXT,
+                    compiled_card_definition TEXT,
+                    oracle_coverage REAL NOT NULL,
+                    compiled_coverage REAL NOT NULL,
+                    similarity_score REAL NOT NULL,
+                    line_delta INTEGER NOT NULL,
+                    semantic_mismatch INTEGER NOT NULL,
+                    has_unimplemented INTEGER NOT NULL,
+                    parse_lossy INTEGER NOT NULL DEFAULT 0,
+                    parse_loss_reasons TEXT NOT NULL DEFAULT '',
+                    parse_loss_count INTEGER NOT NULL DEFAULT 0,
+                    compiled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                    content_hash TEXT NOT NULL,
+                    UNIQUE(card_name, content_hash)
+                 );
+                 CREATE TABLE latest_card_observation (
+                    card_name TEXT PRIMARY KEY,
+                    compilation_id INTEGER NOT NULL,
+                    agent_running INTEGER NOT NULL DEFAULT 0,
+                    pr_created INTEGER NOT NULL DEFAULT 0
+                 );
+                 INSERT INTO card_compilation (
+                    card_name, oracle_text, raw_oracle_text, parse_status,
+                    oracle_coverage, compiled_coverage, similarity_score, line_delta,
+                    semantic_mismatch, has_unimplemented, content_hash
+                 ) VALUES ('Old Card', 'Draw a card.', 'Draw a card.', 'strict_compiled',
+                    1.0, 1.0, 0.875, 0, 0, 0, 'old-hash');
+                 INSERT INTO latest_card_observation (card_name, compilation_id) VALUES ('Old Card', 1);
+                 PRAGMA user_version = 12;",
+            )
+            .expect("create legacy schema");
+        }
+
+        // Reporting never migrates: an unsynced DB is an explicit error.
+        let read_only = CardStatusDb::open_read_only(&path).expect("open read-only");
+        let error = read_only
+            .latest_display_masked_cards()
+            .expect_err("legacy DB has no semantic-render columns");
+        assert!(error.to_string().contains("semantic-render"), "{error}");
+        drop(read_only);
+
+        let db = CardStatusDb::open(&path).expect("migrate legacy db");
+        let version: i64 = db
+            .connection()
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("version");
+        assert_eq!(version, DB_SCHEMA_VERSION);
+        let (display, semantic, dependent, masked): (Option<f64>, Option<f64>, i64, bool) = db
+            .connection()
+            .query_row(
+                "SELECT display_similarity_score, semantic_similarity_score,
+                        presentation_dependent_lines, display_masks_semantics
+                 FROM latest_card_compilation WHERE card_name = 'Old Card'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("old row reads through the migrated view");
+        assert_eq!((display, semantic, dependent, masked), (None, None, 0, false));
+        assert_eq!(
+            db.latest_strict_compiled_scores().expect("scores").get("Old Card"),
+            Some(&0.875)
+        );
+        assert!(db.latest_display_masked_cards().expect("report").is_empty());
+        db.initialize().expect("migration is idempotent");
         let _ = fs::remove_file(path);
     }
 }

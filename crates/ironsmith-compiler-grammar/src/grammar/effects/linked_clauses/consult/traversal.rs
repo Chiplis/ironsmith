@@ -133,7 +133,12 @@ fn comma_continues_card_descriptor(tokens: &[OwnedLexToken]) -> bool {
         return false;
     }
     TokenWordView::new(arm).word_refs().iter().any(|word| matches!(*word, "card" | "cards"))
-        && crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(arm, false).is_ok()
+        // A yes/no probe: the stop condition is read for real elsewhere.
+        && crate::word_claims::speculative(|| {
+            crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(arm, false)
+        })
+        .0
+        .is_ok()
 }
 
 fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {

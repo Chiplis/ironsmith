@@ -3268,47 +3268,54 @@ pub fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
 
 #[track_caller]
 pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    // Each suffix probe reads only its own words; the words before the kept
-    // suffix are left unread by the recovery as a whole.
+    // Each suffix probe reads only its own words: only the kept suffix's
+    // reading counts, and the words before it are left unread by the
+    // recovery as a whole.
     let caller = std::panic::Location::caller();
-    let (best, _probes) = crate::word_claims::speculative(|| best_object_filter_suffix(tokens));
-    best.map(|(start, filter)| {
-        crate::word_claims::oblige_skipped(tokens, &tokens[..start], &filter, caller);
+    best_object_filter_suffix(tokens).map(|(start, mut filter)| {
+        crate::word_claims::oblige_skipped(tokens, &tokens[..start], &mut filter, caller);
         filter
     })
 }
 
 fn best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, ObjectFilter)> {
-    let mut best: Option<(usize, usize, ObjectFilter)> = None;
+    let mut best: Option<(usize, usize, ObjectFilter, crate::word_claims::Speculative)> = None;
     for start in 0..tokens.len() {
         if tokens[start].as_word().is_none() {
             continue;
         }
-        let mut other = false;
-        let mut candidate = &tokens[start..];
-        match anthem_grant_grammar::classify_suffix_filter_head(candidate) {
-            anthem_grant_grammar::SuffixFilterHead::Other => {
-                other = true;
-                candidate = &candidate[1..];
+        // The head classification is part of this candidate's reading.
+        let (filter, probe) = crate::word_claims::speculative(|| {
+            let mut other = false;
+            let mut candidate = &tokens[start..];
+            match anthem_grant_grammar::classify_suffix_filter_head(candidate) {
+                anthem_grant_grammar::SuffixFilterHead::Other => {
+                    other = true;
+                    candidate = &candidate[1..];
+                    // "other"/"another" is read as the filter's `other` flag.
+                    crate::word_claims::claim_tokens(&tokens[start..start + 1]);
+                }
+                anthem_grant_grammar::SuffixFilterHead::Pronoun => return None,
+                anthem_grant_grammar::SuffixFilterHead::Normal => {}
             }
-            anthem_grant_grammar::SuffixFilterHead::Pronoun => continue,
-            anthem_grant_grammar::SuffixFilterHead::Normal => {}
-        }
-        if candidate.is_empty() {
-            continue;
-        }
-        let Ok(filter) = parse_object_filter(candidate, other) else {
+            if candidate.is_empty() {
+                return None;
+            }
+            parse_object_filter(candidate, other).ok()
+        });
+        let Some(filter) = filter else {
             continue;
         };
         let score = anthem_grant_grammar::object_filter_specificity_score(&filter);
         if best
             .as_ref()
-            .is_none_or(|(best_score, _, _)| score > *best_score)
+            .is_none_or(|(best_score, _, _, _)| score > *best_score)
         {
-            best = Some((score, start, filter));
+            best = Some((score, start, filter, probe));
         }
     }
-    best.map(|(_, start, filter)| {
+    best.map(|(_, start, filter, probe)| {
+        probe.keep();
         if start > 0 {
             crate::parse_loss::record(
                 "suffix_object_filter_recovery",

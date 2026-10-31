@@ -9,7 +9,9 @@ use crate::model::ast::{EffectAst, StaticAbilityAst};
 
 fn probe_is_static_ability_line(tokens: &[OwnedLexToken]) -> bool {
     matches!(
-        crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(tokens)).0,
+        crate::word_claims::probe_only(|| {
+            crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(tokens)).0
+        }),
         Ok(Some(_))
     )
 }
@@ -1031,7 +1033,9 @@ pub(super) fn extend_statement_line_with_result_followups_in_place(
 }
 
 fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
-    crate::parse_loss::capture(|| looks_like_statement_line_tokens_inner(tokens)).0
+    crate::word_claims::probe_only(|| {
+        crate::parse_loss::capture(|| looks_like_statement_line_tokens_inner(tokens)).0
+    })
 }
 
 fn looks_like_statement_line_tokens_inner(tokens: &[OwnedLexToken]) -> bool {
@@ -1194,7 +1198,9 @@ fn as_this_replacement_timing_idx(first: &[OwnedLexToken]) -> Option<usize> {
 }
 
 fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) -> Option<usize> {
-    crate::parse_loss::capture(|| first_trailing_static_sentence_idx_inner(sentence_tokens)).0
+    crate::word_claims::probe_only(|| {
+        crate::parse_loss::capture(|| first_trailing_static_sentence_idx_inner(sentence_tokens)).0
+    })
 }
 
 fn first_trailing_static_sentence_idx_inner(

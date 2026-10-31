@@ -3558,6 +3558,11 @@ fn capitalize_quoted_grant_instruction(text: &str) -> String {
 }
 
 fn modeled_attached_grant_surface(ability: &Ability) -> Option<(String, AttachedGrantSurface)> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     if ability.functional_zones.as_slice() != [Zone::Battlefield] {
         return None;
     }
@@ -7348,6 +7353,11 @@ fn describe_structural_delve_keyword_variant_ladder(
     subject: &str,
     source_has_delve: bool,
 ) -> Option<(String, usize)> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     if !source_has_delve {
         return None;
     }
@@ -29604,7 +29614,9 @@ fn describe_copy_token_quoted_ability_self_replacement(
         return None;
     }
     let structural_rule;
-    let authored_rule = grant.display.trim().trim_matches('"');
+    // An audit always renders the granted rule from its model.
+    let authored_rule = ironsmith_core::semantic_audit::authored(Some(grant.display.trim().trim_matches('"')))
+        .unwrap_or_default();
     let rule_source = if authored_rule.is_empty() {
         let ability = crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
             &grant.ability,
@@ -43597,6 +43609,11 @@ fn describe_source_line_base_pt_grant_loss_group(abilities: &[Ability]) -> Optio
 /// pieces share a subject; the source marker proves that `other` refers to the
 /// granted ability from this same clause.
 fn describe_source_line_grant_all_other_loss_group(abilities: &[Ability]) -> Option<String> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let [first, second] = abilities else {
         return None;
     };
@@ -45051,6 +45068,11 @@ fn describe_source_line_land_type_ability_loss_grant_group(
     members: &[Ability],
     subject: &str,
 ) -> Option<String> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let [types, loss, grant] = members else {
         return None;
     };
@@ -48565,6 +48587,11 @@ fn expand_attached_creature_transform(abilities: &[Ability]) -> Option<Vec<Abili
 fn describe_structural_attached_subtype_base_pt_keyword_loss_bundle(
     abilities: &[Ability],
 ) -> Option<(String, usize)> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     if let Some(expanded) = expand_attached_creature_transform(abilities) {
         return describe_structural_attached_subtype_base_pt_keyword_loss_bundle(&expanded)
             .map(|(text, _)| (text, 4));
@@ -49469,6 +49496,11 @@ fn describe_carried_attached_additional_grant(abilities: &[Ability]) -> Option<S
 fn describe_structural_attached_anthem_condition_chain_bundle(
     abilities: &[Ability],
 ) -> Option<(String, usize)> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let [base_ability, additional_ability, keyword_ability, ..] = abilities else {
         return None;
     };
@@ -49574,6 +49606,11 @@ fn describe_structural_attached_anthem_condition_chain_bundle(
 fn describe_structural_attached_anthem_otherwise_restriction_bundle(
     abilities: &[Ability],
 ) -> Option<(String, usize)> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let [anthem_ability, rule_ability, ..] = abilities else {
         return None;
     };
@@ -49702,6 +49739,11 @@ fn describe_structural_attached_anthem_otherwise_restriction_bundle(
 fn attached_source_restriction_grant(
     model: &crate::static_abilities::CompiledStaticAbility,
 ) -> Option<(String, &Condition)> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) = &model.payload else {
         return None;
     };
@@ -49769,6 +49811,11 @@ fn controlled_attached_condition_display(condition: &Condition) -> Option<&str> 
 fn describe_source_line_controlled_attached_otherwise_group(
     members: &[Ability],
 ) -> Option<String> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let [first, second] = members else {
         return None;
     };
@@ -50176,6 +50223,11 @@ fn describe_fixed_anthem_modifier(power: i32, toughness: i32) -> String {
 fn describe_source_line_attached_keyword_otherwise_prevention_group(
     abilities: &[Ability],
 ) -> Option<String> {
+    // Reads retained grant prose; the semantic audit takes the structural
+    // path instead.
+    if ironsmith_core::semantic_audit::semantic_audit_active() {
+        return None;
+    }
     let [keyword_ability, prevention_ability] = abilities else {
         return None;
     };

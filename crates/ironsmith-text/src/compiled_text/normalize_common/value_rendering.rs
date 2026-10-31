@@ -1718,6 +1718,7 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::Teammate) => Some("a teammate controls"),
             Some(PlayerFilter::PlayerToYourLeft) => Some("the player to your left controls"),
             Some(PlayerFilter::OpponentToYourLeft) => Some("the opponent to your left controls"),
+            Some(PlayerFilter::Monarch) => Some("the monarch controls"),
             Some(PlayerFilter::PlayerToYourRight) => Some("the player to your right controls"),
             Some(PlayerFilter::Specific(_)) => Some("that player controls"),
             Some(PlayerFilter::Target(_)) => None,

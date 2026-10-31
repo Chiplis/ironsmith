@@ -816,6 +816,7 @@ mod tests {
                 filter: filter.clone(), counter: None, include_mana: true,
                 only_loyalty: false, exclude_source_name: false,
                 exclude_source_id: false, force_once_each_turn: false,
+                exclude_loyalty: false,
             },
             Modification::CopyTriggeredAbilities {
                 filter: filter.clone(), exclude_source_name: false, exclude_source_id: false,

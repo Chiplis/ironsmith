@@ -4392,6 +4392,11 @@ pub(crate) fn describe_apply_continuous_effect(
         && let ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) =
             &model.payload
     {
+        // An audit reads the typed spec, never its authored sentence.
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            let rule = crate::compiled_text::audit_readings::targeting_as_though_no_ability(spec);
+            return Some(format!("Until end of turn, {}", lowercase_first(&rule)));
+        }
         let display = spec
             .display
             .strip_prefix("this can ")

@@ -105,10 +105,30 @@ pub fn aggregate_face_snapshots(name: &str, faces: &[CompilationSnapshot]) -> Co
         .map(|f| format!("{}: {}", f.card_name, f.parse_loss_reasons))
         .collect::<Vec<_>>()
         .join("\n");
+    // A failed face scores nothing, so the weakest face is the card's score.
+    let min_score = |score: fn(&CompilationSnapshot) -> Option<f32>| {
+        faces
+            .iter()
+            .map(score)
+            .collect::<Option<Vec<_>>>()
+            .map(|scores| scores.into_iter().fold(1.0, f32::min))
+    };
+    aggregate.display_similarity_score = min_score(|f| f.display_similarity_score);
+    aggregate.semantic_similarity_score = min_score(|f| f.semantic_similarity_score);
+    aggregate.presentation_dependent_lines =
+        faces.iter().map(|f| f.presentation_dependent_lines).sum();
+    aggregate.display_masks_semantics = faces.iter().any(|f| f.display_masks_semantics);
     // Hash every independent observation, including successful faces when the
     // aggregate fails. A back-face-only change must produce a new observation.
+    // Scores derived from hashed fields stay out of the hash, so recording
+    // them does not mint new observations.
+    let hashed_faces = faces
+        .iter()
+        .map(CompilationSnapshot::without_derived_scores)
+        .collect::<Vec<_>>();
     aggregate.content_hash = Sha256::digest(
-        serde_json::to_vec(&("corpus-faces-v1", name, faces)).expect("serialize face snapshots"),
+        serde_json::to_vec(&("corpus-faces-v1", name, &hashed_faces))
+            .expect("serialize face snapshots"),
     )
     .iter()
     .map(|byte| format!("{byte:02x}"))
@@ -232,5 +252,38 @@ mod tests {
         invalid[0]["card_faces"][1]["name"] = json!("");
         std::fs::write(&source, invalid.to_string()).unwrap();
         assert!(load_corpus_cards(source.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn corpus_aggregate_takes_weakest_face_scores_and_hashes_without_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("cards.json");
+        std::fs::write(&source, fixture().to_string()).unwrap();
+        let card = load_corpus_cards(source.to_str().unwrap())
+            .unwrap()
+            .remove(0);
+        let front = compile_strict_snapshot_from_payload(&card.faces[0]);
+        assert_eq!(front.parse_status, ParseStatus::StrictCompiled);
+        let mut back = front.clone();
+        back.card_name = "Back".into();
+        back.display_similarity_score = Some(1.0);
+        back.semantic_similarity_score = Some(0.5);
+        back.presentation_dependent_lines = 2;
+        back.display_masks_semantics = true;
+        let faces = vec![front.clone(), back.clone()];
+        let aggregate = aggregate_face_snapshots(&card.name, &faces);
+        assert_eq!(aggregate.display_similarity_score, front.display_similarity_score);
+        assert_eq!(aggregate.semantic_similarity_score, Some(0.5));
+        assert_eq!(aggregate.presentation_dependent_lines, 2);
+        assert!(aggregate.display_masks_semantics);
+
+        let unscored = faces
+            .iter()
+            .map(CompilationSnapshot::without_derived_scores)
+            .collect::<Vec<_>>();
+        let unscored_aggregate = aggregate_face_snapshots(&card.name, &unscored);
+        assert_eq!(unscored_aggregate.content_hash, aggregate.content_hash);
+        assert_eq!(unscored_aggregate.display_similarity_score, None);
+        assert!(!unscored_aggregate.display_masks_semantics);
     }
 }

@@ -53,6 +53,14 @@ impl StaticAbilityKind for TargetingAsThoughNoAbility {
     }
 
     fn display(&self) -> String {
+        // An audit reads the typed spec, never its authored sentence.
+        if ironsmith_core::semantic_audit::semantic_audit_active() {
+            return ironsmith_core::semantic_audit::audited_value(
+                "TargetingAsThoughNoAbility",
+                &self.spec,
+                &self.spec,
+            );
+        }
         self.spec.display.clone()
     }
 

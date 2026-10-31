@@ -881,8 +881,25 @@ fn parse_enters_with_counter_condition_clause(tokens: &[OwnedLexToken]) -> Optio
 fn parse_enters_with_counter_object_filter_tokens(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
+    // "each Human creature you control enters with ..." (Dearly Departed):
+    // the distributive "each" quantifies the entering group.
+    let (each, filter_tokens) = match subject_tokens.split_first() {
+        Some((each, rest))
+            if !rest.is_empty()
+                // "Each of them enters with ..." (Aberrant Return) is a
+                // back-reference, never a filter.
+                && !rest[0].as_word().is_some_and(|word| word.eq_ignore_ascii_case("of"))
+                && each.as_word().is_some_and(|word| word.eq_ignore_ascii_case("each")) =>
+        {
+            (Some(each), rest)
+        }
+        _ => (None, subject_tokens),
+    };
     let mut filter =
-        crate::grammar::primitives::probe_shape(parse_object_filter(subject_tokens, false))?;
+        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
+    if let Some(each) = each {
+        crate::word_claims::claim_tokens(std::slice::from_ref(each));
+    }
     let plural_noun = subject_tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)

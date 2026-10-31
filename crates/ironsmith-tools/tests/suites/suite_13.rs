@@ -68,6 +68,9 @@ mod r#runtime_single_exile_stack_hand_reproductions;
 #[path = "../runtime_static_tagged_attachment_reproductions.rs"]
 mod r#runtime_static_tagged_attachment_reproductions;
 
+#[path = "../runtime_word_claim_semantics.rs"]
+mod r#runtime_word_claim_semantics;
+
 #[path = "../saurons_ransom.rs"]
 mod r#saurons_ransom;
 

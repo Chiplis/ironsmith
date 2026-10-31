@@ -309,6 +309,9 @@ pub struct CopyActivatedAbilities {
     /// "... except mana abilities" (Sharkey, Tyrant of the Shire).
     #[cfg_attr(feature = "serde", serde(default))]
     pub exclude_mana_abilities: bool,
+    /// "... except for loyalty abilities" (Scheming Fence).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exclude_loyalty_abilities: bool,
 }
 
 impl CopyActivatedAbilities {
@@ -322,10 +325,15 @@ impl CopyActivatedAbilities {
             force_once_each_turn: false,
             display: "Has all activated abilities of matching objects".to_string(),
             exclude_mana_abilities: false,
+            exclude_loyalty_abilities: false,
         }
     }
     pub fn with_exclude_mana_abilities(mut self, exclude: bool) -> Self {
         self.exclude_mana_abilities = exclude;
+        self
+    }
+    pub fn with_exclude_loyalty_abilities(mut self, exclude: bool) -> Self {
+        self.exclude_loyalty_abilities = exclude;
         self
     }
     pub fn with_exclude_source_name(mut self, exclude: bool) -> Self {

@@ -680,7 +680,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 if filter_tokens.is_empty() || (is_unqualified_spell && !modal && !using_teamwork && using_custom.is_none()) {
                     return Ok(None);
                 }
-                parse_object_filter_lexed(filter_tokens, other)
+                // "a kicked spell" (Vine Gecko): the kicked marker is added
+                // below.
+                let owned = filter_tokens
+                    .iter()
+                    .filter(|token| token.is_word(crate::keyword_forms::KICKED))
+                    // "you cast your next instant or sorcery spell"
+                    // (Twinferno): the possessive restates the caster.
+                    .chain(filter_tokens.first().filter(|token| {
+                        token.is_word("your") && matches!(actor, PlayerFilter::You)
+                    }));
+                crate::word_claims::with_caller_owned(owned, || {
+                    parse_object_filter_lexed(filter_tokens, other)
+                })
                     .map(|mut filter| {
                         filter.other |= other;
                         if parser_filter_words.contains(&crate::keyword_forms::KICKED)

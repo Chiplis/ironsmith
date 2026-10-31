@@ -41,6 +41,15 @@ pub(crate) fn parse_live_name_relation(
         let mut candidate =
             super::parse_object_filter_with_grammar_entrypoint_lexed(&tokens[..marker], other)?;
         let exclude_candidate = words.first() == Some(&"another");
+        // The relation marker is read here, and "another" ("as another
+        // permanent you control", Yenna, Redtooth Regent) as the candidate's
+        // exclusion; the exact hand comparison reads its whole tail.
+        crate::word_claims::claim_tokens(&tokens[marker..tokens.len() - tail.len()]);
+        if is_hand_comparison {
+            crate::word_claims::claim_tokens(tail);
+        } else if exclude_candidate {
+            crate::word_claims::claim_tokens(&tail[..1]);
+        }
         let mut comparison = if is_hand_comparison {
             ObjectFilter {
                 zone: Some(Zone::Hand),

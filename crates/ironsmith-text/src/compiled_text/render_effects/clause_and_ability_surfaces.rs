@@ -11963,6 +11963,9 @@ pub(crate) fn describe_static_ability_with_subject(
         && grant.additional_abilities.is_empty()
         && let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind
         && granted.id == Some(crate::static_abilities::StaticAbilityId::DoesntUntap)
+        // These two print the grant's retained prose; an audit reads the
+        // payload instead.
+        && !ironsmith_core::semantic_audit::semantic_audit_active()
         && let Some(crate::effect::Condition::TurnHistory(
             ironsmith_core::TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter),
         )) = &grant.condition
@@ -11980,6 +11983,7 @@ pub(crate) fn describe_static_ability_with_subject(
         && grant.additional_abilities.is_empty()
         && let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind
         && granted.id == Some(crate::static_abilities::StaticAbilityId::DoesntUntap)
+        && !ironsmith_core::semantic_audit::semantic_audit_active()
         && let Some(crate::effect::Condition::ValueComparison {
             left,
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -12107,6 +12111,7 @@ pub(crate) fn describe_static_ability_with_subject(
         && grant.filter == ObjectFilter::source()
         && grant.display.starts_with("Devour ")
         && !grant.display.contains(',')
+        && !ironsmith_core::semantic_audit::semantic_audit_active()
     {
         return grant.display.clone();
     }

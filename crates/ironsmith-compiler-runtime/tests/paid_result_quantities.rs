@@ -577,6 +577,7 @@ fn bishop_borrowed_plain_exile_neither_boosts_the_linked_reader_nor_returns_on_d
                 filter: ironsmith::target::ObjectFilter::specific(donor), counter: None,
                 include_mana: true, only_loyalty: false, exclude_source_name: false,
                 exclude_source_id: true, force_once_each_turn: false,
+                exclude_loyalty: false,
             }));
         game.refresh_continuous_state().unwrap();
         dm.target = Some(Target::Object(unrelated)); activate(&mut game, source, 0, &mut dm);

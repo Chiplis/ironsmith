@@ -4817,7 +4817,15 @@
     if let Some(redirect_all) =
         effect.downcast_ref::<crate::effects::RedirectAllDamageThisTurnToTargetEffect>()
     {
-        if let Some(scope) = &redirect_all.scope { return scope.display.clone(); }
+        // The scoped redirection has no structural reader yet: an audit
+        // reports its fields instead of the authored sentence.
+        if let Some(scope) = &redirect_all.scope {
+            return ironsmith_core::semantic_audit::retained(
+                "TimedDamageRedirectionScope",
+                &scope.display,
+                scope,
+            );
+        }
         let target_set = if redirect_all.player_filter == crate::target::PlayerFilter::You
             && redirect_all.object_filter == crate::target::ObjectFilter::permanent().you_control()
         {
@@ -6664,36 +6672,79 @@
         );
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDrawReplacementEffect>() {
-        if let Some(display) = &register.display { return display.clone(); }
-        let player = if register.player == PlayerFilter::IteratedPlayer {
+        // An audit reads the player, replaced event, duration and substitute
+        // program below, never the authored sentence.
+        if let Some(display) = ironsmith_core::semantic_audit::authored(register.display.as_deref()) {
+            return display.to_string();
+        }
+        let player = if let Some(target) = &register.player_target {
+            describe_choose_spec(target)
+        } else if register.player == PlayerFilter::IteratedPlayer {
             "they".to_string()
         } else {
             describe_player_filter(&register.player)
         };
+        // Stunning Reversal replaces the next game loss, not a draw.
+        let event = if register.lose_game { "lose the game" } else { "draw a card" };
         let duration = match register.mode {
             crate::effects::ReplacementApplyMode::OneShot
             | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
             crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
-        if let Some(replacement) = describe_draw_replacement_exile_top_play(
-            &register.player,
-            &register.replacement_effects,
-        ) {
+        if !register.lose_game
+            && let Some(replacement) = describe_draw_replacement_exile_top_play(
+                &register.player,
+                &register.replacement_effects,
+            )
+        {
             return format!(
-                "The next time {player} would draw a card{duration}, instead {replacement}"
+                "The next time {player} would {event}{duration}, instead {replacement}"
             );
         }
         let replacement = lowercase_first(&describe_effect_list(&register.replacement_effects));
         return format!(
-            "The next time {player} would draw a card{duration}, instead {replacement}"
+            "The next time {player} would {event}{duration}, instead {replacement}"
         );
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaSpendPermissionEffect>() {
-        return register.display.clone();
+        // An audit reads the typed permission and its duration.
+        if !ironsmith_core::semantic_audit::semantic_audit_active() {
+            return register.display.clone();
+        }
+        let permission =
+            crate::compiled_text::audit_readings::mana_spend_permission(&register.permission);
+        return match register.until {
+            Until::Forever => permission,
+            ref until => format!(
+                "{}, {}",
+                capitalize_first(&describe_until(until)),
+                lowercase_first(&permission)
+            ),
+        };
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaRewriteEffect>() {
-        return register.display.clone();
+        // An audit reads the typed rewrite and its duration; a targeted
+        // rewrite has no structural reader and reports its fields.
+        if !ironsmith_core::semantic_audit::semantic_audit_active() || register.target.is_some() {
+            return ironsmith_core::semantic_audit::retained(
+                "RegisterManaRewriteEffect",
+                &register.display,
+                register,
+            );
+        }
+        let rewrite = crate::compiled_text::audit_readings::mana_output_rewrite(&register.rule);
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::OneShot
+            | crate::effects::ReplacementApplyMode::UntilEndOfTurn => "Until end of turn, ",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => "Until your next turn, ",
+            crate::effects::ReplacementApplyMode::Resolution => "",
+        };
+        return if duration.is_empty() {
+            rewrite
+        } else {
+            format!("{duration}{}", lowercase_first(&rewrite))
+        };
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaReplacementEffect>() {
         let source = register.source_filter.description();
@@ -8102,7 +8153,13 @@
             && let ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) =
                 &model.payload
         {
-            return format!("Until end of turn, {}", lowercase_first(&spec.display));
+            // An audit reads the typed spec, never its authored sentence.
+            let rule = if ironsmith_core::semantic_audit::semantic_audit_active() {
+                crate::compiled_text::audit_readings::targeting_as_though_no_ability(spec)
+            } else {
+                spec.display.clone()
+            };
+            return format!("Until end of turn, {}", lowercase_first(&rule));
         }
         if let crate::grant::Grantable::DerivedAlternativeCast(
             crate::grant::DerivedAlternativeCast::FlashbackFromCardManaCost { additional_costs },

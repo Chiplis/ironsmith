@@ -7782,6 +7782,7 @@ impl GameState {
             || filter.attacked_this_turn
             || filter.attacked_player_this_turn.is_some()
             || filter.didnt_attack_this_turn
+            || filter.attacked_during_controllers_last_turn
             || filter.could_have_attacked_this_turn
             || filter.nonattacking
             || filter.enlist_eligible
