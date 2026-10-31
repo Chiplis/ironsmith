@@ -677,6 +677,16 @@ fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     if card_types.is_empty() && subtypes.is_empty() {
         return None;
     }
+    // "an Elf card in your graveyard": claimed only when every descriptor
+    // word is the article, the card noun, or a type/subtype read above.
+    if descriptor_words.iter().all(|word| {
+        matches!(*word, "a" | "an" | "card" | "cards")
+            || leaf::parse_leaf_card_type_complete(word).is_ok()
+            || leaf::parse_leaf_subtype_flexible_complete(word).is_ok()
+    }) {
+        crate::word_claims::claim_words(&descriptor_words);
+        crate::word_claims::claim_tokens(parsed.tail_tokens);
+    }
     Some(PredicateAst::CardInYourGraveyard {
         card_types,
         subtypes,

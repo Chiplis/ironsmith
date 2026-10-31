@@ -50,6 +50,15 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         if filter.zone.take().is_some_and(|zone| zone != e.from_zone) {
             return false;
         }
+        // "play a land from anywhere other than your hand" (Shadow of the
+        // Goblin): the excluded origin is the zone the land was played from.
+        if filter
+            .excluded_cast_origin_zone
+            .take()
+            .is_some_and(|zone| zone == e.from_zone)
+        {
+            return false;
+        }
         match e.required_completed_snapshot() {
             Ok(snapshot) => super::permanent_lifecycle::matches_completed(&filter, snapshot, ctx),
             Err(error) => {
@@ -69,6 +78,7 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         };
         let mut filter = self.filter.clone();
         let origin = filter.zone.take();
+        let excluded_origin = filter.excluded_cast_origin_zone.take();
         let mut object_text = filter.description();
         if !object_text.starts_with("a ")
             && !object_text.starts_with("an ")
@@ -82,6 +92,14 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         }
         if let Some(origin) = origin {
             object_text.push_str(&format!(" from {}", origin.name().to_lowercase()));
+        }
+        if let Some(excluded) = excluded_origin {
+            let zone = match excluded {
+                crate::zone::Zone::Hand => "hand".to_string(),
+                other => other.name().to_lowercase(),
+            };
+            let possessive = if matches!(self.player, PlayerFilter::You) { "your" } else { "their" };
+            object_text.push_str(&format!(" from anywhere other than {possessive} {zone}"));
         }
         format!("Whenever {player_text} {object_text}")
     }

@@ -1000,6 +1000,18 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
             "untap clause missing target".to_string(),
         ));
     }
+    // "untap up to one target creature and up to one target land" names two
+    // independently counted target slots (the optional-companion fanout's).
+    // One target phrase would fold them into a single "creature or land"
+    // choice.
+    let words: Vec<&str> = tokens.iter().filter_map(OwnedLexToken::as_word).collect();
+    if words.windows(3).any(|window| window == ["and", "up", "to"])
+        && words.iter().filter(|word| **word == "target").count() == 2
+    {
+        return Err(CardTextError::ParseError(
+            "untap of two independently counted target slots".to_string(),
+        ));
+    }
     if let Some(choice) = parse_inline_creature_type_choice_tokens(tokens) {
         let mut cleaned = Vec::with_capacity(
             choice

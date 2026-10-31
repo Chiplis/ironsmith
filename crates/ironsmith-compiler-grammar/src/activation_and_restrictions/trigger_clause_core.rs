@@ -3321,6 +3321,8 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
             if let Ok(entry) = parse_trigger_clause_lexed_unstacked(left)
                 && let Some(face_up) = face_up_arm(&entry)
             {
+                // "or is turned face up" is the second arm, read here.
+                crate::word_claims::claim_tokens(&tokens[idx..]);
                 return Some(TriggerSpec::Either(Box::new(entry), Box::new(face_up)));
             }
             continue;

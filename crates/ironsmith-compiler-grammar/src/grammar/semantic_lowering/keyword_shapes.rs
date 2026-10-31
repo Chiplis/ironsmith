@@ -222,6 +222,8 @@ pub fn parse_partner_variant_label_tokens(tokens: &[OwnedLexToken]) -> Option<Pa
         return None;
     }
     if phrase_is_prefix(&words, &["character", "select"]) {
+        // The partner variant's name is its whole label.
+        crate::word_claims::claim_words(&words);
         return Some(PartnerVariantLabel {
             display: render_token_slice(visible_tokens).trim().to_string(),
         });
@@ -234,11 +236,11 @@ pub fn parse_partner_variant_label_tokens(tokens: &[OwnedLexToken]) -> Option<Pa
         });
     }
     if phrase_is_prefix(&words, &["partner"]) && !phrase_is_prefix(&words, &["partner", "with"]) {
-        return Some(PartnerVariantLabel {
-            display: super::super::keyword_special_lines::parse_partner_visible_label_tokens(
-                tokens,
-            )?,
-        });
+        let display =
+            super::super::keyword_special_lines::parse_partner_visible_label_tokens(tokens)?;
+        // "Partner—<variant>": the variant name is the label.
+        crate::word_claims::claim_words(&words);
+        return Some(PartnerVariantLabel { display });
     }
     None
 }

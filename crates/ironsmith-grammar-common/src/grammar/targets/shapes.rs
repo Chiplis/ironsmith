@@ -112,7 +112,15 @@ pub fn parse_chosen_object_target(tokens: &[OwnedLexToken]) -> Option<ChosenObje
         .copied()
         .unwrap_or(tokens.len());
     let filter_tokens = trim_comma_edges(tokens.get(filter_start..).unwrap_or_default());
-    (!filter_tokens.is_empty()).then_some(ChosenObjectTarget { filter_tokens })
+    if filter_tokens.is_empty() {
+        return None;
+    }
+    // "[the] chosen <object>": "chosen" is the earlier choice this reference
+    // binds to.
+    if let Some(chosen_token) = view.token_start_indices().get(chosen_word_idx).copied() {
+        ironsmith_compiler_syntax::word_claims::claim_tokens(&tokens[chosen_token..=chosen_token]);
+    }
+    Some(ChosenObjectTarget { filter_tokens })
 }
 
 pub fn parse_enchanted_object_target_kind(words: &[&str]) -> Option<EnchantedObjectTargetKind> {

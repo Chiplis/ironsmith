@@ -153,6 +153,35 @@ pub struct OrTrigger {
 }
 
 impl OrTrigger {
+    /// "Whenever you play a land or cast a spell from anywhere other than
+    /// your hand" (Shadow of the Goblin): one origin restriction shared by
+    /// the land play and the spell cast is written once, after both verbs.
+    fn land_or_spell_not_from_hand_display(&self) -> Option<String> {
+        let [land, spell] = self.triggers.as_slice() else {
+            return None;
+        };
+        let land = land.downcast_ref::<crate::triggers::PlayerPlaysLandTrigger>()?;
+        let spell = spell.downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+        if land.filter.excluded_cast_origin_zone != Some(crate::zone::Zone::Hand)
+            || !spell.from_not_hand
+            || land.player != spell.caster
+            || land.player != crate::target::PlayerFilter::You
+        {
+            return None;
+        }
+        const ORIGIN: &str = " from anywhere other than your hand";
+        let land_text = land.display();
+        let land_text = land_text.strip_suffix(ORIGIN)?;
+        let spell_text = spell.display();
+        let spell_body = spell_text.strip_prefix("Whenever you ")?;
+        if !spell_body.ends_with(ORIGIN) {
+            return None;
+        }
+        Some(format!("{land_text} or {spell_body}"))
+    }
+}
+
+impl OrTrigger {
     /// Create a new OrTrigger with the given triggers.
     pub fn new(triggers: Vec<Trigger>) -> Self {
         Self { triggers }
@@ -1406,6 +1435,9 @@ impl TriggerMatcher for OrTrigger {
             return self.triggers[0].display();
         }
         if let Some(display) = self.shared_life_change_display() {
+            return display;
+        }
+        if let Some(display) = self.land_or_spell_not_from_hand_display() {
             return display;
         }
         if let Some(display) = self.you_keyword_actions_display() {

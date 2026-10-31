@@ -468,6 +468,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         if random_choice {
             count = count.at_random();
         }
+        // "<count> of them": the count and the back-reference.
+        crate::word_claims::claim_words(&all_words);
         return Ok(wrap_target_count(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
             Some(count),
@@ -882,6 +884,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         && second_word_is_object_head
         && matches_surface_word(remaining_words[2], CONTROLLER_OR_OWNER_PLURAL_WORD_PATTERN)
     {
+        // "that land's controller": the referenced object's noun.
+        crate::word_claims::claim_word(remaining_words[1]);
         let player = tagged_it_owner_or_controller_player_filter(remaining_words[2]);
         return Ok(wrap_target_count(
             // The referenced object may have been targeted earlier, but its
@@ -898,6 +902,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         && is_demonstrative_object_head(remaining_words[3])
         && matches_surface_word(remaining_words[4], CONTROLLER_OR_OWNER_PLURAL_WORD_PATTERN)
     {
+        crate::word_claims::claim_words(&[remaining_words[1], remaining_words[3]]);
         let player = tagged_it_owner_or_controller_player_filter(remaining_words[4]);
         return Ok(wrap_target_count(
             TargetAst::Player(player, None),
@@ -922,6 +927,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             "controller" | "controllers" | "owner" | "owners"
         ) && leaf::parse_leaf_object_reference_head_complete(object_head).is_ok()
         {
+            crate::word_claims::claim_words(&remaining_words[..2]);
             let player = tagged_it_owner_or_controller_player_filter(remaining_words[1]);
             return Ok(wrap_target_count(
                 TargetAst::Player(player, None),
@@ -939,6 +945,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ))
         .is_ok()
     {
+        crate::word_claims::claim_words(&remaining_words[..3]);
         let object_ref = crate::filter::ObjectRef::tagged(remaining_words[0]);
         let player = if remaining_words[2] == "controller" {
             PlayerFilter::ControllerOf(object_ref)

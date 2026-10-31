@@ -120,6 +120,34 @@ impl<T> RegistryCandidate<T> {
     }
 }
 
+/// `IRONSMITH_REGISTRY_TRACE=1`: one stderr line per resolved registry with
+/// every matching candidate, the kept one (or `-` for none/ambiguity), and
+/// the words the kept candidate claimed.
+fn trace_registry_resolution<T>(
+    registry: RuleId,
+    candidates: &[RegistryCandidate<T>],
+    kept: Option<usize>,
+    note: &str,
+) {
+    if !crate::word_claims::registry_trace_enabled() {
+        return;
+    }
+    let names = candidates
+        .iter()
+        .map(|candidate| candidate.metadata.id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let kept_name = kept
+        .and_then(|index| candidates.get(index))
+        .map(|candidate| candidate.metadata.id.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let claims = kept
+        .and_then(|index| candidates.get(index))
+        .map(|candidate| crate::word_claims::describe_claims(&candidate.claims))
+        .unwrap_or_default();
+    eprintln!("REGISTRY {registry} [{names}] kept={kept_name}{note} claims: {claims}");
+}
+
 pub fn resolve_registry_candidates<T>(
     registry: RuleId,
     mut candidates: Vec<RegistryCandidate<T>>,
@@ -132,6 +160,7 @@ pub fn resolve_registry_candidates<T>(
     }
 
     if candidates.len() == 1 {
+        trace_registry_resolution(registry, &candidates, Some(0), "");
         let candidate = candidates.pop().expect("single registry candidate");
         crate::word_claims::adopt(&candidate.claims);
         return ParseOutcome::matched(
@@ -150,6 +179,12 @@ pub fn resolve_registry_candidates<T>(
             .iter()
             .all(|candidate| candidate.metadata.equivalence == equivalence);
     if explicitly_equivalent {
+        trace_registry_resolution(registry, &candidates, Some(0), " (equivalent)");
+        // Declared-equivalent readings are one reading: the words any of
+        // them read count as read.
+        for other in &candidates[1..] {
+            crate::word_claims::adopt(&other.claims);
+        }
         let candidate = candidates.remove(0);
         crate::word_claims::adopt(&candidate.claims);
         return ParseOutcome::matched(
@@ -162,6 +197,7 @@ pub fn resolve_registry_candidates<T>(
         );
     }
 
+    trace_registry_resolution(registry, &candidates, None, " (ambiguous)");
     let alternatives = candidates
         .iter()
         .map(|candidate| candidate.metadata.id)
@@ -226,6 +262,7 @@ pub fn resolve_ranked_candidates<T>(
                 .iter()
                 .all(|candidate| candidate.metadata.equivalence == equivalence);
         if !explicitly_equivalent {
+            trace_registry_resolution(registry, &candidates, Some(0), " (ranked)");
             let rules = candidates
                 .iter()
                 .map(|candidate| candidate.metadata.id)

@@ -198,6 +198,10 @@ pub fn parse_token_definition_shape_tokens(
             }
         }
         if complete {
+            // The card type and the (default) colorless descriptor are this
+            // shape's own facts: a land token, colorless unless colored.
+            reads("land");
+            reads("colorless");
             return Some(TokenDefinitionSpec::Land(LandTokenShape {
                 name: scope.name.clone().unwrap_or_else(|| {
                     if subtypes.is_empty() {
@@ -248,6 +252,8 @@ pub fn parse_token_definition_shape_tokens(
         ])
         .then(|| rules::damage_amount(&rule_words))
         .flatten();
+        // "artifact" is the card type of the shape built here.
+        reads("artifact");
         return Some(TokenDefinitionSpec::Artifact(ArtifactTokenShape {
             name: names::artifact_surface_name(&words, named_card.as_deref()),
             text_roles: described_roles(named_card.is_some()),

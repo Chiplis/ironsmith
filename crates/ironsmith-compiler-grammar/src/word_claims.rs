@@ -51,6 +51,9 @@ thread_local! {
 struct CardLine {
     text: String,
     pieces: Vec<(crate::TextSpan, String)>,
+    /// Each piece's span in the authored line, when normalization rewrote the
+    /// line text: a reader of the authored tokens claims those positions.
+    authored_spans: Vec<Option<crate::TextSpan>>,
 }
 
 /// A fresh [`ClaimOrigin`] id, unique in the process (a memoized result can
@@ -84,10 +87,90 @@ pub fn note_card_lines<'a>(lines: impl IntoIterator<Item = (&'a str, &'a [OwnedL
                 .map(|(text, tokens)| CardLine {
                     text: text.to_string(),
                     pieces: authored_word_pieces(tokens),
+                    authored_spans: Vec::new(),
                 })
                 .collect(),
         );
     });
+}
+
+/// The normalization of each rules line noted by [`note_card_lines`], in the
+/// same order. A line whose normalized text differs from its authored text
+/// lexes at shifted offsets; readers that read the authored tokens claim the
+/// authored positions, which the whole-line check then maps back. Whole-line
+/// audit only; ignored once set for the card.
+pub fn note_card_line_normalizations<'a>(
+    lines: impl IntoIterator<Item = &'a crate::cards::builders::NormalizedLine>,
+) {
+    if !line_audit_enabled() || CARD_DEPTH.with(Cell::get) == 0 {
+        return;
+    }
+    CARD_LINES.with(|card_lines| {
+        let mut card_lines = card_lines.borrow_mut();
+        let Some(card_lines) = card_lines.as_mut() else {
+            return;
+        };
+        for (card_line, normalized) in card_lines.iter_mut().zip(lines) {
+            let authored = card_line.text.trim();
+            if !card_line.authored_spans.is_empty()
+                || (normalized.normalized == normalized.original && normalized.original == authored)
+            {
+                continue;
+            }
+            // `original` is the stripped text normalization started from
+            // (reminder text, whitespace runs and a definition header removed);
+            // the strip map carries its offsets on to the authored line the
+            // authored tokens lex. Without one, the stripped offsets stand.
+            let strip_map =
+                crate::preprocess::stripped_line_authored_char_map(&card_line.text, &normalized.original);
+            card_line.authored_spans = card_line
+                .pieces
+                .iter()
+                .map(|(span, _)| {
+                    let stripped = crate::util::map_span_to_original(
+                        *span,
+                        &normalized.normalized,
+                        &normalized.original,
+                        &normalized.char_map,
+                    );
+                    match &strip_map {
+                        Some(strip_map) => {
+                            stripped_span_to_authored(stripped, &normalized.original, authored, strip_map)
+                        }
+                        None => Some(stripped),
+                    }
+                })
+                .collect();
+        }
+    });
+}
+
+/// A byte span of the stripped line `stripped`, carried through the per-char
+/// `strip_map` onto the authored line `authored`.
+fn stripped_span_to_authored(
+    span: crate::TextSpan,
+    stripped: &str,
+    authored: &str,
+    strip_map: &[usize],
+) -> Option<crate::TextSpan> {
+    let start_char = stripped.get(..span.start)?.chars().count();
+    let end_char = stripped.get(..span.end)?.chars().count();
+    if end_char <= start_char {
+        return None;
+    }
+    let first = *strip_map.get(start_char)?;
+    let last = *strip_map.get(end_char - 1)?;
+    let byte_at = |index: usize| {
+        authored
+            .char_indices()
+            .nth(index)
+            .map_or(authored.len(), |(byte, _)| byte)
+    };
+    Some(crate::TextSpan {
+        line: span.line,
+        start: byte_at(first),
+        end: byte_at(last + 1),
+    })
 }
 
 /// Words preprocessing read in place of a reader (a card name normalized to
@@ -100,6 +183,51 @@ pub fn claim_for_line<'a>(tokens: impl IntoIterator<Item = &'a OwnedLexToken>) {
     }
     let consumed = ClaimSet::of_tokens(tokens);
     LINE_CONSUMED.with(|set| set.borrow_mut().extend(&consumed));
+}
+
+/// Whether `IRONSMITH_REGISTRY_TRACE` asks for per-registry resolution
+/// traces on stderr.
+pub fn registry_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_REGISTRY_TRACE").is_some())
+}
+
+/// The words `claims` covers, as `text@line:start` for the card being
+/// parsed (or bare spans outside a card's whole-line audit). Traces only.
+pub fn describe_claims(claims: &ClaimSet) -> String {
+    let spans = claims.claimed_spans();
+    CARD_LINES.with(|lines| {
+        let lines = lines.borrow();
+        spans
+            .iter()
+            .map(|&(line, start, end)| {
+                let text = lines.as_ref().and_then(|lines| {
+                    lines.iter().find_map(|card_line| {
+                        card_line.pieces.iter().enumerate().find_map(|(index, (span, text))| {
+                            let at = |span: &crate::TextSpan| {
+                                span.line == line && span.start == start && span.end == end
+                            };
+                            // A claim at the authored position of a rewritten
+                            // line's piece names that piece too.
+                            (at(span)
+                                || card_line
+                                    .authored_spans
+                                    .get(index)
+                                    .copied()
+                                    .flatten()
+                                    .is_some_and(|authored| at(&authored)))
+                            .then(|| text.clone())
+                        })
+                    })
+                });
+                match text {
+                    Some(text) => format!("{text}@{line}:{start}"),
+                    None => format!("?@{line}:{start}-{end}"),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    })
 }
 
 /// Run a yes/no probe whose reading is never the one the card keeps (its
@@ -304,8 +432,18 @@ fn check_line_coverage(
             let unread: Vec<&str> = line
                 .pieces
                 .iter()
-                .filter(|(span, _)| !claims.contains(*span) && !consumed.contains(*span))
-                .map(|(_, word)| word.as_str())
+                .enumerate()
+                .filter(|(index, (span, _))| {
+                    let read = |span: crate::TextSpan| claims.contains(span) || consumed.contains(span);
+                    !read(*span)
+                        && !line
+                            .authored_spans
+                            .get(*index)
+                            .copied()
+                            .flatten()
+                            .is_some_and(|authored| authored.end > authored.start && read(authored))
+                })
+                .map(|(_, (_, word))| word.as_str())
                 .collect();
             (!unread.is_empty()).then_some((line.text.as_str(), unread))
         })

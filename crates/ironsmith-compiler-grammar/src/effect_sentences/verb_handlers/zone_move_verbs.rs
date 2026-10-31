@@ -264,6 +264,8 @@ pub fn parse_draw(
         let draw_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[..then_index]);
         let draw = parse_draw(draw_tokens, subject)?;
         let tag = crate::util::helper_tag_for_tokens(tokens, "drawn");
+        // "then discard one of them": one of the cards just drawn.
+        crate::word_claims::claim_tokens(&tokens[then_index..]);
         return Ok(EffectAst::Sequence { effects: vec![
             EffectAst::TagAffected { tag: tag.clone(), effect: Box::new(draw) },
             EffectAst::subject_verb_discard(player, Value::Fixed(1), false, false,

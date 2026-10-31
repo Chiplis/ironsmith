@@ -2797,6 +2797,28 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     Ok(None)
 }
 
+/// "Max speed —": the label is the max-speed condition the line keeps
+/// (CR 702.179), read once the labeled ability is recognized.
+fn claim_max_speed_label(label_tokens: &[OwnedLexToken], chosen: Option<&ChosenOptionContext>) {
+    if matches!(chosen, Some(ChosenOptionContext::MaxSpeed)) {
+        crate::word_claims::claim_tokens(label_tokens);
+    }
+}
+
+/// "Forecast — <cost>: <effect>" (CR 702.57): the activated line keeps the
+/// label as its presentation, and the activated lowering reads that label as
+/// the forecast rules (activate only from hand during your upkeep, once each
+/// turn, the reveal lasts until the ability resolves).
+fn claim_forecast_label(
+    label: &str,
+    label_tokens: &[OwnedLexToken],
+    presentation: Option<&PresentationLabel>,
+) {
+    if label.trim().eq_ignore_ascii_case("forecast") && presentation.is_some() {
+        crate::word_claims::claim_tokens(label_tokens);
+    }
+}
+
 fn restore_authored_named_source_trigger_subject(
     card: &crate::card::CardBuilder,
     authored: &[OwnedLexToken],
@@ -3413,6 +3435,7 @@ fn try_parse_labeled_line_dispatch(
             // speed; the label is a condition, not just presentation.
             if triggered.chosen_option.is_none() && max_speed_chosen_option.is_some() {
                 triggered.chosen_option = max_speed_chosen_option.clone();
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation = trigger_presentation_from_preprocessed_line(line)
@@ -3438,6 +3461,7 @@ fn try_parse_labeled_line_dispatch(
             // speed; the label is a condition, not just presentation.
             if triggered.chosen_option.is_none() && max_speed_chosen_option.is_some() {
                 triggered.chosen_option = max_speed_chosen_option.clone();
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation = trigger_presentation_from_preprocessed_line(line)
@@ -3482,6 +3506,8 @@ fn try_parse_labeled_line_dispatch(
                     &preprocessed.card,
                     &effect_parse_tokens,
                 )?;
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
+                claim_forecast_label(&label, label_tokens, presentation.as_ref());
                 let activated = RecognizedActivatedLine {
                     info: line.info.clone(),
                     cost,
@@ -3571,6 +3597,7 @@ fn try_parse_labeled_line_dispatch(
         if let Some(mut static_line) = recognize_static_line(&rewritten_body_line)? {
             if let Some(chosen_option) = max_speed_chosen_option.clone() {
                 static_line.chosen_option = Some(chosen_option);
+                claim_max_speed_label(label_tokens, static_line.chosen_option.as_ref());
             } else if preserve_as_choice_label {
                 static_line.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -3602,6 +3629,7 @@ fn try_parse_labeled_line_dispatch(
     if let Some(mut static_line) = recognize_static_line(&body_line)? {
         if let Some(chosen_option) = max_speed_chosen_option.clone() {
             static_line.chosen_option = Some(chosen_option);
+                claim_max_speed_label(label_tokens, static_line.chosen_option.as_ref());
         } else if preserve_as_choice_label {
             static_line.chosen_option =
                 document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -3628,6 +3656,7 @@ fn try_parse_labeled_line_dispatch(
         if let Some(mut static_line) = recognize_static_line(&rewritten_body_line)? {
             if let Some(chosen_option) = max_speed_chosen_option.clone() {
                 static_line.chosen_option = Some(chosen_option);
+                claim_max_speed_label(label_tokens, static_line.chosen_option.as_ref());
             } else if preserve_as_choice_label {
                 static_line.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -3653,6 +3682,8 @@ fn try_parse_labeled_line_dispatch(
                     &preprocessed.card,
                     &effect_parse_tokens,
                 )?;
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
+                claim_forecast_label(&label, label_tokens, presentation.as_ref());
                 let activated = RecognizedActivatedLine {
                     info: line.info.clone(),
                     cost,
@@ -4211,6 +4242,12 @@ fn parse_card_text_to_semantic_document(
         PreprocessedItem::Metadata(_) => None,
         PreprocessedItem::Line(line) => Some((line.info.raw_line.as_str(), line.tokens.as_slice())),
     }));
+    crate::word_claims::note_card_line_normalizations(preprocessed.items.iter().filter_map(
+        |item| match item {
+            PreprocessedItem::Metadata(_) => None,
+            PreprocessedItem::Line(line) => Some(&line.info.normalized),
+        },
+    ));
     parse_trace::event(format!(
         "preprocessed document: {} item(s)",
         preprocessed.items.len()

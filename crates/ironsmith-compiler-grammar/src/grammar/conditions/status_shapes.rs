@@ -248,6 +248,11 @@ fn parse_status_subject(
                         [piece] if piece.text == "it" || piece.text == "its"
                     )
                 })
+                // "it's" spelled as one word piece: the source pronoun (and
+                // its copula) is read here.
+                .map(|token: &OwnedLexToken| {
+                    crate::word_claims::claim_tokens(std::slice::from_ref(token));
+                })
                 .void(),
             ))
             .value(StatusConditionSubjectAst::Source),

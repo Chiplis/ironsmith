@@ -277,6 +277,8 @@ fn read_while_qualified_event(
         ["this", "creature", "is", "exiled", "from", "battlefield", "while",
          "youre" | "you're", "activating", "craft", "ability"])
     {
+        // The whole clause (articles included) is this exact shape.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(TriggerSpec::ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker {
             marker: "craft".into(),
         }));
@@ -291,6 +293,7 @@ fn read_while_qualified_event(
             "of", "your", "library", "while", "scrying",
         ]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::ScryToBottom,
             player: crate::cards::builders::PlayerFilter::You,

@@ -890,6 +890,7 @@ fn parse_granted_ability_component_for_gain_unlabeled(
     // "gain all creature types": the changeling characteristic as a
     // granted static ability.
     if ability_words == ["all", "creature", "types"] {
+        crate::word_claims::claim_words(&ability_words);
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
             StaticAbilityAst::Static(StaticAbility::changeling()),
         ))]));

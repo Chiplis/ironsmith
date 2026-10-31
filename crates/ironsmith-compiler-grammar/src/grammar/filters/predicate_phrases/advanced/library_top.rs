@@ -27,9 +27,13 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         return None;
     }
     // "is black": a bare color adjective.
+    // "the top card of your library is" names the object both readings test.
+    let head = &words[..words.len() - rest.len()];
     if let [color] = rest
         && let Some(colors) = crate::util::parse_color(color)
     {
+        crate::word_claims::claim_words(head);
+        crate::word_claims::claim_words(rest);
         let mut filter = ObjectFilter::default();
         filter.colors = Some(colors);
         filter.zone = Some(crate::zone::Zone::Library);
@@ -43,6 +47,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let start = tokens.len() - rest.len();
     let mut filter = parse_object_filter(&tokens[start..], false).ok()?;
     filter.zone = Some(crate::zone::Zone::Library);
+    crate::word_claims::claim_words(head);
     Some(PredicateAst::TopCardOfYourLibraryMatches(filter))
 }
 

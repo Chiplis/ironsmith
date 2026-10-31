@@ -1391,6 +1391,9 @@ pub(super) fn apply_spell_filter_chosen_type_reference(filter: &mut ObjectFilter
         // "spells of the chosen type": the preposition attaches the choice.
         if start >= 2 && words[start - 2] == "of" && words[start - 1] == "the" {
             crate::word_claims::claim_words(&words[start - 2..start]);
+        } else if start >= 1 && words[start - 1] == "of" {
+            // The article may already be stripped from these words.
+            crate::word_claims::claim_words(&words[start - 1..start]);
         }
         true
     };

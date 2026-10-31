@@ -65,6 +65,8 @@ fn parse_add_mana_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
         [additional, rest @ ..] if additional.is_word("additional") => rest,
         _ => tokens,
     };
+    // "[an] additional" marks the added mana as extra; the amount follows.
+    crate::word_claims::claim_tokens(&tokens[..tokens.len() - amount_tokens.len()]);
     parse_value(amount_tokens).map(|(value, _)| value)
 }
 
@@ -504,7 +506,14 @@ pub fn parse_add_mana(
             .windows(2)
             .position(|pair| pair == ["chosen", "color"])
         {
-            crate::word_claims::claim_words(&clause_words[at..at + 2]);
+            // "mana of the chosen color": the "of the" linking the mana to
+            // the chosen color is read with it.
+            let start = if at >= 2 && clause_words[at - 2..at] == ["of", "the"] {
+                at - 2
+            } else {
+                at
+            };
+            crate::word_claims::claim_words(&clause_words[start..at + 2]);
         }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_chosen_color(
@@ -754,6 +763,23 @@ pub fn parse_add_mana(
     let for_each_idx = fixed_output.first_for_each_token;
 
     if !mana.is_empty() {
+        // "add an additional {R} ...": the lead-in marks the added mana as
+        // extra; every reading below adds that mana.
+        let word_of = |token: &OwnedLexToken| token.as_word().map(str::to_ascii_lowercase);
+        let lead_start = usize::from(
+            tokens.first().and_then(word_of).as_deref() == Some("add"),
+        );
+        let additional_lead = lead_start
+            + tokens[lead_start..]
+                .iter()
+                .take_while(|token| matches!(word_of(*token).as_deref(), Some("an" | "additional")))
+                .count();
+        if tokens[lead_start..additional_lead]
+            .iter()
+            .any(|token| word_of(token).as_deref() == Some("additional"))
+        {
+            crate::word_claims::claim_tokens(&tokens[lead_start..additional_lead]);
+        }
         if let Some(amount) = parse_add_mana_that_much_value(tokens) {
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,

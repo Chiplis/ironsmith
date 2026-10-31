@@ -9,6 +9,20 @@ pub(super) fn read_revealed_remainder(
     let tokens = input.tokens;
     let player = input.player;
     if let Some(shape) = cca_shapes::parse_revealed_remainder_shape(tokens) {
+        // "on the bottom of <library> in any/a random order": the order the
+        // remainder takes and its destination's "of".
+        let word_at = |index: usize| tokens.get(index).and_then(|token| token.as_word());
+        for index in 0..tokens.len() {
+            let order_len = match (word_at(index), word_at(index + 1), word_at(index + 2)) {
+                (Some("in"), Some("any"), Some("order")) => 3,
+                (Some("in"), Some("a"), Some("random")) if word_at(index + 3) == Some("order") => 4,
+                _ => 0,
+            };
+            crate::word_claims::claim_tokens(&tokens[index..index + order_len]);
+            if word_at(index) == Some("bottom") && word_at(index + 1) == Some("of") {
+                crate::word_claims::claim_tokens(&tokens[index + 1..index + 2]);
+            }
+        }
         let order = if shape.random_order {
             crate::cards::builders::LibraryBottomOrderAst::Random
         } else {

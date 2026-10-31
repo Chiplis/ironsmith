@@ -213,6 +213,8 @@ pub fn parse_skip_action_tokens(
             SkipActionKind::Scheduled { kind, count }
         }
     };
+    // Every arm above matches the whole schedule phrase.
+    crate::word_claims::claim_words(&words);
     Some(SkipActionShape { player, action })
 }
 

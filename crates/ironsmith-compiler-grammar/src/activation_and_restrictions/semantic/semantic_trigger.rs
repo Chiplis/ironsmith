@@ -1543,8 +1543,17 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(subject_end) = shared_subject_end.filter(|end| *end > 0) {
             let mut shared_subject_right = left_tokens[..subject_end].to_vec();
             shared_subject_right.extend_from_slice(right_tokens);
+            // "you play a land or cast a spell from anywhere other than your
+            // hand" (Shadow of the Goblin): the trailing origin restricts
+            // both arms, so the land arm carries it too.
+            let mut left_with_origin = left_tokens.to_vec();
+            if trigger_atom_token(left_tokens, TriggerClauseAtom::Play).is_some()
+                && let Some(origin_start) = trailing_not_from_hand_origin_start(right_tokens)
+            {
+                left_with_origin.extend_from_slice(&right_tokens[origin_start..]);
+            }
             if let (Ok(left), Ok(right)) = (
-                parse_trigger_clause_lexed(left_tokens),
+                parse_trigger_clause_lexed(&left_with_origin),
                 parse_trigger_clause_lexed(&shared_subject_right),
             ) {
                 return Ok(TriggerSpec::Either(Box::new(left), Box::new(right)));
@@ -1749,15 +1758,24 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
         if let Some(player) = parse_trigger_subject_player_filter(&subject_words) {
-            let trimmed_object_tokens = trim_commas(&tokens[play_idx + 1..]);
+            let mut trimmed_object_tokens = trim_commas(&tokens[play_idx + 1..]);
+            // "play a land from anywhere other than your hand": the land's
+            // play origin excludes its owner's hand.
+            let not_from_hand = trailing_not_from_hand_origin_start(&trimmed_object_tokens)
+                .map(|start| trimmed_object_tokens.split_off(start));
             let object_tokens = strip_leading_articles(&trimmed_object_tokens);
             let object_word_view = ActivationRestrictionCompatWords::new(&object_tokens);
             let object_words = object_word_view.to_word_refs();
             if object_words
                 .iter()
                 .any(|word| trigger_word_accepts_pattern(word, LAND_OR_LANDS_PATTERN))
-                && let Ok(filter) = parse_object_filter_lexed(&object_tokens, false)
+                && let Ok(mut filter) = parse_object_filter_lexed(&object_tokens, false)
             {
+                crate::word_claims::claim_tokens(&tokens[play_idx..=play_idx]);
+                if let Some(origin_tokens) = &not_from_hand {
+                    crate::word_claims::claim_tokens(origin_tokens);
+                    filter.excluded_cast_origin_zone = Some(Zone::Hand);
+                }
                 return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
             }
             // "Whenever you play an Island" (Jokulmorder): CR 305.1 — only a
@@ -1767,7 +1785,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 && filter.subtypes.iter().all(|subtype| subtype.is_land_subtype())
                 && filter.card_types.is_empty()
                 && filter.any_of.is_empty()
+                && not_from_hand.is_none()
             {
+                crate::word_claims::claim_tokens(&tokens[play_idx..=play_idx]);
                 return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
             }
         }
@@ -2073,6 +2093,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 });
             }
             if let Some(marker) = parse_named_ability_trigger_tail_lexed(ability_tail_tokens) {
+                // "activate(s) a(n) <keyword> ability": the verb and the whole
+                // named-ability tail are this reading.
+                crate::word_claims::claim_tokens(&tokens[activate_idx..activate_idx + 1]);
+                crate::word_claims::claim_tokens(ability_tail_tokens);
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter: ObjectFilter::default().with_ability_marker(marker),
@@ -3609,6 +3633,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         })?;
         // "<player> put(s) ... counters on/onto": the placing verb.
         crate::word_claims::claim_words(&words[put_word_idx..=put_word_idx]);
+        // "put a <kind> counter": the singular article of the counted put.
+        if matches!(descriptor_words.first().copied(), Some("a" | "an")) {
+            crate::word_claims::claim_words(&descriptor_words[..1]);
+        }
 
         return Ok(TriggerSpec::CounterPutOn {
             filter,
@@ -4910,6 +4938,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 return Ok(TriggerSpec::ThisDealsDamageTo(target));
             }
         }
+        // "<source> deals damage": the bare event, verb and noun read here.
+        if tokens[deals_idx + 1..]
+            .iter()
+            .filter(|token| token.as_word().is_some())
+            .all(|token| token.parser_text() == "damage")
+        {
+            crate::word_claims::claim_tokens(&tokens[deals_idx..]);
+        }
         return Ok(
             match parse_damage_source_trigger_filter_lexed(subject_tokens)? {
                 Some((source, source_surface)) => TriggerSpec::DealsDamage {
@@ -5352,6 +5388,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let [subject @ .., "place" | "places" | "put" | "puts", "a", "sticker"] = words.as_slice()
         && let Some(player) = parse_trigger_subject_player_filter(subject)
     {
+        crate::word_claims::claim_words(&words[subject.len()..]);
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::Sticker,
             player,
@@ -6671,6 +6708,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     words,
                     &["postcombat", "main", "phases"],
                 );
+            if each_of {
+                // "each of": every postcombat main phase, read into the surface.
+                let _ = crate::word_primitives::parse_sequence_start(words, &["each", "of"]);
+            }
             Ok(TriggerSpec::BeginningOfPostcombatMain {
                 player: parse_possessive_clause_player_filter(words),
                 surface: if each_of {
@@ -6715,6 +6756,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
 /// "at the beginning of <step>": the step readings above read "beginning"
 /// and the step; the definite article before "beginning" is part of the
 /// same phrase.
+/// Where a trailing "from anywhere other than your/their hand" starts.
+fn trailing_not_from_hand_origin_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let suffix_len = if words.ends_with(&["from", "anywhere", "other", "than", "your", "hand"])
+        || words.ends_with(&["from", "anywhere", "other", "than", "their", "hand"])
+    {
+        6
+    } else {
+        return None;
+    };
+    trigger_word_token_start(tokens, words.len() - suffix_len)
+}
+
 fn claim_definite_beginning(words: &[&str]) {
     if let ["the", "beginning", ..] = words {
         crate::word_claims::claim_words(&words[..1]);

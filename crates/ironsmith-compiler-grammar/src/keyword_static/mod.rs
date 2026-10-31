@@ -7892,6 +7892,18 @@ fn damage_source_filter_from_shape(
 fn parse_damage_amount_replacement_target_filters(
     words: &[&str],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
+    // Every arm below matches the whole recipient phrase exactly, so a
+    // recognized phrase was read word for word.
+    let filters = damage_amount_replacement_target_filters_exact(words)?;
+    if filters.0.is_some() || filters.1.is_some() {
+        crate::word_claims::claim_words(words);
+    }
+    Ok(filters)
+}
+
+fn damage_amount_replacement_target_filters_exact(
+    words: &[&str],
+) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
     let simple = strip_leading_word_refs_any(words, &["a", "an"]);
     if matches!(
         simple,
@@ -9048,6 +9060,42 @@ pub(crate) fn characteristic_pt_uses_named_subject_surface(tokens: &[OwnedLexTok
         })
 }
 
+/// "This token's power and toughness are each equal to ...": the source
+/// possessive subject and the "are (each)" copula around the shared value.
+/// Only an exact source possessive and copula are read.
+fn claim_characteristic_pt_subject_and_copula(tokens: &[OwnedLexToken]) {
+    let words = parser_token_word_refs(tokens);
+    let Some(pt) = words
+        .windows(3)
+        .position(|window| window == ["power", "and", "toughness"])
+    else {
+        return;
+    };
+    let Some(equal) = words[pt + 3..]
+        .windows(2)
+        .position(|window| window == ["equal", "to"])
+        .map(|offset| pt + 3 + offset)
+    else {
+        return;
+    };
+    let subject = &words[..pt];
+    let source_possessive = match subject {
+        ["its"] => true,
+        ["this", noun] => noun.ends_with("'s") || noun.ends_with('s'),
+        ["this", noun, "s"] => !noun.is_empty(),
+        _ => false,
+    };
+    if source_possessive {
+        crate::word_claims::claim_words(subject);
+    }
+    if matches!(
+        &words[pt + 3..equal],
+        ["are"] | ["are", "each"] | ["is"] | ["is", "each"] | ["each"]
+    ) {
+        crate::word_claims::claim_words(&words[pt + 3..equal]);
+    }
+}
+
 pub fn parse_characteristic_defining_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -9111,6 +9159,7 @@ pub fn parse_characteristic_defining_pt_line(
             ))
         })?;
         let value = preserve_subject(value);
+        claim_characteristic_pt_subject_and_copula(&sentence_tokens);
         return Ok(Some(StaticAbility::characteristic_defining_pt(
             value.clone(),
             value,
@@ -9783,6 +9832,11 @@ pub fn parse_if_this_spell_costs_less_to_cast_line_lexed(
         || static_mid_facts::parse_cast_marker_fact(remaining_tokens).is_none()
     {
         return Ok(None);
+    }
+    // The exact "less to cast" tail is this reduction's direction and the
+    // casting it applies to.
+    if remaining_words == ["less", "to", "cast"] {
+        crate::word_claims::claim_tokens(remaining_tokens);
     }
 
     if let Some((reduction, _)) = parsed_mana_cost {

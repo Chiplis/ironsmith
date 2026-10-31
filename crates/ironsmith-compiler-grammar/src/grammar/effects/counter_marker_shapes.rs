@@ -159,6 +159,9 @@ pub enum PutCounterSequenceShape<'a> {
 pub struct CounterPlacementShape<'a> {
     pub descriptor: CounterDescriptorShape,
     pub target_tokens: &'a [OwnedLexToken],
+    /// The "and" that joins this recipient to the previous one of the same
+    /// counter group ("on him and up to one target God you control").
+    pub recipient_joiner: Option<&'a OwnedLexToken>,
 }
 
 fn counter_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -1275,13 +1278,50 @@ fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<Vec<CounterPlacem
     .map(|((), _)| ())
     .take()
     .parse_next(input)?;
-    Ok(std::iter::once(first)
-        .chain(more)
-        .map(|descriptor| CounterPlacementShape {
-            descriptor,
-            target_tokens,
+    let recipients = split_counter_recipients(target_tokens);
+    let descriptors: Vec<CounterDescriptorShape> = std::iter::once(first).chain(more).collect();
+    Ok(recipients
+        .into_iter()
+        .flat_map(|(recipient_joiner, target_tokens)| {
+            descriptors.iter().cloned().map(move |descriptor| CounterPlacementShape {
+                descriptor,
+                target_tokens,
+                recipient_joiner,
+            })
         })
         .collect())
+}
+
+/// "on him and up to one target God you control" (Beta Ray Bill): one
+/// counter group placed on two recipients, the second an independently
+/// counted target. Only an "and" followed by a target phrase ("target",
+/// "another target", "up to <n> ...target") splits; any other "and" belongs
+/// to the recipient's own filter.
+fn split_counter_recipients(
+    tokens: &[OwnedLexToken],
+) -> Vec<(Option<&OwnedLexToken>, &[OwnedLexToken])> {
+    let word_at = |index: usize| tokens.get(index).and_then(OwnedLexToken::as_word);
+    let split = (1..tokens.len()).find(|&index| {
+        word_at(index) == Some("and")
+            && match word_at(index + 1) {
+                Some("target") => true,
+                Some("another") => word_at(index + 2) == Some("target"),
+                Some("up") => {
+                    word_at(index + 2) == Some("to")
+                        && tokens[index + 3..]
+                            .iter()
+                            .any(|token| token.as_word() == Some("target"))
+                }
+                _ => false,
+            }
+    });
+    match split {
+        Some(index) if index + 1 < tokens.len() => vec![
+            (None, &tokens[..index]),
+            (Some(&tokens[index]), &tokens[index + 1..]),
+        ],
+        _ => vec![(None, tokens)],
+    }
 }
 
 fn parse_counter_placement_sequence_lexed<'a>(
@@ -1290,7 +1330,7 @@ fn parse_counter_placement_sequence_lexed<'a>(
     primitives::kw("put").parse_next(input)?;
     let mut placements = counter_placement.parse_next(input)?;
     let rest: Vec<Vec<CounterPlacementShape<'a>>> = repeat(
-        1..,
+        0..,
         (
             alt((
                 (primitives::comma(), opt(primitives::kw("and"))).void(),
@@ -1303,6 +1343,18 @@ fn parse_counter_placement_sequence_lexed<'a>(
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     placements.extend(rest.into_iter().flatten());
+    // A sequence places counters on at least two recipients; one recipient
+    // with several counter kinds is the shared-target reading's.
+    let first_recipient = placements.first().map(|placement| placement.target_tokens.as_ptr());
+    if !placements
+        .iter()
+        .any(|placement| Some(placement.target_tokens.as_ptr()) != first_recipient)
+    {
+        return Err(primitives::backtrack_err(
+            "counter placement sequence",
+            "two or more recipients",
+        ));
+    }
     Ok(placements)
 }
 

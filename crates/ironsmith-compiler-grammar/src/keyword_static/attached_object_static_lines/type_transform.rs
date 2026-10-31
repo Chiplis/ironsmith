@@ -28,6 +28,7 @@ pub fn parse_attached_type_transform_line(
         match word {
             "and" => continue,
             "colorless" => {
+                crate::word_claims::claim_word(word);
                 make_colorless = true;
                 continue;
             }

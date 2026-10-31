@@ -382,6 +382,25 @@ fn parse_source_or_filter_trigger_subject_filter_lexed(
 pub fn parse_trigger_subject_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
+    let filter = trigger_subject_filter_reading(subject_tokens)?;
+    // The leading "another"/"other" modifier is read where it lands in the
+    // filter as its `other` exclusion; paths that return a filter without
+    // it (a chosen reference, any source) leave the word unread.
+    if let Some(filter) = &filter
+        && (filter.other || filter.any_of.iter().any(|arm| arm.other))
+        && let Some(modifier) = strip_leading_one_or_more_lexed(subject_tokens).first()
+        && modifier
+            .as_word()
+            .is_some_and(trigger_subject_grammar::trigger_word_is_other_modifier)
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(modifier));
+    }
+    Ok(filter)
+}
+
+fn trigger_subject_filter_reading(
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
     if subject_tokens.is_empty() {
         return Ok(None);
     }

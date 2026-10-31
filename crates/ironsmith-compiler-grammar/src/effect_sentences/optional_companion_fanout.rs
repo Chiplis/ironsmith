@@ -60,6 +60,7 @@ fn leading_action_clause(
     let verb = match verb {
         LeadingOptionalCompanionVerb::Destroy => "destroy",
         LeadingOptionalCompanionVerb::Tap => "tap",
+        LeadingOptionalCompanionVerb::Untap => "untap",
     };
     let mut clause = Vec::with_capacity(target.len() + 1);
     clause.push(synthetic_word(verb));

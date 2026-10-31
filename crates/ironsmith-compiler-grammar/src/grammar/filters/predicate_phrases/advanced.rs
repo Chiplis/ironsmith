@@ -2385,6 +2385,10 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
     };
     let mut reference = crate::cost::OptionalCostRef::from(label);
     if this_turn { reference = reference.this_turn(); }
+    // The label ("this spell's additional", "its {1}{U}") and the paid tail
+    // ("cost was [not] paid [this turn]") are each read whole above.
+    crate::word_claims::claim_words(&label_clause.word_refs());
+    crate::word_claims::claim_tokens(&tokens[tail_start..]);
     let predicate = PredicateAst::ThisSpellPaidLabel(reference);
     if negated {
         Some(PredicateAst::Not(Box::new(predicate)))
@@ -3734,6 +3738,8 @@ fn parse_this_spell_was_cast_using_teamwork_shape(
         "impending" => "Impending",
         _ => return None,
     };
+    // The whole authored predicate is this exact shape.
+    crate::word_claims::claim_words(&words);
     let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
     Some(if negated {
         PredicateAst::Not(Box::new(predicate))
@@ -4335,6 +4341,11 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     filter.set_additional_cost_object_surface(Some(
         ironsmith_core::AdditionalCostObjectSurface::new(cost_action, subject_kind),
     ));
+    // The cost verb ("sacrificed"/"exiled") and the permanent noun captures.
+    if let Some(action) = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause) {
+        crate::word_claims::claim_tokens(action.tokens());
+    }
+    crate::word_claims::claim_tokens(subject.tokens());
     Ok(Some(PredicateAst::TaggedMatchedLastKnown(
         crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
         filter,
@@ -4742,7 +4753,8 @@ pub(super) fn parse_tagged_historical_identity_shape(
     let action_phrases: &[&[&str]] = &[&["was"], &["were"]];
     let atoms = [
         WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(action_phrases)),
-        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        // The past-tense copula: a closed-vocabulary capture reads it.
+        WinnowSequence::action("action", WinnowCaptureKind::OneOfPhrase(action_phrases)),
         WinnowSequence::object("descriptor", WinnowCaptureKind::Rest),
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
@@ -4910,6 +4922,8 @@ pub(super) fn parse_player_cards_in_graveyard_predicate(
         return None;
     }
     let player_filter = player_filter_for_turn_value(player)?;
+    // The graveyard owner's possessive, checked against the subject above.
+    crate::word_claims::claim_tokens(possessive.tokens());
 
     Some(PredicateAst::ValueComparison {
         left: Value::CardsInGraveyard(player_filter),
@@ -5636,6 +5650,8 @@ pub(super) fn parse_counted_source_exiled_objects_predicate(
         .iter()
         .all(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
     {
+        // The bare "cards" noun: any exiled card.
+        crate::word_claims::claim_tokens(object_tokens);
         ObjectFilter::default()
     } else {
         crate::grammar::primitives::probe_shape(parse_object_filter(object_tokens, false))?

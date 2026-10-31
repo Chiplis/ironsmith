@@ -242,6 +242,8 @@ pub fn parse_target_restriction_envelope_tokens(
         if source_first >= source_end {
             return None;
         }
+        // "from nongreen sources": the source noun the descriptor qualifies.
+        crate::word_claims::claim_words(&words[source_end..]);
         return Some(TargetRestrictionEnvelope::FilteredSources {
             spell_descriptor_tokens: (marker > 4)
                 .then(|| token_range_for_words(tokens, &view, 4..marker))
@@ -260,6 +262,7 @@ pub fn parse_target_restriction_envelope_tokens(
         && matches!(words.last().copied(), Some("source" | "sources"))
         && words.len() > 7
     {
+        crate::word_claims::claim_words(&words[words.len() - 1..]);
         return Some(TargetRestrictionEnvelope::AbilitiesFrom {
             source_descriptor_tokens: token_range_for_words(tokens, &view, 6..words.len() - 1)?,
         });

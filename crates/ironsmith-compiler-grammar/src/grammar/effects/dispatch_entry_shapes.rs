@@ -88,10 +88,13 @@ fn marker_present<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
 where
     P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 {
-    let mut input = LexStream::new(tokens);
-    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), parser)
-        .parse_next(&mut input)
-        .is_ok()
+    // A presence gate: whichever reading it selects reads the words itself.
+    crate::word_claims::probe_only(|| {
+        let mut input = LexStream::new(tokens);
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), parser)
+            .parse_next(&mut input)
+            .is_ok()
+    })
 }
 
 pub fn is_that_object_power_damage_to_source_tokens(tokens: &[OwnedLexToken]) -> bool {

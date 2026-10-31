@@ -190,6 +190,119 @@ pub(super) fn strip_parenthetical_segments(line: &str) -> String {
     collapse_whitespace_runs(out.as_str())
 }
 
+/// For the whole-line word audit: each character of the stripped rules text
+/// a line's normalization starts from (its `NormalizedLine::original`) mapped
+/// to its character index in the authored line `raw_line.trim()`, whose
+/// offsets the authored tokens carry. It replays the strips normalization
+/// applies before the name rewrite (parentheticals and whitespace runs, the
+/// "round down each time" sentence, a definition header, the edge trim) and
+/// answers `None` when the replay does not reproduce `stripped_original`
+/// (for example a merged two-line statement), so a caller keeps the
+/// stripped offsets rather than guessing.
+pub(crate) fn stripped_line_authored_char_map(
+    raw_line: &str,
+    stripped_original: &str,
+) -> Option<Vec<usize>> {
+    let text_of = |chars: &[(char, usize)]| chars.iter().map(|(ch, _)| *ch).collect::<String>();
+    let raw: Vec<(char, usize)> = raw_line.chars().enumerate().map(|(i, ch)| (ch, i)).collect();
+
+    // Parentheticals and whitespace runs (`strip_parenthetical_segments`).
+    let expected = strip_parenthetical_segments(raw_line);
+    let mut outside = Vec::with_capacity(raw.len());
+    let mut depth = 0u32;
+    for &(ch, idx) in &raw {
+        match ch {
+            '(' => depth = depth.saturating_add(1),
+            ')' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => outside.push((ch, idx)),
+            _ => {}
+        }
+    }
+    let mut collapsed: Vec<(char, usize)> = Vec::with_capacity(outside.len());
+    let mut pending_space = None;
+    for (ch, idx) in outside {
+        if ch.is_whitespace() {
+            if !collapsed.is_empty() {
+                pending_space = Some(idx);
+            }
+            continue;
+        }
+        if let Some(space) = pending_space.take() {
+            collapsed.push((' ', space));
+        }
+        collapsed.push((ch, idx));
+    }
+    let mut chars = if text_of(&collapsed) == expected {
+        collapsed
+    } else {
+        // The surfaces kept whole, or with only their parentheses removed.
+        let mut kept = Vec::with_capacity(raw.len());
+        let mut source = raw.iter();
+        for ch in expected.chars() {
+            loop {
+                let &(raw_ch, idx) = source.next()?;
+                if raw_ch == ch {
+                    kept.push((ch, idx));
+                    break;
+                }
+                if raw_ch != '(' && raw_ch != ')' {
+                    return None;
+                }
+            }
+        }
+        kept
+    };
+
+    // "Round down each time." (`strip_rounding_instruction_sentence`).
+    const ROUNDING_SENTENCE: &str = "round down each time.";
+    let text = text_of(&chars);
+    if let Some(start) = text.to_ascii_lowercase().find(ROUNDING_SENTENCE) {
+        let start_char = text[..start].chars().count();
+        let end_char = start_char + ROUNDING_SENTENCE.chars().count();
+        let mut prefix = chars[..start_char].to_vec();
+        while prefix.last().is_some_and(|(ch, _)| ch.is_whitespace()) {
+            prefix.pop();
+        }
+        let mut rest = &chars[end_char.min(chars.len())..];
+        while rest.first().is_some_and(|(ch, _)| ch.is_whitespace()) {
+            rest = &rest[1..];
+        }
+        if let Some(&(_, first_rest)) = rest.first() {
+            prefix.push((' ', first_rest.saturating_sub(1)));
+            prefix.extend_from_slice(rest);
+        }
+        chars = prefix;
+    }
+
+    // A definition header ("To forage, ..."), kept as a suffix of its input.
+    let text = text_of(&chars);
+    let headless = reminder_actions::strip_definition_header(&text);
+    if headless != text {
+        if !text.ends_with(headless.as_str()) {
+            return None;
+        }
+        let dropped = text.chars().count() - headless.chars().count();
+        chars = chars.split_off(dropped);
+    }
+
+    // The edge trim `normalize_line_for_parse` applies.
+    while chars.first().is_some_and(|(ch, _)| ch.is_whitespace()) {
+        chars.remove(0);
+    }
+    while chars.last().is_some_and(|(ch, _)| ch.is_whitespace()) {
+        chars.pop();
+    }
+    if text_of(&chars) != stripped_original {
+        return None;
+    }
+    // Authored tokens lex `raw_line.trim()`.
+    let lead = raw_line.chars().take_while(|ch| ch.is_whitespace()).count();
+    chars
+        .into_iter()
+        .map(|(_, idx)| idx.checked_sub(lead))
+        .collect()
+}
+
 /// The tokens of one stage of the line pipeline. The document phase rewrites
 /// text, and each rewritten text is tokenized once for the probes that read
 /// it; `None` when the text is not rules text the lexer accepts.
@@ -259,6 +372,52 @@ fn self_reference_replacement_tokens<'a>(
             occurrences
                 .iter()
                 .any(|&(start, end)| start <= source.start && source.end <= end)
+        })
+        .collect()
+}
+
+/// Parse-stream tokens that are this card's name kept as its authored
+/// surface where name normalization recognized a self reference (see
+/// `preserve_self_reference_surface`): preprocessing read the name as the
+/// source, exactly as for a replaced name, so the whole-line claim check
+/// counts these words as read. `ranges` are char offsets in the original line.
+fn preserved_self_reference_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+    normalized: &NormalizedLine,
+    ranges: &[(usize, usize)],
+) -> Vec<&'a OwnedLexToken> {
+    if ranges.is_empty() {
+        return Vec::new();
+    }
+    let original = normalized.original.as_str();
+    tokens
+        .iter()
+        .filter(|token| {
+            if token.kind != TokenKind::Word {
+                return false;
+            }
+            let source = crate::util::map_span_to_original(
+                token.span,
+                &normalized.normalized,
+                &normalized.original,
+                &normalized.char_map,
+            );
+            // Only a token that still carries the authored name text.
+            if !original
+                .get(source.start..source.end)
+                .is_some_and(|authored| authored.eq_ignore_ascii_case(&token.slice))
+            {
+                return false;
+            }
+            let (Some(before_start), Some(before_end)) =
+                (original.get(..source.start), original.get(..source.end))
+            else {
+                return false;
+            };
+            let (start, end) = (before_start.chars().count(), before_end.chars().count());
+            ranges
+                .iter()
+                .any(|&(range_start, range_end)| range_start <= start && end <= range_end)
         })
         .collect()
 }
@@ -576,6 +735,30 @@ fn materialize_structural_metadata(value: &crate::front_end::MetadataLine) -> Me
         crate::front_end::MetadataLine::Loyalty(value) => MetadataLine::Loyalty(value.clone()),
         crate::front_end::MetadataLine::Defense(value) => MetadataLine::Defense(value.clone()),
     }
+}
+
+thread_local! {
+    /// Char ranges (in the line being normalized) of this card's name or
+    /// alias occurrences that `replace_names_with_map` identified as a self
+    /// reference but kept as their authored surface, so the token-level
+    /// readers attach the proper-name surface to the source reference.
+    static PRESERVED_SELF_REFERENCES: std::cell::RefCell<Vec<(usize, usize)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The last argument of a self-reference match: whether this occurrence keeps
+/// its authored surface. A kept occurrence is still a self reference to the
+/// source, so its range is recorded for the whole-line claim check.
+fn preserve_self_reference_surface(preserve: bool, source_char: usize, name_chars: usize) -> bool {
+    if preserve {
+        PRESERVED_SELF_REFERENCES
+            .with(|ranges| ranges.borrow_mut().push((source_char, source_char + name_chars)));
+    }
+    preserve
+}
+
+fn take_preserved_self_references() -> Vec<(usize, usize)> {
+    PRESERVED_SELF_REFERENCES.with(|ranges| std::mem::take(&mut *ranges.borrow_mut()))
 }
 
 fn replace_names_with_map(
@@ -1386,19 +1569,23 @@ fn replace_names_with_map(
             && !is_turn_noun_usage(bytes, idx, full_bytes.len())
             && !is_keyword_component(bytes, idx, full_bytes.len())
             && !is_subtype_descriptor_usage(bytes, idx, full_bytes.len())
-            && !(preserve_source_surfaces
-                && should_preserve_source_surface_context(
-                    bytes,
-                    line_tokens,
-                    idx,
-                    full_bytes.len(),
-                )
-                && !full_typed_override)
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
                 full_bytes.len(),
                 full_name,
+            )
+            && !preserve_self_reference_surface(
+                preserve_source_surfaces
+                    && should_preserve_source_surface_context(
+                        bytes,
+                        line_tokens,
+                        idx,
+                        full_bytes.len(),
+                    )
+                    && !full_typed_override,
+                source_char,
+                lower[idx..idx + full_bytes.len()].chars().count(),
             )
         {
             let name_chars = lower[idx..idx + full_bytes.len()].chars().count();
@@ -1448,19 +1635,23 @@ fn replace_names_with_map(
                     idx,
                     short_bytes.len(),
                 ))
-            && !(preserve_source_surfaces
-                && should_preserve_source_surface_context(
-                    bytes,
-                    line_tokens,
-                    idx,
-                    short_bytes.len(),
-                )
-                && !short_typed_override)
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
                 short_bytes.len(),
                 short_name,
+            )
+            && !preserve_self_reference_surface(
+                preserve_source_surfaces
+                    && should_preserve_source_surface_context(
+                        bytes,
+                        line_tokens,
+                        idx,
+                        short_bytes.len(),
+                    )
+                    && !short_typed_override,
+                source_char,
+                lower[idx..idx + short_bytes.len()].chars().count(),
             )
         {
             let name_chars = lower[idx..idx + short_bytes.len()].chars().count();
@@ -1574,6 +1765,7 @@ fn normalize_line_for_parse(
     typed_subject: &str,
 ) -> Option<NormalizedLine> {
     let trimmed = line.trim();
+    take_preserved_self_references();
     if trimmed.is_empty() {
         return None;
     }
@@ -1596,6 +1788,8 @@ fn normalize_line_for_parse(
         let wrapped =
             preprocess_grammar::parse_wrapped_activation_surface_tokens(trimmed, &trimmed_tokens)?;
         let inner_tokens = stage_tokens(wrapped.inner.as_str()).unwrap_or_default();
+        // Only the inner reading is kept.
+        take_preserved_self_references();
         let (inner_replaced, inner_map) = replace_names_with_map(
             wrapped.inner.as_str(),
             &inner_tokens,
@@ -2658,13 +2852,15 @@ pub fn preprocess_document_with_provenance(
         }
 
         let stripped = reminder_actions::strip_definition_header(&stripped);
-        let Some(normalized) = normalize_line_for_parse(
+        let normalized = normalize_line_for_parse(
             stripped.as_str(),
             full_name,
             short_name,
             preserve_source_surfaces,
             typed_subject,
-        ) else {
+        );
+        let preserved_self_references = take_preserved_self_references();
+        let Some(normalized) = normalized else {
             if is_ignorable_unparsed_line(raw_line) {
                 return Ok(None);
             }
@@ -2744,6 +2940,11 @@ pub fn preprocess_document_with_provenance(
                 &tokens,
                 &normalized,
                 [full_name, short_name],
+            ));
+            crate::word_claims::claim_for_line(preserved_self_reference_tokens(
+                &tokens,
+                &normalized,
+                &preserved_self_references,
             ));
         }
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);

@@ -2542,6 +2542,15 @@ pub fn parse_create(
     let modifier_surface = creation_grammar::CreationWords::new(&modifier_tail_words);
     tapped |= modifier_surface.has(CreateWord::Tapped);
     attacking |= modifier_surface.has(CreateWord::Attacking);
+    // "token that's tapped and attacking": the relative copula of the entry
+    // state read above.
+    if tapped || attacking {
+        for (index, pair) in modifier_tail_words.windows(2).enumerate() {
+            if matches!(pair, ["thats" | "that's" | "that’s", "tapped" | "attacking"]) {
+                crate::word_claims::claim_words(&modifier_tail_words[index..=index]);
+            }
+        }
+    }
     // CR 508.4: "attacking that player/opponent" names what the token
     // attacks. "That opponent" is the attacked (defending) player outside a
     // per-opponent iteration (Combat Calligrapher); lowering rebinds it to

@@ -144,12 +144,32 @@ pub(super) fn read(input: &Predicate<'_>) -> ParseOutcome<RuleMatch<PredicateAst
         .position(|candidate| COMPLETE_SHAPE_READINGS.contains(&candidate.metadata.id.as_str()))
     {
         let owner = candidates.swap_remove(index);
+        if crate::word_claims::registry_trace_enabled() && !candidates.is_empty() {
+            eprintln!(
+                "REGISTRY {REGISTRY} complete-shape {} owns over [{}]",
+                owner.metadata.id,
+                candidates
+                    .iter()
+                    .map(|candidate| candidate.metadata.id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+        }
         candidates = vec![owner];
     }
-    // Equal readings from two rules are one reading.
+    // Equal readings from two rules are one reading: the words either rule
+    // read are read by that one reading.
     let mut distinct: Vec<RegistryCandidate<PredicateAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
+        if let Some(kept) = distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            if crate::word_claims::registry_trace_enabled() {
+                eprintln!(
+                    "REGISTRY {REGISTRY} equal reading {} merged into {}",
+                    candidate.metadata.id, kept.metadata.id
+                );
+            }
+            kept.claims.extend(&candidate.claims);
+        } else {
             distinct.push(candidate);
         }
     }

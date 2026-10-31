@@ -356,7 +356,10 @@ impl OwnedLexToken {
     pub fn as_word(&self) -> Option<&str> {
         match self.kind {
             TokenKind::Word | TokenKind::Number => Some(self.slice.as_str()),
-            TokenKind::Tilde => Some("this"),
+            // The token's own "this", not a shared static: the word registry
+            // keys words by address, and a static would let any "this"
+            // literal elsewhere claim the latest tilde's span.
+            TokenKind::Tilde => Some(self.parser_text.as_str()),
             _ => None,
         }
     }

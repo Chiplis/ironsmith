@@ -110,13 +110,14 @@ fn creature_card_types(words: &[&str]) -> Vec<CardType> {
     let mut card_types = vec![CardType::Creature];
     if let Some(creature_idx) = common::first_word_offset(words, "creature") {
         let prefix = &words[..creature_idx];
-        if common::word_present(prefix, "artifact") {
+        // The card types before "creature" are read into the token's types.
+        if common::word_read(prefix, "artifact") {
             card_types.insert(0, CardType::Artifact);
         }
-        if common::word_present(prefix, "enchantment") {
+        if common::word_read(prefix, "enchantment") {
             card_types.insert(0, CardType::Enchantment);
         }
-        if common::word_present(prefix, "land") {
+        if common::word_read(prefix, "land") {
             card_types.insert(0, CardType::Land);
         }
     }
@@ -497,7 +498,10 @@ pub(super) fn creature_rules(
             "when", "this", "token", "dies", "it", "deals", "damage", "target",
         ]))
     .then_some(damage)
-    .flatten();
+    .flatten()
+    // The shape is damage to *any* target; a bag of words that names
+    // "target creature" instead is not this rule.
+    .filter(|_| common::phrase_read(words, &["to", "any", "target"]));
     let leaves_damage = all(&[
         "when",
         "token",

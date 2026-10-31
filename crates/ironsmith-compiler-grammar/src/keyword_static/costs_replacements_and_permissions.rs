@@ -4798,6 +4798,8 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
             ["this", "creature" | "permanent" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle" | "token"]
         )
     {
+        // "this <permanent noun>" is the self recipient this rule builds.
+        crate::word_claims::claim_tokens(head.damaged_tokens);
         return Ok(Some(StaticAbility::prevent_all_damage_to_self()));
     }
     let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
@@ -4824,6 +4826,8 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
                 | "token"
         ]
     ) {
+        // "this <permanent noun>" is the self recipient this rule builds.
+        crate::word_claims::claim_tokens(&target_tokens);
         return Ok(Some(StaticAbility::prevent_all_damage_to_self()));
     }
     if words.len() < 2
@@ -5839,6 +5843,14 @@ pub fn parse_fixed_mana_cost_instead_of_mana_cost_grant_line(
         return Ok(None);
     };
     let filter = parse_spell_filter_with_grammar_entrypoint_lexed(spec.subject_tokens);
+    // "... spells you cast": the grant's beneficiary is you, which is what
+    // the trailing caster clause says.
+    if let [.., you, cast] = spec.subject_tokens
+        && you.is_word("you")
+        && cast.is_word("cast")
+    {
+        crate::word_claims::claim_tokens(&spec.subject_tokens[spec.subject_tokens.len() - 2..]);
+    }
     Ok(Some(StaticAbility::grants(
         crate::model::CompilerGrantSpecCore::cast_from_hand_for_alternative_mana_cost_matching(
             filter,
@@ -8929,10 +8941,13 @@ fn parse_copy_activated_abilities_core(
         }
     };
 
-    let filter_tokens =
+    let quantified_filter_tokens =
         trim_edge_punctuation(&tokens[fact.filter_start_token..fact.filter_end_token]);
     let filter_tokens =
-        strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
+        strip_leading_token_words_any(&quantified_filter_tokens, &["all", "each"]).to_vec();
+    // "of all/each <filter>": the donor set's quantifier, read here.
+    let donor_quantifier =
+        quantified_filter_tokens[..quantified_filter_tokens.len() - filter_tokens.len()].to_vec();
     let exclude_mana_abilities = fact.exclude_mana_abilities;
     let force_once_each_turn = fact.once_each_turn_word_start.is_some();
     if filter_tokens.is_empty() {
@@ -8951,6 +8966,7 @@ fn parse_copy_activated_abilities_core(
             Err(_) => return Ok(None),
         }
     };
+    crate::word_claims::claim_tokens(&donor_quantifier);
     if fact.exclude_source_name {
         // "that don't have the same name as this creature" is carried by
         // `exclude_source_name`; a name relation left on the filter (whose

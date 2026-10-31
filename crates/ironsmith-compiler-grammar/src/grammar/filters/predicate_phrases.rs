@@ -1518,6 +1518,8 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
             );
         }
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
+        // The negating quantifier "no" before the counter kind.
+        crate::word_claims::claim_tokens(&counter_clause.tokens()[..1]);
         if !is_explicit_source_state_subject_clause(relation.subject_clause) {
             return Some(PredicateAst::ItMatches(ObjectFilter {
                 without_counter: Some(crate::filter::CounterConstraint::Typed(counter_type)),
@@ -3396,6 +3398,9 @@ fn ability_resolution_ordinal_disjunction_counts(clause: LexedClause<'_>) -> Opt
             }
         }
         if counts.len() > 1 && !expect_count {
+            // Every word is the exact prefix, an ordinal, a connective, or
+            // the exact suffix.
+            crate::word_claims::claim_words(&words);
             return Some(counts);
         }
     }
@@ -3640,7 +3645,10 @@ fn ability_resolution_count_from_pattern(
     let matched = pattern.parse_full(clause)?;
     let count = matched.capture_clause("count", clause)?;
     let count_token = count.token(0)?;
-    ordinal_number_word(count_token.parser_text())
+    let ordinal = ordinal_number_word(count_token.parser_text())?;
+    // The ordinal ("second") is the resolution count this predicate keeps.
+    crate::word_claims::claim_tokens(std::slice::from_ref(count_token));
+    Some(ordinal)
 }
 
 fn parse_color_only_object_filter_word_refs(clause: LexedClause<'_>) -> Option<ObjectFilter> {
@@ -4899,7 +4907,11 @@ fn parse_demonstrative_mana_value_predicate(
             .last()
             .is_some_and(|token| token_word_is(token, "with"))
         {
-            descriptor_tokens.pop();
+            // "a creature card with mana value ...": the "with" introduces
+            // the comparison this predicate reads.
+            if let Some(with) = descriptor_tokens.pop() {
+                crate::word_claims::claim_tokens(std::slice::from_ref(&with));
+            }
         }
         let descriptor_tokens = strip_leading_article_tokens(&descriptor_tokens);
         if descriptor_tokens.is_empty() {

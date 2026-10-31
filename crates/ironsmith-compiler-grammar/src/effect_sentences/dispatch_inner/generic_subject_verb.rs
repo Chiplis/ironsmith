@@ -2139,6 +2139,9 @@ fn parse_target_controlled_pump_program(
                 .iter()
                 .any(|word| matches!(*word, "lose" | "loses"));
         add_all_creature_types &= !remove_all_creature_types;
+        if add_all_creature_types {
+            crate::word_claims::claim_words(&ability_words);
+        }
         abilities.extend(keyword_abilities_from_clause(ability_clause));
     }
     Ok(Some(TargetControlledPumpProgram {
@@ -2916,6 +2919,17 @@ pub fn parse_zone_replacement_subject_verb(
     {
         return Ok(None);
     }
+    // "if a card would be put ...": the program replaces the move of any card
+    // (`GenericZoneReplacementProgram` has no object filter), so only that
+    // exact object is this reading; a narrower one ("a creature card")
+    // would otherwise be silently widened.
+    let Some(object) = condition_match.capture_clause("object", condition_clause) else {
+        return Ok(None);
+    };
+    if object.trimmed().word_refs() != ["a", "card"] {
+        return Ok(None);
+    }
+    crate::word_claims::claim_tokens(object.trimmed().tokens());
 
     Ok(Some(
         GenericZoneReplacementProgram {
