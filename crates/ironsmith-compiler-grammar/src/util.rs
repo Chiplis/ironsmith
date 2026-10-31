@@ -37,8 +37,8 @@ use super::grammar::abilities::{
     parse_flashback_keyword_line_spec_lexed,
 };
 pub use super::grammar::filters::{
-    intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_word,
-    parse_filter_counter_constraint_words,
+    intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_lex_token,
+    parse_counter_type_word, parse_filter_counter_constraint_words,
 };
 use super::grammar::leaf;
 use super::grammar::primitives::token_slice_span;
@@ -1446,7 +1446,19 @@ pub fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
     shared_tokens::parse_scryfall_mana_cost(raw)
 }
 
+/// Read `word` as a count; the reader that takes the number claims the word.
 pub fn parse_number_word_i32(word: &str) -> Option<i32> {
+    let value = number_word_value(word)?;
+    crate::word_claims::claim_word(word);
+    Some(value)
+}
+
+/// Whether `word` is a count, for lookahead that does not itself read it.
+pub fn is_number_word(word: &str) -> bool {
+    number_word_value(word).is_some()
+}
+
+fn number_word_value(word: &str) -> Option<i32> {
     crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(word))
 }
 

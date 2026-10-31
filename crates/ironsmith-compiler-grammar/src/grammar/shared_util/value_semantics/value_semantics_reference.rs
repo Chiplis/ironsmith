@@ -134,6 +134,21 @@ pub fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
 }
 
 pub fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let value = parse_equal_to_aggregate_filter_value_unclaimed(tokens)?;
+    // Every reading above starts with the aggregate prefix ("the greatest
+    // power among"); the object words are read by their own readers.
+    let clause_refs = TokenWordView::new(tokens).to_word_refs();
+    let prefix_start = parse_equal_to_start(&clause_refs).map_or(0, |prefix| prefix.after);
+    if let Some(matched) = clause_refs
+        .get(prefix_start..)
+        .and_then(value_helper_shapes::parse_aggregate_prefix)
+    {
+        crate::word_claims::claim_words(&clause_refs[prefix_start..prefix_start + matched.consumed]);
+    }
+    Some(value)
+}
+
+fn parse_equal_to_aggregate_filter_value_unclaimed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     // Composable value terms have already consumed their enclosing "equal

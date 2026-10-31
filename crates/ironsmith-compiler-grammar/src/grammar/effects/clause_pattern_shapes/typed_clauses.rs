@@ -419,7 +419,16 @@ fn has_no_defender_tail(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         (
-            repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::kw("have")),
+            // "as though it didn't have defender": the negation is read with
+            // the verb it negates.
+            repeat_till::<_, _, (), _, _, _, _>(
+                0..,
+                any.void(),
+                (
+                    opt(alt((primitives::kw("didnt"), primitives::kw("didn't")))),
+                    primitives::kw("have"),
+                ),
+            ),
             repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::kw("defender"))),
             primitives::kw("defender"),
             primitives::sentence_end(),
@@ -463,6 +472,16 @@ fn parse_can_attack_no_defender_lexed<'a>(
             "attack as though",
             "turn and no-defender phrase",
         ));
+    }
+    // "as though it/they didn't have defender": the pronoun names the
+    // subject the permission is read for.
+    if let Some(though) = tail
+        .windows(2)
+        .position(|pair| pair[0].as_word() == Some("as") && pair[1].as_word() == Some("though"))
+    {
+        let _ = tail
+            .get(though + 2)
+            .is_some_and(|token| token.is_any_word(&["it", "they"]));
     }
     while any::<_, ErrMode<ContextError>>.parse_next(input).is_ok() {}
     Ok(trim_lexed_commas(subject_tokens))

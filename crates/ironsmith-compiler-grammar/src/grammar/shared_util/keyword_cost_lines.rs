@@ -399,6 +399,12 @@ pub fn parse_escape(
     ) {
         return Err(unsupported_escape(&tail_words));
     }
+    // "other" excludes the escaping card, which is already on the stack while
+    // its costs are paid (CR 601.2a, 601.2h), so the graveyard choice needs no
+    // explicit exclusion.
+    if noun_word == 1 {
+        crate::word_claims::claim_words(&remaining_words[..1]);
+    }
     Ok(Some(AlternativeCastingMethod::Escape {
         cost: Some(mana_cost),
         exile_count: count,

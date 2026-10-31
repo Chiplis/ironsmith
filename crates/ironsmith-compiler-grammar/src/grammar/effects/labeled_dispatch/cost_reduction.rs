@@ -166,6 +166,22 @@ pub fn parse_matching_spell_cost_reduction_shape(
     } else {
         PlayerAst::Any
     };
+    // The caster phrase is read into the spell filter's caster (the word
+    // matcher claims the phrase it finds).
+    let caster_phrases: &[&[&str]] = if has_you_cast {
+        &[&["you", "cast"]]
+    } else if has_that_player_casts {
+        &[&["that", "player", "casts"], &["they", "cast"]]
+    } else if has_opponents_cast {
+        &[&["your", "opponents", "cast"], &["opponents", "cast"]]
+    } else {
+        &[]
+    };
+    for phrase in caster_phrases {
+        if crate::word_primitives::parse_sequence_start(&words, phrase).is_some() {
+            break;
+        }
+    }
 
     let between_words = parser_token_word_refs(&tokens[spell_token_idx + 1..cost_token_idx]);
     if has_chosen_name {

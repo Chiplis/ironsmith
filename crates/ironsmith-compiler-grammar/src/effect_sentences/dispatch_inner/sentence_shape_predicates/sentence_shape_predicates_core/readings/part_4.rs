@@ -184,6 +184,9 @@ pub(super) fn read_for_each_object_effect(
             && !(matches!(count.unhinted(), Value::PendingPriorEffectMetric(_))
                 && shape.effect_tokens.iter().any(|token| token.is_word("it") || token.is_word("its")))
         {
+            if let Some(effect) = distinct_power_choice(&count, shape.effect_tokens)? {
+                return Ok(Some(vec![effect]));
+            }
             let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(
@@ -199,6 +202,56 @@ pub(super) fn read_for_each_object_effect(
     }
     Ok(None)
 }
+/// "For each different power among creatures on the battlefield, choose a
+/// creature with that power" (Celestial Judgment): one chosen creature per
+/// distinct power is a single choice of that many creatures with different
+/// powers, not repeated unconstrained choices that drop "with that power".
+fn distinct_power_choice(
+    count: &Value,
+    effect_tokens: &[crate::lexer::OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    if !matches!(count.unhinted(), Value::DistinctPowers(_)) {
+        return Ok(None);
+    }
+    let effect_tokens = crate::util::trim_edge_punctuation(effect_tokens);
+    let words: Vec<usize> = effect_tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .map(|(index, _)| index)
+        .collect();
+    let [.., with, that, power] = words.as_slice() else {
+        return Ok(None);
+    };
+    if !(effect_tokens[*with].parser_text() == "with"
+        && effect_tokens[*that].parser_text() == "that"
+        && effect_tokens[*power].parser_text() == "power")
+    {
+        return Ok(None);
+    }
+    let Some((player, mut filter, choose_count, None)) =
+        crate::activation_and_restrictions::parse_you_choose_objects_clause_with_count_value(
+            &effect_tokens[..*with],
+        )?
+    else {
+        return Ok(None);
+    };
+    if !choose_count.is_single() {
+        return Ok(None);
+    }
+    crate::word_claims::claim_tokens(&effect_tokens[*with..=*power]);
+    filter.distinct_powers = true;
+    Ok(Some(EffectAst::ObjectChoices(
+        crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: crate::effect::ChoiceCount::dynamic_x(),
+            count_value: Some(count.unhinted().clone()),
+            player,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+        },
+    )))
+}
+
 pub(super) fn read_for_each_dynamic_target_effect(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

@@ -305,6 +305,8 @@ pub fn parse_modal_header(
     let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(prechoose_tokens)?;
     let common_prefix_effects_ast = parse_modal_common_prefix_effects(tokens, choose_idx)?;
     let common_suffix_effects_ast = parse_modal_common_suffix_effects(tokens, choose_idx)?;
+    // The "choose" verb the choose spec was located at.
+    crate::word_claims::claim_tokens(&tokens[choose_idx..=choose_idx]);
 
     Ok(Some(ModalHeader {
         info: info.semantic_info(),

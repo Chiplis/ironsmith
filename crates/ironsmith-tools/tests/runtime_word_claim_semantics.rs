@@ -14,6 +14,7 @@ use ironsmith::decision::{
 };
 use ironsmith::decisions::context::{
     BooleanContext, DecisionContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
+    TextInputContext,
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, add_lore_counter_and_check_chapters,
@@ -160,11 +161,19 @@ struct Script {
     offered_objects: Vec<(String, Vec<(String, bool)>)>,
     /// Every object selection returned, in order.
     chosen_objects: Vec<ObjectId>,
+    /// Answer to free-text prompts ("choose a card name").
+    text: Option<&'static str>,
 }
 
 impl DecisionMaker for Script {
     fn answers_player_choices(&self) -> bool {
         true
+    }
+    fn decide_text(&mut self, _: &GameState, c: &TextInputContext) -> String {
+        self.text
+            .map(str::to_string)
+            .or_else(|| c.initial_value.clone())
+            .unwrap_or_default()
     }
     fn decide_boolean(&mut self, _: &GameState, c: &BooleanContext) -> bool {
         self.accept && c.can_accept
@@ -1265,4 +1274,193 @@ fn unbury_two_targets_must_share_a_creature_type() {
             );
         }
     }
+}
+
+const CELESTIAL_JUDGMENT: &str = "Mana cost: {4}{W}{W}\nType: Sorcery\nFor each different power among creatures on the battlefield, choose a creature with that power. Destroy each creature not chosen this way.";
+
+/// Powers 2, 2, 3, 1: one creature per distinct power is kept (so only one
+/// of the two 2-power creatures), everything else is destroyed. The default
+/// chooser takes the first legal candidates, which would keep both twins if
+/// the distinct-power rule weren't enforced.
+#[test]
+fn celestial_judgment_keeps_one_creature_per_distinct_power() {
+    let mut g = game(3);
+    let twin_a = put(&mut g, &creature("Twin A", 2, 2), BOB, Zone::Battlefield);
+    let twin_b = put(&mut g, &creature("Twin B", 2, 2), BOB, Zone::Battlefield);
+    let big = put(&mut g, &creature("Big C", 3, 3), ALICE, Zone::Battlefield);
+    let small = put(&mut g, &creature("Small D", 1, 1), CARA, Zone::Battlefield);
+    add_mana(&mut g, ALICE, ManaSymbol::White, 2);
+    add_mana(&mut g, ALICE, ManaSymbol::Colorless, 4);
+    let spell = g.create_object_from_definition(
+        &compile("Celestial Judgment", CELESTIAL_JUDGMENT),
+        ALICE,
+        Zone::Hand,
+    );
+    let mut dm = Script::default();
+    let mut queue = perform(&mut g, spell, ALICE, None, &mut dm).expect("cast Celestial Judgment");
+    settle(&mut g, &mut queue, &mut dm);
+
+    let alive = |id: ObjectId| g.object(id).is_some_and(|o| o.zone == Zone::Battlefield);
+    let survivors: Vec<_> = [twin_a, twin_b, big, small].into_iter().filter(|id| alive(*id)).collect();
+    let mut powers: Vec<_> = survivors.iter().map(|id| g.calculated_power(*id)).collect();
+    powers.sort();
+    assert_eq!(
+        powers,
+        vec![Some(1), Some(2), Some(3)],
+        "one survivor per distinct power; offered {:?}",
+        dm.offered_objects
+    );
+    assert!(alive(twin_a) != alive(twin_b), "exactly one 2-power creature is kept");
+    assert!(alive(big) && alive(small));
+}
+
+const RUNED_HALO: &str = "Mana cost: {W}{W}\nType: Enchantment\nAs this enchantment enters, choose a card name.\nYou have protection from the chosen card name. (You can't be targeted, dealt damage, or enchanted by anything with that name.)";
+
+fn runed_halo_game(name: &'static str) -> GameState {
+    let mut g = game(2);
+    add_mana(&mut g, ALICE, ManaSymbol::White, 2);
+    let spell = g.create_object_from_definition(&compile("Runed Halo", RUNED_HALO), ALICE, Zone::Hand);
+    let mut dm = Script {
+        text: Some(name),
+        ..Script::default()
+    };
+    let mut queue = perform(&mut g, spell, ALICE, None, &mut dm).expect("cast Runed Halo");
+    settle(&mut g, &mut queue, &mut dm);
+    assert_eq!(find_named(&g, "Runed Halo", Zone::Battlefield).len(), 1);
+    g.refresh_continuous_state().unwrap();
+    g
+}
+
+/// Naming Lightning Bolt: Bolt can't target Alice and damage from anything
+/// named Lightning Bolt is prevented; Shock is unaffected.
+#[test]
+fn runed_halo_gives_protection_from_the_chosen_name_only() {
+    let bolt = compile(
+        "Lightning Bolt",
+        "Mana cost: {R}\nType: Instant\nLightning Bolt deals 3 damage to any target.",
+    );
+    let shock = compile(
+        "Shock",
+        "Mana cost: {R}\nType: Instant\nShock deals 2 damage to any target.",
+    );
+    for (def, protected) in [(&bolt, true), (&shock, false)] {
+        let mut g = runed_halo_game("Lightning Bolt");
+        add_mana(&mut g, BOB, ManaSymbol::Red, 1);
+        let spell = g.create_object_from_definition(def, BOB, Zone::Hand);
+        let mut dm = Script::default();
+        perform(&mut g, spell, BOB, None, &mut dm).expect("cast the burn spell");
+        let offered = dm.offered_targets.concat();
+        assert_eq!(
+            !offered.contains(&Target::Player(ALICE)),
+            protected,
+            "{}: offered {offered:?}",
+            def.name()
+        );
+        assert!(offered.contains(&Target::Player(BOB)));
+    }
+
+    let mut g = runed_halo_game("Lightning Bolt");
+    let named = put(&mut g, &creature("Lightning Bolt", 1, 1), BOB, Zone::Battlefield);
+    let other = put(&mut g, &creature("Shock", 1, 1), BOB, Zone::Battlefield);
+    resolve_neutral(
+        &mut g,
+        named,
+        BOB,
+        vec![Effect::deal_damage(3i32, ChooseSpec::SpecificPlayer(ALICE))],
+    );
+    assert_eq!(g.player(ALICE).unwrap().life, 20, "damage from the chosen name is prevented");
+    resolve_neutral(
+        &mut g,
+        other,
+        BOB,
+        vec![Effect::deal_damage(2i32, ChooseSpec::SpecificPlayer(ALICE))],
+    );
+    assert_eq!(g.player(ALICE).unwrap().life, 18, "another name's damage is dealt");
+}
+
+const NEFARIOUS_LICH: &str = "Mana cost: {B}{B}{B}{B}\nType: Enchantment\nIf damage would be dealt to you, exile that many cards from your graveyard instead. If you can't, you lose the game.\nIf you would gain life, draw that many cards instead.\nWhen this enchantment leaves the battlefield, you lose the game.";
+
+/// 3 damage exiles exactly 3 of Alice's 5 graveyard cards instead of costing
+/// life; 3 more damage with only 2 left makes her lose.
+#[test]
+fn nefarious_lich_exiles_that_many_graveyard_cards_instead_of_damage() {
+    let mut g = game(3);
+    put(&mut g, &compile("Nefarious Lich", NEFARIOUS_LICH), ALICE, Zone::Battlefield);
+    let filler = body("Graveyard filler", vec![CardType::Artifact], vec![], 0, 0, 1);
+    for _ in 0..5 {
+        g.create_object_from_definition(&filler, ALICE, Zone::Graveyard);
+    }
+    let pinger = put(&mut g, &creature("Pinger", 1, 1), BOB, Zone::Battlefield);
+    let alice_exiled = |g: &GameState| {
+        g.exile
+            .iter()
+            .filter(|id| g.object(**id).is_some_and(|o| o.owner == ALICE))
+            .count()
+    };
+
+    resolve_neutral(
+        &mut g,
+        pinger,
+        BOB,
+        vec![Effect::deal_damage(3i32, ChooseSpec::SpecificPlayer(ALICE))],
+    );
+    assert_eq!(g.player(ALICE).unwrap().life, 20, "the damage is replaced");
+    assert_eq!(g.player(ALICE).unwrap().graveyard.len(), 2);
+    assert_eq!(alice_exiled(&g), 3, "exactly that many cards are exiled");
+
+    resolve_neutral(
+        &mut g,
+        pinger,
+        BOB,
+        vec![Effect::deal_damage(3i32, ChooseSpec::SpecificPlayer(ALICE))],
+    );
+    let alice = g.player(ALICE).unwrap();
+    assert!(alice.has_lost || !alice.is_in_game(), "can't exile 3 of 2: Alice loses");
+}
+
+const IDRIS: &str = "Mana cost: {1}{U}{R}\nType: Legendary Creature — Human Incarnation\nPower/Toughness: 3/3\nVanishing 3\nImprint — When Idris enters, exile another artifact you control until Idris leaves the battlefield.\nIdris has all activated and triggered abilities of the exiled card and gets +X/+X, where X is the exiled card's mana value.";
+
+/// Imprinting a mana value 4 artifact makes Idris 7/7 with that artifact's
+/// activated ability, and only that one: an unrelated card already in exile
+/// lends nothing.
+#[test]
+fn idris_gets_the_imprinted_cards_abilities_and_plus_x_for_its_mana_value() {
+    let mut g = game(2);
+    let relic = put(
+        &mut g,
+        &compile("Imprint Relic", "Mana cost: {4}\nType: Artifact\n{T}: You gain 1 life."),
+        ALICE,
+        Zone::Battlefield,
+    );
+    put(
+        &mut g,
+        &compile("Exiled Stranger", "Mana cost: {1}\nType: Artifact\n{T}: You gain 3 life."),
+        ALICE,
+        Zone::Exile,
+    );
+    add_mana(&mut g, ALICE, ManaSymbol::Blue, 1);
+    add_mana(&mut g, ALICE, ManaSymbol::Red, 1);
+    add_mana(&mut g, ALICE, ManaSymbol::Colorless, 1);
+    let spell = g.create_object_from_definition(&compile("Idris, Soul of the TARDIS", IDRIS), ALICE, Zone::Hand);
+    let mut dm = Script {
+        object_preference: vec!["Imprint Relic"],
+        ..Script::default()
+    };
+    let mut queue = perform(&mut g, spell, ALICE, None, &mut dm).expect("cast Idris");
+    settle(&mut g, &mut queue, &mut dm);
+    let idris = *find_named(&g, "Idris, Soul of the TARDIS", Zone::Battlefield)
+        .first()
+        .expect("Idris entered");
+    assert!(g.object(relic).is_none_or(|o| o.zone != Zone::Battlefield), "relic imprinted");
+    assert_eq!(find_named(&g, "Imprint Relic", Zone::Exile).len(), 1);
+    g.remove_summoning_sickness(idris);
+    g.refresh_continuous_state().unwrap();
+
+    assert_eq!(g.calculated_power(idris), Some(7), "3 + the exiled card's mana value 4");
+    assert_eq!(g.calculated_toughness(idris), Some(7));
+    let abilities = activation_indices(&mut g, ALICE, idris);
+    assert_eq!(abilities.len(), 1, "only the imprinted card's ability: {abilities:?}");
+    let mut queue = perform(&mut g, idris, ALICE, Some(abilities[0]), &mut dm).expect("activate");
+    settle(&mut g, &mut queue, &mut dm);
+    assert_eq!(g.player(ALICE).unwrap().life, 21, "the Relic's ability, not the Stranger's");
 }

@@ -608,6 +608,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 .get(counter_idx + 1..counter_idx + 3)
                 .is_some_and(|tail| exact_one_of(tail, &[&["you", "have"], &["you", "ve"]]))
         {
+            crate::word_claims::claim_words(&words[idx..counter_idx + 3]);
             return Some((
                 Value::PlayerCounters(PlayerFilter::You, counter_type),
                 counter_idx + 3,
@@ -620,6 +621,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 &["your", "opponents", "have"],
             )
         {
+            crate::word_claims::claim_words(&words[idx..counter_idx + 4]);
             return Some((
                 Value::PlayerCounters(PlayerFilter::Opponent, counter_type),
                 counter_idx + 4,
@@ -629,6 +631,9 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             let reference_start = counter_idx + 2;
             let reference_end = value_boundary(&words[reference_start..]) + reference_start;
             let reference = &words[reference_start..reference_end];
+            // The descriptor ("a charge counter on") and, for the fixed
+            // references below, the reference itself are read here.
+            let claim_read = |through: usize| crate::word_claims::claim_words(&words[idx..through]);
             // "the number of counters on it": a bare `it` names the current object
             // antecedent (an exiled target, a triggering attacker); reference
             // resolution falls back to the source when nothing else is bound.
@@ -639,6 +644,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                     )),
                     None,
                 );
+                claim_read(reference_end);
                 return Some((value, reference_end));
             }
             if is_source_counter_reference(reference) {
@@ -659,6 +665,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                         None,
                     ),
                 };
+                claim_read(reference_end);
                 return Some((value, reference_end));
             }
             if let Some(surface) = source_reference_surface_for_words(reference) {
@@ -666,6 +673,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                     Box::new(source_choose_spec_for_surface(surface)),
                     parsed_counter_type,
                 );
+                claim_read(reference_end);
                 return Some((value, reference_end));
             }
             if is_tagged_counter_reference(reference) {
@@ -675,12 +683,14 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                     )),
                     parsed_counter_type,
                 );
+                claim_read(reference_end);
                 return Some((value, reference_end));
             }
             // The card's own name inside an ability its Aura or Equipment grants
             // (Archery Training's "arrow counters on Archery Training"): the
             // granting permanent, not every permanent.
             if reference == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+                claim_read(reference_end);
                 return Some((
                     Value::CountersOn(
                         Box::new(ChooseSpec::Tagged(
@@ -692,6 +702,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 ));
             }
             if let Ok(filter) = parse_object_filter_words(reference, false) {
+                claim_read(reference_start);
                 return Some((
                     Value::CountersOn(Box::new(ChooseSpec::All(filter)), parsed_counter_type),
                     reference_end,

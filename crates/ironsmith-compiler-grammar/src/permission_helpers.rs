@@ -2454,7 +2454,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         .any(|window| matches!(window[0], "cast" | "play") && window[1] == "target")
         && words.word_windows(4).any(|window| {
             window[0] == "value"
-                && crate::util::parse_number_word_u32(window[1]).is_some()
+                && crate::util::is_number_word(window[1])
                 && window[2] == "or"
                 && matches!(window[3], "less" | "greater")
         })

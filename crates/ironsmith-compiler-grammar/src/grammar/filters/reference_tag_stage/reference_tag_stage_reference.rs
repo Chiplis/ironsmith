@@ -985,6 +985,16 @@ fn parse_object_filter_inner_unchecked(
         crate::word_claims::claim_drained([all_words.remove(0)]);
     }
 
+    // "the chosen card name" as the whole phrase (Runed Halo's protection
+    // quality) is the chosen name, not a chosen card: read it before the
+    // leading "chosen" demonstrative claims the noun.
+    if filter.name.is_none() && all_words.as_slice() == ["chosen", "card", "name"] {
+        filter.name = Some("{chosen name}".to_string());
+        // Keep the "card" noun for the ordinary noun reader.
+        naming_and_reference::remove_word_range(&mut all_words, 2, 3);
+        naming_and_reference::remove_word_range(&mut all_words, 0, 1);
+    }
+
     let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);
 
     let _ = try_apply_target_choice_attribution_reference(&mut filter, &mut all_words);
@@ -1444,6 +1454,9 @@ fn parse_object_filter_inner_unchecked(
                     }
                     // "in all graveyards": any owner.
                     "all" => owner_start = idx - 1,
+                    // "in each graveyard" (a location, not a per-graveyard
+                    // choice like "from each graveyard"): any owner.
+                    "each" if idx > 1 && all_words[idx - 2] == "in" => owner_start = idx - 1,
                     _ => {}
                 }
             }
@@ -1469,6 +1482,12 @@ fn parse_object_filter_inner_unchecked(
                     // "cards in all players' hands", "each player's hand":
                     // any owner, which an unset owner already means.
                     ("all", "players") | ("each", "player") | ("each", "players") => {
+                        owner_start = idx - 2;
+                    }
+                    // "from all opponents' hands and graveyards" (Ashiok,
+                    // Nightmare Weaver): every opponent's zone, the owner
+                    // the single word above already set.
+                    ("all", "opponents") | ("each", "opponent") | ("each", "opponents") => {
                         owner_start = idx - 2;
                     }
                     _ => {}
@@ -2316,15 +2335,14 @@ fn parse_object_filter_inner_unchecked(
     let mut segment_types = Vec::new();
     let mut segment_subtypes = Vec::new();
     let mut segment_marker_counts = Vec::new();
-    let mut segment_words_lists: Vec<Vec<String>> = Vec::new();
+    // Registered word views (not owned copies), so the characteristic
+    // readers below claim the authored words they read.
+    let mut segment_words_lists: Vec<Vec<&str>> = Vec::new();
 
     for segment in &segments {
-        let segment_words: Vec<String> = non_article_parser_word_refs(segment)
-            .into_iter()
-            .map(ToString::to_string)
-            .collect();
+        let segment_words: Vec<&str> = non_article_parser_word_refs(segment);
         segment_words_lists.push(segment_words.clone());
-        let segment_word_refs = segment_words.iter().map(String::as_str).collect::<Vec<_>>();
+        let segment_word_refs = segment_words.clone();
         let segment_comparison_rhs_ranges = filter_comparison_rhs_ranges(&segment_word_refs)?;
         // Everything after "named" is a card name, already claimed as one by
         // the name clause. Its words are not characteristics: "named Cleric of
@@ -2383,8 +2401,7 @@ fn parse_object_filter_inner_unchecked(
     if segments.len() > 1 {
         let qualifier_in_all_segments = |qualifier: &str| {
             segment_words_lists.iter().all(|segment| {
-                let segment_refs = segment.iter().map(String::as_str).collect::<Vec<_>>();
-                parse_word_choice_anywhere(&segment_refs, &[qualifier]).is_some()
+                parse_word_choice_anywhere(segment, &[qualifier]).is_some()
             })
         };
         let shared_leading_qualifier = |qualifier: &str, opposite: &str| {
@@ -2397,20 +2414,24 @@ fn parse_object_filter_inner_unchecked(
             let Some(first_segment) = segment_words_lists.first() else {
                 return false;
             };
-            let first_segment_refs = first_segment.iter().map(String::as_str).collect::<Vec<_>>();
-            if parse_word_choice_anywhere(&first_segment_refs, &[qualifier]).is_none() {
+            if parse_word_choice_anywhere(first_segment, &[qualifier]).is_none() {
                 return false;
             }
             segment_words_lists.iter().skip(1).all(|segment| {
-                let segment_refs = segment.iter().map(String::as_str).collect::<Vec<_>>();
-                parse_word_choice_anywhere(&segment_refs, &[opposite]).is_none()
+                parse_word_choice_anywhere(segment, &[opposite]).is_none()
             })
         };
 
-        if filter.tapped && !shared_leading_qualifier("tapped", "untapped") {
+        // Gates that can only clear a qualifier the primary pass already
+        // read: they read nothing into the filter themselves.
+        if filter.tapped
+            && !crate::word_claims::probe_only(|| shared_leading_qualifier("tapped", "untapped"))
+        {
             filter.tapped = false;
         }
-        if filter.untapped && !shared_leading_qualifier("untapped", "tapped") {
+        if filter.untapped
+            && !crate::word_claims::probe_only(|| shared_leading_qualifier("untapped", "tapped"))
+        {
             filter.untapped = false;
         }
     }
@@ -2519,17 +2540,12 @@ fn parse_object_filter_inner_unchecked(
         CardType::Battle,
     ];
     let and_segments = split_lexed_slices_on_and(&segment_tokens);
-    let and_segment_words_lists: Vec<Vec<String>> = and_segments
+    let and_segment_words_lists: Vec<Vec<&str>> = and_segments
         .iter()
-        .map(|segment| {
-            non_article_parser_word_refs(segment)
-                .into_iter()
-                .map(ToString::to_string)
-                .collect()
-        })
+        .map(|segment| non_article_parser_word_refs(segment))
         .collect();
 
-    let segment_has_standalone_spell = |segment: &[String]| {
+    let segment_has_standalone_spell = |segment: &[&str]| {
         let contains_spell = segment
             .iter()
             .any(|word| parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some());
@@ -2538,12 +2554,12 @@ fn parse_object_filter_inner_unchecked(
         }
 
         !segment.iter().any(|word| {
-            parse_word_choice(word.as_str(), OBJECT_REFERENCE_NOUN_WORDS).is_some()
+            parse_word_choice(word, OBJECT_REFERENCE_NOUN_WORDS).is_some()
                 || parse_card_type(word).is_some()
                 || parse_subtype_flexible(word).is_some()
         })
     };
-    let segment_has_nonspell_permanent_head = |segment: &[String]| {
+    let segment_has_nonspell_permanent_head = |segment: &[&str]| {
         let contains_spell = segment
             .iter()
             .any(|word| parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some());
@@ -2557,7 +2573,7 @@ fn parse_object_filter_inner_unchecked(
                 || parse_subtype_flexible(word).is_some()
         })
     };
-    let segment_has_permanent_spell_head = |segment: &[String]| {
+    let segment_has_permanent_spell_head = |segment: &[&str]| {
         if segment.len() < 2 {
             return false;
         }
@@ -2574,19 +2590,29 @@ fn parse_object_filter_inner_unchecked(
         }
         false
     };
-    let has_standalone_spell_segment = segment_words_lists
-        .iter()
-        .any(|segment| segment_has_standalone_spell(segment));
-    let has_nonspell_permanent_segment = segment_words_lists
-        .iter()
-        .any(|segment| segment_has_nonspell_permanent_head(segment));
-    let has_split_permanent_spell_segments = and_segment_words_lists.len() > 1
-        && and_segment_words_lists
-            .iter()
-            .any(|segment| segment_has_permanent_spell_head(segment))
-        && and_segment_words_lists
-            .iter()
-            .any(|segment| segment_has_nonspell_permanent_head(segment));
+    // Segment-shape gates choosing how the filter splits; the words are read
+    // by the filter readers, not by these checks.
+    let (has_standalone_spell_segment, has_nonspell_permanent_segment, has_split_permanent_spell_segments) =
+        crate::word_claims::probe_only(|| {
+            let has_standalone_spell_segment = segment_words_lists
+                .iter()
+                .any(|segment| segment_has_standalone_spell(segment));
+            let has_nonspell_permanent_segment = segment_words_lists
+                .iter()
+                .any(|segment| segment_has_nonspell_permanent_head(segment));
+            let has_split_permanent_spell_segments = and_segment_words_lists.len() > 1
+                && and_segment_words_lists
+                    .iter()
+                    .any(|segment| segment_has_permanent_spell_head(segment))
+                && and_segment_words_lists
+                    .iter()
+                    .any(|segment| segment_has_nonspell_permanent_head(segment));
+            (
+                has_standalone_spell_segment,
+                has_nonspell_permanent_segment,
+                has_split_permanent_spell_segments,
+            )
+        });
 
     if saw_spell && has_standalone_spell_segment && has_nonspell_permanent_segment {
         let mut spell_filter = filter.clone();

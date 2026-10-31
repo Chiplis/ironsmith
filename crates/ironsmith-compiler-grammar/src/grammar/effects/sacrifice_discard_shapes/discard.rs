@@ -233,16 +233,21 @@ pub fn parse_discard_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<DiscardClauseShape<'_>, DiscardShapeError> {
     let words = parser_token_word_refs(tokens);
+    // Both hand readings match the whole clause: the hand and its possessor.
     if common::exact_any(&words, HAND_REFERENCES) {
+        crate::word_claims::claim_words(&words);
         return Ok(DiscardClauseShape::Hand);
     }
     if is_full_hand_discard(&words) {
+        crate::word_claims::claim_words(&words);
         return Ok(DiscardClauseShape::AllCardsInHand);
     }
     if common::exact_any(&words, TAGGED_REFERENCES) {
+        crate::word_claims::claim_words(&words);
         return Ok(DiscardClauseShape::TaggedOne);
     }
     if common::exact(&words, &["those", "cards"]) {
+        crate::word_claims::claim_words(&words);
         return Ok(DiscardClauseShape::TaggedAll);
     }
     if let Some(shape) = equal_count_shape(tokens) {
@@ -344,17 +349,22 @@ pub fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardTrailing
     if words.is_empty() {
         DiscardTrailingShape::Empty
     } else if common::exact(&words, &["at", "random"]) {
+        // Each exact tail below is read whole by the shape it names.
+        crate::word_claims::claim_words(&words);
         DiscardTrailingShape::Random
     } else if common::exact(&words, &["with", "that", "name"]) {
+        crate::word_claims::claim_words(&words);
         DiscardTrailingShape::ChosenName
     } else if common::exact_any(
         &words,
         &[&["of", "that", "type"], &["of", "the", "chosen", "type"]],
     ) {
+        crate::word_claims::claim_words(&words);
         DiscardTrailingShape::ChosenCreatureType
     } else if chosen_color_reference(tokens) {
         DiscardTrailingShape::ChosenColor
     } else if common::exact_any(&words, SAME_MANA_VALUE_REFERENCES) {
+        crate::word_claims::claim_words(&words);
         DiscardTrailingShape::SameManaValueAsTriggering
     } else if let Some(colors) = color_set(tokens) {
         DiscardTrailingShape::Colors(colors)

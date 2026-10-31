@@ -99,6 +99,16 @@ fn owner_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
+/// Whether `destination` names its owner's library; the "its"/"their"
+/// possessor of the owner is read with it.
+fn owner_destination(destination: &[OwnedLexToken]) -> bool {
+    let owner = primitives::find_prefix(destination, || owner_marker).is_some();
+    if owner {
+        crate::grammar::shared_util::token_facts::claim_owner_possessors(destination);
+    }
+    owner
+}
+
 fn source_and_graveyard_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
         primitives::phrase(&["this", "artifact", "and"]),
@@ -214,7 +224,15 @@ pub fn parse_shuffle_graveyard_shape_lexed(
         return None;
     }
     let destination = trim_lexed_commas(after_into);
-    let (_, (), after_library) = primitives::find_prefix(destination, || library_marker)?;
+    let (library_idx, (), after_library) =
+        primitives::find_prefix(destination, || library_marker)?;
+    // "into their library" / "into your library": the shuffling player's own
+    // library, which is where the graveyard's cards go.
+    if let [possessor] = &destination[..library_idx]
+        && matches!(possessor.parser_text(), "their" | "your")
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(possessor));
+    }
 
     Some(SearchShuffleGraveyardShape {
         subject_tokens,
@@ -222,7 +240,7 @@ pub fn parse_shuffle_graveyard_shape_lexed(
         each_player_subject,
         target_tokens,
         trailing_tokens: trim_lexed_commas(after_library),
-        owner_library_destination: primitives::find_prefix(destination, || owner_marker).is_some(),
+        owner_library_destination: owner_destination(destination),
         has_target_selector: word_present(target_tokens, "target"),
         has_source_and_graveyard_clause: primitives::parse_prefix(
             target_tokens,
@@ -280,10 +298,7 @@ pub fn parse_shuffle_object_shape_lexed(
         target_tokens,
         trailing_tokens: trim_lexed_commas(after_library),
         reference,
-        owner_library_destination: primitives::find_prefix(destination.get(..library_idx)?, || {
-            owner_marker
-        })
-        .is_some(),
+        owner_library_destination: owner_destination(destination.get(..library_idx)?),
     })
 }
 

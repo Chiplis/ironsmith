@@ -23,6 +23,9 @@ struct TokenDescriptionScope {
     outer: Vec<OwnedLexToken>,
     rule_source: Vec<OwnedLexToken>,
     name: Option<String>,
+    // The authored words `name` was read from: "named <name>", or a leading
+    // "<name>," appositive.
+    name_tokens: Vec<OwnedLexToken>,
     complete_quotes: bool,
 }
 
@@ -37,8 +40,19 @@ fn token_description_scope(tokens: &[OwnedLexToken]) -> TokenDescriptionScope {
     let outer = descriptor.iter().filter(|token| outside_name(token)).cloned().collect();
     let rule_source = tokens.iter().filter(|token| start.is_none_or(|start| token.span.start >= start))
         .filter(|token| outside_name(token)).cloned().collect();
+    let name_tokens = if named.is_some() {
+        descriptor.iter().filter(|token| !outside_name(token)).cloned().collect()
+    } else if appositive.is_some() {
+        projection.outer.iter()
+            .filter(|token| start.is_some_and(|start| token.span.end <= start))
+            .cloned().collect()
+    } else {
+        Vec::new()
+    };
     let name = named.map(|(name, _)| name).or_else(|| appositive.map(|(name, _)| name));
-    TokenDescriptionScope { outer, rule_source, name, complete_quotes: projection.complete_quotes }
+    TokenDescriptionScope {
+        outer, rule_source, name, name_tokens, complete_quotes: projection.complete_quotes,
+    }
 }
 
 pub fn token_definition_outer_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -193,7 +207,8 @@ fn protection_color_word_positions(words: &[&str]) -> Vec<usize> {
 
 fn protection_colors(words: &[&str]) -> Option<ColorSet> {
     let mut colors = ColorSet::new();
-    for idx in protection_color_word_positions(words) {
+    let positions = protection_color_word_positions(words);
+    for &idx in &positions {
         colors = colors.union(match words[idx] {
             "white" => ColorSet::WHITE,
             "blue" => ColorSet::BLUE,
@@ -203,7 +218,16 @@ fn protection_colors(words: &[&str]) -> Option<ColorSet> {
             _ => continue,
         });
     }
-    (!colors.is_empty()).then_some(colors)
+    if colors.is_empty() {
+        return None;
+    }
+    for idx in positions {
+        crate::word_claims::claim_words(&words[idx..=idx]);
+        if idx >= 2 && words[idx - 2..idx] == ["protection", "from"] {
+            crate::word_claims::claim_words(&words[idx - 2..idx]);
+        }
+    }
+    Some(colors)
 }
 
 fn token_colors(words: &[&str]) -> ColorSet {
@@ -216,8 +240,8 @@ fn token_color_words(words: &[&str]) -> (ColorSet, ironsmith_core::TokenWordRole
     let end = words.iter().position(|word| matches!(*word, "token" | "tokens" | "named" | "with" | "when" | "whenever" | "has" | "gains"))
         .unwrap_or(words.len());
     let words = &words[..end];
-    if common::phrase_present(words, &["all", "colors"])
-        || common::phrase_present(words, &["all", "colours"])
+    if common::phrase_read(words, &["all", "colors"])
+        || common::phrase_read(words, &["all", "colours"])
     {
         return (ColorSet::WHITE
             .union(ColorSet::BLUE)
@@ -233,10 +257,12 @@ fn token_color_words(words: &[&str]) -> (ColorSet, ironsmith_core::TokenWordRole
         ("red", ColorSet::RED),
         ("green", ColorSet::GREEN),
     ] {
-        if common::word_present(words, word) {
+        if common::word_read(words, word) {
             colors = colors.union(color);
         }
     }
+    // "colorless" is the empty color set read above.
+    common::word_read(words, "colorless");
     (colors, ironsmith_core::TokenWordRole::Authored)
 }
 
@@ -318,17 +344,17 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
         ("flanking", TokenKeywordShape::Flanking),
         ("training", TokenKeywordShape::Training),
     ] {
-        if common::word_present(words, word) {
+        if common::word_read(words, word) {
             keywords.push(keyword);
         }
     }
-    if common::phrase_present(words, &["first", "strike"]) {
+    if common::phrase_read(words, &["first", "strike"]) {
         keywords.push(TokenKeywordShape::FirstStrike);
     }
     if let Some(colors) = protection_colors(words) {
         keywords.push(TokenKeywordShape::ProtectionFromColors(colors));
     }
-    if common::phrase_present(words, &["double", "strike"]) {
+    if common::phrase_read(words, &["double", "strike"]) {
         keywords.push(TokenKeywordShape::DoubleStrike);
     }
     if let Some(amount) = crate::word_primitives::parse_sequence_start(words, &["ward"])
@@ -531,6 +557,23 @@ pub(super) fn creature_rules(
     } else {
         None
     };
+    // The words of the restriction this rule keeps ("This token can't block").
+    if let Some(shape) = &combat_restriction {
+        let read: &[&str] = match shape {
+            TokenCombatRestrictionShape::CantAttackOrBlockAlone => {
+                &["cant", "attack", "or", "block", "alone"]
+            }
+            TokenCombatRestrictionShape::CantAttackOrBlock => &["cant", "attack", "or", "block"],
+            TokenCombatRestrictionShape::Unblockable => &["cant", "be", "blocked"],
+            TokenCombatRestrictionShape::CantBlock => &["cant", "block"],
+            TokenCombatRestrictionShape::MustAttack => &["attacks", "each", "combat", "if", "able"],
+            #[allow(unreachable_patterns)]
+            _ => &[],
+        };
+        for word in read {
+            common::word_read(words, word);
+        }
+    }
     let graveyard_anthem_pattern =
         all(&[
             "this", "token", "gets", "+1/+1", "for", "each", "card", "named",
@@ -578,9 +621,9 @@ pub(super) fn creature_rules(
             }),
         tap_mana_ability: rules::parse_token_tap_mana_ability_tokens(source_tokens),
         saddle_crew_power_bonus: power_bonus,
-        banding: common::word_present(intrinsic_words, "banding"),
-        hexproof: common::word_present(intrinsic_words, "hexproof"),
-        indestructible: common::word_present(intrinsic_words, "indestructible"),
+        banding: common::word_read(intrinsic_words, "banding"),
+        hexproof: common::word_read(intrinsic_words, "hexproof"),
+        indestructible: common::word_read(intrinsic_words, "indestructible"),
         copies_exiled_triggered_abilities: all(&["all", "triggered", "abilities"])
             && common::word_present(words, "exiled")
             && common::word_present(words, "cards"),
@@ -631,7 +674,7 @@ pub(super) fn creature_rules(
             "pays",
             "1",
         ]),
-        changeling: common::word_present(intrinsic_words, "changeling"),
+        changeling: common::word_read(intrinsic_words, "changeling"),
         graveyard_anthem_card_name,
         landfall_pump,
     }

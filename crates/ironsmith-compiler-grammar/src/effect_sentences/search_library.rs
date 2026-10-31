@@ -117,6 +117,9 @@ fn parse_search_into_hand_or_graveyard_sentence(
     ) else {
         return Ok(None);
     };
+    // Each mode re-reads its own destination from a copy without "or"; the
+    // choice between them is read here, over the whole authored phrase.
+    crate::word_claims::claim_tokens(&tokens[word_token_indices[start]..=graveyard]);
     // Each mode is labeled with its complete single-destination sentence so
     // the choice shows the whole search, not only where the card goes.
     let describe = |mode_tokens: &[OwnedLexToken]| {
@@ -357,6 +360,9 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
                 | ["each", "player's", "graveyard"]
         )
     };
+    if whole_graveyard_target {
+        crate::word_claims::claim_words(&target_words);
+    }
     let filtered_graveyard_target = !has_target_selector
         && !whole_graveyard_target
         && !shape.has_source_and_graveyard_clause
@@ -393,6 +399,15 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
                 }),
             ));
         } else if has_hand_clause {
+            // "their hand and graveyard [, and all permanents they own]": the
+            // shuffling player's own zones.
+            if matches!(
+                target_words.as_slice(),
+                ["your" | "their", "hand", "and", "graveyard"]
+                    | ["your" | "their", "hand", "graveyard", "and", "all", "permanents", "you" | "they", "own"]
+            ) {
+                crate::word_claims::claim_words(&target_words);
+            }
             let words = crate::lexer::token_word_refs(tokens);
             let includes_owned_permanents = crate::word_primitives::any_sequence_occurs(
                 &words,

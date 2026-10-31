@@ -504,6 +504,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         } else {
             let mut become_effect =
                 parse_become_clause(&become_subject_tokens, &become_tail_tokens)?;
+            crate::word_claims::claim_tokens(&tokens[become_token_idx..=become_token_idx]);
             if has_explicit_duration {
                 apply_gain_clause_duration_to_leading_effect(&mut become_effect, &duration);
             }

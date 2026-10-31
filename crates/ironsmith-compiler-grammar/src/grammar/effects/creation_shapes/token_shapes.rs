@@ -87,6 +87,8 @@ pub struct NamedTokenClauseShape {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AttachmentClause<'a> {
     pub prefix_tokens: &'a [OwnedLexToken],
+    /// "attached to", for the reader that keeps the attachment to claim.
+    pub marker_tokens: &'a [OwnedLexToken],
     pub target_tokens: &'a [OwnedLexToken],
 }
 
@@ -363,6 +365,14 @@ pub fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSp
     } else {
         (CreateCountHead::Default, 0)
     };
+    // The count head is read as the creation count ("X", "that many",
+    // "a number of"); numeric heads claim through the number leaf.
+    if matches!(
+        count,
+        CreateCountHead::X | CreateCountHead::EventAmount | CreateCountHead::EqualToDynamic
+    ) {
+        crate::word_claims::claim_words(words.get(..consumed_words)?);
+    }
     if CreationWords::new(words.get(consumed_words..)?).first_is(CreationWordClass::Article) {
         consumed_words += 1;
     }
@@ -619,6 +629,7 @@ pub fn parse_attachment_clause_tokens(tokens: &[OwnedLexToken]) -> Option<Attach
     let target_tokens = trim_lexed_commas(tokens.get(target_start..)?);
     (!target_tokens.is_empty()).then_some(AttachmentClause {
         prefix_tokens: trim_lexed_commas(&tokens[..prefix_end]),
+        marker_tokens: &tokens[prefix_end..target_start],
         target_tokens,
     })
 }

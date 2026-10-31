@@ -1581,6 +1581,9 @@ fn parse_source_doesnt_have_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
     let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
+    // The negated "doesn't have" the action capture matched.
+    let action_clause = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    crate::word_claims::claim_tokens(action_clause.tokens());
     Some(PredicateAst::Source(
         SourcePredicateAst::SourceHasNoCounter(counter_type),
     ))
@@ -2050,6 +2053,7 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
                 _ => None,
             };
             if let Some(count) = count {
+                crate::word_claims::claim_words(&words);
                 return Some(PredicateAst::ValueComparison {
                     left: Value::CountersOn(
                         Box::new(crate::target::ChooseSpec::Tagged(
@@ -3327,6 +3331,8 @@ fn parse_this_ability_activation_count_predicate(tokens: &[OwnedLexToken]) -> Op
         return None;
     };
     let count = crate::util::parse_number_word_u32(count)?;
+    // The whole authored predicate is this exact shape.
+    crate::word_claims::claim_words(&words);
     Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count)))
 }
 
@@ -3914,6 +3920,8 @@ fn parse_passive_this_way_tagged_object_predicate(
     if filter_clause.word_refs().starts_with(&["at", "least", "one"]) {
         filter.set_union_one_or_more(true);
     }
+    // The passive "was/were <verb>" the action capture matched.
+    crate::word_claims::claim_tokens(action_clause.tokens());
     Ok(Some(PredicateAst::TaggedMatches(
         reference_tag.bind(),
         filter,
@@ -4414,6 +4422,8 @@ fn parse_single_card_type_card_descriptor_tokens(tokens: &[OwnedLexToken]) -> Op
         && token_word_is_any(&tokens[1], CARD_OR_CARDS_WORDS)
         && let Some(card_type) = parse_card_type(tokens[0].parser_text())
     {
+        // "<type> card": the type and the card noun.
+        crate::word_claims::claim_tokens(tokens);
         return Some(ObjectFilter {
             card_types: vec![card_type],
             use_face_up_characteristics: true,
@@ -4500,6 +4510,8 @@ fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<Demonstrati
     if !token_word_is_any(reference_token, PREDICATE_REFERENCE_NOUN_WORDS) {
         return None;
     }
+    // "that <noun>": the noun names the referenced object's kind.
+    crate::word_claims::claim_tokens(std::slice::from_ref(reference_token));
     Some(DemonstrativeReferencePrefix {
         word_len: matched.word_range.end,
         kind: DemonstrativeReferenceKind::ThatObject,
@@ -4631,6 +4643,15 @@ fn demonstrative_descriptor_filter_tokens(
     // absorbing it would silently drop the "entered from" constraint.
     if descriptor_contains_entered_from_motion(&descriptor_tokens) {
         return None;
+    }
+    // The copula, tense and negation between the reference and its
+    // descriptor ("that creature was", "it isn't") are read here.
+    if !descriptor_tokens.is_empty()
+        && descriptor_start > reference_end
+        && let Some(copula) = words.token_span_for_words(reference_end, descriptor_start)
+        && let Some(copula_tokens) = tokens.get(copula)
+    {
+        crate::word_claims::claim_tokens(copula_tokens);
     }
     (!descriptor_tokens.is_empty()).then_some((
         descriptor_tokens,

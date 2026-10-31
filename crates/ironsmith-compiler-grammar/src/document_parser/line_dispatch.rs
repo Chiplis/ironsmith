@@ -502,10 +502,18 @@ fn preserve_named_source_entry_and_counter_exclusion(
     };
     use crate::target::SourceReferenceSurface;
     fn entry_surface(source: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
-        if !source.first()?.is_any_word(&["when", "whenever"]) {
+        // Locating the entry subject only; the trigger reader reads the
+        // introducer and `enters` itself.
+        let (intro, end) = crate::word_claims::probe_only(|| {
+            (
+                source.first().is_some_and(|token| token.is_any_word(&["when", "whenever"])),
+                source.iter().position(|token| token.is_word("enters")),
+            )
+        });
+        if !intro {
             return None;
         }
-        let end = source.iter().position(|token| token.is_word("enters"))?;
+        let end = end?;
         crate::grammar::source_surface_shapes::parse_named_surface(&source[1..end])
     }
     fn trigger_surface(trigger: &mut TriggerSpec, surface: &SourceReferenceSurface) {
@@ -1297,13 +1305,15 @@ fn dispatch_line_family_registry(
 
     for idx in candidate_indices {
         let rule = &LINE_FAMILY_RULES[idx];
-        match (rule.run)(ctx).within(rule.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (rule.run)(ctx).within(rule.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => {
                 candidates.push(RegistryCandidate::new(
                     RegistryRuleMetadata::distinct(rule.id, rule.head),
                     matched.value,
                     matched.span,
-                ));
+                ).with_claims(registry_claims));
             }
             ParseOutcome::NoMatch => {
                 parse_trace::event(format!("line-family: {} -> no match", rule.id));

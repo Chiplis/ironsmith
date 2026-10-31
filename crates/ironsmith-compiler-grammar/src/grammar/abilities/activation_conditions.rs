@@ -171,6 +171,8 @@ struct CountEachTurnShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct GraveyardConditionShape<'a> {
     descriptor_tokens: &'a [OwnedLexToken],
+    /// The "in (your|the) graveyard" tail that names the zone.
+    tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -358,7 +360,12 @@ pub fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     let shape = parse_count_each_turn_shape(words, 0)?;
     let count_words = words.get(shape.count_start..shape.count_end)?;
     let parsed = leaf::parse_leaf_number_prefix_words(count_words)?.into_fixed()?;
-    (parsed.1 == count_words.len()).then_some(parsed.0)
+    if parsed.1 != count_words.len() {
+        return None;
+    }
+    // The "(times) each turn" tail is the frequency this reading builds.
+    crate::word_claims::claim_words(&words[shape.count_end..]);
+    Some(parsed.0)
 }
 
 use crate::recognition::ParseOutcome;
@@ -609,6 +616,7 @@ fn parse_graveyard_condition_shape(
     let end = start + exact_tail_offset(input, TAILS)?;
     (end > start).then_some(GraveyardConditionShape {
         descriptor_tokens: token_slice_for_words(tokens, &view, start, end)?,
+        tail_tokens: token_slice_for_words(tokens, &view, end, words.len())?,
     })
 }
 
@@ -656,6 +664,10 @@ fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             .owned_by(PlayerFilter::You);
         filter.card_types = card_types;
         filter.subtypes = subtypes;
+        // Every descriptor word was checked above (threshold, card types and
+        // subtypes, "cards"); the tail names the graveyard zone.
+        crate::word_claims::claim_words(&descriptor_words);
+        crate::word_claims::claim_tokens(parsed.tail_tokens);
         return Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player: PlayerAst::You,
             filter,

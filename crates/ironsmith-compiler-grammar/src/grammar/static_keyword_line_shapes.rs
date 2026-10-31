@@ -210,6 +210,9 @@ pub fn parse_as_enters_subject<'a>(
     if words.get(cursor..cursor + 2) == Some(&["the", "battlefield"][..]) {
         cursor += 2;
     }
+    // "As this <kind> enters [the battlefield]": the replacement's subject
+    // and event are read here.
+    crate::word_claims::claim_words(&words[..cursor]);
     Some(AsEntersSubjectShape {
         subject,
         tail_word: cursor,

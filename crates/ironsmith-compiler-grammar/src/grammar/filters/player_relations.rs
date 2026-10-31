@@ -233,6 +233,8 @@ fn parse_relation_subject_word_slice(
                 relation_phrase(&["another", "player"]).value(PlayerFilter::NotYou),
                 // "basic lands each player controls" (Sheltering Prayers).
                 relation_phrase(&["each", "player"]).value(PlayerFilter::Any),
+                // "each creature each opponent controls" (Aku Djinn).
+                relation_phrase(&["each", "opponent"]).value(PlayerFilter::Opponent),
                 // "target artifact a player controls" (Goblin Welder): any
                 // player, once the article is read; a qualified player
                 // ("that player") is matched from its qualifier first.

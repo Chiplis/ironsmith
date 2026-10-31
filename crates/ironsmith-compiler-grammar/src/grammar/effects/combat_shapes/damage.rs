@@ -446,11 +446,16 @@ pub fn parse_combat_damage_equal_shape_lexed(
 pub fn parse_combat_divided_target_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<CombatDividedTargetShape<'_>, CombatDividedTargetError> {
-    let Some((_among_idx, (), after_among)) =
+    let Some((among_idx, (), after_among)) =
         primitives::find_prefix(tokens, || primitives::kw("among").void())
     else {
         return Err(CombatDividedTargetError::MissingTargetsAfterAmong);
     };
+    // "divided as you choose among ...": the controller divides the damage,
+    // which is what a distributed amount means.
+    let _ = primitives::find_prefix(&tokens[..among_idx], || {
+        primitives::phrase(&["divided", "as", "you", "choose"])
+    });
     let among_tail = trim_lexed_commas(after_among);
     if let Some((_prefix, target_tokens)) = primitives::parse_prefix(
         among_tail,

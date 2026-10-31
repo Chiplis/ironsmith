@@ -659,6 +659,31 @@ fn parse_exile_inner(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    // "exile that many cards from your graveyard" (Nefarious Lich): the
+    // count is the event's amount (the damage being replaced), chosen from
+    // the graveyard's cards. Only the whole-graveyard source: "that many
+    // cards from the top of your library" and similar ordered sources have
+    // their own readers.
+    if matches!(
+        crate::lexer::parser_token_word_refs(tokens).as_slice(),
+        ["that", "many", "cards", "from", "your" | "their", "graveyard"]
+    ) {
+        let mut target = parse_target_phrase(&tokens[2..])?;
+        apply_exile_subject_hand_owner_context(&mut target, subject.clone());
+        crate::word_claims::claim_tokens(&tokens[..2]);
+        return Ok(with_exile_actor(
+            EffectAst::subject_verb_exile(
+                TargetAst::WithCountValue(
+                    Box::new(target),
+                    crate::effect::ChoiceCount::dynamic_x(),
+                    Value::EventValue(crate::effect::EventValueSpec::Amount)
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards),
+                ),
+                false,
+            ),
+            subject,
+        ));
+    }
     // "Exile those tokens when this creature leaves the battlefield"
     // (Mysterio, Master of Illusion): a delayed exile of the tokens the
     // ability created, never an immediate exile of "those tokens when ...".
@@ -927,6 +952,24 @@ fn parse_exile_inner(
         return Err(CardTextError::ParseError(
             "top-of-zone exile-until-source-leaves is not supported".to_string(),
         ));
+    }
+    // "the top card of one of their opponents' libraries" (Shared Fate): the
+    // top-of-zone selection reads "card of" and the "one of" that picks a
+    // single library among the possessor's; the owner is the filter's.
+    if source_top_only {
+        let words: Vec<(usize, &str)> = target_tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.as_word().is_some())
+            .map(|(index, token)| (index, token.parser_text()))
+            .collect();
+        if let [(_, "card"), (first_of, "of"), (one, "one"), (second_of, "of"), ..] =
+            words.as_slice()
+        {
+            for index in [*first_of, *one, *second_of] {
+                crate::word_claims::claim_tokens(&target_tokens[index..=index]);
+            }
+        }
     }
     let mut target =
         expand_hand_or_graveyard_target(parse_target_phrase(target_tokens)?, target_tokens);
@@ -1380,6 +1423,17 @@ pub fn split_exile_graveyard_replacement_suffix(tokens: &[OwnedLexToken]) -> &[O
             && (grammar::contains_word(tail_slice, "graveyard")
                 || grammar::contains_word(tail_slice, "graveyards"));
     if is_graveyard_replacement {
+        // "instead of putting it into its owner's graveyard": the exile
+        // replaces the graveyard move; the whole tail names that move.
+        if tail_slice.iter().filter(|token| token.as_word().is_some()).all(|token| {
+            matches!(
+                token.parser_text(),
+                "of" | "putting" | "it" | "them" | "into" | "its" | "their" | "your" | "a"
+                    | "owner's" | "owners" | "owners'" | "graveyard" | "graveyards"
+            )
+        }) {
+            crate::word_claims::claim_tokens(tail_slice);
+        }
         main_slice
     } else {
         tokens

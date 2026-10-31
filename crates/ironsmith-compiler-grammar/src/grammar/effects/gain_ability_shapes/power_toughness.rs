@@ -49,6 +49,7 @@ fn parse_gain_pump_head_lexed<'a>(
     let (power, toughness) =
         leaf::parse_leaf_pt_modifier_values_complete(modifier.parser_text())
             .map_err(|_| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))?;
+    crate::word_claims::claim_tokens(std::slice::from_ref(modifier));
     let has_local_duration = primitives::contains_word(input.as_ref(), "until")
         || primitives::contains_word(input.as_ref(), "during");
     Ok(GainPumpHeadShape {

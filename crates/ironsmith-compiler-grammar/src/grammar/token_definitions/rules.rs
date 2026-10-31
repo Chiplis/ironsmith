@@ -54,7 +54,10 @@ pub(super) fn damage_amount(words: &[&str]) -> Option<i32> {
 fn unsigned_amount_after(words: &[&str], marker: &str) -> Option<u32> {
     let marker_idx = common::first_word_offset(words, marker)?;
     let amount_word = words.get(marker_idx + 1)?;
-    crate::grammar::primitives::probe_shape(leaf::parse_number_complete(amount_word))
+    let amount = crate::grammar::primitives::probe_shape(leaf::parse_number_complete(amount_word))?;
+    // "toxic 1" / "crew 2" / "equip 3": the keyword and its amount.
+    crate::word_claims::claim_words(&words[marker_idx..=marker_idx + 1]);
+    Some(amount)
 }
 
 pub fn parse_token_crew_shape_words(words: &[&str]) -> Option<TokenCrewShape> {

@@ -78,6 +78,21 @@ pub(super) fn word_present(words: &[&str], expected: &str) -> bool {
     phrase_present(words, &[expected])
 }
 
+/// [`phrase_present`] for a reader that keeps what the phrase means: claims
+/// the first occurrence, the one the presence check found.
+pub(super) fn phrase_read(words: &[&str], expected: &[&str]) -> bool {
+    let Some(offset) = phrase_offset(words, expected) else {
+        return false;
+    };
+    crate::word_claims::claim_words(&words[offset..offset + expected.len()]);
+    true
+}
+
+/// [`word_present`] that claims the word it found (see [`phrase_read`]).
+pub(super) fn word_read(words: &[&str], expected: &str) -> bool {
+    phrase_read(words, &[expected])
+}
+
 pub(super) fn all_words_present(words: &[&str], expected: &[&str]) -> bool {
     expected
         .iter()

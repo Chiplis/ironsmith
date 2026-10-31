@@ -1120,6 +1120,8 @@ fn parse_transform_like(
             }))
         }
         shapes::TransformTargetShape::Source { surface } => {
+            // The whole object phrase is the self-reference ("this creature").
+            crate::word_claims::claim_tokens(tokens);
             let span = span_from_tokens(tokens);
             Ok(action(match surface {
                 Some(surface) => {

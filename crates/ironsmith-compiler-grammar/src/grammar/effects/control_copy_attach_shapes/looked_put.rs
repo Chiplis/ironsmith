@@ -84,6 +84,33 @@ fn rest_head(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
 
 pub fn parse_rest_destination(tokens: &[OwnedLexToken]) -> Option<RestDestinationShape> {
     let tail = rest_head(tokens)?;
+    let shape = rest_destination_zone(tail)?;
+    claim_rest_destination_frame(tail);
+    Some(shape)
+}
+
+/// "into your graveyard" / "on the bottom of your library": the looking
+/// player's own zone, framed by its preposition and possessor.
+fn claim_rest_destination_frame(tail: &[OwnedLexToken]) {
+    let Some(zone) = tail.iter().position(|token| {
+        matches!(
+            token.parser_text(),
+            "graveyard" | "graveyards" | "hand" | "hands" | "library" | "libraries"
+        )
+    }) else {
+        return;
+    };
+    if tail[..zone].iter().all(|token| {
+        matches!(
+            token.parser_text(),
+            "into" | "on" | "the" | "bottom" | "of" | "your" | "their"
+        )
+    }) {
+        crate::word_claims::claim_tokens(&tail[..zone]);
+    }
+}
+
+fn rest_destination_zone(tail: &[OwnedLexToken]) -> Option<RestDestinationShape> {
     // "Put the rest on the bottom in a random order." (Loot, Exuberant
     // Explorer) leaves the library implicit; only libraries have a bottom.
     if primitives::contains_word(tail, "bottom") {

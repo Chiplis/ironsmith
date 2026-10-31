@@ -96,6 +96,10 @@ pub struct RegistryCandidate<T> {
     pub metadata: RegistryRuleMetadata,
     pub value: T,
     pub span: Option<TextSpan>,
+    /// What this candidate's reading claimed, recorded in its own scope. Only
+    /// the candidate the resolver keeps passes its claims on; a losing
+    /// candidate's claims are dropped like a discarded probe's.
+    pub claims: crate::word_claims::ClaimSet,
 }
 
 impl<T> RegistryCandidate<T> {
@@ -104,7 +108,15 @@ impl<T> RegistryCandidate<T> {
             metadata,
             value,
             span,
+            claims: crate::word_claims::ClaimSet::default(),
         }
+    }
+
+    /// Attach the claims the reading recorded under
+    /// [`crate::word_claims::scoped`].
+    pub fn with_claims(mut self, claims: crate::word_claims::ClaimSet) -> Self {
+        self.claims = claims;
+        self
     }
 }
 
@@ -121,6 +133,7 @@ pub fn resolve_registry_candidates<T>(
 
     if candidates.len() == 1 {
         let candidate = candidates.pop().expect("single registry candidate");
+        crate::word_claims::adopt(&candidate.claims);
         return ParseOutcome::matched(
             RuleMatch {
                 rule: candidate.metadata.id,
@@ -138,6 +151,7 @@ pub fn resolve_registry_candidates<T>(
             .all(|candidate| candidate.metadata.equivalence == equivalence);
     if explicitly_equivalent {
         let candidate = candidates.remove(0);
+        crate::word_claims::adopt(&candidate.claims);
         return ParseOutcome::matched(
             RuleMatch {
                 rule: candidate.metadata.id,

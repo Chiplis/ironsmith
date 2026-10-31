@@ -164,6 +164,13 @@ pub fn parse_loyalty_shorthand_activation_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedLoyaltyShorthand> {
     let tokens = trim_loyalty_brackets(tokens);
+    let shorthand = read_loyalty_shorthand_tokens(tokens)?;
+    // The signed loyalty cost ("+1", "−2") is read here.
+    crate::word_claims::claim_tokens(tokens);
+    Some(shorthand)
+}
+
+fn read_loyalty_shorthand_tokens(tokens: &[OwnedLexToken]) -> Option<ActivatedLoyaltyShorthand> {
     match tokens {
         [token] if token.as_word().is_some() => {
             let mut input = token.parser_text();

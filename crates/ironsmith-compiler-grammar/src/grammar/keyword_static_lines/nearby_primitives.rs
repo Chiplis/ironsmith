@@ -229,8 +229,16 @@ pub(super) fn semantic_kw<'a>(
     (
         repeat::<_, _, (), _, _>(0.., semantic_noise),
         any.verify(move |token: &&OwnedLexToken| {
-            token.is_word(expected)
-                || matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+            if token.is_word(expected) {
+                return true;
+            }
+            // A single-piece word ("don't" read as `dont`) is the same word;
+            // claim it as `is_word` does.
+            let matched = matches!(token.parser_word_pieces(), [piece] if piece.text == expected);
+            if matched {
+                crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+            }
+            matched
         }),
     )
         .void()

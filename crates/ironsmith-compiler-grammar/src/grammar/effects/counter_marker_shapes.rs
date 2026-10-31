@@ -1085,7 +1085,7 @@ fn choice_counted_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<(Counte
 
 fn choice_single_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterType> {
     let token: &OwnedLexToken = any.parse_next(input)?;
-    crate::util::parse_counter_type_word(token.parser_text())
+    crate::util::parse_counter_type_lex_token(token)
         .ok_or_else(|| primitives::backtrack_err("counter choice", "recognized counter type"))
 }
 

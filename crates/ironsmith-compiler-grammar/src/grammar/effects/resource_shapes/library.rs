@@ -50,6 +50,8 @@ pub fn parse_resource_shuffle_shape(
             && trimmed(rest).is_empty()
             && resolve_destination(destination_player, source_player) == source_player
         {
+            // The whole source zone phrase ("[all] [the] cards from your hand").
+            crate::word_claims::claim_words(&target_words);
             return Some(if zone == Zone::Hand { ResourceShuffleShape::HandIntoLibrary { player: source_player } }
                 else { ResourceShuffleShape::GraveyardIntoLibrary {
                     player: source_player,

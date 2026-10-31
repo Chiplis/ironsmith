@@ -277,6 +277,10 @@ pub fn parse_you_choose_objects_clause_with_count_value(
             ["choose", "each", ..] | ["you", "choose", "each", ..]
         )
     {
+        // This reading interprets the distributive "each" as the count.
+        if let Some(each) = clause_words.iter().position(|word| *word == "each") {
+            crate::word_claims::claim_words(&clause_words[each..=each]);
+        }
         let mut all_filter = choose_filter.clone();
         if all_filter.zone.is_none() {
             all_filter.zone = Some(crate::zone::Zone::Battlefield);

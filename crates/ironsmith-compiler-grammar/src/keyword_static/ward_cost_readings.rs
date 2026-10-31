@@ -81,15 +81,17 @@ pub(super) fn read(input: &WardCost<'_>) -> ParseOutcome<RuleMatch<StaticAbility
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for reading in READINGS {
-        if !reading.head.accepts(head) || !(reading.admits)(input) {
+        if !reading.head.accepts(head) || !crate::word_claims::probe_only(|| (reading.admits)(input)) {
             continue;
         }
-        match (reading.read)(input).within(reading.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (reading.read)(input).within(reading.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(reading.id, reading.head),
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
@@ -142,6 +144,8 @@ fn read_compact_sacrifice(input: &WardCost<'_>) -> Result<Option<StaticAbility>,
 fn read_discard_card_type(input: &WardCost<'_>) -> Result<Option<StaticAbility>, CardTextError> {
     let cost_tokens = input.tokens;
     if let Some(cost) = parse_ward_discard_card_type_cost(&cost_tokens) {
+        // A complete "discard <count> <card types> card(s)" cost.
+        crate::word_claims::claim_tokens(cost_tokens);
         return Ok(Some(StaticAbility::ward(cost)));
     }
     Ok(None)

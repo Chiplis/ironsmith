@@ -7,6 +7,7 @@ pub(super) fn parse_loyalty_ability_trigger_tail_lexed(
     let Some(tail) = trigger_grammar::parse_loyalty_ability_tail(tail_tokens) else {
         return Ok(None);
     };
+    let owner_start = tail.owner.start;
     let owner_tokens = &tail_tokens[tail.owner];
     let owner_filter = parse_object_filter_lexed(owner_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
@@ -14,6 +15,14 @@ pub(super) fn parse_loyalty_ability_trigger_tail_lexed(
             tail_words.join(" ")
         ))
     })?;
+    // "a loyalty ability of <owner>": the ability noun phrase before the owner.
+    let head = &tail_tokens[..owner_start];
+    if crate::lexer::token_word_refs(head)
+        .iter()
+        .all(|word| matches!(*word, "a" | "an" | "loyalty" | "ability" | "of"))
+    {
+        crate::word_claims::claim_tokens(head);
+    }
     Ok(Some(owner_filter))
 }
 

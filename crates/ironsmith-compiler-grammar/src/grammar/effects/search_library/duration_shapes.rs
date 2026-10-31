@@ -51,6 +51,20 @@ pub fn parse_source_lifetime_duration(tokens: &[OwnedLexToken]) -> Option<Until>
         .then(Until::while_source_remains_on_battlefield)
 }
 
+/// "for as long as this artifact remains tapped" as a complete tail.
+fn for_as_long_as_source_remains_tapped<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    use winnow::combinator::{alt, opt};
+    as_long_as_marker(input)?;
+    primitives::kw("this").parse_next(input)?;
+    opt(alt((
+        primitives::kw("creature"), primitives::kw("artifact"), primitives::kw("enchantment"),
+        primitives::kw("permanent"), primitives::kw("source"), primitives::kw("land"),
+    )))
+    .parse_next(input)?;
+    primitives::phrase(&["remains", "tapped"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)
+}
+
 fn as_long_as_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["for", "as", "long", "as"])
         .void()
@@ -235,7 +249,16 @@ pub fn parse_search_restriction_duration_shape_lexed(
 
     if let Some((start, (), _)) = primitives::find_prefix(tokens, || as_long_as_marker) {
         let suffix = &tokens[start..];
-        let duration = if as_long_as_source_remains_tapped(suffix) {
+        // The exact tail reads every word of the source-tapped duration; the
+        // marker test below keeps the looser established surfaces.
+        let duration = if primitives::parse_all(
+            suffix,
+            for_as_long_as_source_remains_tapped,
+            "source-tapped duration",
+        )
+        .is_ok()
+            || as_long_as_source_remains_tapped(suffix)
+        {
             Some(Until::SourceUntaps)
         } else if as_long_as_source_remains_on_battlefield(suffix) {
             Some(Until::while_source_remains_on_battlefield())

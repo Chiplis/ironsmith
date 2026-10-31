@@ -343,7 +343,12 @@ pub fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilte
 pub fn parse_cycling_search_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    match keyword_activated_grammar::parse_cycling_search_spec_tokens(tokens) {
+    let spec = keyword_activated_grammar::parse_cycling_search_spec_tokens(tokens);
+    if spec.is_ok() {
+        // The complete "[quality]cycling" keyword the spec was read from.
+        crate::word_claims::claim_tokens(tokens);
+    }
+    match spec {
         Ok(CyclingSearchSpec::Draw) => Ok(None),
         Ok(CyclingSearchSpec::Search(CyclingFilterSpec {
             supertypes,

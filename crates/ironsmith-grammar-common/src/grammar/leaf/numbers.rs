@@ -136,9 +136,19 @@ pub fn parse_number_or_x(input: &mut &str) -> WResult<LeafNumber> {
 }
 
 pub fn parse_leaf_number_token_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+    let start = input.clone();
     let word = primitives::word_parser_text.parse_next(input)?;
-    parse_number_complete(word)
-        .map_err(|_| primitives::backtrack_err("number", "numeric or counted quantity"))
+    let value = parse_number_complete(word)
+        .map_err(|_| primitives::backtrack_err("number", "numeric or counted quantity"))?;
+    claim_consumed(&start, input);
+    Ok(value)
+}
+
+/// Claim the count words a number leaf read: the tokens between `start` and
+/// the stream position `rest` it stopped at.
+fn claim_consumed(start: &LexStream<'_>, rest: &LexStream<'_>) {
+    let used = start.len().saturating_sub(rest.len());
+    ironsmith_compiler_syntax::word_claims::claim_tokens(&start[..used]);
 }
 
 pub fn parse_leaf_count_token<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
@@ -151,6 +161,7 @@ pub fn parse_leaf_number_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<
     let mut probe = input.clone();
     let first = primitives::word_parser_text.parse_next(&mut probe)?;
     if let Some(value) = repetition_adverb_number_value(first) {
+        claim_consumed(input, &probe);
         *input = probe;
         return Ok(value);
     }
@@ -162,6 +173,7 @@ pub fn parse_leaf_number_or_x_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WRe
     let mut probe = input.clone();
     let first = primitives::word_parser_text.parse_next(&mut probe)?;
     if first == "x" {
+        claim_consumed(input, &probe);
         *input = probe;
         return Ok(LeafNumber::X);
     }
@@ -215,6 +227,7 @@ fn parse_leaf_cardinal_number_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WRe
     }
 
     if let Some((value, rest)) = best {
+        claim_consumed(input, &rest);
         *input = rest;
         return Ok(value);
     }
@@ -236,16 +249,19 @@ pub(super) fn parse_leaf_number_prefix_word_slice(
 
     if let Some(value) = repetition_adverb_number_value(first) {
         *input = &checkpoint[1..];
+        ironsmith_compiler_syntax::word_claims::claim_words(&checkpoint[..1]);
         return Ok(value);
     }
 
     if let Some((value, used)) = ironsmith_core::parse_cardinal_words(checkpoint) {
         *input = &checkpoint[used..];
+        ironsmith_compiler_syntax::word_claims::claim_words(&checkpoint[..used]);
         return Ok(value);
     }
 
     if let Ok(value) = parse_number_with_trailing_punctuation_complete(first) {
         *input = &checkpoint[1..];
+        ironsmith_compiler_syntax::word_claims::claim_words(&checkpoint[..1]);
         return Ok(value);
     }
 

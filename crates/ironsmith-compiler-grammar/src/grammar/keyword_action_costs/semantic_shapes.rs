@@ -89,6 +89,28 @@ fn parse_normalized_word_atom<'a>(
     .parse_next(input)
 }
 
+/// [`parse_normalized_keyword_words_tokens`] borrowing each unchanged word
+/// from `tokens`, so readers of the normalized words can claim them. Only the
+/// contracted "cant"/"youve" are fresh text (the normalizer reads those).
+pub fn parse_normalized_keyword_word_refs_tokens(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    let view = TokenWordView::new(tokens);
+    let word_refs = view.word_refs();
+    let mut input: primitives::WordSliceInput<'_> = &word_refs;
+    let mut words = Vec::with_capacity(word_refs.len());
+    while !input.is_empty() {
+        let index = word_refs.len() - input.len();
+        let normalized = parse_normalized_word_atom
+            .parse_next(&mut input)
+            .expect("word atom parser always consumes a word");
+        words.push(match normalized {
+            NormalizedWordAtom::Cant => "cant",
+            NormalizedWordAtom::Youve => "youve",
+            NormalizedWordAtom::Original(_) => word_refs[index],
+        });
+    }
+    words
+}
+
 pub fn parse_normalized_keyword_words_tokens(tokens: &[OwnedLexToken]) -> KeywordNormalizedWords {
     let view = TokenWordView::new(tokens);
     let word_refs = view.word_refs();

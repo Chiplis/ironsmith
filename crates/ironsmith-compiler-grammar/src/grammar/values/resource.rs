@@ -181,6 +181,7 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
             && let Some(left) = parse_difference_segment(prefix_len, and_idx)
             && let Some(right) = parse_difference_segment(and_idx + 1, tail.len())
         {
+            crate::word_claims::claim_words(&tail[and_idx..=and_idx]);
             let absolute = Value::absolute_difference(left, right);
             return Some(absolute.with_surface_hint(ValueSurfaceHint::Difference));
         }
@@ -200,6 +201,8 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
         && let Some(left) = parse_amount_segment(0, plus_idx)
         && let Some(right) = parse_amount_segment(plus_idx + 1, tail.len())
     {
+        // "plus" is the sum this value reads.
+        crate::word_claims::claim_words(&tail[plus_idx..=plus_idx]);
         return Some(canonical_add_mana_equal_amount_value(Value::Add(
             Box::new(left),
             Box::new(right),

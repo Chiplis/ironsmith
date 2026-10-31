@@ -126,7 +126,12 @@ fn semantic_kw<'a>(
 ) -> impl Parser<LexStream<'a>, (), winnow::error::ErrMode<winnow::error::ContextError>> {
     any.verify(move |token: &&OwnedLexToken| {
         token.is_word(expected)
-            || matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+            || (matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+                // The same word in its single-piece form; claimed as `is_word` does.
+                && {
+                    crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+                    true
+                })
     })
     .void()
 }
@@ -696,6 +701,8 @@ pub fn parse_resource_library_position_shape(tokens: &[OwnedLexToken]) -> Option
             .copied()
             .unwrap_or(normalized.len());
         if exact_unit(&normalized[used_tokens..], ordinal_tail) {
+            // "second from the top": the ordinal position is read here.
+            crate::word_claims::claim_words(&words[..used_words]);
             return Some(Value::Fixed(position as i32));
         }
     }

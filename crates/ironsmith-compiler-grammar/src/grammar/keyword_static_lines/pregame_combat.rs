@@ -211,13 +211,18 @@ fn parse_pregame_intro_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .void()
     .parse_next(input)?;
     primitives::phrase(&["you", "may", "begin", "the", "game", "with"]).parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(
+    let object = repeat_till::<_, _, (), _, _, _, _>(
         1..,
         any.void(),
         peek(primitives::phrase(&["on", "the", "battlefield"])),
     )
-    .void()
+    .take()
     .parse_next(input)?;
+    // "with it on the battlefield": the card the intro named.
+    let object_words = crate::lexer::token_word_refs(object);
+    if object_words == ["it"] || crate::util::is_source_reference_words(&object_words) {
+        crate::word_claims::claim_tokens(object);
+    }
     primitives::phrase(&["on", "the", "battlefield"])
         .void()
         .parse_next(input)

@@ -15,7 +15,12 @@ pub(super) fn parse_activate_only_count_per_turn_condition(
     let count_tokens = token_slice_for_words(tokens, &view, shape.count_start, shape.count_end)?;
     let count_words = words.get(shape.count_start..shape.count_end)?;
     let (count, used) = parse_number(count_tokens)?;
-    (used == count_words.len()).then_some(PredicateAst::MaxActivationsPerTurn(count))
+    if used != count_words.len() {
+        return None;
+    }
+    // The "(times) each turn" tail is the frequency this reading builds.
+    crate::word_claims::claim_words(&words[shape.count_end..]);
+    Some(PredicateAst::MaxActivationsPerTurn(count))
 }
 
 pub(super) fn parse_activate_count_each_turn_condition(
@@ -39,5 +44,6 @@ pub(super) fn parse_activate_count_each_turn_condition(
     ))
     .flatten()
     .and_then(|(count, used)| (used == count_words.len()).then_some(count))?;
+    crate::word_claims::claim_words(&words[shape.count_end..]);
     Some(PredicateAst::MaxActivationsPerTurn(count))
 }

@@ -355,7 +355,7 @@ pub(super) fn expand_vehicle_payment(text: &str) -> String {
     let Some((payment, body)) = lower.split_once(':') else { return text.to_owned(); };
     let Some(amount) = payment.trim().strip_prefix("tap any number of creatures you control with total power ")
         .and_then(|s| s.strip_suffix(" or more").or_else(|| s.strip_suffix(" or greater"))) else { return text.to_owned(); };
-    if crate::util::parse_number_word_u32(amount).is_none() { return text.to_owned(); }
+    if !crate::util::is_number_word(amount) { return text.to_owned(); }
     let body = body.trim().trim_end_matches('.');
     if !matches!(body,
         "this vehicle becomes an artifact creature until end of turn"

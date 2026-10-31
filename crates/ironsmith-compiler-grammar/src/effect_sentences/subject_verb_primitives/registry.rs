@@ -539,15 +539,15 @@ fn recognize_subject_verb_primitives_lexed(
         {
             continue;
         }
-        let outcome =
-            run_sentence_primitive_lexed(primitive, tokens, &lowered).within(primitive.metadata.id);
+        let (outcome, registry_claims) =
+            crate::word_claims::scoped(|| run_sentence_primitive_lexed(primitive, tokens, &lowered).within(primitive.metadata.id));
         match outcome {
             ParseOutcome::NoMatch => {}
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 primitive.metadata,
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
     }
@@ -705,6 +705,8 @@ pub fn parse_you_and_target_player_each_draw_sentence(
                 clause_text
             )));
         }
+        // The card noun after the count.
+        crate::word_claims::claim_tokens(&amount_clause.tokens()[used..=used]);
         count
     };
     let mut effects = vec![

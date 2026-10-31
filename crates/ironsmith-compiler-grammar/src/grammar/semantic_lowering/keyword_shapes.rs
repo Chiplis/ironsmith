@@ -96,6 +96,8 @@ pub fn parse_exert_attack_head_tokens(
     let source_range = view
         .token_span_for_words(source_start, as_word)
         .ok_or("could not isolate exert source")?;
+    // The exerted source and its "as it attacks" timing are read here.
+    crate::word_claims::claim_words(&words[source_start..]);
     Ok(ExertAttackHead {
         only_if_not_exerted_this_turn,
         source_ref: render_token_slice(&tokens[source_range.clone()])
@@ -115,7 +117,12 @@ pub fn parse_exert_reflexive_followup_tokens(
     let view = TokenWordView::new(tokens);
     let range = view.token_span_for_words(3, words.len())?;
     let effect_tokens = trim_lexed_commas(&tokens[range]);
-    (!effect_tokens.is_empty()).then_some(ExertReflexiveFollowup { effect_tokens })
+    if effect_tokens.is_empty() {
+        return None;
+    }
+    // "When you do": the reflexive trigger on the exert choice.
+    crate::word_claims::claim_words(&words[..3]);
+    Some(ExertReflexiveFollowup { effect_tokens })
 }
 
 pub fn parse_when_followup_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -220,6 +227,8 @@ pub fn parse_partner_variant_label_tokens(tokens: &[OwnedLexToken]) -> Option<Pa
         });
     }
     if phrase_is_exact(&words, &["choose", "a", "background"]) {
+        // The complete partner-variant label.
+        crate::word_claims::claim_words(&words);
         return Some(PartnerVariantLabel {
             display: "Choose a Background".to_string(),
         });

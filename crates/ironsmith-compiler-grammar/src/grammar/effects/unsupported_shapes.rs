@@ -165,8 +165,7 @@ pub fn is_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn looks_like_supported_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words_storage = normalize_cant_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
+    let words = normalize_cant_word_refs(tokens);
     let has_negated_untap =
         word_stream_has_any_phrase(words.as_slice(), NEGATED_UNTAP_DURING_PHRASES);
     let has_controllers_untap_step =

@@ -94,12 +94,23 @@ pub fn parse_discard_trigger_card_filter(
         )));
     }
 
+    // The card noun the envelope split on ("discard a [creature] card").
+    let claim_card_noun = || {
+        if let Some(noun) = remainder
+            .iter()
+            .find(|token| token.is_word("card") || token.is_word("cards"))
+        {
+            crate::word_claims::claim_tokens(std::slice::from_ref(noun));
+        }
+    };
     if qualifier_tokens.is_empty() {
+        claim_card_noun();
         return Ok(None);
     }
 
     let qualifier_words = crate::lexer::token_word_refs(&qualifier_tokens);
     if let Ok(mut filter) = parse_object_filter(&qualifier_tokens, false) {
+        claim_card_noun();
         // A discard event already fixes the object's event-time zone to the
         // hand. Nouns such as "permanent" otherwise make the general object
         // parser infer Battlefield, which can never match the pre-discard
@@ -142,6 +153,8 @@ pub fn parse_discard_trigger_card_filter(
         )));
     }
     if parsed_any {
+        claim_card_noun();
+        crate::word_claims::claim_tokens(&qualifier_tokens);
         Ok(Some(fallback))
     } else {
         Err(CardTextError::ParseError(format!(
@@ -783,6 +796,38 @@ pub(crate) fn spell_cast_using_mana_source_filter(
     ))
 }
 
+/// The player who casts or copies: "another player" / "a player other than
+/// you" (exactly the subject) is every player but you. The clause-wide
+/// player facts would read it as any player, or as you because the words
+/// contain "you".
+fn spell_activity_caster(clause_words: &[&str], subject_player: Option<&PlayerFilter>) -> PlayerFilter {
+    match subject_player {
+        Some(PlayerFilter::NotYou) => PlayerFilter::NotYou,
+        _ => parse_subject_clause_player_filter(clause_words),
+    }
+}
+
+/// The turn, combat and cast-origin qualifiers of a cast event ("during an
+/// opponent's turn", "from anywhere other than your hand").
+const SPELL_CAST_EVENT_QUALIFIER_PHRASES: &[&[&str]] = &[
+    &["during", "your", "turn"],
+    &["during", "each", "of", "your", "turns"],
+    &["during", "their", "turn"],
+    &["during", "that", "players", "turn"],
+    &["during", "an", "opponents", "turn"],
+    &["during", "an", "opponent's", "turn"],
+    &["during", "an", "opponent", "s", "turn"],
+    &["during", "opponents", "turn"],
+    &["during", "opponent's", "turn"],
+    &["during", "each", "opponents", "turn"],
+    &["during", "each", "opponent's", "turn"],
+    &["during", "each", "opponent", "s", "turn"],
+    &["during", "combat"],
+    &["from", "anywhere", "other", "than", "your", "hand"],
+    &["from", "anywhere", "other", "than", "their", "hand"],
+    &["from", "anywhere", "other", "than", "hand"],
+];
+
 pub fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
@@ -797,10 +842,11 @@ pub fn parse_spell_activity_trigger(
     {
         let mut filter = ObjectFilter::default();
         filter.physical_card = true;
+        let subject_player = parse_trigger_subject_player_filter(&clause_words[..cast]);
         return Ok(Some(TriggerSpec::SpellCast {
             filter: Some(filter),
             mana_source_filter: None,
-            caster: parse_subject_clause_player_filter(&clause_words),
+            caster: spell_activity_caster(&clause_words, subject_player.as_ref()),
             timing: None,
             during_turn: None,
             min_spells_this_turn: None,
@@ -862,7 +908,19 @@ pub fn parse_spell_activity_trigger(
         return Ok(None);
     }
 
-    let mut actor = parse_subject_clause_player_filter(&clause_words);
+    // The caster subject ("you", "an opponent", "a player") is read as the
+    // trigger's caster only when it names exactly that player.
+    let first_verb = cast_idx.into_iter().chain(copy_idx).min().unwrap_or(0);
+    let subject_player =
+        parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[..first_verb]));
+    let mut actor = spell_activity_caster(&clause_words, subject_player.as_ref());
+    let subject_names_actor = subject_player.is_some_and(|subject| subject == actor);
+    let claim_caster_and_verb = |verb: usize| {
+        if subject_names_actor {
+            crate::word_claims::claim_tokens(&tokens[..first_verb]);
+        }
+        crate::word_claims::claim_tokens(&tokens[verb..=verb]);
+    };
     let mut during_turn = activity_facts
         .during_turn
         .map(trigger_controller_player_filter);
@@ -947,6 +1005,10 @@ pub fn parse_spell_activity_trigger(
             let filter_facts =
                 trigger_subject_grammar::parse_spell_filter_surface_facts(&filter_words);
             if filter_tokens.is_empty() || filter_facts.is_unqualified_spell {
+                // "a spell": any spell, read as no further restriction.
+                if filter_facts.is_unqualified_spell {
+                    crate::word_claims::claim_tokens(filter_tokens);
+                }
                 Ok(None)
             } else {
                 let parse_spell_origin_zone_filter = || -> Option<ObjectFilter> {
@@ -1126,6 +1188,8 @@ pub fn parse_spell_activity_trigger(
                 filter,
                 copier: actor,
             };
+            claim_caster_and_verb(first);
+            crate::word_claims::claim_tokens(&tokens[first + 1..=second]);
             return Ok(Some(if first_is_cast {
                 TriggerSpec::Either(Box::new(cast_trigger), Box::new(copied_trigger))
             } else {
@@ -1171,6 +1235,7 @@ pub fn parse_spell_activity_trigger(
                     _ => continue,
                 };
                 let filter = parse_filter(&suffix_tokens[..index])?;
+                claim_caster_and_verb(cast);
                 return Ok(Some(TriggerSpec::SpellCastSameNameCardInZone {
                     filter,
                     caster: actor,
@@ -1220,6 +1285,18 @@ pub fn parse_spell_activity_trigger(
                 filter.spell_cast_ordinal_each_turn = Some(ordinal);
             }
             filter.cast_by = Some(PlayerFilter::IteratedPlayer);
+        }
+        claim_caster_and_verb(cast);
+        // The event-time qualifiers are read into the cast event above (the
+        // word matcher claims the phrase it finds).
+        if during_turn.is_some()
+            || activity_facts.during_their_turn
+            || timing.is_some()
+            || from_not_hand
+        {
+            for phrase in SPELL_CAST_EVENT_QUALIFIER_PHRASES {
+                let _ = crate::word_primitives::parse_sequence_start(&clause_words, phrase);
+            }
         }
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
@@ -2447,7 +2524,7 @@ fn cast_count_qualifier_tokens<'a>(
     if let [count, or, more, ..] = &tokens[start..]
         && or.is_word("or")
         && more.is_word("more")
-        && count.as_word().is_some_and(|word| crate::util::parse_number_word_u32(word).is_some())
+        && count.as_word().is_some_and(crate::util::is_number_word)
     {
         owned.extend([count, or, more]);
     }

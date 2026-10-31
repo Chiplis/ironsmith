@@ -101,6 +101,15 @@ pub fn parse_sacrifice_or_redirect_replacement(
     })
 }
 
+/// "If this land would enter" / "put this land onto the battlefield": a
+/// source-reference subject is read as the entering source.
+fn claim_source_subject(subject: &[OwnedLexToken]) {
+    let words = crate::lexer::token_word_refs(subject);
+    if crate::util::this_source_surface_for_words(&words).is_some() {
+        crate::word_claims::claim_tokens(subject);
+    }
+}
+
 fn enter_battlefield_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["would", "enter"]).parse_next(input)?;
     opt(alt((
@@ -115,6 +124,8 @@ fn sacrifice_replacement_intro<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::kw("if").parse_next(input)?;
     repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(enter_battlefield_marker))
         .void()
+        .take()
+        .map(claim_source_subject)
         .parse_next(input)?;
     enter_battlefield_marker(input)?;
     opt(primitives::comma()).parse_next(input)?;
@@ -138,6 +149,8 @@ fn discard_success_sentence<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         peek(primitives::phrase(&["onto", "the", "battlefield"])),
     )
     .void()
+    .take()
+    .map(claim_source_subject)
     .parse_next(input)?;
     primitives::phrase(&["onto", "the", "battlefield"]).parse_next(input)?;
     primitives::end_of_sentence().parse_next(input)?;
@@ -168,6 +181,8 @@ fn discard_or_redirect_replacement<'a>(
     primitives::kw("if").parse_next(input)?;
     repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(enter_battlefield_marker))
         .void()
+        .take()
+        .map(claim_source_subject)
         .parse_next(input)?;
     enter_battlefield_marker(input)?;
     opt(primitives::comma()).parse_next(input)?;

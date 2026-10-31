@@ -483,6 +483,9 @@ pub fn parse_trigger_duplication_core_shape_tokens(
         };
         let source_range =
             token_range_for_words(body_tokens, &body_view, ability_prefix.len()..triggers_word)?;
+        // The "triggers [while]" verb between the source and its condition.
+        let verb_end = if condition_tokens.is_some() { triggers_word + 2 } else { triggers_word + 1 };
+        crate::word_claims::claim_words(&body_words[triggers_word..verb_end]);
         return Some(TriggerDuplicationCoreShape::AbilityTriggers {
             source_tokens: &body_tokens[source_range],
             condition_tokens,
@@ -509,6 +512,8 @@ pub fn parse_trigger_duplication_core_shape_tokens(
             &source_view,
             ability_prefix.len()..source_words.len() - 2,
         )?;
+        // "<event> causes <ability> to trigger": the causal verb of this shape.
+        crate::word_claims::claim_words(&body_words[causes_word..=causes_word]);
         return Some(TriggerDuplicationCoreShape::EventCausesAbility {
             event_tokens: &body_tokens[event_range],
             source_tokens: &source_body_tokens[source_range],

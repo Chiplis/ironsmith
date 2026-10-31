@@ -33,6 +33,15 @@ pub fn parse_from_among_them_shape(tokens: &[OwnedLexToken]) -> Option<FromAmong
         } else if primitives::contains_word(after_reference, "hand")
             || primitives::contains_word(after_reference, "hands")
         {
+            // "into your hand" / "into their hands": the chooser's own hand.
+            if let Some(hand) = after_reference
+                .iter()
+                .position(|token| matches!(token.parser_text(), "hand" | "hands"))
+                && hand > 0
+                && matches!(after_reference[hand - 1].parser_text(), "your" | "their")
+            {
+                crate::word_claims::claim_tokens(&after_reference[hand - 1..hand]);
+            }
             FromAmongDestinationShape::Hand
         } else {
             FromAmongDestinationShape::Other

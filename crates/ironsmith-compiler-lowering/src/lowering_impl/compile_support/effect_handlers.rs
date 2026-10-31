@@ -1580,6 +1580,40 @@ pub(super) fn try_compile_timing_and_control_effect(
             until_end_of_combat,
             attach_to_previous_ability,
         }) => {
+            // "Sacrifice it when you lose control of this creature" (Seraph,
+            // Krovikan Vampire): a one-shot trigger on the source's controller
+            // losing control of it, watching the ability's source. Its body
+            // keeps the registering ability's references. Beside a return
+            // under your control, `fuse_source_control_loss_sacrifice_followup`
+            // re-targets the sacrifice at the returned object.
+            if let TriggerSpec::ControlChanged(change) = trigger_without_intro(trigger)
+                && change.filter.source
+                && matches!(
+                    change.change,
+                    ironsmith_core::trigger_model::ControlChangeDirection::Lost {
+                        player: PlayerFilter::You
+                    }
+                )
+                && *one_shot
+                && !*until_end_of_combat
+                && !*attach_to_previous_ability
+            {
+                let (delayed_effects, _) =
+                    compile_delayed_effects_preserving_outer_context(effects, ctx)?;
+                let effect = Effect::new(
+                    crate::effects::ScheduleDelayedTriggerEffect::new(
+                        ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
+                            source_description: "this creature".to_string(),
+                        },
+                        delayed_effects,
+                        true,
+                        Vec::new(),
+                        PlayerFilter::You,
+                    )
+                    .watch_ability_source(),
+                );
+                return Ok(Some((vec![effect], Vec::new())));
+            }
             // "At this turn's next end of combat, ...": the step trigger has no
             // event object, so its body keeps the scheduling instruction's
             // references (as an unqualified end-of-combat delay does), and

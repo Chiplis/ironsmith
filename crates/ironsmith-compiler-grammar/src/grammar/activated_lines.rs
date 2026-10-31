@@ -168,24 +168,30 @@ fn word_phrase<'a>(
     }
 }
 
+// Presence checks only steer which reader runs; they read nothing, so they
+// claim nothing for the whole-line check.
 fn word_phrase_present(words: &[&str], expected: &'static [&'static str]) -> bool {
-    let mut input: WordSliceInput<'_> = words;
-    repeat_till(0.., any.void(), peek(word_phrase(expected)))
-        .map(|((), ())| ())
-        .parse_next(&mut input)
-        .is_ok()
+    crate::word_claims::probe_only(|| {
+        let mut input: WordSliceInput<'_> = words;
+        repeat_till(0.., any.void(), peek(word_phrase(expected)))
+            .map(|((), ())| ())
+            .parse_next(&mut input)
+            .is_ok()
+    })
 }
 
 fn word_present(words: &[&str], expected: &'static str) -> bool {
-    let mut input: WordSliceInput<'_> = words;
-    repeat_till(
-        0..,
-        any.void(),
-        peek(primitives::word_slice_exact(expected)),
-    )
-    .map(|((), _)| ())
-    .parse_next(&mut input)
-    .is_ok()
+    crate::word_claims::probe_only(|| {
+        let mut input: WordSliceInput<'_> = words;
+        repeat_till(
+            0..,
+            any.void(),
+            peek(primitives::word_slice_exact(expected)),
+        )
+        .map(|((), _)| ())
+        .parse_next(&mut input)
+        .is_ok()
+    })
 }
 
 fn parse_add_word(input: &mut WordSliceInput<'_>) -> WResult<()> {
@@ -355,7 +361,11 @@ pub fn parse_enters_prepared_line_shape(tokens: &[OwnedLexToken]) -> bool {
     let Some(subject) = words.strip_suffix(&["enters", "prepared"]) else {
         return false;
     };
-    crate::util::is_source_reference_words(subject)
+    if !crate::util::is_source_reference_words(subject) {
+        return false;
+    }
+    crate::word_claims::claim_words(&words[subject.len()..]);
+    true
 }
 
 pub fn parse_enters_tapped_line_shape(tokens: &[OwnedLexToken]) -> EntersTappedLineShape {

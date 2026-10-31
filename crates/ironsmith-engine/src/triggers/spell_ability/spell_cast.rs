@@ -415,6 +415,7 @@ impl TriggerMatcher for SpellCastTrigger {
             PlayerFilter::You => "you cast",
             PlayerFilter::Any => "a player casts",
             PlayerFilter::Opponent => "an opponent casts",
+            PlayerFilter::NotYou => "another player casts",
             // "a player casts their second spell during their turn" (The
             // Council of Four): an ordinal of the active player's own spells.
             PlayerFilter::Active if self.exact_spells_this_turn.is_some() => "a player casts",
@@ -601,7 +602,13 @@ impl TriggerMatcher for SpellCastTrigger {
             suffix.push_str(" during combat");
         }
         if self.from_not_hand {
-            suffix.push_str(" from anywhere other than your hand");
+            // The hand is the caster's: "you cast ... other than your hand",
+            // "another player casts ... other than their hand".
+            suffix.push_str(if matches!(self.caster, PlayerFilter::You) {
+                " from anywhere other than your hand"
+            } else {
+                " from anywhere other than their hand"
+            });
         }
         if let Some((zone, owner)) = &self.same_name_card_in_zone {
             let zone_text = match (zone, owner) {

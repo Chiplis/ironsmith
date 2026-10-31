@@ -34,9 +34,12 @@ use creation_grammar::{CreationPhrase as CreatePhrase, CreationWordClass as Crea
 
 fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>, CardTextError> {
     let span = span_from_tokens(tokens);
-    let resolve = |registry: &'static str, values: Vec<(&'static str, Option<Value>)>| {
+    // Each value is read in its own claim scope (`scoped`); only the
+    // candidate the resolver keeps passes its claims on.
+    type Read = (Option<Value>, crate::word_claims::ClaimSet);
+    let resolve = |registry: &'static str, values: Vec<(&'static str, Read)>| {
         let mut candidates = Vec::new();
-        for (id, value) in values {
+        for (id, (value, claims)) in values {
             let Some(value) = value else { continue };
             if candidates
                 .iter()
@@ -44,11 +47,14 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>,
             {
                 continue;
             }
-            candidates.push(RegistryCandidate::new(
-                RegistryRuleMetadata::distinct(RuleId::new(id), HeadDiscriminator::grammar(id)),
-                value,
-                span,
-            ));
+            candidates.push(
+                RegistryCandidate::new(
+                    RegistryRuleMetadata::distinct(RuleId::new(id), HeadDiscriminator::grammar(id)),
+                    value,
+                    span,
+                )
+                .with_claims(claims),
+            );
         }
         match resolve_registry_candidates(RuleId::new(registry), candidates, Vec::new()) {
             ParseOutcome::Match(matched) => Ok(Some(matched.value.value)),
@@ -57,30 +63,39 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>,
         }
     };
 
-    let static_ability_count =
+    let static_ability_count = crate::word_claims::scoped(|| {
         crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
-            .filter(|value| matches!(value.unhinted(), Value::StaticAbilitiesAmong { .. }));
+            .filter(|value| matches!(value.unhinted(), Value::StaticAbilitiesAmong { .. }))
+    });
     let specific = resolve(
         "create-value-binding-specific-registry",
         vec![
             ("create-count-static-abilities", static_ability_count),
             (
                 "create-count-relative-aggregate",
-                crate::keyword_static::parse_where_x_is_aggregate_filter_value(tokens),
+                crate::word_claims::scoped(|| {
+                    crate::keyword_static::parse_where_x_is_aggregate_filter_value(tokens)
+                }),
             ),
             (
                 "create-count-turn-history",
-                crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
-                    tokens,
-                ),
+                crate::word_claims::scoped(|| {
+                    crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+                        tokens,
+                    )
+                }),
             ),
             (
                 "create-count-relative-players",
-                crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(tokens),
+                crate::word_claims::scoped(|| {
+                    crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(
+                        tokens,
+                    )
+                }),
             ),
             (
                 "create-count-triggering-damage-amount",
-                parse_where_x_is_triggering_damage_amount(tokens),
+                crate::word_claims::scoped(|| parse_where_x_is_triggering_damage_amount(tokens)),
             ),
         ],
     )?;
@@ -92,11 +107,13 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>,
     // prove (it resolves hand counts, trigger references, and arithmetic to
     // their canonical typed values). The broad object-filter count covers
     // only the remainder, so the two candidates are structurally disjoint.
-    let value_expression = parse_value_binding_clause(tokens);
-    let object_filter_count = if value_expression.is_none() {
-        crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
+    let value_expression = crate::word_claims::scoped(|| parse_value_binding_clause(tokens));
+    let object_filter_count = if value_expression.0.is_none() {
+        crate::word_claims::scoped(|| {
+            crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
+        })
     } else {
-        None
+        (None, crate::word_claims::ClaimSet::default())
     };
     resolve(
         "create-value-binding-generic-registry",
@@ -1532,6 +1549,7 @@ pub fn lower_complete_simple_create_shape(
     } else if let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens)
         && crate::util::trim_edge_punctuation(attached.prefix_tokens).is_empty()
     {
+        crate::word_claims::claim_tokens(attached.marker_tokens);
         Some(parse_target_phrase(attached.target_tokens)?)
     } else {
         return Err(CardTextError::ParseError(
@@ -1576,6 +1594,28 @@ pub fn lower_complete_simple_create_shape(
 
 #[path = "creation_handlers/create_clause_readings.rs"]
 mod create_clause_readings;
+
+/// Claim the copy head of a token copy ("[a token] that's a copy of"): the
+/// words that make the created token a copy of the source that follows.
+fn claim_token_copy_head(tail_tokens: &[OwnedLexToken]) {
+    let Some(of) = tail_tokens.iter().position(|token| token.as_word() == Some("of")) else {
+        return;
+    };
+    let head_word = |token: &OwnedLexToken| {
+        matches!(
+            token.as_word(),
+            Some("that's" | "thats" | "that" | "is" | "a" | "an" | "copy" | "copies")
+        )
+    };
+    let start = tail_tokens[..of]
+        .iter()
+        .rposition(|token| !head_word(token))
+        .map_or(0, |index| index + 1);
+    let head = &tail_tokens[start..=of];
+    if head.iter().any(|token| matches!(token.as_word(), Some("copy" | "copies"))) {
+        crate::word_claims::claim_tokens(head);
+    }
+}
 
 pub fn parse_create(
     tokens: &[OwnedLexToken],
@@ -1729,6 +1769,7 @@ pub fn parse_create(
     }
     let mut attached_to_target: Option<TargetAst> = None;
     if let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens) {
+        crate::word_claims::claim_tokens(attached.marker_tokens);
         attached_to_target = Some(match parse_target_phrase(attached.target_tokens) {
             Ok(target) => {
                 // Contextual source names have already become `this ...`.
@@ -1935,10 +1976,12 @@ pub fn parse_create(
     name_words.retain(|word| {
         if *word == "tapped" {
             tapped = true;
+            crate::word_claims::claim_word(word);
             return false;
         }
         if *word == "attacking" {
             attacking = true;
+            crate::word_claims::claim_word(word);
             return false;
         }
         true
@@ -2070,6 +2113,7 @@ pub fn parse_create(
                         enters_attacking |= token_prefix.has(CreateWord::Attacking);
                     }
                     let source = parse_target_phrase(&source_clause.source_tokens)?;
+                    claim_token_copy_head(&tail_tokens);
                     let references_iterated_object = target_references_it(&source);
                     let create = EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,
@@ -2537,7 +2581,8 @@ pub fn parse_create(
     let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
     let mut granted_abilities = inline_granted_abilities;
-    if modifier_surface.has(CreateWord::Decayed) {
+    if let Some(decayed) = modifier_surface.location(CreateWord::Decayed) {
+        crate::word_claims::claim_words(&modifier_tail_words[decayed..=decayed]);
         granted_abilities.push(KeywordAction::Decayed.into());
     }
     if modifier_surface.has_phrase(CreatePhrase::HasteGrant) {
@@ -2813,6 +2858,8 @@ pub fn parse_investigate(
     }
 
     let token_surface = creation_grammar::CreationTokens::new(tokens);
+    let repetition_adverb = token_surface.token_is(0, CreateWord::Once)
+        || token_surface.token_is(0, CreateWord::Twice);
     let (mut count, used) = if token_surface.token_is(0, CreateWord::Once) {
         (Value::Fixed(1), 1)
     } else if token_surface.token_is(0, CreateWord::Twice) {
@@ -2863,6 +2910,8 @@ pub fn parse_investigate(
         && let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&trailing)
         && let Some(where_count) = parse_create_value_binding(where_tokens)?
     {
+        // "investigate X times, where ...": "times" is the repetition unit.
+        crate::word_claims::claim_tokens(&trailing[..1]);
         count = where_count;
         return Ok(EffectAst::subject_verb_investigate(player, count));
     }
@@ -2879,6 +2928,12 @@ pub fn parse_investigate(
             token_word_refs(tokens).join(" ")
         )));
     }
+    // The repetition count ("twice", "N times", "an additional time") is
+    // what this reading builds.
+    if repetition_adverb {
+        crate::word_claims::claim_tokens(&tokens[..used]);
+    }
+    crate::word_claims::claim_tokens(&trailing);
 
     Ok(EffectAst::subject_verb_investigate(player, count))
 }
@@ -2898,12 +2953,16 @@ pub fn parse_incubate(
 
     let mut trailing = trim_commas(&tokens[used..]).to_vec();
     let mut trailing_words = token_word_refs(&trailing);
+    // The repetition words ("once", "twice", "N times") are the count this
+    // reading builds.
     if creation_grammar::CreationWords::new(&trailing_words).first_is(CreateWord::Once) {
         count = Value::Fixed(1);
+        crate::word_claims::claim_tokens(&trailing[..1]);
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
     } else if creation_grammar::CreationWords::new(&trailing_words).first_is(CreateWord::Twice) {
         count = Value::Fixed(2);
+        crate::word_claims::claim_tokens(&trailing[..1]);
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
     } else if let Some((parsed_count, count_used)) = parse_value(&trailing) {
@@ -2911,10 +2970,12 @@ pub fn parse_incubate(
         let count_tail_words = token_word_refs(&count_tail);
         if creation_grammar::CreationWords::new(&count_tail_words).first_is(CreateWord::Time) {
             count = parsed_count;
+            crate::word_claims::claim_tokens(&count_tail[..1]);
             trailing = trim_commas(&count_tail[1..]).to_vec();
             trailing_words = token_word_refs(&trailing);
         }
     } else if creation_grammar::CreationWords::new(&trailing_words).first_is(CreateWord::Time) {
+        crate::word_claims::claim_tokens(&trailing[..1]);
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
     }

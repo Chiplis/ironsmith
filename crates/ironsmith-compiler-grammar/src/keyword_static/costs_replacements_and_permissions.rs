@@ -844,6 +844,9 @@ pub fn parse_spells_cost_modifier_line(
         }
         None => return Ok(None),
     };
+    // "less/more to cast": the modified cost is the spell's cast cost (the
+    // word matcher claims the words it reads).
+    let _ = crate::word_primitives::parse_sequence_start(direction_words, &["to", "cast"]);
     let is_life_cost_modifier =
         crate::word_primitives::sequence_occurs(&remaining_words, &["life"]);
     if is_life_cost_modifier && direction == CostModifierDirection::More {
@@ -1062,6 +1065,10 @@ pub fn parse_spells_cost_modifier_line(
                     "unsupported this-spell cost condition (clause: '{}')",
                     clause_words.join(" ")
                 )));
+            }
+            // "to cast" names the cost this reduction modifies.
+            if trailing == ["to", "cast"] {
+                crate::word_claims::claim_words(trailing);
             }
             crate::static_abilities::ThisSpellCostCondition::Always
         }
@@ -1683,6 +1690,10 @@ pub fn parse_equip_cost_modifier_line(
     else {
         return Ok(None);
     };
+    // "<less|more> to activate" names the equip activation being priced.
+    if matches!(remaining_words.as_slice(), [_, "to", "activate"]) {
+        crate::word_claims::claim_words(&remaining_words);
+    }
 
     use keyword_static_lines::EquipCostTarget;
     // The ability being activated must be an equip ability, and for "that
@@ -3216,6 +3227,7 @@ pub fn parse_subject_is_chosen_color_line(
         return Ok(None);
     }
     let Some(filter) = complete_characteristic_subject(fact.subject_tokens)? else { return Ok(None); };
+    crate::word_claims::claim_tokens(fact.descriptor_tokens);
     Ok(Some(StaticAbility::set_chosen_color(filter, render_token_slice(tokens))))
 }
 
@@ -3729,6 +3741,14 @@ pub fn parse_conditional_copular_creature_line(
     if let Some((power, toughness)) = fixed {
         result.push(StaticAbility::set_base_power_toughness(filter, power, toughness).with_condition(condition).into());
     }
+    // "it's a land ...": the article the descriptor match dropped.
+    if let Some(article) = parser_token_word_refs(descriptor)
+        .first()
+        .copied()
+        .filter(|word| matches!(*word, "a" | "an"))
+    {
+        crate::word_claims::claim_word(article);
+    }
     Ok(Some(result))
 }
 
@@ -4220,7 +4240,10 @@ pub fn parse_damage_source_filter_words(words: &[&str]) -> Option<ObjectFilter> 
 
 pub fn parse_damage_source_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let words = LexedClause::new(tokens).word_refs();
-    parse_damage_source_filter_words(&words)
+    let filter = parse_damage_source_filter_words(&words)?;
+    // Every word of the source phrase is read (anything else declines).
+    crate::word_claims::claim_tokens(tokens);
+    Some(filter)
 }
 
 pub fn parse_prevent_damage_to_you_from_source_filter_line(
@@ -5293,6 +5316,7 @@ pub fn parse_untap_step_limit_line(
     else {
         return Ok(None);
     };
+    let untap_limit_words = rest;
     let Some(rest) = rest.strip_prefix(&["untap", "more", "than"][..]) else {
         return Ok(None);
     };
@@ -5328,6 +5352,8 @@ pub fn parse_untap_step_limit_line(
     };
     let filter_tokens = trim_commas(&tokens[filter_start..filter_end]);
     let filter = parse_object_filter(&filter_tokens, false)?;
+    // "untap more than <N>" is the maximum this line builds.
+    crate::word_claims::claim_words(&untap_limit_words[..3]);
     let subject_text = match player {
         PlayerFilter::You => "You",
         PlayerFilter::Opponent => "Your opponents",
@@ -7219,6 +7245,7 @@ pub fn parse_pt_modifier(raw: &str) -> Result<(i32, i32), CardTextError> {
     let toughness = toughness_str
         .parse::<i32>()
         .map_err(|_| CardTextError::ParseError("invalid toughness modifier".to_string()))?;
+    crate::word_claims::claim_word(raw);
     Ok((power, toughness))
 }
 
@@ -7250,6 +7277,7 @@ pub fn parse_pt_modifier_values(raw: &str) -> Result<(Value, Value), CardTextErr
     let (power_raw, toughness_raw) = split_pt_modifier_components(raw)?;
     let power = parse_signed_pt_component(power_raw)?;
     let toughness = parse_signed_pt_component(toughness_raw)?;
+    crate::word_claims::claim_word(raw);
     Ok((power, toughness))
 }
 
@@ -8739,7 +8767,37 @@ pub fn parse_copy_activated_and_triggered_abilities_line(
     if crate::util::source_reference_surface_for_words(&words[..has_idx]).is_none() {
         return Ok(None);
     }
-    let filter_words = &words[has_idx + 1 + MARKER.len()..];
+    // "Idris has all activated and triggered abilities of the exiled card and
+    // gets +X/+X, where X is the exiled card's mana value": a second static
+    // predicate on the same subject, read as its own line ("<subject> gets
+    // ...") rather than swallowed into the donor filter.
+    let filter_start = has_idx + 1 + MARKER.len();
+    let and_gets = (filter_start + 1..words.len()).find(|&index| {
+        words[index - 1] == "and" && matches!(words[index], "gets" | "get")
+    });
+    let mut extra_abilities = Vec::new();
+    let words_end = if let Some(gets_idx) = and_gets {
+        let view = crate::lexer::TokenWordView::new(&tokens);
+        let (Some(subject_end), Some(and_token), Some(gets_token)) = (
+            view.map_word_to_token_start(has_idx),
+            view.map_word_to_token_start(gets_idx - 1),
+            view.map_word_to_token_start(gets_idx),
+        ) else {
+            return Ok(None);
+        };
+        let mut predicate_tokens = tokens[..subject_end].to_vec();
+        predicate_tokens.extend_from_slice(&tokens[gets_token..]);
+        let Some(abilities) = parse_static_ability_ast_line_lexed(&predicate_tokens)? else {
+            return Ok(None);
+        };
+        crate::word_claims::claim_tokens(&tokens[and_token..gets_token]);
+        extra_abilities = abilities;
+        gets_idx - 1
+    } else {
+        words.len()
+    };
+    let words = &words[..words_end];
+    let filter_words = &words[filter_start..];
     let filter = match filter_words {
         ["the", "last", "chosen", _] | ["the", "chosen", _] => {
             let mut filter = ObjectFilter::default();
@@ -8767,10 +8825,12 @@ pub fn parse_copy_activated_and_triggered_abilities_line(
         .with_display(display.clone());
     let triggered =
         crate::static_abilities::CopyTriggeredAbilities::new(filter).with_display(display);
-    Ok(Some(vec![
+    let mut abilities = vec![
         StaticAbilityAst::Static(StaticAbility::copy_activated_abilities(activated)),
         StaticAbilityAst::Static(StaticAbility::copy_triggered_abilities(triggered)),
-    ]))
+    ];
+    abilities.extend(extra_abilities);
+    Ok(Some(abilities))
 }
 
 /// "<source> has all activated abilities of <objects>. You may spend mana as
@@ -10463,8 +10523,12 @@ pub fn parse_loyalty_abilities_any_time_line(
     let subject_end = START.len() + subject_len;
     let subject = &words[START.len()..subject_end];
     let mut filter = match subject {
-        ["its" | "her" | "his" | "their", "loyalty", "abilities"] => ObjectFilter::source(),
+        ["its" | "her" | "his" | "their", "loyalty", "abilities"] => {
+            crate::word_claims::claim_words(subject);
+            ObjectFilter::source()
+        }
         ["loyalty", "abilities", "of", rest @ ..] if !rest.is_empty() => {
+            crate::word_claims::claim_words(&subject[..3]);
             if let Some(surface) = crate::util::source_reference_surface_for_words(rest) {
                 ObjectFilter::source_with_surface(surface)
             } else {

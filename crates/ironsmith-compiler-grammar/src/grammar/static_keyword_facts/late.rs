@@ -889,6 +889,13 @@ pub fn parse_pay_life_or_enter_tapped_tokens(
     {
         return Err(PayLifeOrEnterTappedError::UnsupportedTail);
     }
+    // "As this <noun> enters": the source noun after "as this".
+    if let Some(((), after_as)) = primitives::parse_prefix(tokens, semantic_phrase(&["as", "this"]))
+        && let Some(noun) = after_as.first()
+        && noun.as_word().is_some_and(|word| !matches!(word, "enters" | "enter"))
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(noun));
+    }
 
     Ok(Some(PayLifeOrEnterTappedFact { amount }))
 }
@@ -937,6 +944,9 @@ pub fn parse_reveal_card_or_enter_tapped_tokens(
         return None;
     }
     primitives::parse_prefix(after_tail, semantic_finish)?;
+    // The source noun ("this land") and the tail subject naming it again.
+    crate::word_claims::claim_tokens(&after_as[..1]);
+    crate::word_claims::claim_tokens(trim_lexed_commas(&after_if[..tail_idx]));
     Some(RevealCardOrEnterTappedFact {
         subject,
         filter_tokens,
@@ -985,8 +995,12 @@ pub fn parse_copy_activated_abilities_tokens(
     let filter_end_token = excluded_loyalty_start.unwrap_or(filter_end_token);
     let once_each_turn_word_start = once_each_turn_token_start
         .and_then(|token_start| semantic_word_count(&tokens[..token_start]));
+    // "that don't have the same name as this creature": the negated name
+    // relation is this fact, so it reads the negation too.
     let exclude_source_name = tokens_have_parser(tokens, || {
         alt((
+            semantic_phrase(&["dont", "have", "the", "same", "name", "as", "this", "creature"]),
+            semantic_phrase(&["doesnt", "have", "the", "same", "name", "as", "this", "creature"]),
             semantic_phrase(&["same", "name", "as", "this", "creature"]),
             semantic_phrase(&["same", "name", "as", "thiss", "creature"]),
         ))
@@ -1090,8 +1104,16 @@ fn semantic_kw<'a>(
 
 fn strict_kw<'a>(expected: &'static str) -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
     any.verify(move |token: &&OwnedLexToken| {
-        token.is_word(expected)
-            || matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+        if token.is_word(expected) {
+            return true;
+        }
+        // A single-piece word ("don't" read as `dont`) is the same word;
+        // claim it as `is_word` does.
+        let matched = matches!(token.parser_word_pieces(), [piece] if piece.text == expected);
+        if matched {
+            crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+        }
+        matched
     })
     .void()
 }

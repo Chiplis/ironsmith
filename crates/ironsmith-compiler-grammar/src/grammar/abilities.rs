@@ -15,7 +15,6 @@ use super::super::lexer::{
 };
 use super::super::util::trim_edge_punctuation_tokens;
 use super::primitives;
-use crate::util::parse_counter_type_word;
 
 mod activation_conditions;
 mod flashback;
@@ -431,7 +430,7 @@ fn parse_counter_type_token<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<CounterType, ErrMode<ContextError>> {
     let token: &'a LexToken = any.parse_next(input)?;
-    parse_counter_type_word(token.parser_text())
+    crate::util::parse_counter_type_lex_token(token)
         .ok_or_else(|| primitives::backtrack_err("counter type", "known counter type word"))
 }
 

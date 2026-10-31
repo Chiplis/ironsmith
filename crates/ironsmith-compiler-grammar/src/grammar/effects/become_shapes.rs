@@ -129,6 +129,7 @@ fn parsed_controller_owner_shape(
     player: PlayerAst,
     target_tokens: &[OwnedLexToken],
 ) -> Option<ControllerOwnerSubjectShape> {
+    let authored_tokens = target_tokens;
     let target_tokens = normalize_trailing_possessive(target_tokens);
     let target_words = TokenWordView::new(&target_tokens).to_word_refs();
     let persistent_source_surface = context
@@ -165,6 +166,11 @@ fn parsed_controller_owner_shape(
         }
         (_, target) => target,
     };
+    // The normalized copy rewrote the possessive ("creature's" ->
+    // "creature"), so its target reading cannot claim the authored word.
+    if let Some(possessive) = authored_tokens.last() {
+        crate::word_claims::claim_tokens(std::slice::from_ref(possessive));
+    }
     Some(ControllerOwnerSubjectShape {
         subject: SubjectAst::Player(player),
         target,

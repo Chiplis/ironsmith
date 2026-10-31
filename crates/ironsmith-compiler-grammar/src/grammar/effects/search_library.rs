@@ -788,7 +788,7 @@ pub fn strip_search_library_instead_of_count_tokens(
     let [.., (instead_index, "instead"), (_, "of"), (_, count)] = positions.as_slice() else {
         return trimmed;
     };
-    if crate::util::parse_number_word_u32(count).is_none() {
+    if !crate::util::is_number_word(count) {
         return trimmed;
     }
     trim_commas(&trimmed[..*instead_index])
@@ -1176,7 +1176,50 @@ pub fn derive_search_library_effect_routing_lexed(
     } else {
         Zone::Exile
     };
+    // "into your hand" / "into their graveyard" / "on top [of your
+    // library]" / "onto the battlefield": the zone the destination names.
+    if let Some(words) = put_clause_words.as_ref() {
+        let zone_word = match destination {
+            Zone::Hand => "hand",
+            Zone::Graveyard => "graveyard",
+            Zone::Library => "top",
+            Zone::Battlefield => "battlefield",
+            _ => "",
+        };
+        if let Some(zone) = words.iter().position(|word| *word == zone_word) {
+            let start = match words[..zone] {
+                [.., "into" | "on", "your" | "their"] => zone - 2,
+                [.., "onto", "the"] => zone - 2,
+                [.., "into" | "on" | "onto"] => zone - 1,
+                _ => zone,
+            };
+            let end = match words.get(zone + 1..zone + 4) {
+                Some(["of", "your" | "their", "library"]) if zone_word == "top" => zone + 3,
+                _ => zone,
+            };
+            crate::word_claims::claim_words(&words[start..=end]);
+            // "put that card onto the battlefield": the put clause moves the
+            // card the search found.
+            if let Some(reference) = words.get(1..start)
+                && matches!(reference, ["that", "card"] | ["those", "cards"] | ["it"] | ["them"])
+            {
+                crate::word_claims::claim_words(reference);
+            }
+        }
+    }
     let reveal = clause_markers.reveal_idx.is_some();
+    // "reveal that card" / "reveal it": the revealed object is the found card.
+    if let Some(reveal_idx) = clause_markers.reveal_idx
+        && let Some(after) = search_tokens.get(reveal_idx + 1..)
+    {
+        let reveal_words = parser_token_word_refs(after);
+        let len = match reveal_words.as_slice() {
+            ["that" | "the", "card" | "cards", ..] | ["those", "cards", ..] => 2,
+            ["it" | "them", ..] => 1,
+            _ => 0,
+        };
+        crate::word_claims::claim_words(&reveal_words[..len]);
+    }
     let face_down_exile = clause_markers.exile_idx.is_some_and(|idx| {
         search_word_stream_matches_at_some_offset(
             &parser_token_word_refs(&search_tokens[idx..]),
@@ -1189,6 +1232,13 @@ pub fn derive_search_library_effect_routing_lexed(
         && (search_library_words_have_word(&words_all, "other")
             || search_library_words_have_word(&words_all, "rest"));
     let has_tapped_modifier = search_library_words_have_word(&words_all, "tapped");
+    // "put it onto the battlefield tapped": the entry status of the put card.
+    if has_tapped_modifier
+        && destination == Zone::Battlefield
+        && let Some(words) = put_clause_words.as_ref()
+    {
+        let _ = crate::word_primitives::parse_sequence_start(words, &["tapped"]);
+    }
     let battlefield_entry_counters = if destination == Zone::Battlefield {
         search_library_battlefield_entry_counters(&words_all)
     } else {
@@ -1425,6 +1475,29 @@ pub fn derive_search_library_subject_routing_lexed(
         search_zones_override = Some(zones);
     } else {
         return None;
+    }
+    // Every routing above read the head before "for": the possessor of the
+    // searched zones ("your", "their", "target player's", "its
+    // controller's", ...) and the zones themselves ("library", "graveyard,
+    // hand, and library"). `search_words` are normalized copies, so claim
+    // the registered views of those words.
+    let head_len = search_body_words
+        .iter()
+        .take_while(|word| {
+            matches!(
+                **word,
+                "your" | "their" | "his" | "her" | "target" | "that" | "its" | "player's"
+                    | "players" | "opponent's" | "opponents" | "owner's" | "owners"
+                    | "controller's" | "controllers" | "library" | "libraries" | "graveyard"
+                    | "graveyards" | "hand" | "hands" | "and" | "or" | "and/or"
+            )
+        })
+        .count();
+    if head_len > 0 {
+        let authored = parser_token_word_refs(search_tokens);
+        if let Some(head) = authored.get(1..1 + head_len) {
+            crate::word_claims::claim_words(head);
+        }
     }
 
     Some(SearchLibrarySubjectRouting {
@@ -1757,6 +1830,8 @@ pub fn parse_search_library_object_filter_lexed(
         base_filter.distinct_names |= distinct_names;
         Ok(base_filter)
     } else if search_library_words_are_default_card_selector(&filter_words) {
+        // "a card" / "any card": every card qualifies.
+        crate::word_claims::claim_words(&raw_filter_words);
         let mut filter = ObjectFilter::default();
         if let Some(color_count) = color_count {
             filter.color_count = Some(color_count);

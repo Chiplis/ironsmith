@@ -50,6 +50,7 @@ impl TriggerMatcher for SpellCopiedTrigger {
             PlayerFilter::You => "you copy",
             PlayerFilter::Any => "a player copies",
             PlayerFilter::Opponent => "an opponent copies",
+            PlayerFilter::NotYou => "another player copies",
             PlayerFilter::Active => "the active player copies",
             PlayerFilter::ChosenPlayer => "the chosen player copies",
             PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {

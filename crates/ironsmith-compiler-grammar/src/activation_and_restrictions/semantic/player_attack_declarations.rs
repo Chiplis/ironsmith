@@ -22,6 +22,18 @@ fn player(words: &[&str]) -> Option<PlayerFilter> {
 pub(super) fn parse_player_attack_declaration(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
+    // Every reading below accounts for the whole clause: attacker, verb and
+    // defender (or "is attacked").
+    let trigger = player_attack_declaration(tokens)?;
+    if trigger.is_some() {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    Ok(trigger)
+}
+
+fn player_attack_declaration(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
     if tokens.iter().any(|token| token.as_word().is_none()) { return Ok(None); }
     let view = ActivationRestrictionCompatWords::new(tokens);
     let words = view.to_word_refs();

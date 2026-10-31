@@ -1016,7 +1016,11 @@ pub fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFlags {
             && primitives::contains_word(tokens, "both"),
         choose_both_control_card_types,
         choose_both_exact_life_total,
-        same_mode_more_than_once: phrase_occurs(tokens, &["same", "mode", "more", "than", "once"]),
+        // The full permission reads its "you may choose the" lead-in too.
+        same_mode_more_than_once: phrase_occurs(
+            tokens,
+            &["you", "may", "choose", "the", "same", "mode", "more", "than", "once"],
+        ) || phrase_occurs(tokens, &["same", "mode", "more", "than", "once"]),
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
         distinct_player_targets_per_mode: phrase_occurs(

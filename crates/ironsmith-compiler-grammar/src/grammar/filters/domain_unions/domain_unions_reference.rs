@@ -545,7 +545,35 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
     } else if has_plain_and && !has_plain_or {
         union.set_conjunctive_set_surface(true);
     }
+    claim_relative_copula_before_list(tokens);
     Some(union)
+}
+
+/// "cards in your graveyard that are instant cards, sorcery cards, and/or
+/// have an Adventure" (Frantic Firebolt): the relative copula that opens the
+/// selector list belongs to the list this union reads, not to its first arm
+/// (as `domain_unions_core` reads it for the repeated-location shape).
+fn claim_relative_copula_before_list(tokens: &[OwnedLexToken]) {
+    let list_start = tokens
+        .iter()
+        .position(|token| {
+            token.is_comma()
+                || matches!(token.as_word(), Some("or" | "and" | "and/or"))
+        })
+        .unwrap_or(tokens.len());
+    let Some(that) = tokens[..list_start]
+        .iter()
+        .position(|token| token.as_word() == Some("that"))
+    else {
+        return;
+    };
+    if tokens
+        .get(that + 1)
+        .is_some_and(|token| matches!(token.as_word(), Some("are" | "is")))
+        && that + 2 < list_start
+    {
+        crate::word_claims::claim_tokens(&tokens[that..that + 2]);
+    }
 }
 
 /// Parses a conjunction of independently scoped instances of the same object

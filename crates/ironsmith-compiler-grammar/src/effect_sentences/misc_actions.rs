@@ -527,6 +527,8 @@ fn parse_named_player_counter_count(
         clause_words.first().copied(),
         Some("a" | "an" | "another" | "one")
     ) {
+        // The singular article is the count.
+        crate::word_claims::claim_words(&clause_words[..1]);
         return Ok(Value::Fixed(1));
     }
     Ok(parse_value(tokens)

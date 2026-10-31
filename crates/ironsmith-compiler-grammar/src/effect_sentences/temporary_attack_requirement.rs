@@ -146,6 +146,14 @@ fn parse_filtered_creatures_block_this_turn(
     }) {
         return Ok(None);
     }
+    // "Each creature blocks this turn if able": the leading quantifier is
+    // this reading's (every matching creature), not a filter word.
+    let (quantifier, subject) = match subject.split_first() {
+        Some((each, rest)) if each.as_word() == Some("each") && !rest.is_empty() => {
+            (Some(each), rest)
+        }
+        _ => (None, subject),
+    };
     let Some(filter) =
         crate::grammar::primitives::probe_shape(crate::object_filters::parse_object_filter(subject, false))
     else {
@@ -153,6 +161,9 @@ fn parse_filtered_creatures_block_this_turn(
     };
     if !filter.card_types.contains(&crate::types::CardType::Creature) {
         return Ok(None);
+    }
+    if let Some(each) = quantifier {
+        crate::word_claims::claim_tokens(std::slice::from_ref(each));
     }
     Ok(Some(EffectAst::subject_verb_cant(
         Restriction::must_block(filter),

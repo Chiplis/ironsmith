@@ -160,6 +160,38 @@ pub fn parse_typed_target_player_choice_tokens(
     }))
 }
 
+/// One token per filter word, each carrying the span of the first unused
+/// authored word piece of `clause_tokens` with the same text; a word with no
+/// authored source (a reader-inserted noun) stays synthetic.
+fn authored_choice_filter_tokens(
+    clause_tokens: &[OwnedLexToken],
+    filter_words: &[String],
+) -> Vec<OwnedLexToken> {
+    let pieces = clause_tokens
+        .iter()
+        .flat_map(|token| token.parser_word_pieces().iter())
+        .filter(|piece| piece.span.end > piece.span.start)
+        .collect::<Vec<_>>();
+    let mut used = vec![false; pieces.len()];
+    filter_words
+        .iter()
+        .map(|word| {
+            let found = pieces
+                .iter()
+                .enumerate()
+                .find(|(index, piece)| !used[*index] && piece.text == *word)
+                .map(|(index, piece)| (index, piece.span));
+            match found {
+                Some((index, span)) => {
+                    used[index] = true;
+                    OwnedLexToken::word(word.clone(), span)
+                }
+                None => OwnedLexToken::synthetic_word(word.clone()),
+            }
+        })
+        .collect()
+}
+
 pub fn parse_typed_choice_object_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TypedChoiceObjectClauseKind>, ChoiceObjectClauseSyntaxError> {
@@ -170,11 +202,12 @@ pub fn parse_typed_choice_object_clause_tokens(
         return Ok(Some(TypedChoiceObjectClauseKind::CardName));
     };
 
-    let filter_words = shape
-        .filter_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    // The shape trims and reorders owned copies of the body words. Rebuild
+    // them as tokens carrying the authored span of the body word each one
+    // came from, so the filter readers below claim (and the filter audit
+    // obliges) the authored words they read, and nothing else.
+    let authored_filter_tokens = authored_choice_filter_tokens(tokens, &shape.filter_words);
+    let filter_words = crate::lexer::TokenWordView::new(&authored_filter_tokens).to_word_refs();
     let controller_tail =
         super::super::filters::parse_simple_object_filter_words(&filter_words, false)
             .is_some_and(|filter| filter.controller.is_some());
@@ -185,7 +218,25 @@ pub fn parse_typed_choice_object_clause_tokens(
     }
 
     let references_it = shape.references.references_it;
+    if shape.references.explicit_container_reference {
+        // The container suffix the shape stripped from its word copies
+        // ("from it", "in them", "from among them", "from there in"): the
+        // choice's pool, read here on the authored tokens.
+        let words: Vec<&OwnedLexToken> =
+            tokens.iter().filter(|token| token.as_word().is_some()).collect();
+        let texts: Vec<&str> = words.iter().map(|token| token.parser_text()).collect();
+        let tail = match texts.as_slice() {
+            [.., "from", "there", "in"] | [.., "from", "among", "them"] => 3,
+            [.., "from" | "in", "it" | "them"] => 2,
+            _ => 0,
+        };
+        for token in &words[words.len() - tail..] {
+            crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+        }
+    }
     let mut filter = if references_it && shape.filter_facts.bare_card {
+        // "a card from it": any card of the referenced group.
+        crate::word_claims::claim_tokens(&authored_filter_tokens);
         ObjectFilter::default()
     } else {
         parse_typed_choice_filter_words(&filter_words)?

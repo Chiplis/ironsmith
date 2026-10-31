@@ -451,6 +451,9 @@ pub fn parse_if_event_would_happen_amount_line(
     if matches!(shape.modifier, AmountModifierSpec::SetTo(_)) && shape.minimum.is_none() {
         return Ok(None);
     }
+    // The recipient and its restatement were each read as a whole above.
+    crate::word_claims::claim_words(&recipient_words);
+    crate::word_claims::claim_words(&repeated);
     Ok(Some(StaticAbility::event_amount_replacement(
         AmountEventSpec::Damage {
             source_filter,
@@ -626,6 +629,8 @@ pub fn parse_damage_life_floor_static_line(
     if floor == 0 {
         return Ok(None);
     }
+    // Every word of the replacement is this exact shape.
+    crate::word_claims::claim_words(&words);
     // A leading "As long as ..." gate is rendered from the typed condition;
     // keep it out of the restriction's own display so it isn't doubled.
     let display = if condition_start == Some(3) {

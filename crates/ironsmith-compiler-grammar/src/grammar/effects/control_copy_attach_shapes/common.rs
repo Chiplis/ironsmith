@@ -159,9 +159,14 @@ pub fn parse_destination_player_reference_surface(
 }
 
 pub fn explicitly_names_object_owner(tokens: &[OwnedLexToken]) -> bool {
-    ["owner", "owners", "owner's", "owners'"]
+    let owner = ["owner", "owners", "owner's", "owners'"]
         .iter()
-        .any(|word| primitives::contains_word(tokens, word))
+        .any(|word| primitives::contains_word(tokens, word));
+    if owner {
+        // "its owner's library": the possessor is the object being moved.
+        crate::grammar::shared_util::token_facts::claim_owner_possessors(tokens);
+    }
+    owner
 }
 
 pub fn parse_destination_zone(tokens: &[OwnedLexToken]) -> Option<Zone> {

@@ -31,6 +31,27 @@ pub fn parse_consult_traversal_shape(tokens: &[OwnedLexToken]) -> Option<Consult
     {
         return None;
     }
+    // The consult verb and "until" frame the traversal this shape reads.
+    crate::word_claims::claim_tokens(&consult[verb.clone()]);
+    crate::word_claims::claim_tokens(&consult[until.clone()]);
+    // "cards from the top of your library": the head is read whole when its
+    // possessor is the traversing player.
+    if let Some(of) = library_head.iter().rposition(|token| token.is_word("of")) {
+        let possessor: Vec<&str> = library_head[of + 1..library_head.len() - 1]
+            .iter()
+            .map(OwnedLexToken::parser_text)
+            .collect();
+        let consistent = match player {
+            ConsultTraversalPlayerShape::ImpliedByPrefixOrYou => possessor == ["your"],
+            _ => matches!(
+                possessor.as_slice(),
+                ["their"] | ["his", "or", "her"] | ["that", "player's"] | ["that", "players"]
+            ),
+        };
+        if consistent {
+            crate::word_claims::claim_tokens(library_head);
+        }
+    }
 
     let mut stop_tokens = trim_commas(&consult[until.end..]);
     let (where_x, mut trailing_effect) =
@@ -49,6 +70,9 @@ pub fn parse_consult_traversal_shape(tokens: &[OwnedLexToken]) -> Option<Consult
     {
         trailing_effect.clear();
     }
+    // The traversal verb ("reveal"/"exile") and its "until" stop marker.
+    crate::word_claims::claim_tokens(&consult[verb.start..verb.end]);
+    crate::word_claims::claim_tokens(&consult[until.start..until.end]);
     Some(ConsultTraversalShape {
         prefix,
         player,

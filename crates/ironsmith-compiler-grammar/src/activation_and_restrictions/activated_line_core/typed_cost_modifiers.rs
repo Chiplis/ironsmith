@@ -13,7 +13,16 @@ fn unsupported(tokens: &[OwnedLexToken], part: &str) -> CardTextError {
     ))
 }
 
+/// The typed price reading; its words count as read only when it builds the
+/// ability.
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    crate::word_claims::speculative_keep_if(
+        || parse_typed_price(tokens),
+        |result| matches!(result, Ok(Some(_))),
+    )
+}
+
+fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
     let sentences = crate::grammar::structure::split_lexed_sentences(tokens);
     let Some(first) = sentences.first() else {
         return Ok(None);
@@ -78,6 +87,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     {
         return Ok(None);
     }
+    // "<less|more> to activate" is the direction this price builds.
+    crate::word_claims::claim_tokens(&remainder[..3]);
     let tail = crate::util::trim_edge_punctuation_tokens(&remainder[3..]);
     if colored_reduction.is_some()
         && (direction == "more"

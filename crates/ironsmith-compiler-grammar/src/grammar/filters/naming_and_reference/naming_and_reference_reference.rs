@@ -388,6 +388,14 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             });
         }
         if let Some(exiled_with_idx) = find_phrase_start(all_words, EXILED_WITH_PHRASE) {
+            // "a card that was exiled with this artifact": the relative
+            // clause's be-verb belongs to the same source-exile relation.
+            if exiled_with_idx >= 2
+                && all_words[exiled_with_idx - 2] == THAT_WORD
+                && word_is_any(all_words[exiled_with_idx - 1], BE_VERB_WORDS)
+            {
+                crate::word_claims::claim_words(&all_words[exiled_with_idx - 2..exiled_with_idx]);
+            }
             let mut reference_end = exiled_with_idx + 2;
             let mut has_reference_head = false;
             if all_words
@@ -426,6 +434,14 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_words = segment_words_view.to_word_refs();
         if let Some(exiled_with_idx) = find_phrase_start(&segment_words, EXILED_WITH_PHRASE) {
+            if exiled_with_idx >= 2
+                && segment_words[exiled_with_idx - 2] == THAT_WORD
+                && word_is_any(segment_words[exiled_with_idx - 1], BE_VERB_WORDS)
+                && let Some(token_range) =
+                    segment_words_view.token_span_for_words(exiled_with_idx - 2, exiled_with_idx)
+            {
+                crate::word_claims::claim_tokens(&segment_tokens[token_range]);
+            }
             let mut reference_end_word = exiled_with_idx + EXILED_WITH_PHRASE.len();
             let mut has_reference_head = false;
             if segment_words

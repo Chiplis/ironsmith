@@ -13,6 +13,7 @@ fn simple_negated_object_restriction(
     use crate::effect::Restriction;
 
     if matches!(words, ["have", "counters", "put", "on", "them" | "it"]) {
+        crate::word_claims::claim_words(words);
         return Some(Restriction::have_counters_placed(filter.clone()));
     }
 
@@ -29,6 +30,7 @@ fn simple_negated_object_restriction(
         && let Some(counter_type) =
             crate::grammar::filters::parse_counter_type_words(&words[1..=counter_words.len() + 1])
     {
+        crate::word_claims::claim_words(words);
         return Some(Restriction::have_counter_type_placed(
             filter.clone(),
             counter_type,
@@ -501,11 +503,7 @@ pub fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
 pub fn parse_cant_restrictions(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
-    let normalized_storage = normalize_cant_words(tokens);
-    let normalized = normalized_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let normalized = normalize_cant_word_refs(tokens);
     if matches!(
         restriction_grammar::parse_global_cant_restriction_words(&normalized),
         Some(restriction_grammar::GlobalCantRestrictionFact::PlayersLoseOrWin)
@@ -535,8 +533,8 @@ pub fn parse_cant_restrictions(
         && let Some((player, target)) =
             parse_player_restriction_subject(&trim_commas(&tokens[..neg_start]))?
     {
-        let tail_storage = normalize_cant_words(&trim_commas(&tokens[neg_end..]));
-        let tail = tail_storage.iter().map(String::as_str).collect::<Vec<_>>();
+        let tail_storage = trim_commas(&tokens[neg_end..]);
+        let tail = normalize_cant_word_refs(&tail_storage);
         if let Some(facts) =
             restriction_grammar::parse_compound_player_action_restriction_words(&tail)
         {
@@ -623,8 +621,7 @@ pub fn parse_cant_restrictions(
                     crate::lexer::token_word_refs(segment).join(" ")
                 )));
             };
-            let segment_words = normalize_cant_words(segment);
-            let segment_word_refs = segment_words.iter().map(String::as_str).collect::<Vec<_>>();
+            let segment_word_refs = normalize_cant_word_refs(segment);
             let has_or_win_tail =
                 restriction_grammar::parse_or_win_game_tail_words(&segment_word_refs).is_some();
             if has_or_win_tail
@@ -651,6 +648,20 @@ pub fn parse_cant_restrictions(
 pub fn parse_cant_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
+    let parsed = parse_cant_restriction_clause_unclaimed(tokens)?;
+    // Every restriction this clause returns is the negation it found
+    // ("can't", "don't", "doesn't"): the negation words are read with it.
+    if parsed.is_some()
+        && let Some((neg_start, neg_end)) = find_negation_span(tokens)
+    {
+        crate::word_claims::claim_tokens(&tokens[neg_start..neg_end]);
+    }
+    Ok(parsed)
+}
+
+fn parse_cant_restriction_clause_unclaimed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
 
     let words = crate::lexer::token_word_refs(tokens);
@@ -675,11 +686,7 @@ pub fn parse_cant_restriction_clause(
         return Ok(Some(parsed));
     }
 
-    let normalized_storage = normalize_cant_words(tokens);
-    let normalized = normalized_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let normalized = normalize_cant_word_refs(tokens);
 
     let restriction = if let Some(parsed) = parse_cant_cast_restriction_words(&normalized) {
         parsed
@@ -850,11 +857,7 @@ pub fn parse_player_negated_restriction_clause(
     if remainder_tokens.is_empty() {
         return Ok(None);
     }
-    let remainder_words_storage = normalize_cant_words(&remainder_tokens);
-    let remainder_words = remainder_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let remainder_words = normalize_cant_word_refs(&remainder_tokens);
 
     let Some(fact) =
         restriction_grammar::parse_player_activation_restriction_tail_words(&remainder_words)
@@ -941,11 +944,7 @@ pub fn parse_player_restriction_subject(
         return Ok(None);
     }
 
-    let normalized_storage = normalize_cant_words(subject_tokens);
-    let normalized = normalized_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let normalized = normalize_cant_word_refs(subject_tokens);
     if let Some(player) = restriction_grammar::parse_player_restriction_subject_words(&normalized) {
         return Ok(Some((player, None)));
     }
@@ -1392,11 +1391,7 @@ pub fn parse_negated_object_restriction_clause(
         return Ok(None);
     };
     let subject_tokens = trim_commas(&tokens[..neg_start]);
-    let subject_words_storage = normalize_cant_words(&subject_tokens);
-    let subject_words = subject_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let subject_words = normalize_cant_word_refs(&subject_tokens);
     let bare_other_choice = crate::grammar::primitives::probe_shape(
         crate::grammar::choices::parse_chosen_cant_block_shape(tokens),
     )
@@ -1594,11 +1589,7 @@ pub fn parse_negated_object_restriction_clause(
             crate::lexer::token_word_refs(tokens).join(" ")
         )));
     }
-    let remainder_words_storage = normalize_cant_words(&remainder_tokens);
-    let remainder_words = remainder_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let remainder_words = normalize_cant_word_refs(&remainder_tokens);
 
     let player_subject = player_negated_restriction_subject(&subject_words);
     if let Some(player) = player_subject {
@@ -1619,6 +1610,8 @@ pub fn parse_negated_object_restriction_clause(
             }));
         }
         if let Some(color) = parse_unspent_mana_retention_tail(&remainder_words) {
+            // The negation and the normalized tail the complete parse read.
+            crate::word_claims::claim_tokens(&tokens[neg_start..]);
             return Ok(Some(ParsedCantRestriction {
                 restriction: Restriction::lose_unspent_mana(player, color),
                 target: None,
@@ -1698,6 +1691,8 @@ pub fn parse_negated_object_restriction_clause(
         }));
     }
     if let Some(restriction) = simple_negated_object_restriction(&remainder_words, &filter) {
+        // `remainder_words` are normalized copies: claim the tail by span.
+        crate::word_claims::claim_tokens(&remainder_tokens);
         return Ok(Some(ParsedCantRestriction {
             restriction,
             target,
@@ -1959,7 +1954,11 @@ pub fn parse_negated_object_restriction_clause(
                 })?;
             Restriction::block_specific_attacker(filter, attacker_filter)
         }
-        None if is_supported_untap_restriction_tail(&remainder_words) => Restriction::untap(filter),
+        None if is_supported_untap_restriction_tail(&remainder_words) => {
+            // The negation and the complete untap tail.
+            crate::word_claims::claim_tokens(&tokens[neg_start..]);
+            Restriction::untap(filter)
+        }
         None if restriction_grammar::parse_effect_action_restriction_tail_words(
             &remainder_words,
         )
@@ -2124,11 +2123,7 @@ pub fn parse_subject_object_filter(
         return Ok(None);
     }
 
-    let normalized_words_storage = normalize_cant_words(tokens);
-    let normalized_words = normalized_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let normalized_words = normalize_cant_word_refs(tokens);
     match restriction_grammar::parse_restriction_subject_surface_words(&normalized_words) {
         Some(restriction_grammar::RestrictionSubjectSurface::StackAbility(kind)) => {
             return Ok(Some(ObjectFilter {

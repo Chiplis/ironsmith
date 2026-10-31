@@ -1662,26 +1662,31 @@ fn normalize_named_source_enter_agreement_tokens(
     subject: &str,
 ) -> bool {
     let subject_words: Vec<&str> = subject.split_whitespace().collect();
+    // A normalization, not a reader: its word tests claim nothing (the
+    // trigger and effect readers read these words themselves).
+    let is_word = |token: &OwnedLexToken, word: &str| {
+        crate::word_claims::probe_only(|| token.is_word(word))
+    };
     let mut changed = false;
     let mut index = 0;
     while index + subject_words.len() < tokens.len() {
         let subject_here = subject_words
             .iter()
             .enumerate()
-            .all(|(offset, word)| tokens[index + offset].is_word(word));
+            .all(|(offset, word)| is_word(&tokens[index + offset], word));
         let enter_index = index + subject_words.len();
         // `have <object> enter` is already grammatical. The entry-copy reader
         // accepts either spelling, so changing this to `enters` otherwise
         // survives into its retained display and hides the damaged source
         // sentence until the authoritative semantic-marker gate.
-        let causative_have = index > 0 && tokens[index - 1].is_word("have");
+        let causative_have = index > 0 && is_word(&tokens[index - 1], "have");
         // The string form only rewrote "enter" at the end of the text or
         // before a space, never before punctuation.
         let followed_by_word_or_end = tokens
             .get(enter_index + 1)
             .is_none_or(|next| matches!(next.kind, TokenKind::Word | TokenKind::Number));
         if subject_here && !causative_have
-            && tokens[enter_index].is_word("enter") && followed_by_word_or_end {
+            && is_word(&tokens[enter_index], "enter") && followed_by_word_or_end {
             let span = tokens[enter_index].span;
             tokens[enter_index] = OwnedLexToken::word("enters", span);
             changed = true;
@@ -2057,6 +2062,13 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
     }
 
     if previous_word == Some("as") {
+        return false;
+    }
+
+    // "each creature other than Massacre Girl gets -1/-1": the exclusion
+    // names the source, whatever verb follows. The object-filter grammar
+    // reads only the typed self-reference there, never the card name.
+    if previous_word == Some("than") && previous_previous_word == Some("other") {
         return false;
     }
 
@@ -3675,6 +3687,19 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if let Some(mut statement_line) = recognize_statement_line(&body_line)? {
+        // An Attraction's "Visit — <effect>" statement is its Visit program:
+        // it compiles into spell_effect, which the engine materializes as the
+        // "whenever you roll to visit your Attractions" triggered ability
+        // (CR 717.5, object.rs from_definition). The label is read here, and
+        // only on an Attraction, where that reading holds.
+        if label.eq_ignore_ascii_case("visit")
+            && preprocessed
+                .card
+                .subtypes_ref()
+                .contains(&crate::types::Subtype::Attraction)
+        {
+            crate::word_claims::claim_tokens(label_tokens);
+        }
         apply_labeled_statement_surface_facts(&mut statement_line, line, presentation);
         let (statement_line, next_idx) =
             extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
@@ -4351,6 +4376,9 @@ pub fn recognize_document_with_context(
                             "intrinsic basic-land mana reminder disagrees with land type metadata".into(),
                         ));
                     }
+                    // The complete reminder shape was read symbol by symbol
+                    // and checked against the land types it restates.
+                    crate::word_claims::claim_tokens(&line.tokens);
                     idx += 1;
                     continue;
                 }

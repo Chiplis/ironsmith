@@ -1718,12 +1718,14 @@ pub(super) fn open(
         if !shape.head.accepts(head) || sentences.len() < sentence_idx + shape.consumed {
             continue;
         }
-        match (shape.read)(sentences, sentence_idx).within(shape.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (shape.read)(sentences, sentence_idx).within(shape.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(shape.id, shape.head),
                 (matched.value, shape.consumed),
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }

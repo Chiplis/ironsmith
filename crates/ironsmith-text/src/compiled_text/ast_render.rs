@@ -44696,6 +44696,16 @@ fn describe_source_line_static_group(
     {
         return Some(text);
     }
+    // "Koh has all activated and triggered abilities of the last chosen
+    // card" (Koh, the Face Stealer): the copied activated and triggered
+    // halves share one authored clause, printed once.
+    if let [first, second] = members
+        && copy_ability_pair(first, second)
+        && let Ok([line]) = <[String; 1]>::try_from(describe_ability(1, first, subject, false))
+    {
+        let body = super::merge_passes::strip_render_heading(&line);
+        return Some(body.trim().trim_end_matches('.').to_string());
+    }
 
     // Solved is the printed surface of the executable Case designation, not
     // an extra authored "as long as" predicate. Keep it outside the entire
@@ -45372,6 +45382,21 @@ fn describe_source_line_shared_condition_source_predicate_list(
 /// printed once and the predicates form a serial list. A granted rule about
 /// the receiving creature ("has \"This creature must be blocked if able.\"")
 /// reads as its bare predicate.
+/// Whether two abilities are the copied-activated and copied-triggered halves
+/// of one "has all activated and triggered abilities of ..." grant.
+fn copy_ability_pair(first: &Ability, second: &Ability) -> bool {
+    use crate::static_abilities::StaticAbilityId::{CopyActivatedAbilities, CopyTriggeredAbilities};
+    let (AbilityKind::Static(first), AbilityKind::Static(second)) = (&first.kind, &second.kind)
+    else {
+        return false;
+    };
+    matches!(
+        (first.id(), second.id()),
+        (CopyActivatedAbilities, CopyTriggeredAbilities)
+            | (CopyTriggeredAbilities, CopyActivatedAbilities)
+    ) && first.display() == second.display()
+}
+
 fn describe_source_line_shared_subject_predicate_list(
     members: &[Ability],
     subject: &str,
@@ -45460,6 +45485,16 @@ fn describe_source_line_shared_subject_predicate_list(
             .unwrap_or(predicate);
         if predicate.contains('.') && !predicate.contains('"') {
             return None;
+        }
+        // "has all activated and triggered abilities of the exiled card"
+        // (Idris, Soul of the TARDIS; Koh, the Face Stealer): the copied
+        // activated and copied triggered abilities are two statics with one
+        // authored display. Print that shared clause once.
+        if index > 0
+            && predicates.last() == Some(&predicate)
+            && copy_ability_pair(&members[index - 1], member)
+        {
+            continue;
         }
         predicates.push(predicate);
     }

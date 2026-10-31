@@ -225,6 +225,8 @@ fn parse_status_subject(
             crate::util::source_reference_surface_for_words_with_context(context, &words).is_some()
         })
     {
+        // The whole subject names the source ("it's", "this creature").
+        crate::word_claims::claim_tokens(tokens);
         return Some(StatusConditionSubjectAst::Source);
     }
 

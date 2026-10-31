@@ -302,12 +302,14 @@ pub(super) fn read_document(document: &Document<'_>) -> ParseOutcome<RuleMatch<V
         if !reading.head.accepts(head) {
             continue;
         }
-        match (reading.read)(document).within(reading.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (reading.read)(document).within(reading.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(reading.id, reading.head),
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }

@@ -199,17 +199,18 @@ impl<T: 'static> LexRuleIndex<T> {
 
         for idx in candidate_indices {
             let rule = &self.rules[idx];
-            let outcome = match rule.run {
+            // Each rule reads in its own claim scope; only the kept candidate
+            // passes its claims on (`resolve_registry_candidates`).
+            let (outcome, registry_claims) = crate::word_claims::scoped(|| match rule.run {
                 LexRuleHandler::Structured(run) => run(view).within(rule.metadata.id),
-            };
+            });
             match outcome {
                 ParseOutcome::NoMatch => {}
                 ParseOutcome::Match(matched) => {
-                    candidates.push(RegistryCandidate::new(
-                        rule.metadata,
-                        matched.value,
-                        matched.span,
-                    ));
+                    candidates.push(
+                        RegistryCandidate::new(rule.metadata, matched.value, matched.span)
+                            .with_claims(registry_claims),
+                    );
                 }
                 ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
             }

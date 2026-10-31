@@ -11,14 +11,20 @@ pub fn parse_earthbend_sentence(
         return Ok(None);
     }
 
+    crate::word_claims::claim_tokens(&tokens[..1]);
     // "earthbend X" takes its amount from a following where-X binding or
     // the ability's announced X; the sentence reader binds it.
     if crate::lexer::token_slice_at_is(tokens, 1, "x") {
+        crate::word_claims::claim_tokens(&tokens[1..2]);
         return Ok(Some(EffectAst::subject_verb_earthbend(crate::effect::Value::X)));
     }
     let count = parse_number(tokens.get(1..).unwrap_or_default())
         .map(|(value, _)| value)
-        .or_else(|| words.get(1).and_then(|word| parse_number_word_u32(word)))
+        .or_else(|| {
+            let count = words.get(1).and_then(|word| parse_number_word_u32(word))?;
+            crate::word_claims::claim_words(&words[1..2]);
+            Some(count)
+        })
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing earthbend count (clause: '{}')",

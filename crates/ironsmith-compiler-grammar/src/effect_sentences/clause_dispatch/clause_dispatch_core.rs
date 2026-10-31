@@ -460,6 +460,11 @@ pub(super) fn parse_effect_clause_unstacked(
     }
     let subject_tokens = subject_tokens_storage.as_slice();
     let rest = verb_shape.action_tokens;
+    // Every reading below dispatches on this verb, so the clause reads the
+    // verb word itself ("and draw a card", "then discard a card").
+    if let Some(verb_token) = tokens.get(verb_shape.subject_tokens.len()) {
+        crate::word_claims::claim_tokens(std::slice::from_ref(verb_token));
+    }
     parser_trace_stack("parse_effect_clause:verb-found", tokens);
     crate::parse_trace::event(format!(
         "effect-route: subject-verb verb={verb:?} subject={}",

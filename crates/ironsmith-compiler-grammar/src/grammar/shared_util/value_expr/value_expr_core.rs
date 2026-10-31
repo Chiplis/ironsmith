@@ -441,6 +441,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             Value::X => Value::XTimes(multiplier),
             value => Value::Scaled(Box::new(value), multiplier),
         };
+        crate::word_claims::claim_words(&words[..2]);
         return Some((value, used + 2));
     }
     if permission_shapes::prefix_words(words, &["twice"]) {
@@ -490,6 +491,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some((Value::X, 1));
     }
     if let Ok(value) = leaf::parse_number_i32_complete(words[0]) {
+        crate::word_claims::claim_word(words[0]);
         return Some((Value::Fixed(value), 1));
     }
 
@@ -594,43 +596,48 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
 
     for source_len in (1..words.len()).rev() {
         if let Some(surface) = source_reference_surface_for_possessive_words(&words[..source_len]) {
-            match words.get(source_len).copied() {
+            let characteristic = match words.get(source_len).copied() {
                 Some("base") if words.get(source_len + 1) == Some(&"power") => {
-                    return Some((
+                    Some((
                         Value::BasePowerOf(Box::new(source_choose_spec_for_surface(surface))),
                         source_len + 2,
-                    ));
+                    ))
                 }
                 Some("power") => {
-                    return Some((
+                    Some((
                         Value::PowerOf(Box::new(source_choose_spec_for_surface(surface))),
                         source_len + 1,
-                    ));
+                    ))
                 }
                 Some("toughness") => {
-                    return Some((
+                    Some((
                         Value::ToughnessOf(Box::new(source_choose_spec_for_surface(surface))),
                         source_len + 1,
-                    ));
+                    ))
                 }
                 Some("loyalty") => {
-                    return Some((
+                    Some((
                         Value::CountersOn(
                             Box::new(source_choose_spec_for_surface(surface)),
                             Some(crate::object::CounterType::Loyalty),
                         ),
                         source_len + 1,
-                    ));
+                    ))
                 }
                 Some("mana")
                     if permission_shapes::starts_at_words(words, source_len + 1, &["value"]) =>
                 {
-                    return Some((
+                    Some((
                         Value::ManaValueOf(Box::new(source_choose_spec_for_surface(surface))),
                         source_len + 2,
-                    ));
+                    ))
                 }
-                _ => {}
+                _ => None,
+            };
+            if let Some((value, used)) = characteristic {
+                // The characteristic noun after the possessive source.
+                crate::word_claims::claim_words(&words[source_len..used]);
+                return Some((value, used));
             }
         }
     }
@@ -944,11 +951,15 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     let mut idx = usize::from(permission_shapes::prefix_words(words, &["the"]));
     // "the total number of ..." has the same cardinality semantics. The
     // existing complete object-filter reader still owns every domain/scope.
-    if words.get(idx) == Some(&"total") {
+    let total = words.get(idx) == Some(&"total");
+    if total {
         idx += 1;
     }
     if !permission_shapes::starts_at_words(words, idx, &["number", "of"]) {
         return None;
+    }
+    if total {
+        crate::word_claims::claim_words(&words[idx - 1..idx]);
     }
     idx += 2;
     // "the number of times this creature was kicked": the multikicker count,

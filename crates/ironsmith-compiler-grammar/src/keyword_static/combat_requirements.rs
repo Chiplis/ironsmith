@@ -4,6 +4,13 @@ use crate::grammar::combat_requirements::{CombatRequirement, parse_combat_requir
 /// Subjects accepted here are complete battlefield selectors. Keep unsupported
 /// relative clauses with the ordinary parser instead of salvaging a suffix.
 fn combat_rule_subject(tokens: &[OwnedLexToken]) -> Option<AnthemSubjectAst> {
+    let subject = read_combat_rule_subject(tokens)?;
+    // Every accepted subject is read whole.
+    crate::word_claims::claim_tokens(tokens);
+    Some(subject)
+}
+
+fn read_combat_rule_subject(tokens: &[OwnedLexToken]) -> Option<AnthemSubjectAst> {
     if tokens.iter().any(|token| token.as_word().is_none()) {
         return None;
     }
@@ -84,6 +91,7 @@ pub fn parse_source_must_be_blocked_by_exactly_one_line(
     if !matches!(subject, ["this", "creature"] | ["this"] | ["it"]) {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&words);
     Ok(Some(vec![
         StaticAbilityAst::Static(StaticAbility::restriction(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
@@ -140,6 +148,7 @@ pub fn parse_source_must_be_blocked_by_at_least_line(
     let Some(minimum) = at_least(&second[must..]) else {
         return Ok(None);
     };
+    crate::word_claims::claim_words(&words);
     abilities.push(StaticAbilityAst::Static(StaticAbility::restriction(
         crate::effect::Restriction::must_be_blocked_by_at_least(ObjectFilter::source(), minimum),
         format!("this creature must be blocked by {minimum} or more creatures if able"),

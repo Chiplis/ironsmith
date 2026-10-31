@@ -3,6 +3,7 @@ use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::TriggerSpec;
 use winnow::Parser;
 
 pub fn parse_sacrifice(
@@ -10,6 +11,9 @@ pub fn parse_sacrifice(
     subject: Option<SubjectAst>,
     target: Option<TargetAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(effect) = parse_sacrifice_when_control_lost(tokens, subject.clone(), target.clone())? {
+        return Ok(effect);
+    }
     let clause_words = crate::lexer::token_word_refs(tokens);
     let opponent_chooses_object =
         crate::grammar::choices::parse_possessive_object_choice_tokens(tokens).is_some_and(
@@ -735,6 +739,67 @@ pub fn parse_sacrifice(
         None => sacrifice,
     };
     Ok(wrap_unless_escaped(effect, unless_escaped))
+}
+
+/// "Sacrifice the creature when you lose control of this creature" (Seraph),
+/// "Sacrifice it when you lose control of this creature" (Krovikan Vampire):
+/// a postposed control-loss timing. The sacrifice is deferred to a one-shot
+/// delayed trigger on the source's controller losing control of it
+/// (`DelayedTriggerSpec::SourceControllerLosesControl` at lowering); the
+/// object is read from the words before "when" only.
+fn parse_sacrifice_when_control_lost(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+    target: Option<TargetAst>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some((when_idx, _, _)) = crate::word_claims::probe_only(|| {
+        grammar::find_prefix(tokens, || {
+            grammar::phrase(&["when", "you", "lose", "control", "of"])
+        })
+    }) else {
+        return Ok(None);
+    };
+    if when_idx == 0 {
+        return Ok(None);
+    }
+    let timing_tokens = &tokens[when_idx..];
+    let Ok(trigger) = crate::activation_and_restrictions::parse_trigger_clause_lexed(timing_tokens)
+    else {
+        return Ok(None);
+    };
+    let is_source_control_loss = |trigger: &TriggerSpec| {
+        matches!(
+            trigger,
+            TriggerSpec::ControlChanged(change)
+                if change.filter.source
+                    && matches!(
+                        change.change,
+                        ironsmith_core::trigger_model::ControlChangeDirection::Lost {
+                            player: PlayerFilter::You
+                        }
+                    )
+        )
+    };
+    let bare_trigger = match &trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger.as_ref(),
+        other => other,
+    };
+    if !is_source_control_loss(bare_trigger) {
+        return Ok(None);
+    }
+    let sacrifice = parse_sacrifice(&tokens[..when_idx], subject, target)?;
+    // The timing clause is read: it is the delayed trigger built here.
+    crate::word_claims::claim_tokens(timing_tokens);
+    Ok(Some(EffectAst::Delayed(
+        crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+            trigger: bare_trigger.clone(),
+            effects: vec![sacrifice],
+            one_shot: true,
+            until_end_of_combat: false,
+            attach_to_previous_ability: false,
+        },
+    )))
 }
 
 /// Split "a creature, an artifact, and a land" into its indefinite object

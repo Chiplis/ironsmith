@@ -995,6 +995,21 @@ pub(crate) fn bind_chosen_filter_qualities(
         bound.chosen_color = false;
         changed = true;
     }
+    // "You have protection from the chosen card name" (Runed Halo): the name
+    // is the granting source's choice, but a targeting check evaluates the
+    // filter with the targeting spell as its source. Bind exactly one
+    // recorded name; several keep the marker (as `bind_single_chosen_name`
+    // does for restrictions) and an unchosen source leaves it unmatched.
+    if bound.name.as_deref() == Some("{chosen name}")
+        && let Some(names) = game.chosen_named_option(chooser_source)
+    {
+        let names: Vec<&str> =
+            names.lines().map(str::trim).filter(|name| !name.is_empty()).collect();
+        if let [name] = names.as_slice() {
+            bound.name = Some((*name).to_string());
+            changed = true;
+        }
+    }
     for (index, branch) in filter.any_of.iter().enumerate() {
         if let Some(bound_branch) = bind_chosen_filter_qualities(branch, game, chooser_source) {
             bound.any_of[index] = bound_branch;

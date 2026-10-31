@@ -323,6 +323,12 @@ pub fn parse_add_mana(
         ));
     }
     if facts.imprinted_colors {
+        // "mana of any of the exiled cards' colors".
+        for (index, word) in clause_words.iter().enumerate() {
+            if matches!(*word, "mana" | "exiled" | "card" | "cards" | "colors") {
+                crate::word_claims::claim_words(&clause_words[index..=index]);
+            }
+        }
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
     // "you add the mana lost this way" (Drain Power): the types of the mana
@@ -371,6 +377,24 @@ pub fn parse_add_mana(
     }
 
     if facts.commander_identity {
+        // "mana of any color in your commander's color identity".
+        if let Some(at) = clause_words.iter().position(|word| *word == "mana") {
+            let exact = matches!(
+                &clause_words[at..],
+                [
+                    "mana", "of", "any", "color", "in", "your",
+                    "commander" | "commanders" | "commander's" | "commander’s",
+                    "color", "identity"
+                ]
+            );
+            for (offset, word) in clause_words[at..].iter().enumerate() {
+                if exact
+                    || matches!(*word, "mana" | "commander" | "commanders" | "color" | "identity")
+                {
+                    crate::word_claims::claim_words(&clause_words[at + offset..=at + offset]);
+                }
+            }
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_commander_identity(
             player, amount,
@@ -378,6 +402,14 @@ pub fn parse_add_mana(
     }
 
     if facts.different_colors {
+        // "<amount> mana of different colors".
+        if let Some(at) = clause_words
+            .windows(2)
+            .position(|pair| pair == ["different", "colors"])
+        {
+            let start = if at >= 2 && clause_words[at - 2..at] == ["mana", "of"] { at - 2 } else { at };
+            crate::word_claims::claim_words(&clause_words[start..at + 2]);
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_any_color_with_distinct(
             player, amount, None, true,
@@ -468,6 +500,12 @@ pub fn parse_add_mana(
         ));
     }
     if !fixed_output.has_explicit_symbol && facts.chosen_color_reference {
+        if let Some(at) = clause_words
+            .windows(2)
+            .position(|pair| pair == ["chosen", "color"])
+        {
+            crate::word_claims::claim_words(&clause_words[at..at + 2]);
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_chosen_color(
             player, amount, None,
@@ -516,6 +554,7 @@ pub fn parse_add_mana(
     }
 
     if let Some(mana_choice) = facts.choice {
+        crate::word_claims::claim_tokens(mana_choice.phrase_tokens);
         let mut amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         let any_one = mana_choice.kind.any_one();
         let any_type = mana_choice.kind.allow_colorless();
@@ -614,6 +653,7 @@ pub fn parse_add_mana(
         }
 
         if activation_grammar::is_player_choice_tail(tail_tokens) {
+            crate::word_claims::claim_tokens(tail_tokens);
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -745,6 +785,13 @@ pub fn parse_add_mana(
         if let Some(amount) = parse_equal_to_aggregate_filter_value(tokens)
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
         {
+            // "add an amount of {G} equal to ...": the lead-in names the
+            // scaled amount this reading builds.
+            let body = tokens
+                .first()
+                .filter(|token| token.is_word("add"))
+                .map_or(tokens, |_| &tokens[1..]);
+            let _ = crate::grammar::primitives::match_word_prefix(body, &["an", "amount", "of"]);
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,
             ));

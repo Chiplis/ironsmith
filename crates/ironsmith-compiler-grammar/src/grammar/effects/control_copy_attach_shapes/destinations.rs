@@ -191,6 +191,9 @@ fn choice_destination(tokens: &[OwnedLexToken]) -> bool {
     else {
         return false;
     };
+    // "of their library": the same owner-relative library, whose possessor
+    // `optional_owner_prefix` reads.
+    let library_tail = optional_owner_prefix(library_tail);
     primitives::contains_word(library_tail, "library")
         || primitives::contains_word(library_tail, "libraries")
 }
@@ -248,6 +251,18 @@ pub fn parse_library_placement_destination_shape(
     } else {
         None
     };
+    if !target_tokens.is_empty() {
+        // The library noun ("their owners' libraries") and the order phrase
+        // ("in a random order", "in any order") are read with the placement.
+        let _ = primitives::contains_word(destination, "library")
+            || primitives::contains_word(destination, "libraries");
+        let _ = primitives::find_prefix(destination, || {
+            winnow::combinator::alt((
+                primitives::phrase(&["in", "a", "random", "order"]),
+                primitives::phrase(&["in", "any", "order"]),
+            ))
+        });
+    }
     (!target_tokens.is_empty()).then_some(LibraryPlacementDestinationShape {
         target_tokens,
         destination_tokens: destination,

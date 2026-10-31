@@ -102,15 +102,17 @@ pub(super) fn read(input: &ActivatedBody<'_>) -> ParseOutcome<RuleMatch<Vec<Effe
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for reading in READINGS {
-        if !reading.head.accepts(head) || !(reading.admits)(input) {
+        if !reading.head.accepts(head) || !crate::word_claims::probe_only(|| (reading.admits)(input)) {
             continue;
         }
-        match (reading.read)(input).within(reading.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (reading.read)(input).within(reading.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(reading.id, reading.head),
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }

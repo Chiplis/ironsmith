@@ -1017,12 +1017,33 @@ fn replace_names_with_map(
         )
     }
 
+    // "each creature other than Massacre Girl": the exclusion names the
+    // source. The object-filter grammar has no card name, so this occurrence
+    // becomes the typed self-reference ("other than this creature") the
+    // filter's source-exclusion reading reads.
+    fn is_other_than_source_exclusion(bytes: &[u8], idx: usize) -> bool {
+        if previous_word(bytes, idx) != Some(&b"than"[..]) {
+            return false;
+        }
+        let mut word_start = idx;
+        while word_start > 0 && !bytes[word_start - 1].is_ascii_alphanumeric() {
+            word_start -= 1;
+        }
+        while word_start > 0 && bytes[word_start - 1].is_ascii_alphanumeric() {
+            word_start -= 1;
+        }
+        previous_word(bytes, word_start) == Some(&b"other"[..])
+    }
+
     fn should_preserve_source_surface_context(
         bytes: &[u8],
         line_tokens: &[OwnedLexToken],
         idx: usize,
         len: usize,
     ) -> bool {
+        if is_other_than_source_exclusion(bytes, idx) {
+            return false;
+        }
         let prev = previous_word(bytes, idx);
         let next = next_word(bytes, idx + len);
         let next_char = bytes.get(idx + len).copied();
@@ -1381,7 +1402,9 @@ fn replace_names_with_map(
             )
         {
             let name_chars = lower[idx..idx + full_bytes.len()].chars().count();
-            let replacement = if full_typed_override {
+            let replacement = if full_typed_override
+                || (preserve_source_surfaces && is_other_than_source_exclusion(bytes, idx))
+            {
                 typed_subject
             } else {
                 "this"

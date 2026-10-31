@@ -474,7 +474,12 @@ fn semantic_kw<'a>(
         repeat::<_, _, (), _, _>(0.., semantic_noise),
         any.verify(move |token: &&OwnedLexToken| {
             token.is_word(expected)
-                || matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+                || (matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+                    // The same word in its single-piece form; claimed as `is_word` does.
+                    && {
+                        crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+                        true
+                    })
         }),
     )
         .void()

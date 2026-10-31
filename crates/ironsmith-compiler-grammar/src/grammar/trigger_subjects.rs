@@ -303,45 +303,103 @@ pub fn parse_spell_activity_verb_facts(tokens: &[OwnedLexToken]) -> SpellActivit
 }
 
 pub fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerReference {
-    if normalized_phrase_occurs(words, &["enchanted", "player"])
-        || normalized_phrase_occurs(words, &["enchanted", "players"])
-        || normalized_phrase_occurs(words, &["enchanted", "opponent"])
-        || normalized_phrase_occurs(words, &["enchanted", "opponents"])
+    // "the beginning of the end step" / "of the upkeep of enchanted
+    // creature's controller": the definite step, whoever's it is below.
+    // (`word_windows` claims the window it finds.)
+    words.word_windows(3).any(|window| window == ["beginning", "of", "the"]);
+    if claim_possessor_phrase(words, &["enchanted", "player"], true)
+        || claim_possessor_phrase(words, &["enchanted", "players"], true)
+        || claim_possessor_phrase(words, &["enchanted", "opponent"], true)
+        || claim_possessor_phrase(words, &["enchanted", "opponents"], true)
     {
         return PossessivePlayerReference::EnchantedPlayer;
     }
     if attached_controller_occurs(words, "enchanted") {
+        claim_attached_controller(words, "enchanted");
         return PossessivePlayerReference::AttachedController(AttachedControllerSubject::Enchanted);
     }
     if attached_controller_occurs(words, "equipped") {
+        claim_attached_controller(words, "equipped");
         return PossessivePlayerReference::AttachedController(AttachedControllerSubject::Equipped);
     }
-    if normalized_phrase_occurs(words, &["chosen", "player"])
-        || normalized_phrase_occurs(words, &["chosen", "players"])
+    if claim_possessor_phrase(words, &["chosen", "player"], true)
+        || claim_possessor_phrase(words, &["chosen", "players"], true)
     {
         return PossessivePlayerReference::ChosenPlayer;
     }
-    if normalized_phrase_occurs(words, &["each", "player"]) {
+    if claim_possessor_phrase(words, &["each", "player"], true)
+        || claim_possessor_phrase(words, &["each", "players"], true)
+    {
         return PossessivePlayerReference::Any;
     }
-    if normalized_phrase_occurs(words, &["each", "other", "player"])
-        || normalized_phrase_occurs(words, &["each", "other", "players"])
+    if claim_possessor_phrase(words, &["each", "other", "player"], true)
+        || claim_possessor_phrase(words, &["each", "other", "players"], true)
     {
         return PossessivePlayerReference::NotYou;
     }
-    if exact_phrase_occurs(words, &["your", "team"]) || exact_word_occurs(words, &["your"]) {
+    if claim_possessor_phrase(words, &["your", "team"], false)
+        || claim_possessor_phrase(words, &["your"], false)
+    {
         return PossessivePlayerReference::You;
     }
-    if normalized_phrase_occurs(words, &["opponent"])
-        || normalized_phrase_occurs(words, &["opponents"])
+    if claim_possessor_phrase(words, &["opponent"], true)
+        || claim_possessor_phrase(words, &["opponents"], true)
     {
         return PossessivePlayerReference::Opponent;
     }
-    if normalized_phrase_occurs(words, &["that", "players"]) && !exact_word_occurs(words, &["next"])
+    if !exact_word_occurs(words, &["next"]) && claim_possessor_phrase(words, &["that", "players"], true)
     {
         return PossessivePlayerReference::ThatPlayer;
     }
+    // "of each upkeep": the distributive "each" names every player's step.
+    words.word_windows(2).any(|pair| pair == ["of", "each"]);
     PossessivePlayerReference::Any
+}
+
+/// Find the first `expected` in `words` and claim it with the distributive
+/// "each" and the "of" that introduce it ("of your upkeep", "of each
+/// opponent's upkeep", "of enchanted player's upkeep"), or the "on ... turn"
+/// frame around it ("combat on your turn").
+fn claim_possessor_phrase(words: &[&str], expected: &[&str], normalized: bool) -> bool {
+    let Some(start) = (0..words.len()).find(|&start| {
+        words.len() - start >= expected.len()
+            && expected.iter().zip(&words[start..]).all(|(expected, word)| {
+                if normalized {
+                    normalized_word_matches(word, expected)
+                } else {
+                    word == expected
+                }
+            })
+    }) else {
+        return false;
+    };
+    let mut first = start;
+    if first > 0 && words[first - 1] == "each" && expected.first() != Some(&"each") {
+        first -= 1;
+    }
+    let mut end = start + expected.len();
+    if first > 0 && words[first - 1] == "of" {
+        first -= 1;
+    } else if first > 0 && words[first - 1] == "on" && words.get(end) == Some(&"turn") {
+        // "combat on your turn": the turn frame around the possessor.
+        first -= 1;
+        end += 1;
+    }
+    crate::word_claims::claim_words(&words[first..end]);
+    true
+}
+
+/// Claim the "of <enchanted|equipped> <object>'s controller" possessor
+/// `attached_controller_occurs` recognized.
+fn claim_attached_controller(words: &[&str], subject: &str) {
+    let Some(start) = (0..words.len().saturating_sub(2)).find(|&start| {
+        normalized_word_matches(words[start], subject)
+            && normalized_word_matches(words[start + 2], "controller")
+    }) else {
+        return;
+    };
+    let first = if start > 0 && words[start - 1] == "of" { start - 1 } else { start };
+    crate::word_claims::claim_words(&words[first..start + 3]);
 }
 
 /// Recognizes the terminal relative clause "that entered this turn" (or the
@@ -503,7 +561,10 @@ pub fn parse_spell_or_ability_controller_tail(
     } else {
         return None;
     };
-    parse_trigger_control_tail(&words[prefix_words..])
+    // The whole tail is read: the targeting object kind and its controller.
+    let controller = parse_trigger_control_tail(&words[prefix_words..])?;
+    crate::word_claims::claim_words(words);
+    Some(controller)
 }
 
 pub fn parse_spell_controller_tail(words: &[&str]) -> Option<TriggerControllerReference> {
@@ -514,7 +575,9 @@ pub fn parse_spell_controller_tail(words: &[&str]) -> Option<TriggerControllerRe
     } else {
         return None;
     };
-    parse_trigger_control_tail(&words[prefix_words..])
+    let controller = parse_trigger_control_tail(&words[prefix_words..])?;
+    crate::word_claims::claim_words(words);
+    Some(controller)
 }
 
 pub(crate) fn comma_continues_characteristic_list(tokens: &[OwnedLexToken]) -> bool {
@@ -633,7 +696,9 @@ fn parse_trigger_control_tail(words: &[&str]) -> Option<TriggerControllerReferen
     if !matches!(action_word, "control" | "controls") {
         return None;
     }
-    parse_trigger_controller_reference(&words[..words.len().saturating_sub(1)])
+    let controller = parse_trigger_controller_reference(&words[..words.len().saturating_sub(1)])?;
+    crate::word_claims::claim_words(&words[words.len() - 1..]);
+    Some(controller)
 }
 
 fn parse_generic_source_noun_words<'a>(input: &mut primitives::WordSliceInput<'a>) -> WResult<()> {
@@ -653,8 +718,22 @@ fn parse_generic_source_noun_words<'a>(input: &mut primitives::WordSliceInput<'a
 }
 
 fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControllerReference> {
+    let (reference, read) = trigger_controller_reference_words(words)?;
+    for range in read {
+        crate::word_claims::claim_words(&words[range]);
+    }
+    Some(reference)
+}
+
+/// The player a trigger subject/recipient names, with the word ranges that
+/// name it: the whole slice for an exact phrase, the "player who cast" head,
+/// or the "on your team" frame and its player noun.
+fn trigger_controller_reference_words(
+    words: &[&str],
+) -> Option<(TriggerControllerReference, Vec<Range<usize>>)> {
+    let whole = || vec![0..words.len()];
     if word_slice_is(words, &["you"]) {
-        return Some(TriggerControllerReference::You);
+        return Some((TriggerControllerReference::You, whole()));
     }
     if word_slice_is_any(
         words,
@@ -664,7 +743,7 @@ fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControlle
             &["a", "player", "other", "than", "yourself"],
         ],
     ) {
-        return Some(TriggerControllerReference::NotYou);
+        return Some((TriggerControllerReference::NotYou, whole()));
     }
     if word_slice_is_any(
         words,
@@ -676,13 +755,13 @@ fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControlle
             &["that", "player"],
         ],
     ) {
-        return Some(TriggerControllerReference::ChosenPlayer);
+        return Some((TriggerControllerReference::ChosenPlayer, whole()));
     }
     if word_slice_is_any(
         words,
         &[&["enchanted", "player"], &["the", "enchanted", "player"]],
     ) {
-        return Some(TriggerControllerReference::EnchantedPlayer);
+        return Some((TriggerControllerReference::EnchantedPlayer, whole()));
     }
     if word_slice_has_any_prefix(
         words,
@@ -691,7 +770,8 @@ fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControlle
             &["player", "who", "cast"],
         ],
     ) {
-        return Some(TriggerControllerReference::EffectController);
+        let head = if words.first() == Some(&"the") { 4 } else { 3 };
+        return Some((TriggerControllerReference::EffectController, vec![0..head]));
     }
     if word_slice_is_any(
         words,
@@ -703,7 +783,7 @@ fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControlle
             &["one", "or", "more", "players"],
         ],
     ) {
-        return Some(TriggerControllerReference::AnyPlayer);
+        return Some((TriggerControllerReference::AnyPlayer, whole()));
     }
     if word_slice_is_any(
         words,
@@ -719,12 +799,18 @@ fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControlle
             &["each", "opponent"],
         ],
     ) {
-        return Some(TriggerControllerReference::Opponent);
+        return Some((TriggerControllerReference::Opponent, whole()));
     }
     if word_slice_has_suffix(words, &["on", "your", "team"])
         && word_slice_has_any_word(words, &["player", "players"])
     {
-        return Some(TriggerControllerReference::You);
+        let mut read = vec![words.len() - 3..words.len()];
+        read.extend(
+            (0..words.len())
+                .filter(|&index| matches!(words[index], "player" | "players"))
+                .map(|index| index..index + 1),
+        );
+        return Some((TriggerControllerReference::You, read));
     }
     None
 }
@@ -797,24 +883,11 @@ fn take_word_slice_any<'word>(input: &mut &[&'word str]) -> WResult<&'word str> 
     any.parse_next(input)
 }
 
-fn normalized_phrase_occurs(words: &[&str], expected: &[&str]) -> bool {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    loop {
-        let mut candidate = input;
-        if parse_normalized_phrase(&mut candidate, expected).is_ok() {
-            return true;
-        }
-        if take_word_slice_any(&mut input).is_err() {
-            return false;
-        }
-    }
-}
-
 #[path = "trigger_subjects/core.rs"]
 mod core_programs;
 use core_programs::{
     exact_phrase_occurs, exact_word_occurs, normalized_word_matches, parse_exact_phrase,
-    parse_normalized_phrase, parse_normalized_word, trim_commas_ref,
+    parse_normalized_word, trim_commas_ref,
 };
 #[path = "trigger_subjects/choice.rs"]
 mod choice_programs;

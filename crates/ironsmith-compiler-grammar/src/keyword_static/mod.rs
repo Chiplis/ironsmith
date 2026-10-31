@@ -363,6 +363,8 @@ fn parse_enchant_attachment_restriction_line(
         return Ok(None);
     }
     let words = parser_token_word_refs(target_tokens);
+    // The keyword itself is read by the head check above.
+    crate::word_claims::claim_tokens(&tokens[..1]);
     let filter = if crate::word_primitives::parse_sequence_complete(&words, &["player"]) {
         crate::object::AuraAttachmentFilter::Player(crate::target::PlayerFilter::Any)
     } else if crate::word_primitives::parse_any_sequence_complete(
@@ -2150,8 +2152,10 @@ fn recognize_static_ability_ast_line_registry(
 
     for idx in candidate_indices {
         let rule = &rules[idx];
-        let (result, loss) = crate::parse_loss::capture(|| {
-            run_static_ability_ast_line_rule(rule.id, rule.parse, tokens)
+        let ((result, loss), registry_claims) = crate::word_claims::scoped(|| {
+            crate::parse_loss::capture(|| {
+                run_static_ability_ast_line_rule(rule.id, rule.parse, tokens)
+            })
         });
         match result {
             ParseOutcome::Match(matched) => {
@@ -2162,7 +2166,8 @@ fn recognize_static_ability_ast_line_registry(
                     ),
                     (matched.value, loss),
                     matched.span,
-                );
+                )
+                .with_claims(registry_claims);
                 // Multiple grammars may prove the same typed static fact.
                 // Exact AST and loss-report equality is an explicit semantic
                 // equivalence policy; different results remain ambiguous.
@@ -7715,7 +7720,10 @@ pub(crate) fn damage_multiplier_parts_from_shape(
             if !same {
                 return Ok(None);
             }
+            crate::word_claims::claim_words(&repeated);
         }
+        // The recipient words were read as a whole by the filter match above.
+        crate::word_claims::claim_words(&words);
         filters
     } else {
         if spec.repeated_target_tokens.is_some() {
@@ -9671,11 +9679,23 @@ pub fn parse_spell_cost_increase_per_target_beyond_first_line(
     let search_tokens = &tokens[line_start..];
     let costs_idx = cost_head.costs.token.saturating_sub(line_start);
     let amount_tokens = &search_tokens[costs_idx + 1..];
+    // The per-extra-target surcharge is strive's rule (CR 702.111): its
+    // "Strive" label and the "to cast" of the cast cost are read here.
+    let claim_strive_surface = || {
+        if crate::lexer::token_word_refs(&tokens[..line_start]) == ["strive"] {
+            crate::word_claims::claim_tokens(&tokens[..line_start]);
+        }
+        let _ = crate::word_primitives::parse_sequence_start(
+            &crate::lexer::token_word_refs(amount_tokens),
+            &["to", "cast"],
+        );
+    };
     if let Some((cost, used)) = parse_cost_modifier_mana_cost(amount_tokens)
         && keyword_static_lines::parse_more_cost_tail_prefix_tokens(
             amount_tokens.get(used..).unwrap_or_default(),
         )
     {
+        claim_strive_surface();
         return Ok(Some(
             StaticAbility::cost_increase_mana_cost_per_target_beyond_first(cost),
         ));
@@ -9688,6 +9708,7 @@ pub fn parse_spell_cost_increase_per_target_beyond_first_line(
         1
     };
 
+    claim_strive_surface();
     Ok(Some(StaticAbility::cost_increase_per_target_beyond_first(
         amount,
     )))

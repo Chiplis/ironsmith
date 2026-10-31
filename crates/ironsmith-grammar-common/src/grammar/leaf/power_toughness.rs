@@ -60,11 +60,14 @@ pub fn parse_leaf_pt_modifier_values(input: &mut &str) -> WResult<(Value, Value)
 }
 
 pub fn parse_leaf_pt_modifier_values_complete(raw: &str) -> Result<(Value, Value), CardTextError> {
-    finish_text_parse(
+    let values = finish_text_parse(
         raw,
         parse_leaf_pt_modifier_values,
         "leaf-power-toughness-modifier",
-    )
+    )?;
+    // The modifier word is read here, whichever reader asked.
+    ironsmith_compiler_syntax::word_claims::claim_word(raw);
+    Ok(values)
 }
 
 fn parse_leaf_pt_modifier_value(input: &mut &str) -> WResult<Value> {

@@ -773,7 +773,15 @@ fn source_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
                 any.void(),
                 peek(primitives::phrase(&["leaves", "the", "battlefield"])),
             )
-            .void(),
+            .void()
+            .take()
+            .map(|subject: &[OwnedLexToken]| {
+                // "until this Aura leaves": a source reference subject.
+                let words = crate::lexer::token_word_refs(subject);
+                if crate::util::this_source_surface_for_words(&words).is_some() {
+                    crate::word_claims::claim_tokens(subject);
+                }
+            }),
             primitives::phrase(&["leaves", "the", "battlefield"]),
             primitives::sentence_end(),
         )
@@ -872,7 +880,12 @@ fn possessive_surface_kw<'a>(
 ) -> impl Parser<LexStream<'a>, (), winnow::error::ErrMode<winnow::error::ContextError>> {
     any.verify(move |token: &&OwnedLexToken| {
         token.is_word(expected)
-            || matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+            || (matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+                // The same word in its single-piece form; claimed as `is_word` does.
+                && {
+                    crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+                    true
+                })
     })
     .void()
 }

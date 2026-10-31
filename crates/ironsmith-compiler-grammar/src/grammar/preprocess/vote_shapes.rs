@@ -33,6 +33,14 @@ pub fn parse_vote_count_rewrite_surface(sentence: &str) -> Option<VoteCountRewri
 pub fn parse_vote_count_rewrite_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<VoteCountRewriteSurface> {
+    // A text rewrite, not a reader: the vote sentence it produces is read
+    // (and claimed) by the effect readers.
+    crate::word_claims::probe_only(|| parse_vote_count_rewrite_surface_tokens_probe(tokens))
+}
+
+fn parse_vote_count_rewrite_surface_tokens_probe(
+    tokens: &[OwnedLexToken],
+) -> Option<VoteCountRewriteSurface> {
     // Preserve the count inside a reveal/exile-until stop condition. Hoisting
     // it to a loop changes which cards are revealed and retained for followups.
     if crate::grammar::effects::parse_consult_traversal_shape(tokens).is_some_and(|shape| {

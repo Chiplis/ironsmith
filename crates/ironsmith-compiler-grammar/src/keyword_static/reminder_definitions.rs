@@ -7,7 +7,13 @@ fn source(words: &[&str]) -> bool {
     crate::util::is_source_reference_words(words) || words == ["it"]
 }
 
+/// A reminder definition reads its words only when it owns the line: the
+/// shape probes below run against every static candidate line.
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
+    crate::word_claims::speculative_keep_if(|| parse_owned(tokens), Option::is_some)
+}
+
+fn parse_owned(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
     let lowered = tokens.iter().cloned().map(|mut token| {
         if token.kind == TokenKind::Word { token.replace_word(token.slice.to_ascii_lowercase()); }
         token

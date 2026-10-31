@@ -424,8 +424,13 @@ fn recognize_granted_trigger_ability(
     let span = span_from_tokens(tokens);
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
-    let mut add =
-        |id: &'static str, result: Result<Option<ParsedAbility>, CardTextError>| match result {
+    // Each reader runs in its own claim scope (`scoped`); only the candidate
+    // the resolver keeps passes its claims on.
+    let mut add = |id: &'static str,
+                   (result, claims): (
+        Result<Option<ParsedAbility>, CardTextError>,
+        crate::word_claims::ClaimSet,
+    )| match result {
             Ok(Some(value)) => {
                 if candidates
                     .iter()
@@ -433,11 +438,17 @@ fn recognize_granted_trigger_ability(
                 {
                     return;
                 }
-                candidates.push(RegistryCandidate::new(
-                    RegistryRuleMetadata::distinct(RuleId::new(id), HeadDiscriminator::grammar(id)),
-                    value,
-                    span,
-                ));
+                candidates.push(
+                    RegistryCandidate::new(
+                        RegistryRuleMetadata::distinct(
+                            RuleId::new(id),
+                            HeadDiscriminator::grammar(id),
+                        ),
+                        value,
+                        span,
+                    )
+                    .with_claims(claims),
+                );
             }
             Ok(None) => {}
             Err(error) => diagnostics.push(ParseDiagnostic::from_card_text_error(
@@ -449,18 +460,19 @@ fn recognize_granted_trigger_ability(
 
     add(
         "granted-trigger-nested-token-rule",
-        parse_granted_trigger_with_nested_token_rule(tokens),
+        crate::word_claims::scoped(|| parse_granted_trigger_with_nested_token_rule(tokens)),
     );
-    let otherwise = parse_granted_triggered_otherwise_ability(tokens);
-    let joined_otherwise = matches!(&otherwise, Ok(Some(_)));
+    let otherwise =
+        crate::word_claims::scoped(|| parse_granted_triggered_otherwise_ability(tokens));
+    let joined_otherwise = matches!(&otherwise.0, Ok(Some(_)));
     add("granted-trigger-otherwise", otherwise);
     add(
         "granted-trigger-composable-event",
-        parse_granted_composable_event_trigger(tokens),
+        crate::word_claims::scoped(|| parse_granted_composable_event_trigger(tokens)),
     );
     add(
         "granted-trigger-complete-line",
-        (|| {
+        crate::word_claims::scoped(|| -> Result<Option<ParsedAbility>, CardTextError> {
             // The specialized reader proves the otherwise clause belongs to
             // the preceding condition. The generic sentence reader can leave
             // it as a separate effect, so it must not compete on that input.
@@ -533,7 +545,7 @@ fn recognize_granted_trigger_ability(
                 None,
                 ReferenceImports::default(),
             )))
-        })(),
+        }),
     );
 
     resolve_registry_candidates(

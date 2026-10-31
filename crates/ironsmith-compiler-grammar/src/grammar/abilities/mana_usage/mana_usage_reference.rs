@@ -77,13 +77,15 @@ pub(super) fn parse_simple_subtype_spell_filter(tokens: &[OwnedLexToken]) -> Opt
     if crate::util::is_outlaw_word(subtype_word) {
         let mut filter = ObjectFilter::default();
         crate::util::push_outlaw_subtypes(&mut filter.subtypes);
+        crate::word_claims::claim_words(&words);
         return Some(filter);
     }
-    Some(
-        ObjectFilter::default().with_subtype(crate::grammar::primitives::probe_shape(
-            leaf::parse_leaf_subtype_flexible_complete(subtype_word),
-        )?),
-    )
+    let subtype = crate::grammar::primitives::probe_shape(
+        leaf::parse_leaf_subtype_flexible_complete(subtype_word),
+    )?;
+    // "Dragon spells": the subtype and the spell noun this filter reads.
+    crate::word_claims::claim_words(&words);
+    Some(ObjectFilter::default().with_subtype(subtype))
 }
 
 pub(super) fn parse_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {

@@ -204,7 +204,7 @@ pub fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenRemin
         creature_rules: surface::creature_rules(tokens, &words, &words, None),
         equipment_rules: equipment::parse_equipment_rules_tokens(tokens),
         artifact_leaves_damage_any_target,
-        vehicle_flying: common::word_present(&words, "flying"),
+        vehicle_flying: common::word_read(&words, "flying"),
         vehicle_crew_amount: rules::parse_token_crew_shape_words(&words).map(|shape| shape.amount),
     };
 

@@ -42,7 +42,10 @@ impl Predicate<'_> {
             .flat_map(|part| part.iter())
             .find(|reading| reading.id.as_str() == id)
             .is_some_and(|reading| {
-                (reading.admits)(self) && matches!((reading.read)(self), ParseOutcome::Match(_))
+                crate::word_claims::probe_only(|| {
+                    (reading.admits)(self)
+                        && matches!((reading.read)(self), ParseOutcome::Match(_))
+                })
             });
         self.read_by_cache.borrow_mut().insert(id, read);
         read
@@ -100,16 +103,17 @@ pub(super) fn read(input: &Predicate<'_>) -> ParseOutcome<RuleMatch<PredicateAst
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for reading in READINGS.iter().flat_map(|part| part.iter()) {
-        if !reading.head.accepts(head) || !(reading.admits)(input) {
+        if !reading.head.accepts(head) || !crate::word_claims::probe_only(|| (reading.admits)(input)) {
             continue;
         }
-        let outcome = (reading.read)(input).within(reading.id);
+        let (outcome, registry_claims) =
+            crate::word_claims::scoped(|| (reading.read)(input).within(reading.id));
         match outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(reading.id, reading.head),
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
