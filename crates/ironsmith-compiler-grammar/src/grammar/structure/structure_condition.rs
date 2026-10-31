@@ -8,6 +8,13 @@ pub(super) fn split_trailing_predicate_clause_lexed<'a>(
     if split_idx == 0 || split_idx + 1 >= tokens.len() {
         return None;
     }
+    // A sentence-initial keyword leads its own sentence ("... reveal it. If
+    // it's a creature card, that player discards it", Breathstealer's
+    // Crypt); it never trails the previous one, and the rest of its
+    // sentence is no predicate.
+    if tokens[split_idx - 1].is_period() {
+        return None;
+    }
 
     let predicate_tokens = trim_lexed_commas(&tokens[split_idx + 1..]);
     if predicate_tokens.is_empty() {

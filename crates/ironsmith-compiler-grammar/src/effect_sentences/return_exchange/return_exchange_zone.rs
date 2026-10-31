@@ -409,6 +409,27 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 })
                 .map(|exiled_idx| &filter_tokens[..exiled_idx])
                 .unwrap_or(filter_tokens);
+            // "up to X cards from among cards exiled with this artifact" (Bag
+            // of Devouring): the scope phrase restates the source-linked set.
+            let source_linked_subject = match source_linked_subject
+                .windows(2)
+                .position(|pair| pair[0].is_word("from") && pair[1].is_word("among"))
+            {
+                Some(from_idx)
+                    if has_explicit_source_link
+                        && from_idx > 0
+                        && source_linked_subject[from_idx + 2..].iter().all(|token| {
+                            token.is_any_word(&["the", "those", "card", "cards"])
+                        })
+                        && source_linked_subject[from_idx + 2..]
+                            .iter()
+                            .any(|token| token.is_any_word(&["card", "cards"])) =>
+                {
+                    crate::word_claims::claim_tokens(&source_linked_subject[from_idx..]);
+                    &source_linked_subject[..from_idx]
+                }
+                _ => source_linked_subject,
+            };
             let source_linked_excludes_current = has_explicit_source_link
                 && source_linked_subject
                     .iter()

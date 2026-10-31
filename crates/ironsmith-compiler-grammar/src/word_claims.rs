@@ -99,7 +99,10 @@ pub fn audit_card<T: std::fmt::Debug>(
         let mut violations = claims.violations();
         if std::env::var_os("IRONSMITH_FILTER_CLAIM_DEBUG").is_some() {
             for (obligation, claimed) in claims.obligations_debug() {
-                eprintln!("claim-debug obligation '{}' in '{}' claimed={claimed}", obligation.word, obligation.input);
+                eprintln!(
+                    "claim-debug obligation '{}' in '{}' at {} claimed={claimed}",
+                    obligation.word, obligation.input, obligation.caller
+                );
             }
             let document = comparable_debug(&format!("{value:?}"));
             for obligation in &violations {

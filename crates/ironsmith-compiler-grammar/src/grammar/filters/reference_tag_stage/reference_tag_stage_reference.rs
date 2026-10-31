@@ -860,6 +860,10 @@ fn parse_object_filter_inner_unchecked(
         &mut segment_tokens,
     );
 
+    // "the Borg assimilated with this Saga": the assimilation link names the
+    // source; "this Saga" is never the selected object's own type.
+    try_apply_assimilated_with_source_clause(&mut filter, &mut all_words, &mut segment_tokens);
+
     // Token provenance is a source-instance relationship. Consume the source
     // noun before the ordinary type pass can misread "this enchantment" as a
     // requirement that the selected token itself be an enchantment.

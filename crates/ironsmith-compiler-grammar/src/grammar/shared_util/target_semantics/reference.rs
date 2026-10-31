@@ -373,19 +373,28 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if matches!(
         target_head_outcome,
         crate::recognition::ParseOutcome::NoMatch
-    ) && let Ok(filter) = parse_object_filter(tokens, false)
-        && (filter.has_plural_object_noun_surface()
-            || tokens.first().is_some_and(|token| {
-                let word = token.parser_text();
-                crate::word_primitives::strip_word_suffix(word, "s").is_some()
-                    && parse_subtype_flexible(word).is_some()
-            }))
-    {
-        // A plural subtype can be the complete subject of an effect without
-        // an article or `target` marker (`Vehicles you control become ...`).
-        // The leaf target-head recognizer deliberately owns only structural
-        // selector heads, so retain this grammar-proven bare object set here.
-        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+    ) {
+        // A probe: callers hand whole clauses here ("if it was a creature
+        // card put a +1/+1 counter on this creature and you", Scavenging
+        // Ooze), so its unread words count only for the bare set it returns.
+        let (filter, probe) =
+            crate::word_claims::speculative(|| parse_object_filter(tokens, false));
+        if let Ok(filter) = filter
+            && (filter.has_plural_object_noun_surface()
+                || tokens.first().is_some_and(|token| {
+                    let word = token.parser_text();
+                    crate::word_primitives::strip_word_suffix(word, "s").is_some()
+                        && parse_subtype_flexible(word).is_some()
+                }))
+        {
+            probe.keep();
+            // A plural subtype can be the complete subject of an effect
+            // without an article or `target` marker (`Vehicles you control
+            // become ...`). The leaf target-head recognizer deliberately owns
+            // only structural selector heads, so retain this grammar-proven
+            // bare object set here.
+            return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+        }
     }
     let target_head = match target_head_outcome {
         crate::recognition::ParseOutcome::Match(matched) => matched.value,

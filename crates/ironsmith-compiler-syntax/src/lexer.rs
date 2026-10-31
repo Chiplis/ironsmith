@@ -295,6 +295,14 @@ impl Location for OwnedLexToken {
     }
 }
 
+// A dropped token's registered word addresses go back to the allocator; a
+// later string at the same address must not inherit their spans.
+impl Drop for OwnedLexToken {
+    fn drop(&mut self) {
+        crate::word_claims::forget_token_words(self);
+    }
+}
+
 impl OwnedLexToken {
     pub fn new(kind: TokenKind, slice: impl Into<String>, span: TextSpan) -> Self {
         let slice = slice.into();
@@ -396,6 +404,13 @@ impl OwnedLexToken {
     }
 
     pub fn replace_word(&mut self, slice: impl Into<String>) -> bool {
+        if matches!(
+            self.kind,
+            TokenKind::Word | TokenKind::Number | TokenKind::Tilde
+        ) {
+            // The replaced strings are freed; see `forget_token_words`.
+            crate::word_claims::forget_token_words(self);
+        }
         match self.kind {
             TokenKind::Word | TokenKind::Number => {
                 let slice = slice.into();

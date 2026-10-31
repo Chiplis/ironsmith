@@ -66,7 +66,9 @@ pub struct Obligation {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClaimSet {
     spans: BTreeSet<SpanKey>,
-    obligations: BTreeMap<SpanKey, Obligation>,
+    // Every distinct filter reading that left a span unread: each is judged
+    // on its own, so a probe's obligation cannot mask a kept filter's.
+    obligations: BTreeMap<SpanKey, Vec<Obligation>>,
     // Filters (by hash of their comparable debug text) some parse produced
     // while reading every word it was given.
     clean_filters: BTreeSet<u64>,
@@ -89,12 +91,19 @@ impl ClaimSet {
 
     pub fn extend(&mut self, other: &ClaimSet) {
         self.spans.extend(other.spans.iter().copied());
-        for (span, obligation) in &other.obligations {
-            self.obligations
-                .entry(*span)
-                .or_insert_with(|| obligation.clone());
+        for (span, obligations) in &other.obligations {
+            for obligation in obligations {
+                self.add_obligation(*span, obligation);
+            }
         }
         self.clean_filters.extend(other.clean_filters.iter().copied());
+    }
+
+    fn add_obligation(&mut self, span: SpanKey, obligation: &Obligation) {
+        let existing = self.obligations.entry(span).or_default();
+        if !existing.contains(obligation) {
+            existing.push(obligation.clone());
+        }
     }
 
     /// Whether `tokens` has an authored word outside `self`.
@@ -114,7 +123,7 @@ impl ClaimSet {
     }
 
     /// Record that a filter given `tokens` left their words outside `self`
-    /// unread. The first filter to leave a word unread names it.
+    /// unread.
     pub fn oblige_unclaimed(
         &mut self,
         tokens: &[OwnedLexToken],
@@ -134,21 +143,22 @@ impl ClaimSet {
             let filter = filter_text
                 .get_or_insert_with(|| Rc::from(filter.take().map(|f| f()).unwrap_or_default()))
                 .clone();
-            self.obligations
-                .entry(span_key(piece.span))
-                .or_insert_with(|| Obligation {
+            self.add_obligation(
+                span_key(piece.span),
+                &Obligation {
                     word: piece.text.clone(),
                     input,
                     filter,
                     caller,
-                });
+                },
+            );
         }
     }
 
     /// Report every obligation in this set against `input`.
     pub fn set_obligation_inputs(&mut self, input: String) {
         let input: Rc<str> = Rc::from(input);
-        for obligation in self.obligations.values_mut() {
+        for obligation in self.obligations.values_mut().flatten() {
             obligation.input = input.clone();
         }
     }
@@ -173,12 +183,15 @@ impl ClaimSet {
                 let filter = filter_text
                     .get_or_insert_with(|| Rc::from(filter.take().map(|f| f()).unwrap_or_default()))
                     .clone();
-                self.obligations.entry(span_key(span)).or_insert_with(|| Obligation {
-                    word: word.to_string(),
-                    input,
-                    filter,
-                    caller,
-                });
+                self.add_obligation(
+                    span_key(span),
+                    &Obligation {
+                        word: word.to_string(),
+                        input,
+                        filter,
+                        caller,
+                    },
+                );
             }
         }
     }
@@ -192,16 +205,20 @@ impl ClaimSet {
     pub fn obligations_debug(&self) -> Vec<(&Obligation, bool)> {
         self.obligations
             .iter()
-            .map(|(span, obligation)| (obligation, self.spans.contains(span)))
+            .flat_map(|(span, obligations)| {
+                let claimed = self.spans.contains(span);
+                obligations.iter().map(move |obligation| (obligation, claimed))
+            })
             .collect()
     }
 
-    /// Obligations no claim in this set covers, in source order.
+    /// Obligations no claim in this set covers, in source order; a span
+    /// several filters left unread yields one per filter reading.
     pub fn violations(&self) -> Vec<&Obligation> {
         self.obligations
             .iter()
             .filter(|(span, _)| !self.spans.contains(span))
-            .map(|(_, obligation)| obligation)
+            .flat_map(|(_, obligations)| obligations)
             .collect()
     }
 
@@ -221,9 +238,13 @@ thread_local! {
     static DEPTH: Cell<usize> = const { Cell::new(0) };
     static STACK: RefCell<Vec<ClaimSet>> = const { RefCell::new(Vec::new()) };
     // Keyed by address and length; the text hash guards against a freed
-    // word's address being reused by a different word of the same length.
+    // word's address being reused by a different word of the same length,
+    // and a token forgets its words when it drops (`forget_token_words`).
     static WORD_SPANS: RefCell<HashMap<(usize, usize), (u64, Vec<TextSpan>)>> =
         RefCell::new(HashMap::new());
+    // Whether WORD_SPANS may hold entries, so a token drop outside the audit
+    // costs one flag read.
+    static REGISTERED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Whether claims are recorded for this process: when auditing
@@ -258,6 +279,7 @@ pub fn register_tokens(tokens: &[OwnedLexToken]) {
     if !is_recording() {
         return;
     }
+    REGISTERED.with(|registered| registered.set(true));
     WORD_SPANS.with(|spans| {
         let mut spans = spans.borrow_mut();
         for token in tokens.iter().filter(|token| !is_synthetic(token)) {
@@ -314,6 +336,35 @@ pub fn authored_word_span(word: &str) -> Option<TextSpan> {
 /// Forget registered words. Called at the outermost scope.
 pub fn reset_registry() {
     WORD_SPANS.with(|spans| spans.borrow_mut().clear());
+    REGISTERED.with(|registered| registered.set(false));
+}
+
+/// Forget the registered words `token` owns, before its strings are freed or
+/// replaced. A string later allocated at the same address with the same text
+/// would otherwise inherit the dead word's span, so what a reader claims (and
+/// which `&str` filter words leave obligations) would depend on heap history:
+/// on which cards this thread compiled before. A tilde's `as_word` text is a
+/// static shared by every tilde token and stays registered.
+pub(crate) fn forget_token_words(token: &OwnedLexToken) {
+    // `try_with`: tokens can drop during thread-local teardown.
+    if !REGISTERED.try_with(Cell::get).unwrap_or(false) {
+        return;
+    }
+    let _ = WORD_SPANS.try_with(|spans| {
+        let Ok(mut spans) = spans.try_borrow_mut() else {
+            return;
+        };
+        let mut forget = |text: &str| {
+            if !text.is_empty() {
+                spans.remove(&key(text));
+            }
+        };
+        for piece in token.parser_word_pieces() {
+            forget(&piece.text);
+        }
+        forget(&token.slice);
+        forget(&token.parser_text);
+    });
 }
 
 /// Record that the current reading read the word piece at `span`.

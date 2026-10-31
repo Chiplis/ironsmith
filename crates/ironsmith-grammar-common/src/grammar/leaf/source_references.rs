@@ -124,10 +124,15 @@ pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourc
 }
 
 /// Shorten a titled personal name without treating its title alone as a name.
+/// Ranks keep the title and surname too ("Lieutenant Hikaru Sulu" ->
+/// "Lieutenant Sulu", "Ensign Pavel Chekov" -> "Ensign Chekov").
 pub fn parse_titled_personal_name(name: &str) -> Option<String> {
     let parts: Vec<_> = name.split_whitespace().collect();
     if parts.len() < 2 || name.contains(',')
-        || !matches!(parts[0].to_ascii_lowercase().as_str(), "dr." | "doctor" | "captain")
+        || !matches!(
+            parts[0].to_ascii_lowercase().as_str(),
+            "dr." | "doctor" | "captain" | "lieutenant" | "ensign" | "commander"
+        )
         || parts.iter().any(|part| matches!(part.to_ascii_lowercase().as_str(), "of" | "the" | "and" | "&")) {
         return None;
     }

@@ -627,7 +627,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Single("as"),
         ],
-        "parse_spend_mana_as_any_color_line" => vec![
+        "parse_spend_mana_as_any_color_lines" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Single("players"),
             StaticAbilityLineHeadHint::Single("mana"),
@@ -1711,7 +1711,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_reveal_card_or_enter_tapped_line),
         multi_static_ability_ast_passthrough_rule!(parse_copy_activated_and_triggered_abilities_line),
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
-        single_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_line),
+        multi_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_lines),
         single_static_ability_ast_passthrough_rule!(parse_enchanted_has_activated_ability_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_granted_keywords_static_line

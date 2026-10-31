@@ -624,6 +624,7 @@ fn chosen_quality_parity(words: &[&str], phrases: &[&[&str]]) -> ParityRequireme
         for phrase in phrases {
             let mut input: WordInput<'_> = &words[word_start..];
             if parse_word_phrase(&mut input, phrase).is_ok() {
+                crate::word_claims::claim_words(&words[word_start - 1..word_start]);
                 return ParityRequirement::NotChosen;
             }
         }

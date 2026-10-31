@@ -3923,15 +3923,6 @@ pub fn parse_filter_is_pt_creature_in_addition_line(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject = if contracted_source_subject {
-        AnthemSubjectAst::Source
-    } else {
-        match parse_anthem_subject(&subject_tokens) {
-            Ok(subject) => subject,
-            Err(_) => return Ok(None),
-        }
-    };
-
     let predicate_tokens = trim_edge_punctuation_tokens(&tokens[be_idx + 1..]);
     let predicate_clause = LexedClause::new(predicate_tokens);
     let raw_words = predicate_clause.word_refs();
@@ -3972,6 +3963,19 @@ pub fn parse_filter_is_pt_creature_in_addition_line(
     if type_and_color_facts::parse_other_type_addition_tail_tokens(tail_clause.tokens()).is_none() {
         return Ok(None);
     }
+    // Read the subject only once the predicate proves this shape: the copula
+    // search can land inside a sentence that is not a subject at all ("...
+    // deals X damage to each opponent and each creature they control, where
+    // X is ...", Impending Flux; "... in your graveyard. If it's a creature
+    // card, ...", Search for Survivors).
+    let subject = if contracted_source_subject {
+        AnthemSubjectAst::Source
+    } else {
+        match parse_anthem_subject(&subject_tokens) {
+            Ok(subject) => subject,
+            Err(_) => return Ok(None),
+        }
+    };
 
     Ok(Some(lower_static_animation_bundle(
         StaticAnimationBundleAst {
@@ -8264,10 +8268,33 @@ pub fn parse_exile_to_exile_instead_of_graveyard_line(
             filter
         }
         keyword_static_lines::ExileGraveyardFilterKind::ObjectFilter => {
-            match parse_object_filter(spec.filter_tokens, false) {
+            // "a nontoken creature an opponent owns would die or a creature
+            // card not on the battlefield" (Anafenza, the Foremost): the
+            // first arm's "would die" is its battlefield-to-graveyard move,
+            // which this graveyard replacement covers for a battlefield arm.
+            let would_die = spec.filter_tokens.windows(3).position(|words| {
+                words[0].is_word("would") && words[1].is_word("die") && words[2].is_word("or")
+            });
+            let without_would_die = would_die.map(|index| {
+                [&spec.filter_tokens[..index], &spec.filter_tokens[index + 2..]].concat()
+            });
+            let filter_tokens = without_would_die.as_deref().unwrap_or(spec.filter_tokens);
+            match parse_object_filter(filter_tokens, false) {
+                Ok(filter)
+                    if would_die.is_some()
+                        && filter
+                            .any_of
+                            .first()
+                            .is_none_or(|arm| arm.zone != Some(Zone::Battlefield)) =>
+                {
+                    return Ok(None);
+                }
                 // "... card" subjects exclude tokens (CR 108.2) unless the
                 // filter explicitly names tokens or has alternatives.
                 Ok(mut filter) => {
+                    if let Some(index) = would_die {
+                        crate::word_claims::claim_tokens(&spec.filter_tokens[index..index + 2]);
+                    }
                     if filter.has_explicit_card_noun() && !filter.token && filter.any_of.is_empty()
                     {
                         filter.nontoken = true;
@@ -8925,6 +8952,68 @@ fn mana_spend_symbol_for_source_activation_permission(
     permission.mode = ironsmith_core::value_model::ManaSpendMode::Normal;
     permission.any_color_mana_symbol = Some(symbol);
     (permission, clause_words.join(" "))
+}
+
+/// "You may spend mana as though it were mana of any color to cast spells
+/// you don't own or to activate abilities of permanents you control but
+/// don't own" (Nathan Drake, Treasure Hunter): two permissions, one for
+/// casting the spells and one for the permanents' activation costs.
+pub fn parse_spend_mana_as_any_color_lines(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(keyword_static_lines::ManaSpendPermissionShape::AnyColorToCast {
+        player,
+        filter_tokens,
+    }) = keyword_static_lines::parse_mana_spend_permission_tokens(tokens)
+        && let Some(or_idx) = filter_tokens.windows(5).position(|window| {
+            ["or", "to", "activate", "abilities", "of"]
+                .iter()
+                .zip(window)
+                .all(|(word, token)| token.is_word(word))
+        })
+        && or_idx > 0
+        && or_idx + 5 < filter_tokens.len()
+    {
+        let clause_words = parser_token_word_refs(tokens);
+        let Some(to_cast) = clause_words
+            .windows(2)
+            .position(|pair| pair == ["to", "cast"])
+        else {
+            return Ok(None);
+        };
+        let cast_tokens = trim_lexed_commas(&filter_tokens[..or_idx]);
+        let activation_tokens = &filter_tokens[or_idx + 5..];
+        let prefix = clause_words[..to_cast].join(" ");
+        let cast_display = format!(
+            "{prefix} to cast {}",
+            parser_token_word_refs(cast_tokens).join(" ")
+        );
+        let activation_display = format!(
+            "{prefix} to activate abilities of {}",
+            parser_token_word_refs(activation_tokens).join(" ")
+        );
+        let (cast_permission, _) =
+            mana_spend_any_color_to_cast_permission(player, cast_tokens, &clause_words)?;
+        let Ok(activation_filter) = parse_object_filter(activation_tokens, false) else {
+            return Ok(None);
+        };
+        crate::word_claims::claim_tokens(&filter_tokens[or_idx..or_idx + 5]);
+        let activation_permission = crate::effect::ManaSpendPermission::any_color_for_activation(
+            cast_permission.player.clone(),
+            activation_filter,
+        );
+        return Ok(Some(vec![
+            StaticAbilityAst::Static(StaticAbility::mana_spend_permission(
+                cast_permission,
+                cast_display,
+            )),
+            StaticAbilityAst::Static(StaticAbility::mana_spend_permission(
+                activation_permission,
+                activation_display,
+            )),
+        ]));
+    }
+    Ok(parse_spend_mana_as_any_color_line(tokens)?.map(|ability| vec![ability]))
 }
 
 pub fn parse_spend_mana_as_any_color_line(

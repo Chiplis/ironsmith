@@ -862,6 +862,21 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         } else {
             TaggedOpbjectRelation::IsTaggedObject
         };
+        // "a creature card from among the cards milled this way" (Shadow
+        // Kin): the scope phrase restates membership in the tagged result.
+        if relation == TaggedOpbjectRelation::IsTaggedObject {
+            let head = &all_words[..action_start];
+            if let Some(scope) = [
+                &["from", "among", "the", "cards"][..],
+                &["from", "among", "those", "cards"][..],
+                &["from", "among", "cards"][..],
+            ]
+            .into_iter()
+            .find(|scope| crate::word_primitives::ends_with(head, scope))
+            {
+                crate::word_claims::claim_words(&head[head.len() - scope.len()..]);
+            }
+        }
         if action == ironsmith_core::PriorEffectAction::Milled
             && relation == TaggedOpbjectRelation::IsTaggedObject
         {

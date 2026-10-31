@@ -57,6 +57,8 @@ fn parse_exiled_with_cards_named_filter_words(
 ) -> Option<Result<ObjectFilter, CardTextError>> {
     let (base, card_name) = split_exiled_with_cards_named_qualifier_words(words)?;
     Some(parse_object_filter_words(base, other).map(|mut filter| {
+        // The qualifier and the card name are read into the named group.
+        crate::word_claims::claim_words(&words[base.len()..]);
         filter.zone = Some(Zone::Exile);
         filter.controller = None;
         filter.exiled_with_cards_named = Some(card_name);
@@ -1628,12 +1630,14 @@ fn parse_not_targeted_by_ability_from_filter(
         Some(first) if first.is_word("another") && tail.len() > 1 => (&tail[1..], true),
         _ => (tail, false),
     };
+    let relation = &tokens[head.len()..tokens.len() - tail.len()];
     let Ok(mut source_filter) = parse_object_filter(tail, source_other) else {
         return Ok(None);
     };
     source_filter.other |= source_other;
     let mut filter = parse_head(head, other)?;
     filter.not_targeted_by_ability_from = Some(Box::new(source_filter));
+    crate::word_claims::claim_tokens(relation);
     Ok(Some(filter))
 }
 
@@ -2089,6 +2093,26 @@ pub fn parse_object_filter(
     crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_unaudited(tokens, other))
 }
 
+/// "<head> [that] it can enchant": the head tokens before the Aura-legality
+/// relative clause whose subject is a back-reference to an Aura.
+fn split_it_can_enchant_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].kind == super::lexer::TokenKind::Period {
+        end -= 1;
+    }
+    let [.., it, can, enchant] = &tokens[..end] else {
+        return None;
+    };
+    if !(it.is_word("it") && can.is_any_word(&["can", "could"]) && enchant.is_word("enchant")) {
+        return None;
+    }
+    let mut head_end = end - 3;
+    if head_end > 0 && tokens[head_end - 1].is_word("that") {
+        head_end -= 1;
+    }
+    (head_end > 0).then(|| &tokens[..head_end])
+}
+
 fn parse_object_filter_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -2114,6 +2138,19 @@ fn parse_object_filter_unaudited(
         let mut filter = parse_object_filter(head, other)?;
         claim_outside(tokens, head);
         filter.sector = Some(sector);
+        return Ok(filter);
+    }
+    if let Some(head) = split_it_can_enchant_suffix(tokens) {
+        // "another permanent it can enchant" (Aura Graft): a legal new host
+        // for the referenced Aura (CR 303.4).
+        let mut filter = parse_object_filter(head, other)?;
+        claim_outside(tokens, head);
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+                relation: TaggedOpbjectRelation::CouldBeEnchantedByTagged,
+            });
         return Ok(filter);
     }
     // "creature card in your graveyard that's an artifact or that has mana
@@ -2181,6 +2218,7 @@ fn parse_object_filter_unaudited(
                     ..ObjectFilter::default()
                 },
             ];
+            claim_outside(tokens, &tokens[..boundary]);
             return Ok(filter);
         }
     }

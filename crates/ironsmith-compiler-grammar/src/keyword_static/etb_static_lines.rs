@@ -2083,6 +2083,11 @@ pub fn parse_enters_tapped_for_filter_line(
         }
         Err(err) => return Err(err),
     };
+    // "Each creature without mana value of the chosen quality enters tapped"
+    // (Ashling's Prerogative): keep the authored singular "each" subject.
+    if filter_tokens.first().is_some_and(|token| token.is_word("each")) {
+        filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+    }
     if controller_override.is_none() && filter.source {
         return Ok(Some(StaticAbility::enters_tapped_ability()));
     }

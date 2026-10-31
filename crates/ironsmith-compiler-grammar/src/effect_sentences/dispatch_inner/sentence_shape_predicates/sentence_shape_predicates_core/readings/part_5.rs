@@ -276,12 +276,20 @@ pub(super) fn read_put_verb_dispatch(
     // not the generic action-choice form represented by `UnlessAction`.
     // Let the counter verb handler confirm the complete shape before the
     // broad top-level `or` splitter examines the sentence.
-    if tokens.first().is_some_and(|token| token.is_word("put"))
-        && let Ok(effect) = super::super::super::super::verb_dispatch::parse_effect_with_verb(
+    if !tokens.first().is_some_and(|token| token.is_word("put")) {
+        return Ok(None);
+    }
+    // A probe of the whole sentence ("put a +1/+1 counter on this creature
+    // and investigate", Sharp-Eyed Rookie): its filter words count only when
+    // the put-or-remove reading is kept.
+    let (parsed, probe) = crate::word_claims::speculative(|| {
+        super::super::super::super::verb_dispatch::parse_effect_with_verb(
             super::super::super::super::Verb::Put,
             None,
             &tokens[1..],
         )
+    });
+    if let Ok(effect) = parsed
         && matches!(
             &effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -290,6 +298,7 @@ pub(super) fn read_put_verb_dispatch(
             })
         )
     {
+        probe.keep();
         return Ok(Some(vec![effect]));
     }
     Ok(None)

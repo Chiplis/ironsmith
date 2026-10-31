@@ -7814,6 +7814,7 @@ impl GameState {
             || filter.fought_this_turn
             || filter.counters_put_on_this_turn.is_some()
             || filter.counter_source_history.is_some()
+            || filter.assimilated_with_source
             || filter.was_dealt_damage_this_turn
             || filter.dealt_damage_this_turn
             || filter.dealt_damage_by_source_this_turn.is_some()

@@ -2601,8 +2601,13 @@ fn recognize_labeled_qualified_ability_trigger(
     // This is a deliberately speculative fast-path probe. A diagnostic from
     // either half means only that this narrow qualified-trigger shape does
     // not own the line; the committing triggered-line parser runs below.
-    let trigger = match crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0
-    {
+    // The labeled line keeps the authored source name ("Munda or another
+    // Ally", Munda, Ambush Leader), so a probe that doesn't own the line
+    // must not leave its filters' unread words behind.
+    let (trigger, probe) = crate::word_claims::speculative(|| {
+        crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0
+    });
+    let trigger = match trigger {
         Ok(trigger) => trigger,
         Err(_) => return None,
     };
@@ -2625,6 +2630,7 @@ fn recognize_labeled_qualified_ability_trigger(
         return None;
     }
     let candidate = render_triggered_split_candidate(trigger_tokens, effect_tokens, None, None)?;
+    probe.keep();
     Some(candidate.into_recognized_line(line, &line.tokens))
 }
 

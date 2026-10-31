@@ -1413,6 +1413,7 @@ pub fn apply_supertype_or_mana_capability_union(
         && let Ok(mana_symbol) = parse_mana_symbol(tokens[symbol.0].parser_text())
     {
         filter.could_produce_mana = vec![mana_symbol];
+        crate::word_claims::claim_tokens(&tokens[that.0..=symbol.0]);
         return;
     }
     for word_idx in 0..words.len().saturating_sub(6) {
@@ -1451,6 +1452,8 @@ pub fn apply_supertype_or_mana_capability_union(
                 ..ObjectFilter::default()
             },
         ];
+        // "that is snow or could produce {C}" (Break the Ice).
+        crate::word_claims::claim_tokens(&tokens[window[0].0..=window[6].0]);
         return;
     }
 }

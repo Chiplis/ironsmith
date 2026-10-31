@@ -47,6 +47,14 @@ const PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     // the East Tree): the source's put-onto-battlefield provenance.
     &["put", "onto", "battlefield", "with", "this", "ability"],
 ];
+// "the Borg assimilated with this Saga" (The Best of Both Worlds).
+const ASSIMILATED_WITH_SOURCE_PHRASES: &[&[&str]] = &[
+    &["assimilated", "with", "this", "saga"],
+    &["assimilated", "with", "this", "enchantment"],
+    &["assimilated", "with", "this", "artifact"],
+    &["assimilated", "with", "this", "creature"],
+    &["assimilated", "with", "this", "permanent"],
+];
 const CREATED_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     &["created", "with", "it"],
     &["created", "with", "this", "artifact"],
@@ -1446,6 +1454,33 @@ pub(super) fn try_apply_put_onto_battlefield_with_source_clause(
     let mut authored_phrase = phrase.to_vec();
     authored_phrase.insert(2, "the");
     drain_segment_matching_phrase(segment_tokens, &[&authored_phrase, phrase]);
+    true
+}
+
+/// "the Borg assimilated with this Saga": the source's assimilation link to
+/// this exact permanent, not a requirement that the object be a Saga.
+pub(super) fn try_apply_assimilated_with_source_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, phrase)) = ASSIMILATED_WITH_SOURCE_PHRASES.iter().find_map(|phrase| {
+        relation_phrase_word_span(all_words, phrase).map(|(start, _)| (start, *phrase))
+    }) else {
+        return false;
+    };
+
+    let noun = match phrase.last().copied().unwrap_or("permanent") {
+        "saga" => "Saga",
+        other => other,
+    };
+    filter.assimilated_with_source = true;
+    filter.assimilated_with_source_surface = Some(
+        crate::target::SourceReferenceSurface::ThisPermanentType(format!("this {noun}")),
+    );
+    filter.zone = Some(Zone::Battlefield);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + phrase.len()));
+    drain_segment_matching_phrase(segment_tokens, &[phrase]);
     true
 }
 

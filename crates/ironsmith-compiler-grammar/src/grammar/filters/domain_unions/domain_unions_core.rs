@@ -267,6 +267,11 @@ pub fn parse_elided_shared_domain_union(
         let parsed_outer = parse_object_filter(&shared_tokens, other);
         let mut outer = parsed_outer.clone().unwrap_or_default();
         let tail = &tokens[after_second..];
+        // The relative copula that distributes the shared selector list over
+        // both locations ("that's an instant card, a sorcery card, or a card
+        // that has an Adventure", Sailors' Bane) is read once the list
+        // becomes the selector (union arms, or a flat type/subtype union).
+        let mut relative_copula: Vec<OwnedLexToken> = Vec::new();
         if tail.get(0).is_some_and(|token| token.is_word("that"))
             && tail.get(1).is_some_and(|token| token.is_word("are"))
             && let Some(or) = tail
@@ -314,8 +319,24 @@ pub fn parse_elided_shared_domain_union(
             }
             domain.any_of = selectors;
             outer = domain;
+            relative_copula.extend_from_slice(&tail[..2]);
+            relative_copula.extend_from_slice(&tail[or..or + 2]);
         } else if parsed_outer.is_err() {
             continue;
+        } else if !outer.any_of.is_empty()
+            || !outer.card_types.is_empty()
+            || !outer.subtypes.is_empty()
+        {
+            let copula_len = if tail.first().is_some_and(|token| token.is_any_word(&["that's", "thats"])) {
+                1
+            } else if tail.first().is_some_and(|token| token.is_word("that"))
+                && tail.get(1).is_some_and(|token| token.is_any_word(&["is", "are"]))
+            {
+                2
+            } else {
+                0
+            };
+            relative_copula.extend_from_slice(&tail[..copula_len]);
         }
         if !outer.any_of.is_empty() {
             let Some(leading_scope) = leading_scope.as_ref() else {
@@ -395,6 +416,7 @@ pub fn parse_elided_shared_domain_union(
         // Both locations, their owners (checked against the shared owner
         // above) and the joining "and" are read.
         crate::word_claims::claim_tokens(&tokens[first_in..after_second]);
+        crate::word_claims::claim_tokens(&relative_copula);
         return Some(outer);
     }
     None

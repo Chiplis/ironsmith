@@ -4740,6 +4740,19 @@ impl StaticAbilityKind for EnterTappedForFilter {
 
     fn display(&self) -> String {
         let filter = &self.filter;
+        // "Each creature without mana value of the chosen quality enters
+        // tapped" (Ashling's Prerogative): an authored "each" keeps the
+        // singular subject, so trailing qualifiers are never pluralized.
+        if filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Each) {
+            let (subject, _) = super::continuous::grant_subject_with_set_quantifier(
+                filter,
+                filter.set_quantifier_surface(),
+            );
+            return render_conditioned_entry_rule(
+                format!("{subject} enters tapped"),
+                self.condition.as_ref(),
+            );
+        }
         if let Some(surface) = filter.played_by_opponent_surface()
             && filter.controller == Some(PlayerFilter::Opponent)
         {

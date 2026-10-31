@@ -2166,10 +2166,17 @@ pub(super) fn parse_copular_base_characteristic_assignment(
         if !value.get(1).is_some_and(|token| token.is_word("equal")) { return Ok(None); }
         value = &value[1..];
     }
-    let mut subject = tokens[..has].to_vec();
+    // "it also has base power and toughness 2/2" (Azure Beastbinder): the
+    // adverb belongs to the copula, not to the recipient phrase.
+    let mut subject_end = has;
+    if subject_end > 1 && tokens[subject_end - 1].is_word("also") {
+        subject_end -= 1;
+        crate::word_claims::claim_tokens(&tokens[subject_end..has]);
+    }
+    let mut subject = tokens[..subject_end].to_vec();
     subject.extend_from_slice(&rest[..marker_len]);
-    let recipient = source_target_from_subject_tokens(&tokens[..has])
-        .map(Ok).unwrap_or_else(|| parse_target_phrase(&tokens[..has]))?;
+    let recipient = source_target_from_subject_tokens(&tokens[..subject_end])
+        .map(Ok).unwrap_or_else(|| parse_target_phrase(&tokens[..subject_end]))?;
     let mut effect = super::clause_dispatch::parse_become_clause(&subject, value)?;
     fn preserve_recipient(effect: &mut EffectAst, recipient: &TargetAst) {
         use crate::cards::builders::CharacteristicActionAst;
