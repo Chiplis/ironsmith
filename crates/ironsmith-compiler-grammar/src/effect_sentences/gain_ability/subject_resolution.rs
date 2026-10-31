@@ -215,7 +215,12 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         let subject_shape = gain_shapes::classify_gain_subject(&subject_word_refs);
         let controller_tail_subject = subject_shape.controller_tail;
         let target_phrase_with_controller_tail = subject_shape.target && controller_tail_subject;
-        let object_filter_subject = parse_object_filter(&subject_tokens, false).is_ok();
+        // A yes/no probe: the subject is read for real below. Its span can
+        // be a whole clause ("this enchantment become a copy of it except
+        // it", Court of Vantress), so its unread words do not count.
+        let (object_filter_subject, _probe) = crate::word_claims::speculative(|| {
+            parse_object_filter(&subject_tokens, false).is_ok()
+        });
         if !target_phrase_with_controller_tail
             && !controller_tail_subject
             && !object_filter_subject

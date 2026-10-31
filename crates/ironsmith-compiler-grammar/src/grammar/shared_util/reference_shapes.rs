@@ -419,7 +419,17 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     SubjectAst::This
 }
 
+/// Read a keyword constraint ("flying", "a morph ability") at the start of
+/// `words`, returning it and the number of words it read.
 pub fn parse_filter_keyword_constraint_words(
+    words: &[&str],
+) -> Option<(FilterKeywordConstraint, usize)> {
+    let (constraint, consumed) = read_filter_keyword_constraint_words(words)?;
+    crate::word_claims::claim_words(&words[..consumed]);
+    Some((constraint, consumed))
+}
+
+fn read_filter_keyword_constraint_words(
     words: &[&str],
 ) -> Option<(FilterKeywordConstraint, usize)> {
     if words.is_empty() {

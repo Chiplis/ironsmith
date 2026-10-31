@@ -773,6 +773,9 @@ pub enum Subtype {
     Zendikar,
     Zhalfir,
     Undercity,
+    // Artifact subtype (Starfleet Communicator); appended to preserve
+    // serialized variant ordinals.
+    Communicator,
 }
 
 impl Subtype {
@@ -1160,6 +1163,7 @@ impl Subtype {
             Subtype::Stone,
             Subtype::Vibranium,
             Subtype::Heartwood,
+            Subtype::Communicator,
         ]
     }
 

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 /// This cross-zone phrase is a complete typed union, even when its caller has
@@ -18,7 +19,7 @@ pub(crate) fn parse_complete_permanent_or_suspended_card_filter(
     // Only the noun phrase before the first targeting relation can establish
     // this owner. A relation enclosing the union remains with its own reader,
     // but a union followed by a relation must consume or reject that full tail.
-    let noun_end = words.windows(2)
+    let noun_end = words.word_windows(2)
         .position(|part| matches!(part, ["that", "target" | "targets"]))
         .unwrap_or(words.len());
     let noun_words = &words[..noun_end];
@@ -43,6 +44,10 @@ pub(crate) fn parse_complete_permanent_or_suspended_card_filter(
     } else {
         None
     };
+    // The disjunction reader accepts only the complete phrase.
+    if parsed.is_some() {
+        crate::word_claims::claim_tokens(tokens);
+    }
     Some(parsed.map(|mut filter| {
         filter.other = other;
         filter
@@ -70,7 +75,7 @@ pub(super) fn strip_other_than_basic_land_cards_clause(
         {
             end += 1;
         }
-        all_words.drain(idx..end);
+        crate::word_claims::claim_drained(all_words.drain(idx..end));
         strip_other_than_basic_land_cards_tokens(segment_tokens);
         return true;
     }
@@ -99,7 +104,7 @@ pub(super) fn strip_other_than_basic_land_cards_tokens(segment_tokens: &mut Vec<
         if word_at(end).is_some_and(|word| parse_word_choice(word, CARD_OR_CARDS_WORDS).is_some()) {
             end += 1;
         }
-        segment_tokens.drain(idx..end);
+        crate::word_claims::claim_drained(segment_tokens.drain(idx..end));
         return;
     }
 }

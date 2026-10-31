@@ -9,6 +9,7 @@
 //! each matching card in it, or exiling every noncreature, nonland card from
 //! that hand and graveyard.
 
+use crate::word_primitives::WordWindows as _;
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, LifeResourceActionAst, ObjectChoiceEffectAst,
@@ -394,7 +395,7 @@ fn cast_from_selected_hand(
 /// Keep ordinary exile parsing responsible for counts, qualifiers and duration.
 fn exile_from_shown_hand(sentence: &SentenceInput, owner: PlayerFilter) -> Option<EffectAst> {
     let words = crate::lexer::parser_token_word_refs(sentence.lowered());
-    if !words.windows(2).any(|pair| pair == ["from", "it"]) {
+    if !words.word_windows(2).any(|pair| pair == ["from", "it"]) {
         return None;
     }
     let mut effects = super::parse_effect_sentence_lexed(sentence.lowered()).ok()?;

@@ -298,6 +298,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 TurnHistoryCount::Died { filter, .. }
                 | TurnHistoryCount::EnteredBattlefield(filter)
                 | TurnHistoryCount::DealtExcessDamage(filter)
+                | TurnHistoryCount::DiedTotalPower(filter)
                 | TurnHistoryCount::MovedZones { filter, .. }
                 | TurnHistoryCount::CountersRemovedFrom { filter, .. } => {
                     object_filter_mentions_iterated_player(filter)

@@ -656,3 +656,16 @@ fn qualified_hand_count_does_not_erase_the_card_color_into_hand_size() {
     assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
     assert_eq!(filter.colors, Some(crate::color::ColorSet::WHITE));
 }
+
+#[test]
+fn total_power_of_creatures_that_died_this_turn_reads_death_history() {
+    let value = parse_equal_to_aggregate_filter_value(&lex_words(
+        "equal to the total power of daleks that died this turn",
+    ))
+    .expect("death-history power total");
+    let Value::TurnHistoryCount(TurnHistoryCount::DiedTotalPower(filter)) = value.unhinted() else {
+        panic!("expected a death-history power sum, not live permanents: {value:?}");
+    };
+    assert_eq!(filter.zone, None, "{filter:#?}");
+    assert!(!filter.subtypes.is_empty(), "{filter:#?}");
+}

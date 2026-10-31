@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -406,7 +407,7 @@ pub fn parse_tap_chosen_segment_tokens(
     let (filter_tokens, exclude_declared_combatants) =
         strip_not_declared_as_attacking_or_blocking_suffix(shape.filter_tokens);
     if crate::lexer::parser_token_word_refs(filter_tokens)
-        .windows(2)
+        .word_windows(2)
         .any(|words| words == ["at", "random"])
     {
         return Err(unsupported(filter_tokens, "tap chosen random selection"));

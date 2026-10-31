@@ -4,6 +4,7 @@
 //! cover. Running after the ranked readings keeps them from ever competing
 //! with an established reading of the same words.
 
+use crate::word_primitives::WordWindows as _;
 use super::super::*;
 use super::Predicate;
 
@@ -438,8 +439,8 @@ fn cards_above_source(words: &[&str]) -> Option<PredicateAst> {
         return None;
     };
     let above = rest
-        .windows(2)
-        .position(|window| window == ["are", "above"])?;
+        .word_windows(2)
+        .position(|window| crate::word_primitives::equals(&window, &["are", "above"]))?;
     let (descriptor, source) = (&rest[..above], &rest[above + 2..]);
     if !is_source_reference(source) || descriptor.is_empty() {
         return None;
@@ -758,8 +759,8 @@ fn counter_removed_this_turn(words: &[&str]) -> Option<PredicateAst> {
         return None;
     };
     let removed = rest
-        .windows(4)
-        .position(|window| window == ["counter", "was", "removed", "from"])?;
+        .word_windows(4)
+        .position(|window| crate::word_primitives::equals(&window, &["counter", "was", "removed", "from"]))?;
     let (counter_words, rest) = (&rest[..removed], &rest[removed + 4..]);
     let ["this", "turn"] = rest.get(rest.len().checked_sub(2)?..)? else {
         return None;
@@ -967,7 +968,7 @@ fn cards_exiled_with_source(words: &[&str]) -> Option<PredicateAst> {
     let ["there", "are", count, "or", "more", rest @ ..] = words else {
         return None;
     };
-    let exiled = rest.windows(3).position(|window| window == ["exiled", "with", "this"])?;
+    let exiled = rest.word_windows(3).position(|window| crate::word_primitives::equals(&window, &["exiled", "with", "this"]))?;
     let (descriptor, source) = (&rest[..exiled], &rest[exiled + 3..]);
     match source {
         [] => {}
@@ -1221,7 +1222,7 @@ fn counted_this_way(words: &[&str]) -> Option<PredicateAst> {
     let [count, "or", "more", rest @ ..] = words else {
         return None;
     };
-    if !rest.ends_with(&["this", "way"]) {
+    if !crate::word_primitives::ends_with(&rest, &["this", "way"]) {
         return None;
     }
     Some(at_least(this_way_count(rest)?, number(count)?))
@@ -1409,7 +1410,7 @@ fn distinct_names_among_controlled_qualities(words: &[&str]) -> Option<Predicate
         return None;
     };
     let count = crate::util::parse_number_word_u32(number).or_else(|| number.parse::<u32>().ok())?;
-    let among = rest.windows(4).position(|window| window == ["with", "different", "names", "among"])?;
+    let among = rest.word_windows(4).position(|window| crate::word_primitives::equals(&window, &["with", "different", "names", "among"]))?;
     let qualities = rest[among + 4..].strip_suffix(&["you", "control"][..])?;
     let qualities = qualities.strip_prefix(&["the"][..]).unwrap_or(qualities);
     let tokens = crate::lexer::synthetic_word_tokens(qualities.iter().copied());
@@ -1616,8 +1617,8 @@ fn same_name_object_exists(words: &[&str]) -> Option<PredicateAst> {
         _ => return None,
     };
     let marker = rest
-        .windows(5)
-        .position(|window| window == ["with", "the", "same", "name", "is"])?;
+        .word_windows(5)
+        .position(|window| crate::word_primitives::equals(&window, &["with", "the", "same", "name", "is"]))?;
     let noun = &rest[..marker];
     if noun.is_empty() {
         return None;

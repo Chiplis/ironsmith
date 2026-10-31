@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::super::super::lexer::{parser_token_word_positions, parser_token_word_refs};
 use super::reference_tag_word_facts::{
     parse_last_word_choice_before, parse_phrase_anywhere, parse_phrase_at_head,
@@ -285,6 +286,8 @@ fn filter_comparison_rhs_ranges(
         };
         let rhs_end = rhs_start.saturating_add(consumed).min(words.len());
         if rhs_start < rhs_end {
+            // The axis and its compared value ("power x or less") are read.
+            crate::word_claims::claim_words(&words[idx..rhs_end]);
             ranges.push(rhs_start..rhs_end);
         }
         idx = rhs_end.max(rhs_start);
@@ -673,14 +676,19 @@ fn contains_explicit_card_noun(
     words: &[&str],
     comparison_rhs_ranges: &[std::ops::Range<usize>],
 ) -> bool {
-    words.iter().enumerate().any(|(idx, word)| {
-        matches!(*word, "card" | "cards")
-            && !word_is_in_ranges(idx, comparison_rhs_ranges)
+    let card_nouns = words.iter().enumerate().filter(|(idx, word)| {
+        matches!(**word, "card" | "cards")
+            && !word_is_in_ranges(*idx, comparison_rhs_ranges)
             // These phrases name a characteristic rather than the object
             // selected by this filter.
             && !words
                 .get(idx + 1)
                 .is_some_and(|next| matches!(*next, "type" | "types" | "name" | "names"))
+    });
+    // Every card noun the filter reads, not just the first.
+    card_nouns.fold(false, |_, (_, word)| {
+        crate::word_claims::claim_word(word);
+        true
     })
 }
 const NO_SHARED_CREATURE_TYPE_WITH_YOUR_CREATURES_OR_GRAVEYARD_CLAUSES: &[&[&str]] = &[
@@ -753,10 +761,7 @@ fn token_index_for_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usiz
 }
 
 fn non_article_parser_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    parser_token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect()
+    crate::util::non_article_word_refs(&parser_token_word_refs(tokens))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -949,9 +954,9 @@ fn try_apply_shared_characteristic_relation_clause(
         .and_then(|candidate| token_boundary_for_non_article_word(segment_tokens, candidate.start));
 
     filter.characteristic_relations.push(relation);
-    all_words.truncate(clause.start);
+    crate::word_claims::claim_drained(all_words.drain((clause.start).min(all_words.len())..));
     if let Some(token_boundary) = token_boundary {
-        segment_tokens.truncate(token_boundary);
+        crate::word_claims::claim_drained(segment_tokens.drain((token_boundary).min(segment_tokens.len())..));
     }
     Ok(true)
 }
@@ -968,7 +973,7 @@ fn try_apply_directional_source_block_clause(
     let tail = &words[blocked + 1..];
     let current_blocked_by_source =
         tail.first() == Some(&"by") && crate::util::is_source_reference_words(&tail[1..]);
-    let blocked_source_this_turn = tail.ends_with(&["this", "turn"])
+    let blocked_source_this_turn = crate::word_primitives::ends_with(&tail, &["this", "turn"])
         && crate::util::is_source_reference_words(&tail[..tail.len() - 2]);
     if !current_blocked_by_source && !blocked_source_this_turn {
         return false;
@@ -983,8 +988,8 @@ fn try_apply_directional_source_block_clause(
     };
     filter.blocked_by_source |= current_blocked_by_source;
     filter.blocked_source_this_turn |= blocked_source_this_turn;
-    all_words.truncate(clause_start);
-    segment_tokens.truncate(token_start);
+    crate::word_claims::claim_drained(all_words.drain((clause_start).min(all_words.len())..));
+    crate::word_claims::claim_drained(segment_tokens.drain((token_start).min(segment_tokens.len())..));
     true
 }
 
@@ -996,7 +1001,7 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
     let words = non_article_parser_word_refs(segment_tokens);
     // A shared terminal time window applies to both active combat roles.
     if let Some(start) = words.len().checked_sub(5)
-        .filter(|start| words[*start..] == ["attacked", "or", "blocked", "this", "turn"])
+        .filter(|start| crate::word_primitives::equals(&words[*start..], &["attacked", "or", "blocked", "this", "turn"]))
     {
         let clause_start = start.checked_sub(1)
             .filter(|idx| matches!(words[*idx], "that" | "which"))
@@ -1006,15 +1011,15 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
             ObjectFilter { attacked_this_turn: true, any_of: previous.clone(), ..Default::default() },
             ObjectFilter { blocked_this_turn: true, any_of: previous, ..Default::default() },
         ];
-        all_words.truncate(clause_start);
+        crate::word_claims::claim_drained(all_words.drain((clause_start).min(all_words.len())..));
         if let Some(start) = token_boundary_for_non_article_word(segment_tokens, clause_start) {
-            segment_tokens.truncate(start);
+            crate::word_claims::claim_drained(segment_tokens.drain((start).min(segment_tokens.len())..));
         }
         return Ok(true);
     }
-    let Some(blocked_idx) = words.windows(4).position(|part|
-        part == ["blocked", "or", "was", "blocked"]
-            || part == ["blocked", "or", "were", "blocked"])
+    let Some(blocked_idx) = words.word_windows(4).position(|part|
+        crate::word_primitives::equals(&part, &["blocked", "or", "was", "blocked"])
+            || crate::word_primitives::equals(&part, &["blocked", "or", "were", "blocked"]))
     else { return Ok(false); };
     let tail_start = blocked_idx + 4;
     let Some(this_turn_idx) =
@@ -1046,9 +1051,9 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
         filter.blocked_or_was_blocked_by_this_turn =
             Some(Box::new(parse_object_filter(&partner, false)?));
     }
-    all_words.truncate(clause_start);
+    crate::word_claims::claim_drained(all_words.drain((clause_start).min(all_words.len())..));
     if let Some(start) = token_boundary_for_non_article_word(segment_tokens, clause_start) {
-        segment_tokens.truncate(start);
+        crate::word_claims::claim_drained(segment_tokens.drain((start).min(segment_tokens.len())..));
     }
     Ok(true)
 }
@@ -1193,7 +1198,7 @@ fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &
         return;
     }
 
-    all_words.drain(0..3);
+    crate::word_claims::claim_drained(all_words.drain(0..3));
 }
 
 /// "Auras, Equipment, and modified creatures you control" (Silkguard): a
@@ -1408,6 +1413,7 @@ pub fn apply_supertype_or_mana_capability_union(
         && let Ok(mana_symbol) = parse_mana_symbol(tokens[symbol.0].parser_text())
     {
         filter.could_produce_mana = vec![mana_symbol];
+        crate::word_claims::claim_tokens(&tokens[that.0..=symbol.0]);
         return;
     }
     for word_idx in 0..words.len().saturating_sub(6) {
@@ -1446,6 +1452,8 @@ pub fn apply_supertype_or_mana_capability_union(
                 ..ObjectFilter::default()
             },
         ];
+        // "that is snow or could produce {C}" (Break the Ice).
+        crate::word_claims::claim_tokens(&tokens[window[0].0..=window[6].0]);
         return;
     }
 }
@@ -1481,7 +1489,7 @@ pub(super) fn parse_object_filter(
     }
     let words = TokenWordView::new(tokens);
     let refs = words.word_refs();
-    if refs.starts_with(&["fortified", "land"]) {
+    if crate::word_primitives::starts_with(&refs, &["fortified", "land"]) {
         let mut filter = parse_object_filter(&tokens[words.token_start_indices()[1]..], other)?;
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: crate::tag::CompilerReferenceTag::Fortified.bind().into(),
@@ -1493,7 +1501,9 @@ pub(super) fn parse_object_filter(
         crate::word_primitives::find_current_block_partner_relation(&refs)
         && crate::util::is_source_reference_words(&refs[index + relation_len..])
     {
-        let mut filter = parse_object_filter(&tokens[..words.token_start_indices()[index]], other)?;
+        let boundary = words.token_start_indices()[index];
+        crate::word_claims::claim_tokens(&tokens[boundary..]);
+        let mut filter = parse_object_filter(&tokens[..boundary], other)?;
         filter.in_combat_with_source = true;
         return Ok(filter);
     }
@@ -1519,8 +1529,9 @@ pub(super) fn parse_object_filter(
             base_end -= 2;
         }
         if base_end > 0 {
-            let mut filter =
-                parse_object_filter(&tokens[..words.token_start_indices()[base_end]], other)?;
+            let boundary = words.token_start_indices()[base_end];
+            let mut filter = parse_object_filter(&tokens[..boundary], other)?;
+            crate::word_claims::claim_tokens(&tokens[boundary..]);
             filter.blocking = true;
             filter.in_combat_with = Some(crate::filter::ObjectRef::Tagged(host.bind().into()));
             return Ok(filter);
@@ -1530,6 +1541,7 @@ pub(super) fn parse_object_filter(
     // Resilience): restrict the selection to the referenced collection.
     if let Some(base) = crate::object_filters::split_from_among_those_cards_suffix(tokens) {
         let mut filter = parse_object_filter(&base, other)?;
+        crate::object_filters::claim_outside(tokens, &base);
         crate::object_filters::clear_zone_for_referenced_cards(&mut filter);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: crate::tag::CompilerReferenceTag::ThoseCardsReference.key(),

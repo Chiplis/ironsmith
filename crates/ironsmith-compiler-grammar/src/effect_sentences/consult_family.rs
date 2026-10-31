@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::ForEachEffectAst;
 use winnow::Parser as _;
 use winnow::combinator::{alt, cut_err, dispatch, fail, opt, peek};
@@ -330,7 +331,7 @@ fn bind_inline_plural_back_reference_to_consulted_collection(
     use ironsmith_core::tag::TagKeyWalk;
     let words = crate::lexer::parser_token_word_refs(trailing_tokens);
     let names_plural_collection = words
-        .windows(2)
+        .word_windows(2)
         .any(|pair| pair == ["those", "cards"]);
     let partitions_collection = words
         .iter()

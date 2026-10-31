@@ -47,6 +47,14 @@ const PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     // the East Tree): the source's put-onto-battlefield provenance.
     &["put", "onto", "battlefield", "with", "this", "ability"],
 ];
+// "the Borg assimilated with this Saga" (The Best of Both Worlds).
+const ASSIMILATED_WITH_SOURCE_PHRASES: &[&[&str]] = &[
+    &["assimilated", "with", "this", "saga"],
+    &["assimilated", "with", "this", "enchantment"],
+    &["assimilated", "with", "this", "artifact"],
+    &["assimilated", "with", "this", "creature"],
+    &["assimilated", "with", "this", "permanent"],
+];
 const CREATED_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     &["created", "with", "it"],
     &["created", "with", "this", "artifact"],
@@ -223,6 +231,8 @@ fn parse_relation_subject_word_slice(
                 relation_phrase(&["voter"]).value(PlayerFilter::IteratedPlayer),
                 // "a permanent owned by another player" (Kothophed).
                 relation_phrase(&["another", "player"]).value(PlayerFilter::NotYou),
+                // "basic lands each player controls" (Sheltering Prayers).
+                relation_phrase(&["each", "player"]).value(PlayerFilter::Any),
                 relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
                 // "one of their opponents controls": opponents of the
                 // pronoun's player, not of the ability's controller.
@@ -533,6 +543,12 @@ fn parse_was_dealt_damage_this_turn_shape(words: &[&str]) -> Option<usize> {
         &["that", "were", "dealt", "damage", "this", "turn"],
         &["was", "dealt", "damage", "this", "turn"],
         &["were", "dealt", "damage", "this", "turn"],
+        // "a creature that has been dealt damage this turn" (Giant Shark).
+        &["that", "has", "been", "dealt", "damage", "this", "turn"],
+        &["that", "have", "been", "dealt", "damage", "this", "turn"],
+        &["has", "been", "dealt", "damage", "this", "turn"],
+        &["have", "been", "dealt", "damage", "this", "turn"],
+        &["been", "dealt", "damage", "this", "turn"],
         // Oracle sometimes elides "was" after a quantified object, as in
         // "each creature dealt damage this turn" (Inflame).
         &["dealt", "damage", "this", "turn"],
@@ -592,6 +608,11 @@ pub(super) fn apply_player_relation(
     player: PlayerFilter,
     verb: PlayerRelationVerb,
 ) {
+    // "each player controls": every player, which an unset relation
+    // already means.
+    if player == PlayerFilter::Any {
+        return;
+    }
     match verb {
         PlayerRelationVerb::Cast => filter.cast_by = Some(player),
         PlayerRelationVerb::Control => filter.controller = Some(player),
@@ -780,7 +801,7 @@ pub(super) fn drain_segment_phrase_variants(
         && let Some(token_range) =
             segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
     {
-        segment_tokens.drain(token_range);
+        crate::word_claims::claim_drained(segment_tokens.drain(token_range));
     }
 }
 
@@ -795,7 +816,7 @@ fn drain_segment_matching_phrase(segment_tokens: &mut Vec<OwnedLexToken>, phrase
         && let Some(token_range) =
             segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
     {
-        segment_tokens.drain(token_range);
+        crate::word_claims::claim_drained(segment_tokens.drain(token_range));
     }
 }
 
@@ -824,6 +845,7 @@ fn parse_relation_phrase(
             "non-empty phrase",
         ));
     }
+    let start = *input;
     for expected in phrase {
         let word: &str = any.parse_next(input)?;
         if word != *expected && !(word == "planeswalker's" && *expected == "planeswalkers") {
@@ -833,6 +855,7 @@ fn parse_relation_phrase(
             ));
         }
     }
+    crate::word_claims::claim_words(&start[..start.len() - input.len()]);
     Ok(())
 }
 
@@ -874,7 +897,7 @@ pub(super) fn try_apply_put_there_from_battlefield_this_turn_clause(
     filter.set_graveyard_entry_history_surface(Some(
         crate::filter::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn,
     ));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -952,7 +975,7 @@ pub(super) fn try_apply_put_there_from_anywhere_this_turn_clause(
     filter.set_graveyard_entry_history_surface(Some(
         crate::filter::GraveyardEntryHistorySurface::PutThereFromAnywhereThisTurn,
     ));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -996,7 +1019,7 @@ pub(super) fn try_apply_milled_this_turn_clause(
     // Milling is narrower than any library-to-graveyard move (surveil and
     // "put into your graveyard" are not mills).
     filter.milled_into_graveyard_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1030,7 +1053,7 @@ pub(super) fn try_apply_put_there_from_their_library_this_turn_clause(
     };
     filter.entered_graveyard_this_turn = true;
     filter.entered_graveyard_from_library_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1086,7 +1109,7 @@ pub(super) fn try_apply_not_put_there_this_combat_clause(
         return false;
     };
     filter.not_put_into_graveyard_this_combat = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1129,7 +1152,7 @@ pub(super) fn try_apply_put_there_this_turn_clause(
     filter.set_graveyard_entry_history_surface(Some(
         crate::filter::GraveyardEntryHistorySurface::PutThereThisTurn,
     ));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1158,7 +1181,7 @@ pub(super) fn try_apply_graveyard_from_battlefield_this_turn_clause(
         return false;
     };
     filter.entered_graveyard_from_battlefield_this_turn = true;
-    all_words.drain(word_start + 1..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start + 1..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1204,7 +1227,7 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
     filter.entered_battlefield_controller = controller;
     filter.zone = Some(Zone::Battlefield);
     filter.set_entered_battlefield_explicit_surface(explicitly_named_battlefield);
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1336,7 +1359,7 @@ pub(super) fn try_apply_didnt_enter_battlefield_this_turn_clause(
         filter.didnt_attack_this_turn = true;
         filter.attacked_this_turn = false;
     }
-    all_words.drain(word_start..word_end);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_end));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1398,7 +1421,7 @@ pub(super) fn try_apply_target_player_or_planeswalker_controller_clause(
     };
 
     filter.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
-    all_words.drain(word_start..word_end);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_end));
     drain_segment_matching_phrase(
         segment_tokens,
         TARGET_PLAYER_OR_PLANESWALKER_CONTROLLER_CONTROL_PHRASES,
@@ -1427,10 +1450,37 @@ pub(super) fn try_apply_put_onto_battlefield_with_source_clause(
             format!("this {}", phrase.last().copied().unwrap_or("permanent")),
         ));
     filter.zone = Some(Zone::Battlefield);
-    all_words.drain(word_start..word_start + phrase.len());
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + phrase.len()));
     let mut authored_phrase = phrase.to_vec();
     authored_phrase.insert(2, "the");
     drain_segment_matching_phrase(segment_tokens, &[&authored_phrase, phrase]);
+    true
+}
+
+/// "the Borg assimilated with this Saga": the source's assimilation link to
+/// this exact permanent, not a requirement that the object be a Saga.
+pub(super) fn try_apply_assimilated_with_source_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, phrase)) = ASSIMILATED_WITH_SOURCE_PHRASES.iter().find_map(|phrase| {
+        relation_phrase_word_span(all_words, phrase).map(|(start, _)| (start, *phrase))
+    }) else {
+        return false;
+    };
+
+    let noun = match phrase.last().copied().unwrap_or("permanent") {
+        "saga" => "Saga",
+        other => other,
+    };
+    filter.assimilated_with_source = true;
+    filter.assimilated_with_source_surface = Some(
+        crate::target::SourceReferenceSurface::ThisPermanentType(format!("this {noun}")),
+    );
+    filter.zone = Some(Zone::Battlefield);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + phrase.len()));
+    drain_segment_matching_phrase(segment_tokens, &[phrase]);
     true
 }
 
@@ -1458,7 +1508,7 @@ pub(super) fn try_apply_created_with_source_clause(
 
     filter.created_with_source = true;
     filter.created_with_source_surface = Some(source_surface);
-    all_words.drain(word_start..word_start + phrase.len());
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + phrase.len()));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1506,7 +1556,7 @@ pub(super) fn try_apply_drawn_this_turn_clause(
         return false;
     };
     filter.drawn_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[SegmentPhraseVariant {
@@ -1581,7 +1631,7 @@ pub(super) fn try_apply_counters_put_on_this_turn_clause(
 
     let phrase_words = all_words[word_start..word_start + consumed].to_vec();
     filter.counters_put_on_this_turn = Some(constraint);
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_matching_phrase(segment_tokens, &[phrase_words.as_slice()]);
     true
 }
@@ -1677,7 +1727,7 @@ pub(super) fn try_apply_counter_source_history_clause(
     };
     let phrase_words = all_words[word_start..word_start + consumed].to_vec();
     filter.counter_source_history = Some(constraint);
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     // The segment keeps its articles: "that a mire counter ...".
     let with_article = |article: &'static str| {
         let mut authored = Vec::with_capacity(phrase_words.len() + 2);
@@ -1713,15 +1763,15 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
     ] {
         if let Some(start) = crate::word_primitives::parse_sequence_start(all_words, prefix) {
             let rest = &all_words[start + prefix.len()..];
-            let reference_len = if rest.starts_with(&["it", "this", "turn"]) { Some(1) }
-                else if rest.starts_with(&["that", "creature", "this", "turn"])
-                    || rest.starts_with(&["that", "permanent", "this", "turn"]) { Some(2) }
+            let reference_len = if crate::word_primitives::starts_with(&rest, &["it", "this", "turn"]) { Some(1) }
+                else if crate::word_primitives::starts_with(&rest, &["that", "creature", "this", "turn"])
+                    || crate::word_primitives::starts_with(&rest, &["that", "permanent", "this", "turn"]) { Some(2) }
                 else { None };
             // "that dealt damage to this creature this turn" (Giant
             // Albatross): the recipient is the source itself, including its
             // last-known incarnation once it has left the battlefield.
-            let source_reference = rest.starts_with(&["this", "creature", "this", "turn"])
-                || rest.starts_with(&["this", "permanent", "this", "turn"]);
+            let source_reference = crate::word_primitives::starts_with(&rest, &["this", "creature", "this", "turn"])
+                || crate::word_primitives::starts_with(&rest, &["this", "permanent", "this", "turn"]);
             if let Some(reference_len) = reference_len.or(source_reference.then_some(2)) {
                 let end = start + prefix.len() + reference_len + 2;
                 let phrase = all_words[start..end].to_vec();
@@ -1735,7 +1785,7 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
                     relation: crate::target::TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only },
                 });
                 drain_segment_matching_phrase(segment_tokens, &[phrase.as_slice()]);
-                all_words.drain(start..end);
+                crate::word_claims::claim_drained(all_words.drain(start..end));
                 return true;
             }
         }
@@ -1745,9 +1795,9 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
                 // any player is a damage recipient, though "a player" is not
                 // an owner/controller relation subject.
                 let rest = &all_words[start + prefix.len()..];
-                if rest.starts_with(&["a", "player"]) || rest.starts_with(&["any", "player"]) {
+                if crate::word_primitives::starts_with(&rest, &["a", "player"]) || crate::word_primitives::starts_with(&rest, &["any", "player"]) {
                     Some((PlayerFilter::Any, 2))
-                } else if rest.starts_with(&["player", "this", "turn"]) {
+                } else if crate::word_primitives::starts_with(&rest, &["player", "this", "turn"]) {
                     // The article may already be stripped from the word view.
                     Some((PlayerFilter::Any, 1))
                 } else {
@@ -1767,9 +1817,9 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
                 crate::word_primitives::parse_sequence_start(&segment_words, &phrase)
                 && let Some(range) = view.token_span_for_words(offset, offset + phrase.len())
             {
-                segment_tokens.drain(range);
+                crate::word_claims::claim_drained(segment_tokens.drain(range));
             }
-            all_words.drain(start..end);
+            crate::word_claims::claim_drained(all_words.drain(start..end));
             return true;
         }
     }
@@ -1780,7 +1830,7 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
     };
 
     filter.dealt_damage_this_turn = true;
-    all_words.drain(word_start..word_start + ACTIVE_PHRASE.len());
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + ACTIVE_PHRASE.len()));
     drain_segment_phrase_variants(
         segment_tokens,
         &[SegmentPhraseVariant {
@@ -1818,7 +1868,7 @@ pub(super) fn try_apply_ability_activated_this_turn_clause(
     let consumed = phrase.len();
 
     filter.ability_activated_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(segment_tokens, PHRASES);
     true
 }
@@ -1864,7 +1914,7 @@ pub(super) fn try_apply_not_enchanted_clause(
     let mut aura = ObjectFilter::enchantment();
     aura.subtypes.push(Subtype::Aura);
     filter.without_attached_object = Some(Box::new(aura));
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(segment_tokens, PHRASES);
     true
 }
@@ -1893,7 +1943,7 @@ pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
     };
 
     filter.was_dealt_damage_this_turn = true;
-    all_words.drain(word_start..word_start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(word_start..word_start + consumed));
     drain_segment_phrase_variants(
         segment_tokens,
         &[
@@ -1911,6 +1961,26 @@ pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
             },
             SegmentPhraseVariant {
                 words: &["were", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "has", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "have", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["has", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["have", "been", "dealt", "damage", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["been", "dealt", "damage", "this", "turn"],
                 drain_start_offset: 0,
             },
             SegmentPhraseVariant {
@@ -1942,7 +2012,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
         && is_demonstrative_object_head(all_words[2])
     {
         push_it_tagged_object_constraint(filter);
-        all_words.drain(..2);
+        crate::word_claims::claim_drained(all_words.drain(..2));
         return true;
     }
     if all_words.len() >= 2 && LEADING_TAGGED_REFERENCE_WORDS.contains(&all_words[0]) {
@@ -1968,7 +2038,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
             if plural_demonstrative {
                 filter.set_plural_object_noun_surface(true);
             }
-            all_words.remove(0);
+            crate::word_claims::claim_drained([all_words.remove(0)]);
             return true;
         }
     }
@@ -1978,7 +2048,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
         .is_some_and(|word| IT_OR_THEM_WORDS.contains(word))
     {
         push_it_tagged_object_constraint(filter);
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
         return true;
     }
 
@@ -2019,7 +2089,7 @@ pub(super) fn try_apply_target_choice_attribution_reference(
         tag: tag.bind().into(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    all_words.truncate(all_words.len() - suffix.len());
+    crate::word_claims::claim_drained(all_words.drain((all_words.len() - suffix.len()).min(all_words.len())..));
     true
 }
 
@@ -2091,6 +2161,7 @@ where
         )));
     }
 
+    crate::word_claims::claim_words(name_words);
     Ok((name_words.join(" "), name_end))
 }
 

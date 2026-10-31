@@ -136,6 +136,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         controlled_continuously_since_turn_began, didnt_enter_battlefield_this_turn,
         entered_battlefield_this_turn, entered_battlefield_controller, turned_face_up_this_turn,
         put_onto_battlefield_with_source, put_onto_battlefield_with_source_surface,
+        assimilated_with_source, assimilated_with_source_surface,
         created_with_source, created_with_source_surface, entered_graveyard_this_turn,
         entered_graveyard_from_battlefield_this_turn, entered_graveyard_from_library_this_turn,
         entered_graveyard_not_from_battlefield_this_turn, not_put_into_graveyard_this_combat,
@@ -447,7 +448,7 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
     let mut rewritten = count.clone();
     match &mut rewritten {
         TurnHistoryCount::Died { filter, .. } | TurnHistoryCount::EnteredBattlefield(filter)
-        | TurnHistoryCount::DealtExcessDamage(filter)
+        | TurnHistoryCount::DealtExcessDamage(filter) | TurnHistoryCount::DiedTotalPower(filter)
         | TurnHistoryCount::MovedZones { filter, .. } | TurnHistoryCount::CountersRemovedFrom { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }

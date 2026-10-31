@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::filter::{Comparison, ParityRequirement};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
@@ -683,7 +684,7 @@ pub fn parse_compound_player_action_restriction_words(words: &[&str]) -> Option<
             PlayerActivationRestrictionTailFact::ActivateAbilities,
         ]);
     }
-    let split = words.windows(2).position(|pair| pair == ["or", "activate"])?;
+    let split = words.word_windows(2).position(|pair| pair == ["or", "activate"])?;
     let first = parse_player_activation_restriction_tail_words(&words[..split])?;
     let second = parse_player_activation_restriction_tail_words(&words[split + 1..])?;
     // "can't cast spells or activate planeswalkers' loyalty abilities"

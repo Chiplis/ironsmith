@@ -147,12 +147,18 @@ pub(crate) fn parse_prefix(
         return Ok(None);
     }
     let words = crate::lexer::parser_token_word_refs(tokens);
-    let Some((count, used)) = crate::util::parse_for_each_count_value_words(&words) else {
+    // A probe: any "each ..." sentence reaches here ("Each copy targets a
+    // different one of those permanents", Radiate), so the count's unread
+    // words count only for a per-unit life domain.
+    let (parsed, probe) =
+        crate::word_claims::speculative(|| crate::util::parse_for_each_count_value_words(&words));
+    let Some((count, used)) = parsed else {
         return Ok(None);
     };
     if !is_life_unit_count(&count) {
         return Ok(None);
     }
+    probe.keep();
     let positions = crate::lexer::parser_token_word_positions(tokens);
     let Some(&(body_start, _)) = positions.get(used) else {
         return Ok(None);

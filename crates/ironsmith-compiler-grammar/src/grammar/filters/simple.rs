@@ -456,7 +456,7 @@ fn parse_simple_object_filter_words_with_list_marker(
     saw_type_list_separator: bool,
 ) -> Option<ObjectFilter> {
     let subject_words = non_article_word_refs(input_words);
-    if subject_words.starts_with(&["equipped", "creature"]) {
+    if crate::word_primitives::starts_with(&subject_words, &["equipped", "creature"]) {
         // Singular Equipment-host references belong to the source attachment
         // grammar; plural equipped creatures describe a battlefield set.
         return None;
@@ -471,6 +471,7 @@ fn parse_simple_object_filter_words_with_list_marker(
             subtypes: vec![Subtype::Equipment],
             ..ObjectFilter::default()
         }));
+        crate::word_claims::claim_words(&input_words[..1]);
         return Some(filter);
     }
     if input_words.first() == Some(&"your")
@@ -482,9 +483,10 @@ fn parse_simple_object_filter_words_with_list_marker(
         let mut filter = ObjectFilter::default().ring_bearer().you_control();
         filter.zone = Some(Zone::Battlefield);
         filter.other = other;
+        crate::word_claims::claim_words(input_words);
         return Some(filter);
     }
-    if input_words.starts_with(&["one", "or", "more"]) {
+    if crate::word_primitives::starts_with(&input_words, &["one", "or", "more"]) {
         let mut filter = parse_simple_object_filter_words_with_list_marker(
             &input_words[3..],
             other,
@@ -494,14 +496,20 @@ fn parse_simple_object_filter_words_with_list_marker(
         return Some(filter);
     }
     let mut words = non_article_word_refs(input_words);
-    words.retain(|word| *word != "instead");
+    words.retain(|word| {
+        let instead = *word == "instead";
+        if instead {
+            crate::word_claims::claim_word(word);
+        }
+        !instead
+    });
     if words.is_empty() {
         return None;
     }
 
     let parsed_suffix = parse_simple_object_filter_suffix(&words);
     if let Some((_suffix, suffix_len)) = parsed_suffix.as_ref() {
-        words.truncate(words.len().saturating_sub(*suffix_len));
+        crate::word_claims::claim_drained(words.drain((words.len().saturating_sub(*suffix_len)).min(words.len())..));
     }
     if contains_simple_filter_reject(&words) {
         return None;
@@ -731,7 +739,9 @@ fn parse_simple_filter_body(
 }
 
 fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
-    alt((
+    // Whatever an atom consumed, it read.
+    let start = *input;
+    let atom = alt((
         alt((parse_type_list_separator, parse_of_named_atom)),
         parse_alternative_cast_atom,
         parse_filter_face_state.map(SimpleObjectFilterAtom::FaceState),
@@ -742,7 +752,9 @@ fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleO
         parse_compound_subtype_atom,
         parse_typed_word_atom,
     ))
-    .parse_next(input)
+    .parse_next(input)?;
+    crate::word_claims::claim_words(&start[..start.len() - input.len()]);
+    Ok(atom)
 }
 
 fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {

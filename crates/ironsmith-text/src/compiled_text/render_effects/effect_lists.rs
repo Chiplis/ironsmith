@@ -8134,6 +8134,10 @@ fn describe_gain_control_aura_then_legal_attach(effects: &[Effect]) -> Option<St
         .trim()
         .trim_end_matches('.')
         .to_string();
+    // A destination carrying the typed relation already reads "it can enchant".
+    if target.ends_with("it can enchant") {
+        return Some(format!("{gain}, then attach it to {target}"));
+    }
     Some(format!("{gain}, then attach it to {target} it can enchant"))
 }
 
@@ -8215,6 +8219,10 @@ pub(in crate::compiled_text) fn describe_gain_control_aura_then_chosen_legal_att
     destination_remainder.card_types.clear();
     destination_remainder.other = false;
     destination_remainder.union_surface = Default::default();
+    // The typed enchant-legality relation is the authored "it can enchant".
+    destination_remainder.tagged_constraints.retain(|constraint| {
+        constraint.relation != crate::filter::TaggedOpbjectRelation::CouldBeEnchantedByTagged
+    });
     if destination_remainder != ObjectFilter::default() {
         return None;
     }

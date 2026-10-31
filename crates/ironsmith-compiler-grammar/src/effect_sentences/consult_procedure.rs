@@ -11,6 +11,7 @@
 //! optional traversal ("you may reveal ...") and an "if you do," gate around
 //! the whole procedure; the close does the same.
 
+use crate::word_primitives::WordWindows as _;
 use super::dispatch_entry::{
     ConsultCastCost, ConsultSentenceParts, SentenceInput, consult_cast_effects,
     consult_stop_rule_is_single_match, parse_consult_bottom_remainder_clause,
@@ -609,7 +610,7 @@ pub(super) fn continue_with(
             // Vociferous Codex): the found card stays exiled with its cast
             // permission; only the rest move.
             let keeps_match = crate::lexer::token_word_refs(sentence.lowered())
-                .windows(2)
+                .word_windows(2)
                 .any(|window| window == ["each", "other"]);
             group.followups.push(
                 EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(

@@ -343,6 +343,7 @@ pub(super) fn read_quantified_spell_suffix(tokens: &[OwnedLexToken], other: bool
         return Ok(None);
     }
     let mut filter = parse_object_filter(&tokens[..with], other)?;
+    crate::word_claims::claim_tokens(&tokens[with..]);
     if targets { filter.target_count = Some(count); }
     if let Some(color) = color { filter.mana_symbol_count = Some((color, count)); }
     Ok(Some(filter))

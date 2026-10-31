@@ -1,5 +1,6 @@
 //! Consumer-side spending requirements. Producer restrictions ("spend this
 //! mana only ...") belong to the mana-producing ability and are separate.
+use crate::word_primitives::WordWindows as _;
 use crate::lexer::{OwnedLexToken, TokenWordView};
 use ironsmith_core::mana::{ManaProducerFilter, ManaSpendingRestriction};
 
@@ -92,7 +93,7 @@ pub(crate) fn x_spending_rule(tokens: &[OwnedLexToken]) -> Option<ManaSpendingRe
     use ironsmith_core::color::{Color, ColorSet};
     let words = TokenWordView::new(tokens).word_refs();
     let body = words.strip_prefix(&["spend", "only"])?;
-    let split = body.windows(3).position(|part| part == ["mana", "on", "x"])?;
+    let split = body.word_windows(3).position(|part| part == ["mana", "on", "x"])?;
     let colors = match &body[..split] {
         ["colored"] => Color::ALL.into_iter().collect(),
         [single] => ColorSet::from_color(Color::from_name(single)?),

@@ -850,3 +850,13 @@ fn elided_property_fallback_does_not_erase_an_authored_inner_location() {
     let tokens = lex_line("cards you own in exile and in your graveyard that are Ooze cards in your hand or are named Slime Against Humanity", 0).unwrap();
     assert!(parse_elided_shared_domain_union(&tokens, false).is_none());
 }
+
+#[test]
+fn creature_its_blocking_is_an_attacker_the_source_blocks() {
+    for text in ["creature it's blocking", "creature it is blocking"] {
+        let filter = parse_object_filter(&lex_line(text, 0).unwrap(), false)
+            .unwrap_or_else(|err| panic!("{text}: {err:?}"));
+        assert!(filter.blocked_by_source, "{text}: {filter:#?}");
+        assert!(!filter.blocking, "{text}: the candidate is the attacker, not a blocker");
+    }
+}

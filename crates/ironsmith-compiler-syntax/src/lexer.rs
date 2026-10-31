@@ -295,6 +295,14 @@ impl Location for OwnedLexToken {
     }
 }
 
+// A dropped token's registered word addresses go back to the allocator; a
+// later string at the same address must not inherit their spans.
+impl Drop for OwnedLexToken {
+    fn drop(&mut self) {
+        crate::word_claims::forget_token_words(self);
+    }
+}
+
 impl OwnedLexToken {
     pub fn new(kind: TokenKind, slice: impl Into<String>, span: TextSpan) -> Self {
         let slice = slice.into();
@@ -396,6 +404,13 @@ impl OwnedLexToken {
     }
 
     pub fn replace_word(&mut self, slice: impl Into<String>) -> bool {
+        if matches!(
+            self.kind,
+            TokenKind::Word | TokenKind::Number | TokenKind::Tilde
+        ) {
+            // The replaced strings are freed; see `forget_token_words`.
+            crate::word_claims::forget_token_words(self);
+        }
         match self.kind {
             TokenKind::Word | TokenKind::Number => {
                 let slice = slice.into();
@@ -428,14 +443,20 @@ impl OwnedLexToken {
         }
     }
 
+    /// Whether this token is the word `expected`. A match reads the word
+    /// (see `word_claims`).
     pub fn is_word(&self, expected: &str) -> bool {
-        matches!(
+        let matched = matches!(
             self.kind,
             TokenKind::Word | TokenKind::Number | TokenKind::Tilde
         ) && self
             .parser_text
             .chars()
-            .eq(expected.chars().map(normalize_parser_char))
+            .eq(expected.chars().map(normalize_parser_char));
+        if matched {
+            crate::word_claims::claim_tokens(std::slice::from_ref(self));
+        }
+        matched
     }
 
     pub fn is_any_word(&self, expected: &[&str]) -> bool {
@@ -847,6 +868,7 @@ pub struct TokenWordView<'a> {
 
 impl<'a> TokenWordView<'a> {
     pub fn new(tokens: &'a [OwnedLexToken]) -> Self {
+        crate::word_claims::register_tokens(tokens);
         let mut words = Vec::with_capacity(tokens.len());
         let mut token_start_indices = Vec::with_capacity(tokens.len());
         let mut token_end_indices = Vec::with_capacity(tokens.len());
@@ -915,11 +937,15 @@ impl<'a> TokenWordView<'a> {
         self.words
             .get(start..start.saturating_add(expected.len()))
             .is_some_and(|slice| {
-                slice
+                let matched = slice
                     .iter()
                     .copied()
                     .zip(expected.iter().copied())
-                    .all(|(actual, expected)| actual == expected)
+                    .all(|(actual, expected)| actual == expected);
+                if matched {
+                    crate::word_claims::claim_words(slice);
+                }
+                matched
             })
     }
 
@@ -1183,6 +1209,7 @@ impl<'a> LexCursor<'a> {
 }
 
 pub fn token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::word_claims::register_tokens(tokens);
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
 }
 
@@ -1193,7 +1220,21 @@ where
 {
     words
         .into_iter()
-        .map(|word| OwnedLexToken::synthetic_word(word.as_ref()))
+        .map(|word| {
+            // While claims are recorded, a word handed out from authored
+            // tokens keeps its source span, so readers of the rebuilt tokens
+            // claim the authored word.
+            if let Some(span) = crate::word_claims::authored_word_span(word.as_ref()) {
+                let mut token = OwnedLexToken::word(word.as_ref(), span);
+                // A normalized word ("wasnt" from "wasn't") is shorter than
+                // its authored span; its one piece still covers that span.
+                if let [piece] = &mut *token.parser_word_pieces {
+                    piece.span = span;
+                }
+                return token;
+            }
+            OwnedLexToken::synthetic_word(word.as_ref())
+        })
         .collect()
 }
 
@@ -1206,6 +1247,7 @@ pub fn synthetic_phrase_tokens(phrase: &str) -> Vec<OwnedLexToken> {
 }
 
 pub fn parser_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::word_claims::register_tokens(tokens);
     let mut words = Vec::new();
     for token in tokens {
         for piece in token.parser_word_pieces() {
@@ -1216,6 +1258,7 @@ pub fn parser_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
 }
 
 pub fn parser_token_word_positions(tokens: &[OwnedLexToken]) -> Vec<(usize, &str)> {
+    crate::word_claims::register_tokens(tokens);
     let mut positions = Vec::new();
     for (token_idx, token) in tokens.iter().enumerate() {
         for piece in token.parser_word_pieces() {

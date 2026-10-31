@@ -13,6 +13,7 @@
 //! discovers it while the matching spell is cast. Only spell subjects are
 //! claimed: these keywords function while the spell is being cast.
 
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 const SPELL_MANA_COST_TAIL_PREFIX: &[&str] = &["the"];
@@ -321,7 +322,7 @@ fn parse_granted_hand_web_slinging(
     }
     let view = crate::lexer::TokenWordView::new(subject);
     let words = view.word_refs();
-    let Some(cast_word) = words.windows(2).position(|window| window == ["you", "cast"]) else {
+    let Some(cast_word) = words.word_windows(2).position(|window| window == ["you", "cast"]) else {
         return Ok(None);
     };
     if cast_word == 0 {

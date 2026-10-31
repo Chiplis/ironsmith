@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::activated_lowering as activated_grammar;
 use super::super::grammar::activated_lowering::{
@@ -290,7 +291,7 @@ fn merge_copy_retarget_sentences(sentences: Vec<Vec<OwnedLexToken>>) -> Vec<Vec<
                 let previous_words = crate::lexer::token_word_refs(previous);
                 previous_words.first() == Some(&"when")
                     && previous_words
-                        .windows(2)
+                        .word_windows(2)
                         .any(|pair| pair == ["this", "mana"] || pair == ["that", "mana"])
                     && previous_words.contains(&"copy")
             }

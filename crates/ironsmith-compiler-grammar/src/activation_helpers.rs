@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::effect::Value;
 use crate::host::{
@@ -823,7 +824,7 @@ fn parse_add_mana_equal_to_mana_cost_filter(
         .collect();
     let words = crate::lexer::token_word_refs(&word_tokens);
     let Some(equal) = words
-        .windows(3)
+        .word_windows(3)
         .position(|window| window == ["mana", "equal", "to"])
     else {
         return Ok(None);

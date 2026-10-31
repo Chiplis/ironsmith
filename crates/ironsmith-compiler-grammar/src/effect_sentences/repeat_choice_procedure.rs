@@ -12,6 +12,7 @@
 //! total mana value of the cards exiled this way is 13 or less, you may cast
 //! any number of spells from among those cards ...").
 
+use crate::word_primitives::WordWindows as _;
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
     CardTextError, EffectAst, ForEachEffectAst, IfResultPredicate, LibraryActionAst,
@@ -255,9 +256,9 @@ pub(super) fn continue_with(
     }
     let words = crate::lexer::token_word_refs(sentence.lowered());
     let names_group = words
-        .windows(3)
+        .word_windows(3)
         .any(|window| window == ["exiled", "this", "way"])
-        || words.windows(2).any(|window| window == ["those", "cards"]);
+        || words.word_windows(2).any(|window| window == ["those", "cards"]);
     if !names_group {
         return Ok(false);
     }

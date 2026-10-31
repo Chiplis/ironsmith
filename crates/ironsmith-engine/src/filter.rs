@@ -2067,6 +2067,29 @@ fn tagged_constraint_matches_subject(
             snapshot.attached_to.and_then(|target| target.object_id())
                 == Some(subject.subject_object_id())
         }),
+        // "another permanent it can enchant" (Aura Graft): the tagged Aura's
+        // enchant restriction and protection allow attaching it to the
+        // candidate (CR 303.4), judged for the Aura's current controller.
+        TaggedOpbjectRelation::CouldBeEnchantedByTagged => tagged_snapshots.iter().any(|snapshot| {
+            let aura_id = if game.object(snapshot.object_id).is_some() {
+                Some(snapshot.object_id)
+            } else {
+                game.find_object_by_stable_id(snapshot.stable_id)
+            };
+            let Some(aura_id) = aura_id else {
+                return false;
+            };
+            let controller = game
+                .object(aura_id)
+                .map(|aura| game.controller_of(aura))
+                .unwrap_or(snapshot.controller);
+            crate::effects::permanents::aura_can_enter_attached_to(
+                game,
+                aura_id,
+                controller,
+                crate::object::AttachmentTarget::Object(subject.subject_object_id()),
+            )
+        }),
         TaggedOpbjectRelation::WasDealtDamageByTaggedThisTurn => {
             let subject_id = subject.subject_object_id();
             let subject_stable = Some(subject.subject_stable_id());
@@ -5988,6 +6011,9 @@ impl ObjectFilterExt for ObjectFilter {
                 TaggedOpbjectRelation::WasDealtDamageByTaggedThisTurn => {
                     post_noun_qualifiers.push("dealt damage by it this turn".to_string());
                 }
+                TaggedOpbjectRelation::CouldBeEnchantedByTagged => {
+                    post_noun_qualifiers.push("it can enchant".to_string());
+                }
                 TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
                     post_noun_qualifiers.push(if combat_only {
                         "that dealt combat damage to it this turn"
@@ -7120,6 +7146,15 @@ impl ObjectFilterExt for ObjectFilter {
                 .map(ironsmith_core::SourceReferenceSurface::display_text)
                 .unwrap_or_else(|| "this permanent".to_string());
             parts.push(format!("put onto the battlefield with {source}"));
+        }
+
+        if self.assimilated_with_source {
+            let source = self
+                .assimilated_with_source_surface
+                .as_ref()
+                .map(ironsmith_core::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            parts.push(format!("assimilated with {source}"));
         }
 
         if self.created_with_source {

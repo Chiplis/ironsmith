@@ -24,8 +24,8 @@ pub(crate) fn parse_live_name_relation(
     if !matches!(words.first(), Some(&"a" | &"an" | &"another")) || words.contains(&"exiled") {
         return None;
     }
-    let is_hand_comparison = words == ["another", "card", "in", "their", "hand"];
-    if words.starts_with(&["another", "card", "in", "their", "hand"]) && !is_hand_comparison {
+    let is_hand_comparison = crate::word_primitives::equals(&words, &["another", "card", "in", "their", "hand"]);
+    if crate::word_primitives::starts_with(&words, &["another", "card", "in", "their", "hand"]) && !is_hand_comparison {
         return Some(Err(CardTextError::ParseError(
             "unsupported live-name hand comparison tail".into(),
         )));

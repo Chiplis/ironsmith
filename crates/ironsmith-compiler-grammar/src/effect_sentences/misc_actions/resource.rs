@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 use crate::recognition::ParseOutcome;
@@ -37,7 +38,7 @@ pub fn parse_pay(
     // action that ends a continuous effect, not a mana payment made now.
     // The leading-pip reading below would keep only the payment.
     if clause_words
-        .windows(4)
+        .word_windows(4)
         .any(|window| window == ["to", "end", "this", "effect"])
     {
         return Err(CardTextError::ParseError(format!(

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::PermissionEffectAst;
@@ -370,6 +371,18 @@ pub fn parse_trigger_subject_filter_lexed(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if subject_tokens.is_empty() {
         return Ok(None);
+    }
+    // A misplaced split hands over a clause fragment ("this creature attacks
+    // or" from "attacks or blocks"), never a subject: a noun phrase does not
+    // end on a conjunction. Rejecting (rather than declining) keeps the
+    // probing rule from succeeding through another path.
+    if subject_tokens
+        .last()
+        .is_some_and(|token| token.is_any_word(&["or", "and"]))
+    {
+        return Err(CardTextError::ParseError(
+            "trigger subject is a clause fragment".into(),
+        ));
     }
 
     let mut subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
@@ -848,7 +861,7 @@ pub fn parse_spell_activity_trigger(
         .during_combat
         .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
     let repeated_counted_spell_domain = clause_words
-        .windows(4)
+        .word_windows(4)
         .position(|part| part == ["other", "than", "the", "first"])
         .is_some_and(|other| {
             let Some(cast) = clause_words[..other]
@@ -956,17 +969,33 @@ pub fn parse_spell_activity_trigger(
                 // unequal branches (only the last one keeping the spell noun
                 // and the cast-origin zone).
                 let ordinal_word = exact_spells_this_turn.and_then(ironsmith_core::ordinal_word);
-                let filter_tokens = match (filter_tokens, ordinal_word) {
+                let filter_tokens = match (filter_tokens, ordinal_word.as_deref()) {
                     ([possessive, ordinal, rest @ ..], Some(ordinal_word))
                         if (possessive.is_word("your") || possessive.is_word("their"))
-                            && ordinal.is_word(&ordinal_word)
+                            && ordinal.is_word(ordinal_word)
                             && rest.iter().any(|token| token.is_word("or")) =>
                     {
                         rest
                     }
                     _ => filter_tokens,
                 };
-                match parse_object_filter(filter_tokens, false) {
+                // The cast-count qualifier ("your second ... each turn", "two
+                // or more ... last turn") is read here, not by the filter.
+                let counted = exact_spells_this_turn.is_some() || min_spells_this_turn.is_some();
+                let mut owned = if counted {
+                    cast_count_qualifier_tokens(filter_tokens, ordinal_word.as_deref())
+                } else {
+                    Vec::new()
+                };
+                // "a kicked spell": the kicked marker is added below.
+                owned.extend(
+                    filter_tokens
+                        .iter()
+                        .filter(|token| token.is_word(crate::keyword_forms::KICKED)),
+                );
+                match crate::word_claims::with_caller_owned(owned, || {
+                    parse_object_filter(filter_tokens, false)
+                }) {
                     Ok(mut filter) => {
                         // A kicked spell records a paid optional cost; merely having
                         // kicker in its rules text does not satisfy this qualifier.
@@ -2349,4 +2378,39 @@ mod typed_trigger_subject_migration_tests {
             "a different ability subject must not be folded into the copy token"
         );
     }
+}
+
+/// The words of a spell trigger's cast-count qualifier: a leading possessive
+/// and ordinal ("your second"), a count ("two or more"), and a trailing "each
+/// turn" / "this turn" / "last turn".
+fn cast_count_qualifier_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+    ordinal_word: Option<&str>,
+) -> Vec<&'a OwnedLexToken> {
+    let mut owned = Vec::new();
+    let mut start = 0;
+    if tokens.first().is_some_and(|token| token.is_any_word(&["your", "their"]))
+        && ordinal_word.is_some_and(|ordinal| tokens.get(1).is_some_and(|token| token.is_word(ordinal)))
+    {
+        owned.extend(&tokens[..2]);
+        start = 2;
+    } else if let Some(ordinal) = ordinal_word
+        && let Some(token) = tokens.iter().find(|token| token.is_word(ordinal))
+    {
+        owned.push(token);
+    }
+    if let [count, or, more, ..] = &tokens[start..]
+        && or.is_word("or")
+        && more.is_word("more")
+        && count.as_word().is_some_and(|word| crate::util::parse_number_word_u32(word).is_some())
+    {
+        owned.extend([count, or, more]);
+    }
+    if let [.., when, turn] = tokens
+        && when.is_any_word(&["each", "this", "last"])
+        && turn.is_word("turn")
+    {
+        owned.extend([when, turn]);
+    }
+    owned
 }

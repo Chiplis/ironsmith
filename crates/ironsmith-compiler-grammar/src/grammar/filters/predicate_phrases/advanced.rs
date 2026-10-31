@@ -180,7 +180,7 @@ fn parse_turn_history_intervening_predicate(
     // damage this turn" (Rith, Liberated Primeval): CR 120.10 history read
     // from each damaged permanent's damage-time last-known information.
     if words.len() > 7
-        && words.ends_with(&["was", "dealt", "excess", "damage", "this", "turn"])
+        && crate::word_primitives::ends_with(&words, &["was", "dealt", "excess", "damage", "this", "turn"])
         && matches!(words.first(), Some(&"a" | &"an"))
         && let Some(subject) = clause.between_word_range(0, words.len() - 6)
     {
@@ -234,7 +234,7 @@ fn parse_turn_history_intervening_predicate(
         return Ok(Some(predicate));
     }
     if let Some(dealt) = crate::word_primitives::parse_sequence_start(&words, &["has", "dealt"])
-        && words.ends_with(&["damage", "this", "turn"])
+        && crate::word_primitives::ends_with(&words, &["damage", "this", "turn"])
         && let Some(source) = clause.between_word_range(0, dealt)
         && matches!(
             crate::util::parse_target_phrase(source.tokens()),
@@ -655,7 +655,7 @@ fn parse_turn_history_intervening_predicate(
     ] {
         if words.len() == subject.len() + 5
             && words.starts_with(subject)
-            && words[subject.len()..] == ["dealt", "noncombat", "damage", "last", "turn"]
+            && crate::word_primitives::equals(&words[subject.len()..], &["dealt", "noncombat", "damage", "last", "turn"])
         {
             return Ok(Some(PredicateAst::TurnHistory(
                 TurnHistoryPredicateAst::PlayerWasDealtNoncombatDamageLastTurn(player),
@@ -2397,7 +2397,7 @@ fn paid_cost_tail(clause: LexedClause<'_>) -> Option<(bool, bool)> {
         if token.kind != TokenKind::Word { return None; }
         Some(match token.parser_text() { "wasn't" => "wasnt", word => word })
     }).collect::<Option<_>>()?;
-    let (words, this_turn) = if words.ends_with(&["this", "turn"]) {
+    let (words, this_turn) = if crate::word_primitives::ends_with(&words, &["this", "turn"]) {
         (&words[..words.len() - 2], true)
     } else { (words.as_slice(), false) };
     match words {
@@ -3893,7 +3893,7 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
     )?;
     let activation = words.get(spent_idx + 3) == Some(&"activate");
     let valid_reference = if activation {
-        &words[spent_idx + 4..] == ["this", "ability"]
+        crate::word_primitives::equals(&words[spent_idx + 4..], &["this", "ability"])
     } else {
         crate::word_primitives::parse_any_sequence_complete(
             &words[spent_idx + 4..],
@@ -6492,10 +6492,10 @@ fn parse_player_controls_shared_creature_type_count_predicate(
     if !words.ends_with(suffix) {
         return None;
     }
-    let (player, prefix_len) = if words.starts_with(&["you", "control"]) {
+    let (player, prefix_len) = if crate::word_primitives::starts_with(&words, &["you", "control"]) {
         (PlayerFilter::You, 2)
-    } else if words.starts_with(&["defending", "player", "controls"])
-        || words.starts_with(&["the", "defending", "player", "controls"])
+    } else if crate::word_primitives::starts_with(&words, &["defending", "player", "controls"])
+        || crate::word_primitives::starts_with(&words, &["the", "defending", "player", "controls"])
     {
         (PlayerFilter::Defending, if words[0] == "the" { 4 } else { 3 })
     } else {
@@ -7085,7 +7085,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         && let Some(cycled_idx) = tokens.iter().position(|token| token.is_word("cycled"))
         && cycled_idx < named_idx
         && monarch_words.first().is_some_and(|word| word.starts_with("you"))
-        && monarch_words.ends_with(&["or", "more", "times", "this", "game"])
+        && crate::word_primitives::ends_with(&monarch_words, &["or", "more", "times", "this", "game"])
         && tokens.len() > named_idx + 6
     {
         let count_idx = tokens.len() - 6;
@@ -7095,7 +7095,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         {
             let name_tokens = &tokens[named_idx + 1..count_idx];
             let name_words = crate::lexer::parser_token_word_refs(name_tokens);
-            let name = if name_words == ["this"] || name_words == ["this", "card"] {
+            let name = if crate::word_primitives::equals(&name_words, &["this"]) || crate::word_primitives::equals(&name_words, &["this", "card"]) {
                 None
             } else {
                 Some(crate::lexer::render_token_slice(name_tokens).trim().to_string())

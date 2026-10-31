@@ -6,6 +6,7 @@
 //! on. The count is read per creature from the placement's own receipt as the
 //! instruction resolves (counters put, not counters it already had), and each
 //! registration captures that creature.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::{DelayedEffectAst, ForEachEffectAst};
 use crate::lexer::{OwnedLexToken, TokenWordView};
@@ -55,7 +56,7 @@ pub(super) fn read(
     else {
         return Ok(None);
     };
-    let Some(this_way) = after_put.windows(2).position(|window| window == ["this", "way"]) else {
+    let Some(this_way) = after_put.word_windows(2).position(|window| window == ["this", "way"]) else {
         return Ok(None);
     };
     let noun_start = words.len() - after_put.len();

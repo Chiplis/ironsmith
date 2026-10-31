@@ -5,6 +5,7 @@
 //! player"). Event modifications (amount changes, redirection, prevention)
 //! keep their own readers; this reader declines any body that names them.
 
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use ironsmith_core::ReplacedEventSpec;
 
@@ -320,7 +321,7 @@ fn rewrite_passive_zone_change_body(body: &mut Vec<OwnedLexToken>) {
     };
     let mut rest: Vec<&str> = words[rest_start..].to_vec();
     if let Some(index) = rest
-        .windows(2)
+        .word_windows(2)
         .position(|pair| pair == ["that", "player's"] || pair == ["that", "players"])
     {
         rest.splice(index..index + 2, ["its", "owner's"]).for_each(drop);

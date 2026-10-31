@@ -1,4 +1,5 @@
 //! Passive receipt clauses retain recipient and single-source qualifications.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 fn recipient(
@@ -65,7 +66,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
         }
     }
     let Some(index) = words
-        .windows(2)
+        .word_windows(2)
         .position(|window| matches!(window, ["is" | "are", "dealt"]))
     else {
         return Ok(None);

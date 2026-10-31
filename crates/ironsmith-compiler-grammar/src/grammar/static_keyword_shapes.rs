@@ -43,6 +43,7 @@ pub fn parse_pt_components(raw: &str) -> Option<PtComponents<'_>> {
     if input.is_empty() {
         return None;
     }
+    crate::word_claims::claim_word(raw);
     Some(PtComponents {
         power,
         toughness: input,

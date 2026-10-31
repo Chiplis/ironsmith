@@ -1,5 +1,6 @@
 //! Base-characteristic assignments evaluate their values once on resolution.
 //! Keep the destination's axes separate from the referenced object's axes.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::lexer::TokenWordView;
 
@@ -494,7 +495,7 @@ pub(super) fn animation_with_preceding_grants(
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let Some(and_base) = words
-        .windows(5)
+        .word_windows(5)
         .position(|window| window == ["and", "base", "power", "and", "toughness"])
     else {
         return Ok(None);

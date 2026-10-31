@@ -1,4 +1,5 @@
 //! One complete temporary/targeted template instruction, including ability loss.
+use crate::word_primitives::WordWindows as _;
 use crate::lexer::{OwnedLexToken,TokenWordView};
 use crate::cards::builders::CardTextError;
 use crate::effect::Until;
@@ -13,7 +14,7 @@ pub fn parse(tokens:&[OwnedLexToken])->Result<Option<AbilityLossTemplate>,CardTe
     let (duration,body)=super::parse_search_restriction_duration_shape_lexed(tokens)?
         .map(|shape|(shape.duration,shape.remainder)).unwrap_or_else(||(Until::Forever,tokens.to_vec()));
     let view=TokenWordView::new(&body);let words=view.word_refs();
-    let Some(start)=words.windows(5).position(|w|matches!(w[0],"lose"|"loses") && w[1..4]==["all","abilities","and"] && matches!(w[4],"become"|"becomes")) else { return Ok(None); };
+    let Some(start)=words.word_windows(5).position(|w|matches!(w[0],"lose"|"loses") && w[1..4]==["all","abilities","and"] && matches!(w[4],"become"|"becomes")) else { return Ok(None); };
     if start==0 { return Ok(None); }
     if matches!(duration,Until::Forever) && !words[..start].contains(&"target") { return Ok(None); }
     let Some(subject_end)=view.token_index_after_words(start) else {return Ok(None)};

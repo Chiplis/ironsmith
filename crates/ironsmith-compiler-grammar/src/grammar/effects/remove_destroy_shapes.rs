@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -537,7 +538,7 @@ fn has_it_blocked_window_filter(tokens: &[OwnedLexToken]) -> bool {
 
 fn has_complete_block_history_filter(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::token_word_refs(tokens);
-    let Some(at) = words.windows(4).position(|w|
+    let Some(at) = words.word_windows(4).position(|w|
         w == ["blocked", "or", "was", "blocked"] || w == ["blocked", "or", "were", "blocked"])
     else { return false; };
     if at == 0 || !matches!(words[at - 1], "that" | "which") { return false; }

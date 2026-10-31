@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
 use ironsmith_core::card::CardBuilder;
@@ -2600,8 +2601,13 @@ fn recognize_labeled_qualified_ability_trigger(
     // This is a deliberately speculative fast-path probe. A diagnostic from
     // either half means only that this narrow qualified-trigger shape does
     // not own the line; the committing triggered-line parser runs below.
-    let trigger = match crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0
-    {
+    // The labeled line keeps the authored source name ("Munda or another
+    // Ally", Munda, Ambush Leader), so a probe that doesn't own the line
+    // must not leave its filters' unread words behind.
+    let (trigger, probe) = crate::word_claims::speculative(|| {
+        crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0
+    });
+    let trigger = match trigger {
         Ok(trigger) => trigger,
         Err(_) => return None,
     };
@@ -2624,6 +2630,7 @@ fn recognize_labeled_qualified_ability_trigger(
         return None;
     }
     let candidate = render_triggered_split_candidate(trigger_tokens, effect_tokens, None, None)?;
+    probe.keep();
     Some(candidate.into_recognized_line(line, &line.tokens))
 }
 
@@ -4081,6 +4088,17 @@ fn rewrite_cleave_bracket_document(
 }
 
 pub fn parse_text_to_semantic_document_with_context(
+    context: &mut ParseContext,
+    card: CardBuilder,
+    text: String,
+) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    let card_name = card.name_ref().to_string();
+    crate::word_claims::audit_card(&card_name, || {
+        parse_card_text_to_semantic_document(context, card, text)
+    })
+}
+
+fn parse_card_text_to_semantic_document(
     context: &mut ParseContext,
     card: CardBuilder,
     text: String,
@@ -5644,7 +5662,7 @@ fn parse_named_attachment_damage_grant(
     }
     let body_words = crate::lexer::parser_token_word_refs(body);
     if !body_words
-        .windows(2)
+        .word_windows(2)
         .any(|pair| matches!(pair[1], "deal" | "deals"))
     {
         return Ok(None);

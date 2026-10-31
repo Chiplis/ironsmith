@@ -390,7 +390,10 @@ pub fn parse_filter_counter_constraint_spec_words(
     words: &[&str],
 ) -> Option<FilterCounterConstraintSpec> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    crate::grammar::primitives::take_leaf(&mut input, parse_filter_counter_constraint_word_slice)
+    let spec =
+        crate::grammar::primitives::take_leaf(&mut input, parse_filter_counter_constraint_word_slice)?;
+    crate::word_claims::claim_words(&words[..spec.consumed.min(words.len())]);
+    Some(spec)
 }
 
 fn apply_filter_counter_constraint_surface(

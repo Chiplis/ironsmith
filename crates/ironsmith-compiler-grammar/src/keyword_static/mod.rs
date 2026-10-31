@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 mod characteristic_assertions;
 mod reminder_definitions;
 
@@ -626,7 +627,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Single("as"),
         ],
-        "parse_spend_mana_as_any_color_line" => vec![
+        "parse_spend_mana_as_any_color_lines" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Single("players"),
             StaticAbilityLineHeadHint::Single("mana"),
@@ -1710,7 +1711,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_reveal_card_or_enter_tapped_line),
         multi_static_ability_ast_passthrough_rule!(parse_copy_activated_and_triggered_abilities_line),
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
-        single_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_line),
+        multi_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_lines),
         single_static_ability_ast_passthrough_rule!(parse_enchanted_has_activated_ability_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_granted_keywords_static_line
@@ -4144,9 +4145,9 @@ pub(super) fn parse_as_long_as_attached_otherwise_source_keyword_line(
         return Ok(None);
     };
     let condition_words = crate::lexer::parser_token_word_refs(split.condition_tokens);
-    let attached_subject = if condition_words.windows(2).any(|pair| pair == ["enchanted", "creature"]) {
+    let attached_subject = if condition_words.word_windows(2).any(|pair| pair == ["enchanted", "creature"]) {
         ["enchanted", "creature"]
-    } else if condition_words.windows(2).any(|pair| pair == ["equipped", "creature"]) {
+    } else if condition_words.word_windows(2).any(|pair| pair == ["equipped", "creature"]) {
         ["equipped", "creature"]
     } else {
         return Ok(None);
@@ -4224,9 +4225,9 @@ pub(super) fn parse_as_long_as_otherwise_static_line(
     }
     let otherwise_body = trim_edge_punctuation(&second[1..]);
     let condition_words = crate::lexer::parser_token_word_refs(split.condition_tokens);
-    let attached_subject = if condition_words.windows(2).any(|pair| pair == ["enchanted", "creature"]) {
+    let attached_subject = if condition_words.word_windows(2).any(|pair| pair == ["enchanted", "creature"]) {
         Some(["enchanted", "creature"])
-    } else if condition_words.windows(2).any(|pair| pair == ["equipped", "creature"]) {
+    } else if condition_words.word_windows(2).any(|pair| pair == ["equipped", "creature"]) {
         Some(["equipped", "creature"])
     } else {
         None
@@ -4286,7 +4287,7 @@ fn parse_source_exiled_play_trailing_condition_line(
     let clean = trim_edge_punctuation(tokens);
     let words = crate::lexer::parser_token_word_refs(&clean);
     if !matches!(words.as_slice(), ["you", "may", "play" | "cast", ..])
-        || !words.windows(2).any(|pair| pair == ["exiled", "with"])
+        || !words.word_windows(2).any(|pair| pair == ["exiled", "with"])
         || words.iter().filter(|word| **word == "as").count() != 2
     {
         return Ok(None);

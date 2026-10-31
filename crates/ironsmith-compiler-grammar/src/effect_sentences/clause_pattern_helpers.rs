@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::DamagePreventionActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::PlayerPredicateAst;
@@ -195,7 +196,7 @@ fn parse_finite_prevention_from_source(
     {
         return Ok(None);
     }
-    let Some(damage) = words.windows(6)
+    let Some(damage) = words.word_windows(6)
         .position(|part| part == ["damage", "that", "would", "be", "dealt", "by"])
     else { return Ok(None); };
     let combat_only = damage > 3 && words[damage - 1] == "combat";

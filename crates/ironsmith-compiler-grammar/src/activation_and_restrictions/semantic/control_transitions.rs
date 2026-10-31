@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use ironsmith_core::trigger_model::{ControlChangeDirection, ControlChangeTrigger};
 
@@ -7,7 +8,7 @@ pub(super) fn parse_control_transition_trigger(
     let view = ActivationRestrictionCompatWords::new(tokens);
     let words = view.to_word_refs();
     let Some(verb) = words
-        .windows(3)
+        .word_windows(3)
         .position(|part| matches!(part, ["gain" | "gains" | "lose" | "loses", "control", "of"]))
     else {
         return Ok(None);

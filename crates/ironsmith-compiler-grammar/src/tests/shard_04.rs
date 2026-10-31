@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::word_primitives::WordWindows as _;
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_02::*;
@@ -4352,7 +4353,7 @@ pub(super) fn lowered_tagged_identity_conditions_keep_demonstrative_and_other_su
             parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
         let debug = format!("{definition:#?}");
         let debug_lines = debug.lines().collect::<Vec<_>>();
-        let keeps_creature_surface = debug_lines.windows(2).any(|lines| {
+        let keeps_creature_surface = debug_lines.word_windows(2).any(|lines| {
             lines[0].contains("demonstrative_antecedent: Some(") && lines[1].trim() == "Creature,"
         });
 

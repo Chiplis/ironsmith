@@ -18,15 +18,13 @@ fn trigger_with_quoted_conditional_anthem_is_not_a_static_line() {
 #[test]
 fn rejected_animation_ownership_probe_does_not_report_subject_recovery() {
     let tokens = lex("If this card is in your opening hand, you may begin the game with it on the battlefield.");
-    // Establish the adversarial witness: the legacy reader reaches a lossy
-    // subject, then rejects the non-P/T predicate. This is not a committed AST.
+    // The P/T-in-addition reader checks its predicate before reading a
+    // subject, so rejecting this line reaches no lossy subject recovery.
     let (legacy, speculative_loss) = crate::parse_loss::capture(|| {
         parse_filter_is_pt_creature_in_addition_line(&tokens)
     });
     assert!(legacy.unwrap().is_none());
-    assert!(speculative_loss.diagnostics().iter().any(|loss| {
-        loss.code == "suffix_object_filter_recovery"
-    }));
+    assert!(!speculative_loss.is_lossy(), "{speculative_loss:?}");
     let (candidate, loss) = crate::parse_loss::capture(|| {
         parse_conditional_copular_creature_line(&tokens)
     });

@@ -220,7 +220,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     // Active source -> object history. Preserve the actor separately from
     // the damaged trigger/target object, and don't inspect current damage marks.
     for split in 1..body.len() {
-        let source = if body[..split] == ["equipped", "creature"] {
+        let source = if crate::word_primitives::equals(&body[..split], &["equipped", "creature"]) {
             DamageHistorySources::SourceAttachedObject
         } else if let Some(spec) = reference(&body[..split]) {
             DamageHistorySources::Reference(Box::new(spec))

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 pub fn parse_activated_functional_zones_tokens(
@@ -142,7 +143,7 @@ fn origin_zones(words: &[&str], index: usize) -> Option<Vec<Zone>> {
 
 fn explicit_activation_zones(words: &[&str]) -> Option<Vec<Zone>> {
     let activation = words.iter().position(|word| *word == "activate")?;
-    let start = words[activation + 1..].windows(2)
+    let start = words[activation + 1..].word_windows(2)
         .position(|part| part == ["only", "if"])? + activation + 3;
     let end = source_end(words, start)?;
     // "Activate only if this card is suspended" (Greater Gargadon): a

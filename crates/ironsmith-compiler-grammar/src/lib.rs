@@ -285,6 +285,7 @@ pub mod document_parser;
 #[path = "grammar/modal_support.rs"]
 pub mod modal_support;
 pub mod parse_loss;
+pub mod word_claims;
 pub mod semantic_document;
 
 pub mod cards {

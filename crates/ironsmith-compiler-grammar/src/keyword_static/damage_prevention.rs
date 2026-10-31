@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use ironsmith_core::{PreventMatchingDamageSpec, StaticDamagePreventionAmount};
 
@@ -27,6 +28,25 @@ pub(super) fn prevention_recipient_filters(
             return Ok((player, Some(object)));
         }
     }
+    // "to this creature and to creatures banded with this creature" (Camel):
+    // the repeated "to" names two recipient sets. One conjunctive filter
+    // (the source AND banded with the source) would match nothing.
+    if let Some(index) = tokens.windows(2).position(|pair| {
+        pair[0].is_any_word(&["and", "or"]) && pair[1].is_word("to")
+    }) && index > 0
+        && index + 2 < tokens.len()
+        && let Ok((None, Some(left))) = prevention_recipient_filters(&tokens[..index])
+        && let Ok((None, Some(right))) = prevention_recipient_filters(&tokens[index + 2..])
+    {
+        crate::word_claims::claim_tokens(&tokens[index..index + 2]);
+        return Ok((
+            None,
+            Some(ObjectFilter {
+                any_of: vec![left, right],
+                ..ObjectFilter::default()
+            }),
+        ));
+    }
     let filter = if is_source_reference_words(&words) {
         let mut filter = ObjectFilter::source();
         filter.source_surface = source_reference_surface_for_words(&words);
@@ -39,7 +59,7 @@ pub(super) fn prevention_recipient_filters(
 
 pub(super) fn needs_shared_recipient_allocation(tokens: &[OwnedLexToken]) -> bool {
     parser_token_word_refs(tokens)
-        .windows(3)
+        .word_windows(3)
         .any(|words| words == ["one", "or", "more"])
         || tokens.iter().any(|token| token.is_word("and/or"))
 }
@@ -83,7 +103,7 @@ pub fn parse_filtered_damage_prevention_line(
     }
     let words = parser_token_word_refs(tokens);
     if words
-        .windows(2)
+        .word_windows(2)
         .any(|words| words == ["this", "turn"] || words == ["this", "combat"])
     {
         return Ok(None);
@@ -176,7 +196,7 @@ pub fn parse_permanent_self_damage_prevention_line(
     let words = parser_token_word_refs(tokens);
     if words.iter().any(|word| matches!(*word,
         "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
-        || words.windows(3).any(|words| words == ["as", "long", "as"])
+        || words.word_windows(3).any(|words| words == ["as", "long", "as"])
     {
         return Ok(None);
     }
@@ -265,7 +285,7 @@ pub fn parse_persistent_filtered_damage_prevention_line(
     let words = parser_token_word_refs(tokens);
     if words.iter().any(|word| matches!(*word,
         "target" | "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
-        || words.windows(3).any(|words| words == ["as", "long", "as"])
+        || words.word_windows(3).any(|words| words == ["as", "long", "as"])
     {
         return Ok(None);
     }

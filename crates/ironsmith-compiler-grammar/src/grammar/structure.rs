@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use winnow::combinator::alt;
 use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::prelude::*;
@@ -746,7 +747,7 @@ pub(crate) fn is_source_controlled_by_non_owner_condition(tokens: &[OwnedLexToke
         return false;
     };
     let Some(owner_idx) = after_than
-        .windows(2)
+        .word_windows(2)
         .position(|pair| pair == ["owner", "controls"])
     else {
         return false;

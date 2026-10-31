@@ -82,6 +82,14 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if filter.assimilated_with_source
+        && ctx.source.is_none_or(|source_id| {
+            !game.was_assimilated_with_source(source_id, subject.object_id())
+        })
+    {
+        return false;
+    }
+
     if filter.created_with_source {
         let source_stable_id = ctx
             .source

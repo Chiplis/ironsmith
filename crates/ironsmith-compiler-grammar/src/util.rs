@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::TextSpan;
@@ -591,7 +592,9 @@ pub fn strip_leading_article_word_refs<'slice, 'word>(
 }
 
 pub fn strip_leading_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    leaf::parse_leaf_leading_articles_tokens(tokens).rest
+    let rest = leaf::parse_leaf_leading_articles_tokens(tokens).rest;
+    crate::word_claims::claim_tokens(&tokens[..tokens.len() - rest.len()]);
+    rest
 }
 
 pub fn strip_leading_token_words_any<'a>(
@@ -609,11 +612,19 @@ pub fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
     token_facts::non_article_word_refs(words)
 }
 
+/// The words that are not in `excluded`. The caller skips excluded words on
+/// purpose, so dropping one counts as reading it.
 pub fn word_refs_except<'a>(words: &[&'a str], excluded: &[&str]) -> Vec<&'a str> {
     words
         .iter()
         .copied()
-        .filter(|word| !excluded.iter().any(|excluded_word| word == excluded_word))
+        .filter(|word| {
+            let skipped = excluded.iter().any(|excluded_word| word == excluded_word);
+            if skipped {
+                crate::word_claims::claim_word(word);
+            }
+            !skipped
+        })
         .collect()
 }
 
@@ -1217,16 +1228,25 @@ pub fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
 
 pub use ironsmith_compiler_source::map_span_to_original;
 
+/// A characteristic word (type, supertype, subtype, color) a filter
+/// recognizes is a word it reads.
+fn claim_read_word<T>(word: &str, parsed: Option<T>) -> Option<T> {
+    if parsed.is_some() {
+        crate::word_claims::claim_word(word);
+    }
+    parsed
+}
+
 pub fn parse_card_type(word: &str) -> Option<CardType> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word)))
 }
 
 pub fn parse_supertype_word(word: &str) -> Option<Supertype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_supertype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_supertype_complete(word)))
 }
 
 pub fn parse_subtype_word(word: &str) -> Option<Subtype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_complete(word)))
 }
 
 pub fn parse_mana_symbol_word_flexible(word: &str) -> Option<ManaSymbol> {
@@ -1234,27 +1254,27 @@ pub fn parse_mana_symbol_word_flexible(word: &str) -> Option<ManaSymbol> {
 }
 
 pub fn parse_color(word: &str) -> Option<crate::color::ColorSet> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(word)))
 }
 
 pub fn parse_non_type(word: &str) -> Option<CardType> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_card_type_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_card_type_complete(word)))
 }
 
 pub fn parse_non_supertype(word: &str) -> Option<Supertype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_supertype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_supertype_complete(word)))
 }
 
 pub fn parse_non_color(word: &str) -> Option<crate::color::ColorSet> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_color_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_color_complete(word)))
 }
 
 pub fn parse_non_subtype(word: &str) -> Option<Subtype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_subtype_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_subtype_complete(word)))
 }
 
 pub fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(word)))
 }
 
 pub fn is_source_reference_words(words: &[&str]) -> bool {
@@ -1304,7 +1324,7 @@ pub fn is_permanent_type(card_type: CardType) -> bool {
 }
 
 pub fn parse_zone_word(word: &str) -> Option<Zone> {
-    crate::grammar::primitives::probe_shape(leaf::parse_leaf_zone_complete(word))
+    claim_read_word(word, crate::grammar::primitives::probe_shape(leaf::parse_leaf_zone_complete(word)))
 }
 
 pub fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
@@ -2249,8 +2269,10 @@ fn restore_distinct_combat_damage_controller_target(
     let Some(filter_tokens) = head.tokens().get(head.prefix.consumed..) else {
         return;
     };
-    let Ok(authored_filter) = crate::object_filters::parse_object_filter(filter_tokens, false)
-    else {
+    let (authored_filter, probe) = crate::word_claims::speculative(|| {
+        crate::object_filters::parse_object_filter(filter_tokens, false)
+    });
+    let Ok(authored_filter) = authored_filter else {
         return;
     };
     if !matches!(
@@ -2259,6 +2281,7 @@ fn restore_distinct_combat_damage_controller_target(
     ) {
         return;
     }
+    probe.keep();
 
     fn apply(target: &mut TargetAst, authored_filter: &ObjectFilter) {
         match target {
@@ -2296,7 +2319,7 @@ fn parse_one_target_per_card_type_phrase(
         return Ok(None);
     }
     let Some(start) = words
-        .windows(4)
+        .word_windows(4)
         .position(|window| window == ["of", "each", "card", "type"])
     else {
         return Ok(None);
@@ -3581,7 +3604,7 @@ fn mark_has_subtype_list_arm_union(filter: &mut ObjectFilter, words: &[&str]) {
     if filter.type_or_subtype_union || filter.card_types.is_empty() || filter.subtypes.len() != 1 {
         return;
     }
-    let Some(has_idx) = words.windows(3).position(|window| {
+    let Some(has_idx) = words.word_windows(3).position(|window| {
         matches!(window[0], "has" | "have")
             && matches!(window[1], "a" | "an")
             && parse_subtype_word(window[2]).is_some_and(|subtype| filter.subtypes[0] == subtype)

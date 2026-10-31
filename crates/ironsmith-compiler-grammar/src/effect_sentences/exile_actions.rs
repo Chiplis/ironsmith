@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::CardType;
 use crate::cards::builders::ConditionalEffectAst;
@@ -608,7 +609,7 @@ fn split_distributed_exile_object_list(tokens: &[OwnedLexToken]) -> Option<Vec<&
         let names_own_zone = words.iter().any(|word| {
             matches!(*word, "library" | "graveyard" | "hand")
         }) && words
-            .windows(2)
+            .word_windows(2)
             .any(|pair| matches!(pair, ["their" | "your" | "its" | "that" | "his", _]));
         if !matches!(words.first(), Some(&"the" | &"a" | &"an"))
             || !names_own_zone

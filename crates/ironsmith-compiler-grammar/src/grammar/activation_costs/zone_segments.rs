@@ -134,13 +134,23 @@ pub fn parse_move_source_to_library_bottom_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
     let words = TokenWordView::new(tokens).word_refs();
-    if words.len() != 10
-        || !crate::word_primitives::parse_sequence_prefix(&words, &["put", "this"])
-        || !crate::word_primitives::parse_sequence_complete(
-            &words[3..],
-            &["on", "the", "bottom", "of", "its", "owners", "library"],
-        )
-    {
+    if words.len() < 9 || !crate::word_primitives::parse_sequence_prefix(&words, &["put", "this"]) {
+        return None;
+    }
+    // "Put this card from your graveyard on the bottom of your library"
+    // (Daniels, Temporal Agent): the source's origin names the zone the
+    // ability functions from; its library is its owner's.
+    let mut rest = &words[3..];
+    if crate::word_primitives::parse_sequence_prefix(rest, &["from", "your", "graveyard"]) {
+        rest = &rest[3..];
+    }
+    if !crate::word_primitives::parse_sequence_complete(
+        rest,
+        &["on", "the", "bottom", "of", "its", "owners", "library"],
+    ) && !crate::word_primitives::parse_sequence_complete(
+        rest,
+        &["on", "the", "bottom", "of", "your", "library"],
+    ) {
         return None;
     }
     let source_words = &words[1..3];
@@ -491,6 +501,19 @@ mod tests {
 
         let near_miss = lex_line("put a creature card on the bottom of your library", 0).unwrap();
         assert!(parse_move_source_to_library_bottom_cost_tokens(&near_miss).is_none());
+    }
+
+    #[test]
+    fn graveyard_source_library_bottom_cost_is_a_self_move() {
+        let tokens = lex_line(
+            "put this card from your graveyard on the bottom of your library",
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_move_source_to_library_bottom_cost_tokens(&tokens),
+            Some(Ok(ActivationCostSegmentCst::MoveSelfToLibraryBottom { .. }))
+        ));
     }
 }
 

@@ -1239,7 +1239,8 @@ fn describe_turn_history_value_comparison_prose(
         | ironsmith_core::TurnHistoryCount::UntappedLandsAtTurnStart(_)
         | ironsmith_core::TurnHistoryCount::DamageDealtToSource
         | ironsmith_core::TurnHistoryCount::DamageDealtBySource
-        | ironsmith_core::TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(_) => None,
+        | ironsmith_core::TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(_)
+        | ironsmith_core::TurnHistoryCount::DiedTotalPower(_) => None,
     }
 }
 

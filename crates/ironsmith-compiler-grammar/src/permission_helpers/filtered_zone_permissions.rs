@@ -1,4 +1,5 @@
 //! Complete source-wide filtered play/cast permission clauses.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::grammar::primitives;
 use crate::lexer::LexStream;
@@ -144,7 +145,7 @@ pub(super) fn parse_once_per_turn_source_exiled_free_cast(tokens: &[OwnedLexToke
     }
     // "a spell with mana value <comparison>": the comparison may be dynamic.
     let with_mana_value = subject_words
-        .windows(3)
+        .word_windows(3)
         .position(|window| window == ["with", "mana", "value"]);
     let (noun_tokens, comparison_tokens) = match with_mana_value {
         Some(word_index) => {

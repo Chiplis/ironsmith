@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use std::ops::Range;
 
 use winnow::combinator::{alt, eof, opt};
@@ -362,13 +363,13 @@ pub fn parse_trigger_entered_this_turn_suffix(words: &[&str]) -> Option<usize> {
 /// Recognizes a relative "that are/is enchanted by <Aura filter>" clause on a
 /// trigger subject ("creatures that are enchanted by an Aura you control").
 pub fn parse_trigger_enchanted_by_relative_clause(words: &[&str]) -> bool {
-    words.windows(4).any(|window| {
+    words.word_windows(4).any(|window| {
         matches!(
             window,
             ["that", "are" | "is", "enchanted", "by"]
         )
     }) || words
-        .windows(3)
+        .word_windows(3)
         .any(|window| matches!(window, ["that's" | "thats", "enchanted", "by"]))
 }
 
@@ -438,7 +439,7 @@ pub fn parse_damage_source_surface(
     // "a source you control other than this artifact": the trailing
     // self-exclusion is the `other` qualifier, not part of the source noun.
     let words = match all_words
-        .windows(2)
+        .word_windows(2)
         .position(|pair| pair == ["other", "than"])
     {
         Some(index)

@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::ability::{PresentationKeyword, PresentationLabel};
 use crate::host::ConditionalEffectAst;
 use crate::host::EffectAst;
@@ -843,7 +844,7 @@ fn parse_filtered_object_animation_static_line(
     // annihilator 2": the in-addition-and-has rule owns that pairing.
     let animation_words = crate::lexer::parser_token_word_refs(animation_tokens);
     let keywords_precede_addition = animation_words.iter().position(|word| *word == "with")
-        .zip(animation_words.windows(3).position(|words| words == ["in", "addition", "to"]))
+        .zip(animation_words.word_windows(3).position(|words| words == ["in", "addition", "to"]))
         .is_some_and(|(with, addition)| with < addition);
     if shape.preserve_other_types
         && !shape.still_other_card_type
@@ -1149,7 +1150,7 @@ fn parse_you_and_subject_protection_grant_line(
     let rest = &tokens[and_index + 1..];
     let rest_words = crate::lexer::parser_token_word_refs(rest);
     if !rest_words
-        .windows(3)
+        .word_windows(3)
         .any(|window| window == ["have", "protection", "from"])
     {
         return Ok(None);
@@ -3265,7 +3266,19 @@ pub fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     None
 }
 
+#[track_caller]
 pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    // Each suffix probe reads only its own words; the words before the kept
+    // suffix are left unread by the recovery as a whole.
+    let caller = std::panic::Location::caller();
+    let (best, _probes) = crate::word_claims::speculative(|| best_object_filter_suffix(tokens));
+    best.map(|(start, filter)| {
+        crate::word_claims::oblige_skipped(tokens, &tokens[..start], &filter, caller);
+        filter
+    })
+}
+
+fn best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, ObjectFilter)> {
     let mut best: Option<(usize, usize, ObjectFilter)> = None;
     for start in 0..tokens.len() {
         if tokens[start].as_word().is_none() {
@@ -3306,7 +3319,7 @@ pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<Objec
                 ),
             );
         }
-        filter
+        (start, filter)
     })
 }
 
@@ -3354,7 +3367,7 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
         let view = TokenWordView::new(tokens);
         let words = view.word_refs();
         if let Some(controlled) = words
-            .windows(5)
+            .word_windows(5)
             .position(|window| window == ["controlled", "by", "players", "who", "chose"])
             && controlled > 0
             && words.len() == controlled + 6
@@ -3381,8 +3394,9 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     if is_source_reference_words(&subject_words) {
         return Ok(AnthemSubjectAst::Source);
     }
-    let generic_filter =
-        crate::grammar::primitives::probe_shape(parse_object_filter(tokens, false));
+    let (generic_filter, generic_probe) = crate::word_claims::speculative(|| {
+        crate::grammar::primitives::probe_shape(parse_object_filter(tokens, false))
+    });
     if let Some(filter) = generic_filter.as_ref()
         && (filter.in_combat_with_source
             || filter.attached_to_object.is_some()
@@ -3390,6 +3404,7 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
             || filter.counters_put_on_this_turn.is_some()
             || !filter.characteristic_relations.is_empty())
     {
+        generic_probe.keep();
         return Ok(AnthemSubjectAst::Filter(filter.clone()));
     }
     match anthem_grant_grammar::parse_exact_anthem_subject_grammar(tokens) {
@@ -3415,6 +3430,7 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     // quantifier surfaces, then use the complete generic filter before trying
     // lossy recovery from a trailing fragment.
     if let Some(filter) = generic_filter {
+        generic_probe.keep();
         return Ok(AnthemSubjectAst::Filter(filter));
     }
     if let Some(filter) = parse_best_object_filter_suffix(tokens) {
@@ -5233,7 +5249,7 @@ pub fn parse_anthem_clause(
         promote_attached_to_affected(&mut power);
         promote_attached_to_affected(&mut toughness);
         let words = crate::lexer::parser_token_word_refs(tokens);
-        if words.windows(2).any(|pair| matches!(pair, ["on", "it" | "them"])) {
+        if words.word_windows(2).any(|pair| matches!(pair, ["on", "it" | "them"])) {
             promote_counters_on_affected(&mut power);
             promote_counters_on_affected(&mut toughness);
         }

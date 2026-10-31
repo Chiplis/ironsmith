@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 /// Terminal stack-object arity is an outer filter constraint, including when
@@ -187,14 +188,14 @@ fn parse_object_filter_inner_unchecked(
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == THAT_WORD))
             {
-                fragment_tokens.drain(..1);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..1));
             }
             if fragment_tokens
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == ONLY_WORD))
             {
                 only = true;
-                fragment_tokens.drain(..1);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..1));
             }
             if fragment_tokens.len() >= 2
                 && fragment_tokens[0].is_word("a")
@@ -207,7 +208,7 @@ fn parse_object_filter_inner_unchecked(
                 if !only && !relation_only {
                     count = Some(crate::effect::ChoiceCount::exactly(1));
                 }
-                fragment_tokens.drain(..2);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..2));
             } else if fragment_tokens
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == SINGLE_WORD))
@@ -215,7 +216,7 @@ fn parse_object_filter_inner_unchecked(
                 if !only && !relation_only {
                     count = Some(crate::effect::ChoiceCount::exactly(1));
                 }
-                fragment_tokens.drain(..1);
+                crate::word_claims::claim_drained(fragment_tokens.drain(..1));
             }
 
             if parse_phrase_at_head(
@@ -324,7 +325,7 @@ fn parse_object_filter_inner_unchecked(
     if let Some(until_token_idx) = token_index_for_word(&base_tokens, UNTIL_WORD)
         && until_token_idx > 0
     {
-        base_tokens.truncate(until_token_idx);
+        crate::word_claims::claim_drained(base_tokens.drain((until_token_idx).min(base_tokens.len())..));
     }
 
     let not_on_battlefield = strip_not_on_battlefield_phrase(&mut base_tokens);
@@ -357,7 +358,7 @@ fn parse_object_filter_inner_unchecked(
         if parse_phrase_whole(&attached_to_words, THAT_PLAYER_ATTACHMENT_TAIL).is_some() {
             filter.attached_to_player =
                 Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
-        } else if attached_to_words == ["you"] {
+        } else if crate::word_primitives::equals(&attached_to_words, &["you"]) {
             // "a Curse attached to you" (Lynde, Cheerful Tormentor): an Aura
             // enchanting the ability's controller, not an object.
             filter.attached_to_player = Some(PlayerFilter::You);
@@ -396,16 +397,16 @@ fn parse_object_filter_inner_unchecked(
     for index in 0..base_tokens.len() {
         let tail = non_article_parser_word_refs(&base_tokens[index..]);
         if tail.len() >= 6
-            && tail[..2] == ["other", "than"]
+            && crate::word_primitives::equals(&tail[..2], &["other", "than"])
             && parse_word_choice(tail[2], OBJECT_REFERENCE_NOUN_WORDS).is_some()
-            && tail[3..6] == ["tapped", "this", "way"]
+            && crate::word_primitives::equals(&tail[3..6], &["tapped", "this", "way"])
         {
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG.into(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
             // This trailing relation owns the complete reference phrase.
-            base_tokens.truncate(index);
+            crate::word_claims::claim_drained(base_tokens.drain((index).min(base_tokens.len())..));
             break;
         }
     }
@@ -443,7 +444,7 @@ fn parse_object_filter_inner_unchecked(
                     format!("the chosen {chosen_kind}"),
                 ));
             }
-            base_tokens.drain(start..end);
+            crate::word_claims::claim_drained(base_tokens.drain(start..end));
         }
     }
 
@@ -477,9 +478,9 @@ fn parse_object_filter_inner_unchecked(
             .is_some_and(|token| token.is_word("or") || token.is_word("and"))
             && base_tokens.len() > idx + 5
         {
-            base_tokens.drain(idx + 2..idx + 5);
+            crate::word_claims::claim_drained(base_tokens.drain(idx + 2..idx + 5));
         } else {
-            base_tokens.drain(idx..idx + 4);
+            crate::word_claims::claim_drained(base_tokens.drain(idx..idx + 4));
         }
     }
 
@@ -505,7 +506,7 @@ fn parse_object_filter_inner_unchecked(
 
         filter.other = true;
         filter.source_surface.get_or_insert(surface);
-        base_tokens.drain(idx..idx + 2 + tail_token_len);
+        crate::word_claims::claim_drained(base_tokens.drain(idx..idx + 2 + tail_token_len));
     }
 
     // "other than Werewolves and Wolves" is an exclusion on the described
@@ -600,7 +601,7 @@ fn parse_object_filter_inner_unchecked(
             push_unique(&mut filter.excluded_supertypes, supertype);
         }
         filter.excluded_colors = filter.excluded_colors.union(excluded_colors);
-        base_tokens.truncate(idx);
+        crate::word_claims::claim_drained(base_tokens.drain((idx).min(base_tokens.len())..));
         break;
     }
 
@@ -639,7 +640,7 @@ fn parse_object_filter_inner_unchecked(
         if suffix_len > 0
             && let Some(start) = token_index_after_word_prefix(&base_tokens, len - suffix_len)
         {
-            base_tokens.truncate(start);
+            crate::word_claims::claim_drained(base_tokens.drain((start).min(base_tokens.len())..));
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: crate::tag::CompilerReferenceTag::SourceDevoured.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -683,12 +684,9 @@ fn parse_object_filter_inner_unchecked(
     };
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
-    let enchanted_set = all_words
-        .windows(3)
-        .any(|part| part == ["that", "are", "enchanted"])
-        || all_words
-            .windows(2)
-            .any(|part| part == ["enchanted", "creatures"]);
+    let enchanted_set =
+        crate::word_primitives::sequence_occurs(&all_words, &["that", "are", "enchanted"])
+            || crate::word_primitives::sequence_occurs(&all_words, &["enchanted", "creatures"]);
 
     let has_tap_activated_ability = has_tap_activated_ability_phrase(&all_words);
     let has_non_mana_activated_ability = has_non_mana_activated_ability_phrase(&all_words);
@@ -862,6 +860,10 @@ fn parse_object_filter_inner_unchecked(
         &mut segment_tokens,
     );
 
+    // "the Borg assimilated with this Saga": the assimilation link names the
+    // source; "this Saga" is never the selected object's own type.
+    try_apply_assimilated_with_source_clause(&mut filter, &mut all_words, &mut segment_tokens);
+
     // Token provenance is a source-instance relationship. Consume the source
     // noun before the ordinary type pass can misread "this enchantment" as a
     // requirement that the selected token itself be an enchantment.
@@ -916,8 +918,8 @@ fn parse_object_filter_inner_unchecked(
             .iter()
             .any(|word| matches!(*word, "was" | "were"))
             && blocked_by_words
-                .windows(5)
-                .any(|window| window == ["blocked", "by", "one", "of", "those"]);
+                .word_windows(5)
+                .any(|window| crate::word_primitives::equals(&window, &["blocked", "by", "one", "of", "those"]));
         filter.blocked = !historical;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(
             (crate::tag::CompilerReferenceTag::It.bind()).into(),
@@ -967,7 +969,7 @@ fn parse_object_filter_inner_unchecked(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Discarded));
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
     }
 
     let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);
@@ -1180,16 +1182,19 @@ fn parse_object_filter_inner_unchecked(
             if let Some(consumed) =
                 try_apply_neither_owned_nor_controlled_clause(&mut filter, slice)
             {
+                crate::word_claims::claim_words(&slice[..consumed.min(slice.len())]);
                 idx += consumed;
                 continue;
             }
             if let Some(consumed) =
                 try_apply_joint_owner_controller_clause(&mut filter, slice, &pronoun_player_filter)
             {
+                claim_relation(&all_words, idx, consumed);
                 idx += consumed.max(1);
                 continue;
             }
             if let Some(consumed) = try_apply_chosen_player_graveyard_clause(&mut filter, slice) {
+                claim_relation(&all_words, idx, consumed);
                 idx += consumed.max(1);
                 continue;
             }
@@ -1208,6 +1213,7 @@ fn parse_object_filter_inner_unchecked(
                     &with_subject,
                     &pronoun_player_filter,
                 ) {
+                    claim_relation(&all_words, idx, consumed.saturating_sub(1));
                     idx += consumed.saturating_sub(1).max(1);
                     continue;
                 }
@@ -1215,18 +1221,21 @@ fn parse_object_filter_inner_unchecked(
             if let Some(consumed) =
                 try_apply_negated_you_relation_clause(&mut filter, slice, &pronoun_player_filter)
             {
+                claim_relation(&all_words, idx, consumed);
                 idx += consumed.max(1);
                 continue;
             }
             if let Some(consumed) =
                 try_apply_player_relation_clause(&mut filter, slice, &pronoun_player_filter)
             {
+                claim_relation(&all_words, idx, consumed);
                 idx += consumed.max(1);
                 continue;
             }
             if let Some(consumed) =
                 try_apply_passive_player_relation_clause(&mut filter, slice, &pronoun_player_filter)
             {
+                claim_relation(&all_words, idx, consumed);
                 idx += consumed.max(1);
                 continue;
             }
@@ -1247,6 +1256,7 @@ fn parse_object_filter_inner_unchecked(
 
         if let Some(consumed) = try_apply_with_clause_tail(&mut filter, &all_words[with_idx + 1..])
         {
+            crate::word_claims::claim_words(&all_words[with_idx..(with_idx + 1 + consumed).min(all_words.len())]);
             with_idx += 1 + consumed;
             continue;
         }
@@ -1280,6 +1290,7 @@ fn parse_object_filter_inner_unchecked(
                 parse_filter_counter_constraint_words(&all_words[has_idx + 1..])
         {
             filter.without_counter = Some(counter_constraint);
+            claim_has_clause(&all_words, has_idx, consumed);
             has_idx += 1 + consumed;
             continue;
         }
@@ -1289,6 +1300,7 @@ fn parse_object_filter_inner_unchecked(
                 parse_filter_counter_constraint_words(&all_words[has_idx + 1..])
         {
             filter.with_counter = Some(counter_constraint);
+            claim_has_clause(&all_words, has_idx, consumed);
             has_idx += 1 + consumed;
             continue;
         }
@@ -1331,6 +1343,7 @@ fn parse_object_filter_inner_unchecked(
                     apply_filter_keyword_constraint(&mut filter, constraint, false);
                 }
             }
+            claim_has_clause(&all_words, has_idx, consumed);
             has_idx += 1 + consumed;
             continue;
         }
@@ -1351,6 +1364,7 @@ fn parse_object_filter_inner_unchecked(
         if let Some(consumed) =
             try_apply_without_clause_tail(&mut filter, &all_words[without_idx + 1..])
         {
+            crate::word_claims::claim_words(&all_words[without_idx..(without_idx + 1 + consumed).min(all_words.len())]);
             without_idx += 1 + consumed;
             continue;
         }
@@ -1399,17 +1413,24 @@ fn parse_object_filter_inner_unchecked(
             if filter.zone.is_none() {
                 filter.zone = Some(zone);
             }
+            // The zone phrase is read: its preposition and owner words.
+            let mut owner_start = idx;
             if idx > 0 {
                 match all_words[idx - 1] {
                     "your" => {
                         filter.owner = Some(PlayerFilter::You);
+                        owner_start = idx - 1;
                     }
                     "opponent" | "opponents" => {
                         filter.owner = Some(PlayerFilter::Opponent);
+                        owner_start = idx - 1;
                     }
                     "their" => {
                         filter.owner = Some(pronoun_player_filter.clone());
+                        owner_start = idx - 1;
                     }
+                    // "in all graveyards": any owner.
+                    "all" => owner_start = idx - 1,
                     _ => {}
                 }
             }
@@ -1418,19 +1439,34 @@ fn parse_object_filter_inner_unchecked(
                 match owner_pair {
                     ("defending", "player") | ("defending", "players") => {
                         filter.owner = Some(PlayerFilter::Defending);
+                        owner_start = idx - 2;
                     }
                     ("target", "player") | ("target", "players") => {
                         filter.owner = Some(PlayerFilter::target_player());
+                        owner_start = idx - 2;
                     }
                     ("target", "opponent") | ("target", "opponents") => {
                         filter.owner = Some(PlayerFilter::target_opponent());
+                        owner_start = idx - 2;
                     }
                     ("that", "player") | ("that", "players") => {
                         filter.owner = Some(PlayerFilter::IteratedPlayer);
+                        owner_start = idx - 2;
+                    }
+                    // "cards in all players' hands", "each player's hand":
+                    // any owner, which an unset owner already means.
+                    ("all", "players") | ("each", "player") | ("each", "players") => {
+                        owner_start = idx - 2;
                     }
                     _ => {}
                 }
             }
+            if owner_start > 0
+                && matches!(all_words[owner_start - 1], "from" | "in" | "on" | "into" | "onto")
+            {
+                owner_start -= 1;
+            }
+            crate::word_claims::claim_words(&all_words[owner_start..idx]);
         }
     }
     if referenced_zones.len() > 1 && filter.any_of.is_empty() {
@@ -1445,8 +1481,8 @@ fn parse_object_filter_inner_unchecked(
     // "a creature card with the same total power and toughness" (Wild Pair):
     // equal to the triggering creature's power plus toughness.
     if let Some(idx) = all_words
-        .windows(5)
-        .position(|window| window == ["same", "total", "power", "and", "toughness"])
+        .word_windows(5)
+        .position(|window| crate::word_primitives::equals(&window, &["same", "total", "power", "and", "toughness"]))
         && idx + 5 == all_words.len()
     {
         let triggering = || {
@@ -1674,6 +1710,12 @@ fn parse_object_filter_inner_unchecked(
         {
             filter.excluded_subtypes.push(subtype);
             negated_word_indices.insert(idx + 1);
+        }
+    }
+    // A "non" is read when it negated the word after it.
+    for idx in 1..all_words.len() {
+        if set_has(&negated_word_indices, &idx) && all_words[idx - 1] == NON_WORD {
+            crate::word_claims::claim_word(all_words[idx - 1]);
         }
     }
     for idx in 0..all_words.len() {
@@ -1917,7 +1959,11 @@ fn parse_object_filter_inner_unchecked(
             continue;
         }
         let is_negated_word = set_has(&negated_word_indices, &idx);
+        // Every arm but the fall-through reads its word.
+        let mut unread_word = false;
         match *word {
+            // A determiner like "a": "any creature card" selects creature cards.
+            "any" => {}
             "permanent" | "permanents" => saw_permanent = true,
             "spell" | "spells" => {
                 if !is_tagged_spell_reference_at(idx) {
@@ -1929,6 +1975,7 @@ fn parse_object_filter_inner_unchecked(
                     .get(idx + 1)
                     .is_some_and(|next| *next == COLOR_WORD) =>
             {
+                crate::word_claims::claim_word(all_words[idx + 1]);
                 filter.chosen_color = true;
             }
             word if word == THAT_WORD
@@ -1936,6 +1983,7 @@ fn parse_object_filter_inner_unchecked(
                     .get(idx + 1)
                     .is_some_and(|next| *next == COLOR_WORD) =>
             {
+                crate::word_claims::claim_word(all_words[idx + 1]);
                 // A demonstrative color after a color choice ("creatures of
                 // that color") refers to the source program's chosen color.
                 filter.chosen_color = true;
@@ -1945,6 +1993,7 @@ fn parse_object_filter_inner_unchecked(
                     .get(idx + 1)
                     .is_some_and(|next| *next == TYPE_WORD) =>
             {
+                crate::word_claims::claim_word(all_words[idx + 1]);
                 if set_has(&excluded_chosen_type_indices, &idx) {
                     filter.excluded_chosen_creature_type = true;
                 } else {
@@ -1956,6 +2005,7 @@ fn parse_object_filter_inner_unchecked(
                     .get(idx + 1)
                     .is_some_and(|next| *next == TYPE_WORD) =>
             {
+                crate::word_claims::claim_word(all_words[idx + 1]);
                 filter.chosen_creature_type = true;
             }
             word if word == NONCHOSEN_WORD
@@ -1963,6 +2013,7 @@ fn parse_object_filter_inner_unchecked(
                     .get(idx + 1)
                     .is_some_and(|next| *next == TYPE_WORD) =>
             {
+                crate::word_claims::claim_word(all_words[idx + 1]);
                 filter.excluded_chosen_creature_type = true;
             }
             "token" | "tokens" => filter.token = true,
@@ -2052,6 +2103,7 @@ fn parse_object_filter_inner_unchecked(
                 if all_words.get(idx + 1).is_some_and(|word| *word == "land")
                     && all_words.get(idx + 2).is_some_and(|word| *word == "type")
                 {
+                    crate::word_claims::claim_words(&all_words[idx..idx + 3]);
                     filter.has_nonbasic_land_type = true;
                     continue;
                 }
@@ -2071,7 +2123,10 @@ fn parse_object_filter_inner_unchecked(
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
             crate::keyword_forms::GOADED if !is_negated_word => filter.goaded = true,
-            _ => {}
+            _ => unread_word = true,
+        }
+        if !unread_word {
+            crate::word_claims::claim_word(word);
         }
 
         if is_non_outlaw_word(word) {
@@ -3010,7 +3065,7 @@ fn parse_object_filter_inner_unchecked(
             // the attachment tail is admitted once it was captured.
             let attachment_tail = all_words.get(index + 2) == Some(&"attached")
                 && (filter.attached_to_object.is_some() || filter.attached_to_player.is_some());
-            if words == ["you", "control"]
+            if crate::word_primitives::equals(&words, &["you", "control"])
                 && !negated_name_tail
                 && !attachment_tail
                 && let Some(next) = all_words.get(index + 2)
@@ -3133,7 +3188,7 @@ pub(super) fn try_apply_could_be_targeted_by_that_spell_clause(
         filter.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(
             ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind()),
         ));
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false
@@ -3179,7 +3234,7 @@ pub(super) fn try_apply_shared_creature_type_with_source_clause(
         let idx = fact.span.start;
 
         filter.shares_creature_type_with_source = true;
-        all_words.drain(idx..idx + phrase.len());
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));
         return true;
     }
     false
@@ -3253,4 +3308,27 @@ mod terminal_stack_target_cardinality_tests {
             }
         }
     }
+}
+
+/// Claim a relation clause applied at `idx` ("you own", "don't control"),
+/// with the "but" that joins it to a preceding relation ("you own but don't
+/// control").
+fn claim_relation(all_words: &[&str], idx: usize, consumed: usize) {
+    let end = (idx + consumed).min(all_words.len());
+    crate::word_claims::claim_words(&all_words[idx..end]);
+    if idx > 1 && all_words[idx - 1] == "but" {
+        crate::word_claims::claim_words(&all_words[idx - 1..idx]);
+    }
+}
+
+/// Claim a has/have clause at `has_idx` with its negation ("doesn't have").
+fn claim_has_clause(all_words: &[&str], has_idx: usize, consumed: usize) {
+    let end = (has_idx + 1 + consumed).min(all_words.len());
+    let mut start = has_idx;
+    if start > 0 && matches!(all_words[start - 1], "doesn't" | "doesnt" | "don't" | "dont") {
+        start -= 1;
+    } else if start > 1 && all_words[start - 1] == "not" && matches!(all_words[start - 2], "does" | "do") {
+        start -= 2;
+    }
+    crate::word_claims::claim_words(&all_words[start..end]);
 }

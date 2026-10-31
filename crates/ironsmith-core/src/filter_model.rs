@@ -1468,6 +1468,10 @@ pub enum TaggedOpbjectRelation {
     /// ("a creature dealt damage by the targeted creature this turn",
     /// Runesword). Appended for wire stability.
     WasDealtDamageByTaggedThisTurn,
+    /// The tagged Aura could legally be attached to the candidate (its
+    /// enchant ability and protection, CR 303.4): "another permanent it can
+    /// enchant" (Aura Graft). Appended for wire stability.
+    CouldBeEnchantedByTagged,
 }
 
 /// A characteristic that can be compared between a candidate object and a
@@ -2893,6 +2897,16 @@ pub struct ObjectFilter {
     /// Oracle-facing source noun for the relation above. Runtime identity is
     /// carried by the relation and the game-state link, not this surface hint.
     pub put_onto_battlefield_with_source_surface: Option<SourceReferenceSurface>,
+    /// The object was assimilated by an effect of the current source object
+    /// ("the Borg assimilated with this Saga", The Best of Both Worlds): the
+    /// source's lasting control change still applies to this exact object,
+    /// or (for an assimilated card) the source put it onto the battlefield.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub assimilated_with_source: bool,
+    /// Authored source noun used by `assimilated_with_source`, for example
+    /// "this Saga". Display only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub assimilated_with_source_surface: Option<SourceReferenceSurface>,
     /// This object is a token created by the resolving ability's source
     /// instance. Creation provenance is tracked by stable source and token
     /// identities so a source-leaves trigger can still match correctly.
@@ -6160,6 +6174,9 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::WasDealtDamageByTaggedThisTurn => {
                     post_noun_qualifiers.push("dealt damage by it this turn".to_string());
                 }
+                TaggedOpbjectRelation::CouldBeEnchantedByTagged => {
+                    post_noun_qualifiers.push("it can enchant".to_string());
+                }
                 TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
                     post_noun_qualifiers.push(if combat_only {
                         "that dealt combat damage to it this turn"
@@ -7538,6 +7555,15 @@ impl ObjectFilter {
                 .map(SourceReferenceSurface::display_text)
                 .unwrap_or_else(|| "this permanent".to_string());
             parts.push(format!("put onto the battlefield with {source}"));
+        }
+
+        if self.assimilated_with_source {
+            let source = self
+                .assimilated_with_source_surface
+                .as_ref()
+                .map(SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            parts.push(format!("assimilated with {source}"));
         }
 
         if self.created_with_source {

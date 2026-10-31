@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use winnow::Parser;
 
@@ -354,8 +355,12 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // Ordinary object phrases are intentionally excluded: even when sentence
     // capitalization uppercases their first word, their lowercase rules
     // qualifiers prevent this surface predicate from claiming them.
+    // The filter parse only decides whether the name reads as an object
+    // phrase; its words count as read by whichever reading wins.
     if let Some(surface) = crate::grammar::source_surface_shapes::parse_named_surface(tokens)
-        && parse_object_filter(tokens, false).is_err()
+        && crate::word_claims::speculative(|| parse_object_filter(tokens, false))
+            .0
+            .is_err()
     {
         return Ok(TargetAst::Object(
             ObjectFilter::source().with_source_surface(surface),
@@ -368,19 +373,28 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if matches!(
         target_head_outcome,
         crate::recognition::ParseOutcome::NoMatch
-    ) && let Ok(filter) = parse_object_filter(tokens, false)
-        && (filter.has_plural_object_noun_surface()
-            || tokens.first().is_some_and(|token| {
-                let word = token.parser_text();
-                crate::word_primitives::strip_word_suffix(word, "s").is_some()
-                    && parse_subtype_flexible(word).is_some()
-            }))
-    {
-        // A plural subtype can be the complete subject of an effect without
-        // an article or `target` marker (`Vehicles you control become ...`).
-        // The leaf target-head recognizer deliberately owns only structural
-        // selector heads, so retain this grammar-proven bare object set here.
-        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+    ) {
+        // A probe: callers hand whole clauses here ("if it was a creature
+        // card put a +1/+1 counter on this creature and you", Scavenging
+        // Ooze), so its unread words count only for the bare set it returns.
+        let (filter, probe) =
+            crate::word_claims::speculative(|| parse_object_filter(tokens, false));
+        if let Ok(filter) = filter
+            && (filter.has_plural_object_noun_surface()
+                || tokens.first().is_some_and(|token| {
+                    let word = token.parser_text();
+                    crate::word_primitives::strip_word_suffix(word, "s").is_some()
+                        && parse_subtype_flexible(word).is_some()
+                }))
+        {
+            probe.keep();
+            // A plural subtype can be the complete subject of an effect
+            // without an article or `target` marker (`Vehicles you control
+            // become ...`). The leaf target-head recognizer deliberately owns
+            // only structural selector heads, so retain this grammar-proven
+            // bare object set here.
+            return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+        }
     }
     let target_head = match target_head_outcome {
         crate::recognition::ParseOutcome::Match(matched) => matched.value,
@@ -1266,7 +1280,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             filter.targets_only_any_of = true;
             let object_words = crate::lexer::token_word_refs(union.object_tokens);
             if object_words
-                .windows(3)
+                .word_windows(3)
                 .any(|window| window == ["spell", "or", "ability"])
             {
                 filter.zone = Some(Zone::Stack);

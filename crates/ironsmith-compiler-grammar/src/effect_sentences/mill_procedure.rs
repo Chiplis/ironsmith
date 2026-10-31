@@ -9,6 +9,7 @@
 //! three cards"), an unconditional follow-up joins that branch, as the registry
 //! program it replaces had it.
 
+use crate::word_primitives::WordWindows as _;
 use super::dispatch_entry::{
     SentenceInput, parse_if_you_cant_sentence, parse_if_you_dont_sentence,
 };
@@ -217,7 +218,7 @@ pub(super) fn open(
     let per_player_battlefield_put = per_player
         && !exiles_milled_creatures
         && crate::lexer::token_word_refs(next.lowered())
-            .windows(3)
+            .word_windows(3)
             .any(|window| window == ["onto", "the", "battlefield"])
         && parse_put_from_milled_cards_followup(next.lowered(), PlayerAst::You, tag.clone().into())?
             .is_some();

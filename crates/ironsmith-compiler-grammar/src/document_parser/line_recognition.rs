@@ -69,10 +69,17 @@ fn moved_or_cast_origin_trigger_split_index(
         }
 
         let trigger_tokens = trim_lexed_commas(&tokens[trigger_start..separator_idx]);
-        let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) else {
+        // Every comma is probed, so a candidate can span later sentences
+        // ("... attacks, you may pay {R}{G}{W}{U}. If you do, until end of
+        // turn, whenever he deals combat damage ...", Human Torch); its
+        // words count only for the split this probe commits.
+        let (parsed, probe) =
+            crate::word_claims::speculative(|| parse_trigger_clause_lexed(trigger_tokens));
+        let Ok(trigger) = parsed else {
             continue;
         };
         if trigger_has_moved_or_cast_origin_condition(&trigger) {
+            probe.keep();
             return Some(separator_idx);
         }
     }

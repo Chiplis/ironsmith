@@ -1,5 +1,6 @@
 //! Complete persistent P/T assignments over controller-relative state.
 //! Resolution-local targets, event values and unbound X never become statics.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 fn state_value(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
@@ -82,7 +83,7 @@ pub(super) fn parse_timed_source_pt(
     let Some((prefix, condition)) = condition_and_prefix else {
         return Err(CardTextError::ParseError("incomplete timed power/toughness condition prefix".into()));
     };
-    if !words.windows(5).any(|words| words == ["power", "and", "toughness", "are", "each"]) {
+    if !words.word_windows(5).any(|words| words == ["power", "and", "toughness", "are", "each"]) {
         return Err(CardTextError::ParseError("incomplete timed power/toughness axis".into()));
     }
     let comma = tokens.iter().position(|token| token.is_comma())

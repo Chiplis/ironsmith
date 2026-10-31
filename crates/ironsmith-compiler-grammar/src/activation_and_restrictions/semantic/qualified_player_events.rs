@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 fn player(words: &[&str]) -> Option<PlayerFilter> {
     match words {
@@ -23,7 +24,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
     };
     let subject = &words[..verb];
     let who = subject
-        .windows(2)
+        .word_windows(2)
         .position(|part| part == ["who", "controls"]);
     let Some(player) = player(who.map_or(subject, |index| &subject[..index])) else {
         return Ok(None);

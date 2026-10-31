@@ -3997,6 +3997,31 @@ impl GameState {
             .is_some_and(|objects| objects.contains(&object_id))
     }
 
+    /// Whether this exact object was assimilated by the specified source:
+    /// the source's lasting control change from a resolved effect still
+    /// applies to it (assimilating a permanent), or the source put it onto
+    /// the battlefield (assimilating a card). A zone change creates a new
+    /// object the link no longer names.
+    pub fn was_assimilated_with_source(&self, source_id: ObjectId, object_id: ObjectId) -> bool {
+        if self.was_put_onto_battlefield_with_source(source_id, object_id) {
+            return true;
+        }
+        self.effect_store.continuous_effects.effects().iter().any(|effect| {
+            effect.source == source_id
+                && matches!(
+                    effect.modification,
+                    crate::continuous::Modification::ChangeController(_)
+                        | crate::continuous::Modification::ChangeControllerToEffectController
+                )
+                && (matches!(effect.applies_to, crate::continuous::EffectTarget::Specific(id) if id == object_id)
+                    || matches!(
+                        &effect.source_type,
+                        crate::continuous::EffectSourceType::Resolution { locked_targets }
+                            if locked_targets.contains(&object_id)
+                    ))
+        })
+    }
+
     /// Record that a token instance was created by an effect of a particular
     /// source instance. Both sides use stable identity because the source may
     /// have changed zones before a linked leaves-trigger resolves.

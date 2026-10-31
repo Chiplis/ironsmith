@@ -1,4 +1,5 @@
 //! An amount/randomness replacement keeps the original player's declaration.
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::lexer::{OwnedLexToken, TokenKind};
 use winnow::prelude::*;
@@ -63,7 +64,7 @@ pub(super) fn validate(tokens: &[OwnedLexToken]) -> Result<(), CardTextError> {
             &["if", "you", "cast", "this", "spell"],
             &["card", "types", "among", "cards", "in", "your", "graveyard"],
         ].iter().any(|head| words.windows(head.len()).any(|part| part == *head));
-        if state_head && words.contains(&"instead") && words.windows(3).any(|part| part == ["that", "player", "discards"]) {
+        if state_head && words.contains(&"instead") && words.word_windows(3).any(|part| part == ["that", "player", "discards"]) {
             replacement(tokens)?.ok_or_else(|| CardTextError::ParseError(
                 "incomplete conditional discard replacement".into()))?;
         }

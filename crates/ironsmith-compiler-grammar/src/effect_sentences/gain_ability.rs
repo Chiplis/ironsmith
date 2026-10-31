@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::super::clause_support::{
     parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed, parse_triggered_line_lexed,
@@ -2165,10 +2166,17 @@ pub(super) fn parse_copular_base_characteristic_assignment(
         if !value.get(1).is_some_and(|token| token.is_word("equal")) { return Ok(None); }
         value = &value[1..];
     }
-    let mut subject = tokens[..has].to_vec();
+    // "it also has base power and toughness 2/2" (Azure Beastbinder): the
+    // adverb belongs to the copula, not to the recipient phrase.
+    let mut subject_end = has;
+    if subject_end > 1 && tokens[subject_end - 1].is_word("also") {
+        subject_end -= 1;
+        crate::word_claims::claim_tokens(&tokens[subject_end..has]);
+    }
+    let mut subject = tokens[..subject_end].to_vec();
     subject.extend_from_slice(&rest[..marker_len]);
-    let recipient = source_target_from_subject_tokens(&tokens[..has])
-        .map(Ok).unwrap_or_else(|| parse_target_phrase(&tokens[..has]))?;
+    let recipient = source_target_from_subject_tokens(&tokens[..subject_end])
+        .map(Ok).unwrap_or_else(|| parse_target_phrase(&tokens[..subject_end]))?;
     let mut effect = super::clause_dispatch::parse_become_clause(&subject, value)?;
     fn preserve_recipient(effect: &mut EffectAst, recipient: &TargetAst) {
         use crate::cards::builders::CharacteristicActionAst;
@@ -2920,7 +2928,7 @@ pub fn split_pronoun_ability_and_type_pair(
     let descriptor_words = crate::lexer::parser_token_word_refs(descriptor);
     if has_tail.is_empty()
         || !descriptor_words
-            .windows(3)
+            .word_windows(3)
             .any(|window| window == ["in", "addition", "to"])
     {
         return None;
@@ -3005,7 +3013,7 @@ fn parse_player_no_maximum_hand_size_while_controlled(
     }
     let words = crate::lexer::token_word_refs(tokens);
     let duration_start = words
-        .windows(6)
+        .word_windows(6)
         .position(|window| window == ["for", "as", "long", "as", "you", "control"])?;
     if words.len() != duration_start + 8 || words[duration_start + 6] != "this" {
         return None;

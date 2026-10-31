@@ -4,6 +4,7 @@
 //! Do not enable the generic free-cost + while-exiled tail here: an unrelated
 //! tagged permission still has a different lifetime/identity contract.
 
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::{CardTextError, EffectAst, OwnedLexToken, TargetAst};
 use crate::lexer::{TokenKind, split_lexed_sentences};
 use ironsmith_core::{CounterExileGate, CounterExilePermission};
@@ -18,7 +19,7 @@ fn exact(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
 
 pub(crate) fn has_permanent_counter_exile_gate(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    words.windows(8).any(|part| part == [
+    words.word_windows(8).any(|part| part == [
         "if", "a", "permanent", "spell", "is", "countered", "this", "way",
     ]) && words.contains(&"exile")
 }

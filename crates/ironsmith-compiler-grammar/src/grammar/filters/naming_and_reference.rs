@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::lexer::{TokenKind, parser_token_word_positions, render_token_slice};
 use winnow::error::{ContextError, ErrMode};
@@ -351,6 +352,7 @@ fn parse_word_phrase(
     input: &mut primitives::WordSliceInput<'_>,
     phrase: &[&str],
 ) -> Result<(), ErrMode<ContextError>> {
+    let start = *input;
     for expected in phrase {
         let Some((actual, rest)) = input.split_first() else {
             return Err(primitives::backtrack_err(
@@ -366,6 +368,7 @@ fn parse_word_phrase(
         }
         *input = rest;
     }
+    crate::word_claims::claim_words(&start[..start.len() - input.len()]);
     Ok(())
 }
 
@@ -373,6 +376,7 @@ fn word_is_any(word: &str, expected: &[&str]) -> bool {
     let mut idx = 0usize;
     while idx < expected.len() {
         if expected[idx] == word {
+            crate::word_claims::claim_word(word);
             return true;
         }
         idx += 1;
@@ -396,6 +400,7 @@ fn word_index_for_exact(words: &[&str], expected: &str) -> Option<usize> {
     let mut idx = 0usize;
     while idx < words.len() {
         if words[idx] == expected {
+            crate::word_claims::claim_word(words[idx]);
             return Some(idx);
         }
         idx += 1;
@@ -404,6 +409,7 @@ fn word_index_for_exact(words: &[&str], expected: &str) -> Option<usize> {
 }
 
 pub(super) fn remove_word_range(words: &mut Vec<&str>, start: usize, end: usize) {
+    crate::word_claims::claim_words(&words[start..end]);
     let mut remaining = Vec::with_capacity(words.len());
     remaining.extend_from_slice(&words[..start]);
     remaining.extend_from_slice(&words[end..]);
@@ -649,7 +655,7 @@ pub(super) fn try_apply_entered_since_your_last_turn_ended_clause(
         return false;
     };
     filter.entered_since_your_last_turn_ended = true;
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -733,7 +739,7 @@ pub(super) fn try_apply_controlled_continuously_since_turn_began_clause(
     if active && filter.controller.is_none() {
         filter.controller = Some(PlayerFilter::Active);
     }
-    all_words.drain(start..start + consumed);
+    crate::word_claims::claim_drained(all_words.drain(start..start + consumed));
     true
 }
 
@@ -752,7 +758,7 @@ pub(super) fn strip_turned_face_up_this_turn_words(
     for phrase in PHRASES {
         if let Some(start) = find_phrase_start(all_words.as_slice(), phrase) {
             filter.turned_face_up_this_turn = true;
-            all_words.drain(start..start + phrase.len());
+            crate::word_claims::claim_drained(all_words.drain(start..start + phrase.len()));
             return;
         }
     }
@@ -769,14 +775,14 @@ pub(super) fn strip_object_filter_face_state_words(
             continue;
         };
         filter.face_down = Some(face_down);
-        all_words.drain(idx..idx + consumed);
+        crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     }
 }
 
 pub(super) fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
     while let Some(idx) = find_phrase_start(all_words.as_slice(), SINGLE_GRAVEYARD_PHRASE) {
         filter.single_graveyard = true;
-        all_words.remove(idx);
+        crate::word_claims::claim_drained([all_words.remove(idx)]);
     }
     // "cards from a player's graveyard" (articles and apostrophes are already
     // stripped here): one unspecified player's graveyard, so every chosen card
@@ -850,7 +856,7 @@ pub(super) fn try_apply_card_type_count_phrase(
         };
         filter.creature_type_count =
             Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
-        all_words.drain(index..index + consumed);
+        crate::word_claims::claim_drained(all_words.drain(index..index + consumed));
         return true;
     };
     // "any number of cards ... with four or more card types among them"
@@ -863,11 +869,11 @@ pub(super) fn try_apply_card_type_count_phrase(
                 count as i32,
             ),
         ));
-        all_words.drain(index..index + consumed + 2);
+        crate::word_claims::claim_drained(all_words.drain(index..index + consumed + 2));
         return true;
     }
     filter.card_type_count = Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
-    all_words.drain(index..index + consumed);
+    crate::word_claims::claim_drained(all_words.drain(index..index + consumed));
     true
 }
 
@@ -917,7 +923,7 @@ pub(super) fn try_apply_color_count_phrase(
     } else {
         color_count_idx
     };
-    all_words.drain(drain_start..color_count_idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(drain_start..color_count_idx + consumed));
     Ok(true)
 }
 
@@ -938,7 +944,7 @@ pub(super) fn try_apply_pt_literal_prefix(
     };
     filter.power = Some(crate::filter::Comparison::Equal(power));
     filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
-    all_words.remove(pt_index);
+    crate::word_claims::claim_drained([all_words.remove(pt_index)]);
     true
 }
 
@@ -962,7 +968,7 @@ pub(super) fn try_apply_not_all_colors_clause(
         return false;
     };
     filter.all_colors = Some(false);
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -993,7 +999,7 @@ pub(super) fn try_apply_not_exactly_two_colors_clause(
         return false;
     };
     filter.exactly_two_colors = Some(false);
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -1007,7 +1013,7 @@ pub(super) fn try_apply_exactly_two_colors_clause(
         return false;
     };
     filter.exactly_two_colors = Some(true);
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
     true
 }
 
@@ -1141,7 +1147,7 @@ pub(super) fn try_apply_mana_value_counters_on_source_clause(
     } else {
         filter.mana_value = Some(comparison);
     }
-    all_words.drain(idx..idx + consumed);
+    crate::word_claims::claim_drained(all_words.drain(idx..idx + consumed));
 
     let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
     let segment_words = segment_words_view.to_word_refs();
@@ -1152,7 +1158,7 @@ pub(super) fn try_apply_mana_value_counters_on_source_clause(
         && token_range.start < token_range.end
         && token_range.end <= segment_tokens.len()
     {
-        segment_tokens.drain(token_range);
+        crate::word_claims::claim_drained(segment_tokens.drain(token_range));
     }
 
     true
@@ -1189,22 +1195,22 @@ pub(super) fn try_apply_attached_exclusion_phrases(
             tag: tag.key.clone(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
-        all_words.drain(idx..drain_end);
+        crate::word_claims::claim_drained(all_words.drain(idx..drain_end));
     }
 }
 
 pub(super) fn strip_object_filter_leading_prefixes(all_words: &mut Vec<&str>) {
     while words_start_with_phrase(all_words.as_slice(), ONE_OF_PREFIX) {
-        all_words.drain(0..ONE_OF_PREFIX.len());
+        crate::word_claims::claim_drained(all_words.drain(0..ONE_OF_PREFIX.len()));
     }
     while words_start_with_phrase(all_words.as_slice(), DIFFERENT_ONE_OF_PREFIX) {
-        all_words.drain(0..DIFFERENT_ONE_OF_PREFIX.len());
+        crate::word_claims::claim_drained(all_words.drain(0..DIFFERENT_ONE_OF_PREFIX.len()));
     }
     while all_words
         .first()
         .is_some_and(|word| word_is_any(word, OF_OR_FROM_WORDS))
     {
-        all_words.remove(0);
+        crate::word_claims::claim_drained([all_words.remove(0)]);
     }
 }
 
@@ -1442,9 +1448,9 @@ pub(super) fn build_spell_filter_power_or_toughness_disjunction(
 
 pub(crate) fn parse_source_number_spell_axes(words: &[&str]) -> Option<ObjectFilter> {
     let mut filter = ObjectFilter::default();
-    if let Some(start) = words.windows(3).position(|window| window == ["with", "mana", "value"]) {
+    if let Some(start) = words.word_windows(3).position(|window| crate::word_primitives::equals(&window, &["with", "mana", "value"])) {
         let suffix = words[start..].iter().copied().filter(|word| !matches!(*word, "," | "the")).collect::<Vec<_>>();
-        if suffix == ["with", "mana", "value", "power", "or", "toughness", "equal", "to", "chosen", "number"] {
+        if crate::word_primitives::equals(&suffix, &["with", "mana", "value", "power", "or", "toughness", "equal", "to", "chosen", "number"]) {
             apply_spell_filter_word_atoms(&mut filter, &words[..start]);
             let comparison = crate::filter::Comparison::EqualExpr(Box::new(
                 crate::effect::Value::SourceChosenNumber { if_unset: None, pair: None },
@@ -1528,7 +1534,7 @@ fn apply_spell_filter_power_toughness_relation(filter: &mut ObjectFilter, words:
     .into_iter()
     .find_map(|([axis, cmp, than, other], relation)| {
         words
-            .windows(5)
+            .word_windows(5)
             .any(|window| {
                 window[0] == axis
                     && window[1] == cmp
@@ -1552,7 +1558,7 @@ fn apply_spell_filter_power_toughness_relation(filter: &mut ObjectFilter, words:
 /// A terminal "cast from <zone> [or [from] <zone>]" constrains the
 /// spell's origin, rather than a nested card mentioned elsewhere in the filter.
 fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]) {
-    let start = if let Some(start) = words.windows(2).rposition(|pair| pair == ["cast", "from"]) {
+    let start = if let Some(start) = words.word_windows(2).rposition(|pair| crate::word_primitives::equals(&pair, &["cast", "from"])) {
         start + 2
     } else if words.first() == Some(&"from") {
         // Cost-modifier grammar extracts the caster phrase separately.
@@ -1970,7 +1976,7 @@ fn drain_source_reference_prefix_tokens(
     else {
         return;
     };
-    segment_tokens.drain(..end_token_idx);
+    crate::word_claims::claim_drained(segment_tokens.drain(..end_token_idx));
 }
 
 #[path = "naming_and_reference/naming_and_reference_reference.rs"]

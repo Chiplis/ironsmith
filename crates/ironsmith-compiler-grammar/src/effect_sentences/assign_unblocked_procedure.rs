@@ -6,6 +6,7 @@
 //! the spell resolves (CR 611.2c). The choice is still made per creature as
 //! combat damage is assigned, by that creature's controller.
 
+use crate::word_primitives::WordWindows as _;
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{CardTextError, EffectAst, GrantedAbilityAst, StaticAbilityAst};
 use crate::effect::Until;
@@ -88,7 +89,7 @@ pub(crate) fn parse_targeted_mandatory_unblocked_assignment(
     let mut body = crate::lexer::token_word_refs(&tokens[verb + 1..]);
     let mut duration = Until::Forever;
     if let Some(index) = body
-        .windows(2)
+        .word_windows(2)
         .position(|pair| pair == ["this", "turn"])
     {
         body.drain(index..index + 2);

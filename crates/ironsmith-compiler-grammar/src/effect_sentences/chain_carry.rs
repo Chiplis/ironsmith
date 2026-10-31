@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::DamagePreventionActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use winnow::Parser;
@@ -4465,7 +4466,7 @@ pub fn bind_population_counter_followup(
     tokens: &[OwnedLexToken],
 ) -> bool {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    if words.first() != Some(&"put") || !words.windows(4).any(|w| w == ["on", "each", "of", "them"])
+    if words.first() != Some(&"put") || !words.word_windows(4).any(|w| w == ["on", "each", "of", "them"])
     {
         return false;
     }

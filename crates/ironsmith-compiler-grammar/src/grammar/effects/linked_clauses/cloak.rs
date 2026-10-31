@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -257,7 +258,7 @@ pub fn parse_object_face_down_pile_sentence_shape(
     // The library-joined pile has its own shape.
     if TokenWordView::new(target_tokens)
         .word_refs()
-        .windows(2)
+        .word_windows(2)
         .any(|pair| pair == ["the", "top"] || pair == ["and", "top"])
     {
         return None;

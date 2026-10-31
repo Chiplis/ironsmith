@@ -10,9 +10,9 @@
 //! both problems go away by construction: every distinct span is parsed once,
 //! and every caller sees that one parse.
 //!
-//! The rules are pure functions of their tokens except for one side channel,
-//! parse-loss recording, which is observed on a miss and replayed on a hit so
-//! the report a caller captures does not depend on cache state.
+//! The rules are pure functions of their tokens except for two side channels,
+//! parse-loss recording and word claims, which are observed on a miss and
+//! replayed on a hit so what a caller captures does not depend on cache state.
 //!
 //! The cache is thread-local and cleared at the document boundary — a card is
 //! the unit of recognition — and bounded so a long-lived test thread cannot
@@ -47,6 +47,8 @@ struct Entry {
     loss: Vec<ParseLossDiagnostic>,
     /// The reference keys the parse minted, replayed on every hit.
     minted: Vec<ironsmith_compiler_ast::reference_ledger::MintedReference>,
+    /// The authored words the parse read, replayed on every hit.
+    claims: crate::word_claims::ClaimSet,
 }
 
 const MAX_ENTRIES: usize = 8_192;
@@ -108,6 +110,7 @@ pub fn memoized(
         crate::parse_loss::replay(&entry.loss);
         // The keys the parse minted belong to this use of the span as well.
         ironsmith_compiler_ast::reference_ledger::replay(&entry.minted);
+        crate::word_claims::adopt(&entry.claims);
         return entry.result;
     }
     let reentrant = IN_PROGRESS.with(|keys| !keys.borrow_mut().insert(key.clone()));
@@ -116,8 +119,9 @@ pub fn memoized(
         return compute();
     }
     crate::parse_ledger::note(rule, tokens, caller);
-    let ((result, loss), minted) =
-        ironsmith_compiler_ast::reference_ledger::observe(|| crate::parse_loss::observe(compute));
+    let (((result, loss), minted), claims) = crate::word_claims::observe(|| {
+        ironsmith_compiler_ast::reference_ledger::observe(|| crate::parse_loss::observe(compute))
+    });
     IN_PROGRESS.with(|keys| keys.borrow_mut().remove(&key));
     MEMO.with(|memo| {
         let mut memo = memo.borrow_mut();
@@ -130,8 +134,33 @@ pub fn memoized(
                 result: result.clone(),
                 loss,
                 minted,
+                claims,
             },
         );
     });
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cache_hit_claims_the_words_the_miss_read() {
+        reset();
+        let tokens = crate::lexer::lex_line("draw a card", 1).unwrap();
+        let read = |tokens: &[OwnedLexToken]| {
+            crate::word_claims::claim_tokens(tokens);
+            Ok(Vec::new())
+        };
+        let caller = Location::caller();
+        let (_, missed) =
+            crate::word_claims::scoped(|| memoized(Rule::Sentence, &tokens, caller, || read(&tokens)));
+        let (_, hit) = crate::word_claims::scoped(|| {
+            memoized(Rule::Sentence, &tokens, caller, || panic!("the second parse is a cache hit"))
+        });
+        assert!(!missed.is_empty());
+        assert_eq!(hit, missed);
+        reset();
+    }
 }

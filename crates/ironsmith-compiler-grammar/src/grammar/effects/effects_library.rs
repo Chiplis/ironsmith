@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LibraryActionAst;
@@ -275,7 +276,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         // lands you control") must not.
         let count_words =
             crate::lexer::token_word_refs(&count_tokens[..count_used.min(count_tokens.len())]);
-        let counted_by_prefix = count_words.windows(2).any(|window| window == ["number", "of"]);
+        let counted_by_prefix = count_words.word_windows(2).any(|window| window == ["number", "of"]);
         // "with mana value less than or equal to <value>" and "power equal
         // to <value>" are comparisons inside the selector, not a count.
         let comparison_head = words.last().is_some_and(|word| {

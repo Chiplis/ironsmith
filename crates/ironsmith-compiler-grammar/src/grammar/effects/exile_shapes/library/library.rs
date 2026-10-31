@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 
 pub fn parse_exile_dynamic_top_library_shape(
@@ -14,7 +15,7 @@ pub fn parse_exile_dynamic_top_library_shape(
             Some((_, rest))
                 if TokenWordView::new(rest)
                     .word_refs()
-                    .windows(2)
+                    .word_windows(2)
                     .any(|window| window == ["equal", "to"]) =>
             {
                 (rest, true)

@@ -222,7 +222,7 @@ pub fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool 
     else {
         return false;
     };
-    tokens.drain(token_start..token_end);
+    crate::word_claims::claim_drained(tokens.drain(token_start..token_end));
     true
 }
 
@@ -255,6 +255,7 @@ pub fn parse_filter_tail_decoration_tokens(
         if base_tokens.is_empty() {
             return None;
         }
+        crate::word_claims::claim_tokens(&tokens[token_idx..]);
         return Some(LexedFilterTailSplit {
             base_tokens,
             decoration: parsed.decoration,
@@ -274,6 +275,7 @@ pub fn parse_filter_tail_decoration_split_words<'a>(
         if parsed.consumed != words.len().saturating_sub(word_idx + 1) || word_idx == 0 {
             return None;
         }
+        crate::word_claims::claim_words(&words[word_idx..]);
         return Some(WordFilterTailSplit {
             base_words: &words[..word_idx],
             decoration: parsed.decoration,
@@ -622,6 +624,7 @@ fn chosen_quality_parity(words: &[&str], phrases: &[&[&str]]) -> ParityRequireme
         for phrase in phrases {
             let mut input: WordInput<'_> = &words[word_start..];
             if parse_word_phrase(&mut input, phrase).is_ok() {
+                crate::word_claims::claim_words(&words[word_start - 1..word_start]);
                 return ParityRequirement::NotChosen;
             }
         }
@@ -649,6 +652,7 @@ fn parse_word_phrase(input: &mut WordInput<'_>, expected: &[&str]) -> WResult<()
             return Err(err);
         }
     }
+    crate::word_claims::claim_words(&checkpoint[..checkpoint.len() - input.len()]);
     Ok(())
 }
 

@@ -2365,6 +2365,18 @@ pub(crate) fn resolve_turn_history_count(
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
                 .count() as i32
         }
+        TurnHistoryCount::DiedTotalPower(filter) => {
+            let mut historical_filter = filter.clone();
+            historical_filter.zone = None;
+            history
+                .projected_records()
+                .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+                .filter(|event| event.is_dies())
+                .flat_map(ZoneChangeEvent::snapshots)
+                .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
+                .map(|snapshot| snapshot.power.unwrap_or(0))
+                .sum()
+        }
         TurnHistoryCount::EnteredBattlefield(filter) => {
             let mut historical_filter = filter.clone();
             historical_filter.zone = None;

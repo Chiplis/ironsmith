@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::CardTextError;
 #[cfg(test)]
 use crate::filter::Comparison;
@@ -56,6 +57,8 @@ fn parse_exiled_with_cards_named_filter_words(
 ) -> Option<Result<ObjectFilter, CardTextError>> {
     let (base, card_name) = split_exiled_with_cards_named_qualifier_words(words)?;
     Some(parse_object_filter_words(base, other).map(|mut filter| {
+        // The qualifier and the card name are read into the named group.
+        crate::word_claims::claim_words(&words[base.len()..]);
         filter.zone = Some(Zone::Exile);
         filter.controller = None;
         filter.exiled_with_cards_named = Some(card_name);
@@ -319,6 +322,7 @@ pub(crate) fn split_original_printing_set_tokens(
     if set_name.is_empty() {
         return None;
     }
+    crate::word_claims::claim_tokens(&tokens[suffix_token_start..]);
     Some((
         super::util::trim_commas(&tokens[..suffix_token_start]),
         set_name,
@@ -328,7 +332,11 @@ pub(crate) fn split_original_printing_set_tokens(
 fn split_original_printing_set_words<'a>(words: &'a [&'a str]) -> Option<(&'a [&'a str], String)> {
     let (suffix_start, set_words) = original_printing_set_word_span(words)?;
     let set_name = title_case_set_surface(&words[set_words].join(" "));
-    (!set_name.is_empty()).then(|| (&words[..suffix_start], set_name))
+    if set_name.is_empty() {
+        return None;
+    }
+    crate::word_claims::claim_words(&words[suffix_start..]);
+    Some((&words[..suffix_start], set_name))
 }
 
 fn apply_original_printing_set(mut filter: ObjectFilter, set_name: Option<String>) -> ObjectFilter {
@@ -391,6 +399,37 @@ fn excluded_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
             Some(crate::Zone::Command)
         }
         _ => None,
+    }
+}
+
+/// The origin clause `excluded_cast_origin_zone` reads is read here too when
+/// nothing between "from" and the zone narrows it: "its owner's hand" (Wash
+/// Away) is the only hand a spell is cast from.
+fn claim_excluded_cast_origin(tokens: &[OwnedLexToken]) {
+    let words = parser_token_word_refs(tokens);
+    let Some(start) = crate::word_primitives::parse_last_sequence_start(
+        &words,
+        &["that", "wasnt", "cast", "from"],
+    )
+    .map(|index| (index, index + 4))
+    .or_else(|| {
+        crate::word_primitives::parse_last_sequence_start(
+            &words,
+            &["that", "was", "not", "cast", "from"],
+        )
+        .map(|index| (index, index + 5))
+    }) else {
+        return;
+    };
+    let (clause_start, origin_start) = start;
+    let Some((_, between)) = words[origin_start..].split_last() else {
+        return;
+    };
+    if between
+        .iter()
+        .all(|word| matches!(*word, "its" | "owners" | "owner's" | "their" | "the"))
+    {
+        crate::word_claims::claim_words(&words[clause_start..]);
     }
 }
 
@@ -1003,6 +1042,7 @@ fn preserve_explicit_spell_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexT
 fn preserve_public_spell_filter_facts(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     if let Some(zone) = excluded_cast_origin_zone(tokens) {
         filter.excluded_cast_origin_zone = Some(zone);
+        claim_excluded_cast_origin(tokens);
         preserve_explicit_spell_domain(filter, tokens);
     }
     if denies_spell_was_cast(tokens) {
@@ -1220,14 +1260,14 @@ fn finalize_public_object_filter(
     split_enchanted_or_equipped_disjunction(&mut filter, tokens);
     let words = parser_token_word_refs(tokens);
     if words
-        .windows(3)
-        .any(|part| part == ["that", "are", "enchanted"])
+        .word_windows(3)
+        .any(|part| crate::word_primitives::equals(&part, &["that", "are", "enchanted"]))
         || words
-            .windows(2)
-            .any(|part| part == ["enchanted", "creatures"])
+            .word_windows(2)
+            .any(|part| crate::word_primitives::equals(&part, &["enchanted", "creatures"]))
         || words
-            .windows(3)
-            .any(|part| part == ["an", "enchanted", "creature"])
+            .word_windows(3)
+            .any(|part| crate::word_primitives::equals(&part, &["an", "enchanted", "creature"]))
     {
         filter
             .tagged_constraints
@@ -1236,11 +1276,11 @@ fn finalize_public_object_filter(
         aura.subtypes.push(crate::types::Subtype::Aura);
         // "creatures that are enchanted by an Aura you control": the Aura's
         // controller constrains the attachment, not the enchanted creature.
-        if words.windows(6).any(|part| {
-            part == ["enchanted", "by", "an", "aura", "you", "control"]
+        if words.word_windows(6).any(|part| {
+            crate::word_primitives::equals(&part, &["enchanted", "by", "an", "aura", "you", "control"])
         }) || words
-            .windows(5)
-            .any(|part| part == ["enchanted", "by", "auras", "you", "control"])
+            .word_windows(5)
+            .any(|part| crate::word_primitives::equals(&part, &["enchanted", "by", "auras", "you", "control"]))
         {
             aura.controller = Some(PlayerFilter::You);
         }
@@ -1361,6 +1401,7 @@ pub(crate) fn parse_terminal_same_name_filter(
         && parser_token_word_refs(&trimmed[trimmed.len() - 3..]) == ["with", "those", "names"]
     {
         let mut filter = parse_object_filter(&trimmed[..trimmed.len() - 3], other)?;
+        crate::word_claims::claim_tokens(&trimmed[trimmed.len() - 3..]);
         filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
@@ -1445,6 +1486,9 @@ pub(crate) fn parse_terminal_same_name_filter(
         head.extend_from_slice(head_tail);
         parse_object_filter(&head, other)?
     };
+    // The relation marker and its reference are read here; a trailing zone
+    // qualifier was read with the head.
+    crate::word_claims::claim_tokens(&trimmed[start..trimmed.len() - head_tail.len()]);
     filter.set_same_name_antecedent_surface(surface);
     filter
         .tagged_constraints
@@ -1488,6 +1532,7 @@ fn parse_terminal_different_name_filter(
         return Ok(None);
     }
     let mut filter = parse_object_filter(&trimmed[..base_end], other)?;
+    crate::word_claims::claim_tokens(&trimmed[base_end..]);
     filter.set_same_name_antecedent_surface(Some(surface));
     filter
         .tagged_constraints
@@ -1585,12 +1630,14 @@ fn parse_not_targeted_by_ability_from_filter(
         Some(first) if first.is_word("another") && tail.len() > 1 => (&tail[1..], true),
         _ => (tail, false),
     };
+    let relation = &tokens[head.len()..tokens.len() - tail.len()];
     let Ok(mut source_filter) = parse_object_filter(tail, source_other) else {
         return Ok(None);
     };
     source_filter.other |= source_other;
     let mut filter = parse_head(head, other)?;
     filter.not_targeted_by_ability_from = Some(Box::new(source_filter));
+    crate::word_claims::claim_tokens(relation);
     Ok(Some(filter))
 }
 
@@ -1713,7 +1760,7 @@ pub(crate) fn split_source_relation_phrases(
             && window[5].is_word("planeswalker")
     }) {
         attacking_same_defender_as_source = true;
-        kept.drain(start + 1..start + 6).for_each(drop);
+        crate::word_claims::claim_drained(kept.drain(start + 1..start + 6));
     }
     let could_be_enchanted_by_source = kept.len() >= 4 && {
         let tail = &kept[kept.len() - 4..];
@@ -2012,6 +2059,7 @@ fn parse_source_mana_value_filter(words: &[&str], other: bool) -> Option<Result<
             && crate::util::is_source_reference_words(&words[start + marker.len()..])
         {
             return Some(parse_object_filter_words(&words[..start], other).map(|mut filter| {
+                crate::word_claims::claim_words(&words[start..]);
                 filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
                     crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
                 )));
@@ -2022,16 +2070,84 @@ fn parse_source_mana_value_filter(words: &[&str], other: bool) -> Option<Result<
     None
 }
 
+/// "lands you control at that time", "Wizards you control as this ability
+/// resolves": a count is taken when the ability resolves, so the suffix only
+/// restates when the filter is read.
+fn strip_resolution_time_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    const SUFFIXES: &[&[&str]] = &[
+        &["at", "that", "time"],
+        &["as", "this", "ability", "resolves"],
+        &["as", "this", "spell", "resolves"],
+    ];
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    SUFFIXES.iter().find_map(|suffix| {
+        let base_len = words.len().checked_sub(suffix.len())?;
+        (base_len > 0 && words[base_len..] == **suffix && tokens.len() == words.len())
+            .then(|| &tokens[..base_len])
+    })
+}
+
+/// Claim the words of `tokens` outside `base`: a fast path that split a
+/// recognized suffix or prefix off and parsed the rest read the whole input.
+pub(crate) fn claim_outside(tokens: &[OwnedLexToken], base: &[OwnedLexToken]) {
+    if !crate::word_claims::is_recording() {
+        return;
+    }
+    let base_spans: Vec<_> = base.iter().map(|token| token.span).collect();
+    for token in tokens {
+        if !base_spans.contains(&token.span) {
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
+        }
+    }
+}
+
+/// Parse an object filter. In claim-audit mode the authored words it did not
+/// read are reported against the calling site.
+#[track_caller]
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let caller = std::panic::Location::caller();
+    crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_unaudited(tokens, other))
+}
+
+/// "<head> [that] it can enchant": the head tokens before the Aura-legality
+/// relative clause whose subject is a back-reference to an Aura.
+fn split_it_can_enchant_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].kind == super::lexer::TokenKind::Period {
+        end -= 1;
+    }
+    let [.., it, can, enchant] = &tokens[..end] else {
+        return None;
+    };
+    if !(it.is_word("it") && can.is_any_word(&["can", "could"]) && enchant.is_word("enchant")) {
+        return None;
+    }
+    let mut head_end = end - 3;
+    if head_end > 0 && tokens[head_end - 1].is_word("that") {
+        head_end -= 1;
+    }
+    (head_end > 0).then(|| &tokens[..head_end])
+}
+
+fn parse_object_filter_unaudited(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
+    if let Some(base) = strip_resolution_time_suffix(tokens) {
+        let filter = parse_object_filter(base, other)?;
+        claim_outside(tokens, base);
+        return Ok(filter);
+    }
     if let Some(rewritten) = without_characteristic_list_commas(tokens) {
         return parse_object_filter(&rewritten, other);
     }
     if let Some((base, relation)) = split_same_power_toughness_as_source_suffix(tokens) {
         let filter = parse_object_filter(base, other)?;
+        claim_outside(tokens, base);
         return Ok(apply_same_power_toughness_as_source(filter, &relation));
     }
     if let Some(filter) = parse_status_flag_union(tokens, other)? {
@@ -2039,7 +2155,21 @@ pub fn parse_object_filter(
     }
     if let Some((head, sector)) = split_trailing_sector_qualifier(tokens) {
         let mut filter = parse_object_filter(head, other)?;
+        claim_outside(tokens, head);
         filter.sector = Some(sector);
+        return Ok(filter);
+    }
+    if let Some(head) = split_it_can_enchant_suffix(tokens) {
+        // "another permanent it can enchant" (Aura Graft): a legal new host
+        // for the referenced Aura (CR 303.4).
+        let mut filter = parse_object_filter(head, other)?;
+        claim_outside(tokens, head);
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+                relation: TaggedOpbjectRelation::CouldBeEnchantedByTagged,
+            });
         return Ok(filter);
     }
     // "creature card in your graveyard that's an artifact or that has mana
@@ -2051,8 +2181,8 @@ pub fn parse_object_filter(
         if let Some(rel) = words_ref.iter().position(|word| matches!(*word, "that's" | "thats"))
             && rel > 0
             && let Some(or_rel) = words_ref
-                .windows(3)
-                .position(|window| window == ["or", "that", "has"])
+                .word_windows(3)
+                .position(|window| crate::word_primitives::equals(&window, &["or", "that", "has"]))
             && or_rel > rel + 1
             && let Some(&rel_start) = words.token_start_indices().get(rel)
             && let Some(&or_start) = words.token_start_indices().get(or_rel)
@@ -2062,6 +2192,7 @@ pub fn parse_object_filter(
             let second = &tokens[or_start + 3..];
             let mut base = parse_object_filter(head, other)?;
             let mut type_branch = parse_object_filter(first, false)?;
+            crate::word_claims::claim_tokens(&tokens[rel_start..rel_start + 1]);
             let span = tokens[or_start].span;
             let mut with_tokens = vec![
                 crate::lexer::OwnedLexToken::word("card".to_string(), span),
@@ -2106,6 +2237,7 @@ pub fn parse_object_filter(
                     ..ObjectFilter::default()
                 },
             ];
+            claim_outside(tokens, &tokens[..boundary]);
             return Ok(filter);
         }
     }
@@ -2113,7 +2245,9 @@ pub fn parse_object_filter(
         // "a card that shares a card type with the cycled card": the cycled
         // card is the source of the cycling ability the event came from,
         // bound at execution as the triggering source.
-        return Ok(parse_object_filter(&base, other)?.match_tagged(
+        let base_filter = parse_object_filter(&base, other)?;
+        claim_outside(tokens, &base);
+        return Ok(base_filter.match_tagged(
             crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
             TaggedOpbjectRelation::SharesCardType,
         ));
@@ -2168,7 +2302,10 @@ pub fn parse_object_filter(
         };
         if let Some(player) = player {
             let boundary = words.token_start_indices()[start];
-            return Ok(parse_object_filter(&tokens[..boundary], other)?.controlled_by(player));
+            crate::word_claims::claim_tokens(&tokens[boundary..]);
+            let base_filter = parse_object_filter(&tokens[..boundary], other)?;
+            claim_outside(tokens, &tokens[..boundary]);
+            return Ok(base_filter.controlled_by(player));
         }
     }
     if let Some((index, relation_len)) =
@@ -2176,26 +2313,33 @@ pub fn parse_object_filter(
         && crate::util::is_source_reference_words(&words_ref[index + relation_len..])
         && let Some(token_index) = words.token_start_indices().get(index)
     {
+        crate::word_claims::claim_tokens(&tokens[*token_index..]);
         let mut filter = parse_object_filter(&tokens[..*token_index], other)?;
+        claim_outside(tokens, &tokens[..*token_index]);
         filter.in_combat_with_source = true;
         return Ok(filter);
     }
 
     if let Some(split) = split_source_relation_phrases(tokens) {
         let mut filter = parse_object_filter(&split.tokens, other)?;
+        claim_outside(tokens, &split.tokens);
         apply_source_relation_phrases(&mut filter, &split);
         return Ok(filter);
     }
     if let Some((base, opponent)) = split_same_controller_suffix(tokens) {
         let mut filter = parse_object_filter(base, other)?;
+        claim_outside(tokens, base);
         apply_same_controller_suffix(&mut filter, opponent);
         return Ok(filter);
     }
     if let Some(base) = strip_as_you_cast_this_spell_suffix(tokens) {
-        return parse_object_filter(base, other);
+        let filter = parse_object_filter(base, other)?;
+        claim_outside(tokens, base);
+        return Ok(filter);
     }
     if let Some(base) = split_shares_producible_mana_type_suffix(tokens) {
         let mut filter = parse_object_filter(base, other)?;
+        claim_outside(tokens, base);
         filter
             .tagged_constraints
             .push(shares_producible_mana_type_with_triggering());
@@ -2203,6 +2347,7 @@ pub fn parse_object_filter(
     }
     if let Some(base) = split_from_among_those_cards_suffix(tokens) {
         let mut filter = parse_object_filter(&base, other)?;
+        claim_outside(tokens, &base);
         clear_zone_for_referenced_cards(&mut filter);
         filter
             .tagged_constraints
@@ -2214,6 +2359,7 @@ pub fn parse_object_filter(
     }
     if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
         let mut filter = parse_object_filter(&base, other)?;
+        claim_outside(tokens, &base);
         filter.could_enchant_object = Some(Box::new(host));
         return Ok(filter);
     }
@@ -2235,16 +2381,19 @@ pub fn parse_object_filter(
     }
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_inner(&base_tokens, other)?;
+        claim_outside(tokens, &base_tokens);
         filter.colors_chosen_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
     if let Some((base_tokens, card_name)) = split_drafted_noted_creature_types_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_inner(&base_tokens, other)?;
+        claim_outside(tokens, &base_tokens);
         filter.creature_types_noted_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
     if let Some((base_tokens, card_name)) = split_drafted_noted_name_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_inner(&base_tokens, other)?;
+        claim_outside(tokens, &base_tokens);
         filter.name_noted_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
@@ -2275,7 +2424,7 @@ pub(crate) fn split_enchanted_or_equipped_disjunction(
     tokens: &[OwnedLexToken],
 ) {
     let words = crate::lexer::token_word_refs(tokens);
-    let disjunction = words.windows(3).any(|window| {
+    let disjunction = words.word_windows(3).any(|window| {
         matches!(
             window,
             ["enchanted", "or", "equipped"] | ["equipped", "or", "enchanted"]
@@ -2402,6 +2551,7 @@ fn parse_object_filter_inner(
     preserve_explicit_spell_domain(&mut filter, tokens);
     if let Some(zone) = excluded_cast_origin_zone(tokens) {
         filter.excluded_cast_origin_zone = Some(zone);
+        claim_excluded_cast_origin(tokens);
     }
     if denies_spell_was_cast(tokens) {
         filter.not_cast = true;
@@ -2418,6 +2568,11 @@ fn parse_object_filter_inner(
         filter.zone = Some(zone);
     }
     preserve_union_surface(&mut filter, tokens);
+    // "a red source you control": the generic noun adds no constraint, so no
+    // grammar reads it; the filter it heads is the reading.
+    for token in tokens.iter().filter(|token| token.is_word("source") || token.is_word("sources")) {
+        crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    }
     preserve_controller_qualifier_order(&mut filter, tokens);
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     normalize_generic_card_ability_tail(tokens, &mut filter);
@@ -2428,7 +2583,18 @@ fn parse_object_filter_inner(
     ))
 }
 
+#[track_caller]
 pub fn parse_object_filter_words(
+    word_refs: &[&str],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
+    let caller = std::panic::Location::caller();
+    crate::word_claims::audit_filter_words(word_refs, caller, || {
+        parse_object_filter_words_unaudited(word_refs, other)
+    })
+}
+
+fn parse_object_filter_words_unaudited(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -2437,8 +2603,8 @@ pub fn parse_object_filter_words(
         return result;
     }
     if word_refs
-        .windows(5)
-        .any(|words| words == ["with", "the", "same", "name", "as"])
+        .word_windows(5)
+        .any(|words| crate::word_primitives::equals(&words, &["with", "the", "same", "name", "as"]))
     {
         let tokens = super::lexer::synthetic_word_tokens(word_refs.iter().copied());
         if let Some(result) = crate::grammar::filters::parse_live_name_relation(&tokens, other) {
@@ -2541,11 +2707,27 @@ fn split_could_enchant_suffix(
     Ok(Some((base, host)))
 }
 
+/// Parse an object filter. In claim-audit mode the authored words it did not
+/// read are reported against the calling site.
+#[track_caller]
 pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let caller = std::panic::Location::caller();
+    crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_lexed_unaudited(tokens, other))
+}
+
+fn parse_object_filter_lexed_unaudited(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
+    if let Some(base) = strip_resolution_time_suffix(tokens) {
+        let filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
+        return Ok(filter);
+    }
     if let Some(rewritten) = without_characteristic_list_commas(tokens) {
         return parse_object_filter_lexed(&rewritten, other);
     }
@@ -2563,7 +2745,9 @@ pub fn parse_object_filter_lexed(
         && crate::util::is_source_reference_words(&words_ref[index + relation_len..])
         && let Some(token_index) = words.token_start_indices().get(index)
     {
+        crate::word_claims::claim_tokens(&tokens[*token_index..]);
         let mut filter = parse_object_filter(&tokens[..*token_index], other)?;
+        claim_outside(tokens, &tokens[..*token_index]);
         filter.in_combat_with_source = true;
         return Ok(filter);
     }
@@ -2573,23 +2757,29 @@ pub fn parse_object_filter_lexed(
     }
     if let Some(split) = split_source_relation_phrases(tokens) {
         let mut filter = parse_object_filter_lexed(&split.tokens, other)?;
+        claim_outside(tokens, &split.tokens);
         apply_source_relation_phrases(&mut filter, &split);
         return Ok(filter);
     }
     if let Some((base, relation)) = split_same_power_toughness_as_source_suffix(tokens) {
         let filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
         return Ok(apply_same_power_toughness_as_source(filter, &relation));
     }
     if let Some((base, opponent)) = split_same_controller_suffix(tokens) {
         let mut filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
         apply_same_controller_suffix(&mut filter, opponent);
         return Ok(filter);
     }
     if let Some(base) = strip_as_you_cast_this_spell_suffix(tokens) {
-        return parse_object_filter_lexed(base, other);
+        let filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
+        return Ok(filter);
     }
     if let Some(base) = split_shares_producible_mana_type_suffix(tokens) {
         let mut filter = parse_object_filter_lexed(base, other)?;
+        claim_outside(tokens, base);
         filter
             .tagged_constraints
             .push(shares_producible_mana_type_with_triggering());
@@ -2597,6 +2787,7 @@ pub fn parse_object_filter_lexed(
     }
     if let Some((base, host)) = split_could_enchant_suffix(tokens)? {
         let mut filter = parse_object_filter_lexed(&base, other)?;
+        claim_outside(tokens, &base);
         filter.could_enchant_object = Some(Box::new(host));
         return Ok(filter);
     }

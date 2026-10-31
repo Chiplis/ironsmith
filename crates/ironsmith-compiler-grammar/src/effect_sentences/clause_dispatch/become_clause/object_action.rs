@@ -1,3 +1,4 @@
+use crate::word_primitives::WordWindows as _;
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use winnow::Parser;
@@ -52,7 +53,7 @@ pub fn parse_become_clause(
         let lose_view = crate::lexer::TokenWordView::new(rest_tokens);
         let lose_words = lose_view.word_refs();
         if let Some(start) = lose_words
-            .windows(4)
+            .word_windows(4)
             .position(|window| window == ["and", "loses", "all", "abilities"])
             && start > 0
         {
@@ -351,7 +352,7 @@ pub fn parse_become_clause(
     // and base toughness each equal to its mana value" (Zur, Eternal Schemer)
     // states the base P/T with "and has"; the body grammar reads "with".
     if let Some(index) = become_words_vec
-        .windows(4)
+        .word_windows(4)
         .position(|window| window == ["and", "has", "base", "power"])
         && !become_body_tokens.windows(5).any(|window| {
             window[0].is_comma()
