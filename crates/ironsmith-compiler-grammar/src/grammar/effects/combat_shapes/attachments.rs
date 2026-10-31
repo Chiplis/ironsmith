@@ -244,6 +244,8 @@ pub fn parse_combat_attach_clause_shape_lexed(
     if object_tokens.is_empty() || target_tokens.is_empty() {
         return Err(CombatAttachClauseError::MissingObjectOrDestination);
     }
+    // "attach <object> to <destination>": the separator this shape splits on.
+    crate::word_claims::claim_tokens(&tokens[to_idx..=to_idx]);
     Ok(CombatAttachClauseShape::Standard {
         object_tokens,
         target_tokens,

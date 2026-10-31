@@ -214,6 +214,8 @@ fn parse_known_counter_type_word_slice(
             ));
         }
     };
+    // The counter kind is read here, whichever reader asked.
+    crate::word_claims::claim_word(word);
     *input = rest;
     Ok(counter_type)
 }
@@ -234,7 +236,7 @@ fn parse_counter_type_words_spec_word_slice(
     let counter_type = if let Some(known) = parse_counter_type_word(previous) {
         known
     } else if previous == "strike" && descriptor.len() >= 2 {
-        match descriptor[descriptor.len() - 2] {
+        let counter_type = match descriptor[descriptor.len() - 2] {
             "double" => CounterType::DoubleStrike,
             "first" => CounterType::FirstStrike,
             _ => {
@@ -243,7 +245,9 @@ fn parse_counter_type_words_spec_word_slice(
                     "first- or double-strike counter",
                 ));
             }
-        }
+        };
+        crate::word_claims::claim_words(&descriptor[descriptor.len() - 2..]);
+        counter_type
     } else if matches!(previous, "another" | "more" | "or")
         || leaf::parse_number_complete(previous).is_ok()
     {
@@ -257,6 +261,7 @@ fn parse_counter_type_words_spec_word_slice(
         .chars()
         .all(|character| character.is_ascii_alphabetic())
     {
+        crate::word_claims::claim_word(previous);
         CounterType::Named(intern_counter_name(previous).into())
     } else {
         return Err(primitives::backtrack_err(
@@ -361,6 +366,14 @@ pub fn intern_counter_name(word: &str) -> &'static str {
 pub fn parse_counter_type_word(word: &str) -> Option<CounterType> {
     let words = [word];
     primitives::parse_full_word_slice(&words, parse_known_counter_type_word_slice)
+}
+
+/// The counter kind one lexed token names, claiming the token: stream
+/// readers hold tokens whose words need not be registered.
+pub fn parse_counter_type_lex_token(token: &OwnedLexToken) -> Option<CounterType> {
+    let counter_type = parse_counter_type_word(token.parser_text())?;
+    crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    Some(counter_type)
 }
 
 pub fn parse_counter_type_words(words: &[&str]) -> Option<CounterType> {

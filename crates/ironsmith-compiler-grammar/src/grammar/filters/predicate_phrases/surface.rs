@@ -43,15 +43,23 @@ pub(super) fn prefix_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool
 
 pub(super) fn exact_words(words: &[&str], expected: &[&str]) -> bool {
     let mut input: WordSliceInput<'_> = words;
-    (dynamic_sequence(expected), eof.void())
+    let matched = (dynamic_sequence(expected), eof.void())
         .void()
         .parse_next(&mut input)
-        .is_ok()
+        .is_ok();
+    if matched {
+        crate::word_claims::claim_words(words);
+    }
+    matched
 }
 
 pub(super) fn prefix_words(words: &[&str], expected: &[&str]) -> bool {
     let mut input: WordSliceInput<'_> = words;
-    dynamic_sequence(expected).parse_next(&mut input).is_ok()
+    let matched = dynamic_sequence(expected).parse_next(&mut input).is_ok();
+    if matched {
+        crate::word_claims::claim_words(&words[..expected.len()]);
+    }
+    matched
 }
 
 pub(super) fn find_words(words: &[&str], expected: &[&str]) -> Option<usize> {

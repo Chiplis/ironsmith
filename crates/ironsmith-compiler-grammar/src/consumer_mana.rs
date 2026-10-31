@@ -108,6 +108,8 @@ pub(crate) fn x_spending_rule(tokens: &[OwnedLexToken]) -> Option<ManaSpendingRe
         ["no", "more", "than", "one" | "1", "mana", "of", "each", "color", "may", "be", "spent", "this", "way"] => Some(1),
         _ => return None,
     };
+    // A complete sentence match: every word was read.
+    crate::word_claims::claim_words(&words);
     Some(ManaSpendingRestriction::OnX { colors, maximum_per_color })
 }
 

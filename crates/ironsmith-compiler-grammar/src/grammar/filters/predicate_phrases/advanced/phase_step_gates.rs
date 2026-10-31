@@ -126,7 +126,7 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         && crate::lexer::parser_token_word_refs(&clean[..3]) == ["you", "attacked", "with"]
         // Numeric thresholds belong to the count reader. The object-filter
         // parser can consume their words without preserving the minimum.
-        && crate::util::parse_number_word_u32(clean[3].parser_text()).is_none()
+        && !crate::util::is_number_word(clean[3].parser_text())
         && crate::lexer::parser_token_word_refs(&clean[clean.len() - 2..]) == ["this", "turn"]
         && let Ok(filter) = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
             &clean[3..clean.len() - 2], false,
@@ -515,6 +515,9 @@ fn parse_life_above_starting_total_gate(tokens: &[OwnedLexToken]) -> Option<Pred
         return None;
     }
     let amount = comparison_to_strict_at_least_threshold(&comparison)? as i32;
+    // "life more than your starting life total" names the compared values.
+    let tail = relation.tail_clause.tokens();
+    crate::word_claims::claim_tokens(&tail[amount_clause.tokens().len()..]);
     Some(PredicateAst::ValueComparison {
         left: Value::LifeTotal(PlayerFilter::You),
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -829,6 +832,8 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         }
         let mut filter = parse_object_filter(object_tokens, false)?;
         filter.controller = Some(controller);
+        // "no" is the zero count this predicate builds.
+        crate::word_claims::claim_tokens(&tail.tokens()[..1]);
         return Ok(Some(PredicateAst::Player(
             PlayerPredicateAst::PlayerControlsNo { player, filter },
         )));

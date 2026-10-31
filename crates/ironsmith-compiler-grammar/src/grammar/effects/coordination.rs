@@ -559,7 +559,7 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
             let is_count_word = |token: &crate::lexer::OwnedLexToken| {
                 token
                     .as_word()
-                    .is_some_and(|word| crate::util::parse_number_word_i32(word).is_some())
+                    .is_some_and(crate::util::is_number_word)
             };
             let mut index = candidate.start;
             let mut saw_count = false;
@@ -1905,6 +1905,14 @@ fn comma_continues_for_each_object_filter(
 }
 
 fn comma_continues_excluded_literal_name(
+    before: &[OwnedLexToken],
+    after: &[OwnedLexToken],
+) -> bool {
+    // A yes/no boundary probe; the put reading reads these words itself.
+    crate::word_claims::probe_only(|| comma_continues_excluded_literal_name_probe(before, after))
+}
+
+fn comma_continues_excluded_literal_name_probe(
     before: &[OwnedLexToken],
     after: &[OwnedLexToken],
 ) -> bool {

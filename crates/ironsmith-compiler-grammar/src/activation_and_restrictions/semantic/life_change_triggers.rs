@@ -32,6 +32,14 @@ fn life_event(
     }
 }
 pub(super) fn parse_life_change_trigger(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
+    // The clause is read whole: player subject, verb(s), "life" and the turn
+    // qualifier.
+    let trigger = life_change_trigger(tokens)?;
+    crate::word_claims::claim_tokens(tokens);
+    Some(trigger)
+}
+
+fn life_change_trigger(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     let words = crate::lexer::token_word_refs(tokens);
     let (words, during_turn) = if let Some(words) = words.strip_suffix(&["during", "your", "turn"])
     {

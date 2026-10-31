@@ -37,8 +37,25 @@ pub fn is_pronoun_library_choice_put_shape(tokens: &[OwnedLexToken]) -> bool {
     let pronoun =
         primitives::parse_prefix(tokens, alt((primitives::kw("it"), primitives::kw("them"))))
             .is_some();
-    pronoun
+    let shape = pronoun
         && ["on", "choice", "top", "bottom", "library"]
             .into_iter()
-            .all(|word| primitives::find_prefix(tokens, || primitives::kw(word)).is_some())
+            .all(|word| primitives::find_prefix(tokens, || primitives::kw(word)).is_some());
+    if shape {
+        // "on their choice of the top or bottom of their library": both
+        // possessors name the putting player (the object's owner).
+        for pair in tokens.windows(2) {
+            if pair[0].parser_text() == "their"
+                && matches!(pair[1].parser_text(), "choice" | "library")
+            {
+                crate::word_claims::claim_tokens(&pair[..1]);
+            }
+        }
+        // "choice of the top or bottom of their library": the two "of"s
+        // link the choice and the library positions read above.
+        for token in tokens.iter().filter(|token| token.parser_text() == "of") {
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
+        }
+    }
+    shape
 }

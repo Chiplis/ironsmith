@@ -363,19 +363,22 @@ fn global_exact_spell_count_surface(words: &[&str]) -> Option<u32> {
 }
 
 fn draw_number_set_surface(words: &[&str]) -> Vec<u32> {
-    let Some(card_idx) = words.iter().enumerate().find_map(|(idx, word)| {
-        (matches!(*word, "card" | "cards")
-            && (matches!(words.get(idx + 1..idx + 3), Some(["each" | "this", "turn"]))
-                // "When you draw your third card in a turn" (Tamiyo,
-                // Inquisitive Student)
-                || matches!(words.get(idx + 1..idx + 4), Some(["in", "a", "turn"]))
-                // "draws their second card during their turn" (The Council
-                // of Four)
-                || matches!(
-                    words.get(idx + 1..idx + 4),
-                    Some(["during", "their" | "your", "turn"])
-                )))
-        .then_some(idx)
+    let Some((card_idx, turn_len)) = words.iter().enumerate().find_map(|(idx, word)| {
+        if !matches!(*word, "card" | "cards") {
+            return None;
+        }
+        if matches!(words.get(idx + 1..idx + 3), Some(["each" | "this", "turn"])) {
+            return Some((idx, 2));
+        }
+        // "When you draw your third card in a turn" (Tamiyo, Inquisitive
+        // Student); "draws their second card during their turn" (The Council
+        // of Four)
+        (matches!(words.get(idx + 1..idx + 4), Some(["in", "a", "turn"]))
+            || matches!(
+                words.get(idx + 1..idx + 4),
+                Some(["during", "their" | "your", "turn"])
+            ))
+        .then_some((idx, 3))
     }) else {
         return Vec::new();
     };
@@ -393,6 +396,10 @@ fn draw_number_set_surface(words: &[&str]) -> Vec<u32> {
         .collect::<Vec<_>>();
     card_numbers.sort_unstable();
     card_numbers.dedup();
+    if !card_numbers.is_empty() {
+        // The ordinal phrase, its possessor, the card noun and the turn frame.
+        crate::word_claims::claim_words(&words[..=card_idx + turn_len]);
+    }
     card_numbers
 }
 

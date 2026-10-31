@@ -68,10 +68,17 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
         }
 
         let cant_tail = strip_cant_word(tail)?;
+        // Every reading below restricts casting: "cast" is their verb.
+        let claim_cast_verb = || {
+            if let Some(verb) = cant_tail.first().filter(|verb| **verb == "cast") {
+                crate::word_claims::claim_word(verb);
+            }
+        };
         if exact_any(
             cant_tail,
             &[&["cast", "spells"], &["cast", "spells", "this", "turn"]],
         ) {
+            claim_cast_verb();
             return Some(CantCastRestrictionFact::CastSpells(subject.player));
         }
         if prefix(cant_tail, &["cast", "spells", "with"])
@@ -83,6 +90,7 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
                 "even" => ParityRequirement::Even,
                 _ => return None,
             };
+            claim_cast_verb();
             return Some(CantCastRestrictionFact::CastSpellsMatching {
                 player: subject.player,
                 filter: ObjectFilter::spell().with_mana_value_parity(parity),
@@ -95,6 +103,7 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
                 &["cast", "creature", "spells", "this", "turn"],
             ],
         ) {
+            claim_cast_verb();
             return Some(CantCastRestrictionFact::CastCreatureSpells(subject.player));
         }
         if let Some(mut cast_tail) = prefix_remainder(cant_tail, &["cast"])
@@ -108,6 +117,7 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
                     cast_tail = rest;
                 }
                 if cast_tail.is_empty() {
+                    claim_cast_verb();
                     return Some(CantCastRestrictionFact::CastSpellsMatching {
                         player: subject.player,
                         filter,
@@ -116,12 +126,14 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
             }
         }
         if let Some(filter) = parse_cast_more_than_one_limit_filter_words(cant_tail) {
+            claim_cast_verb();
             return Some(CantCastRestrictionFact::CastMoreThanOneMatching {
                 player: subject.player,
                 filter,
             });
         }
         if let Some(filter) = parse_cast_restriction_tail_filter_words(cant_tail) {
+            claim_cast_verb();
             return Some(CantCastRestrictionFact::CastSpellsMatching {
                 player: subject.player,
                 filter,
@@ -140,7 +152,11 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
 
 pub fn parse_spell_subject_cant_be_cast_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     let subject = super::clause_facts::suffix_remainder(words, &["cant", "be", "cast"])?;
-    (!subject.is_empty()).then(|| parse_spell_restriction_subject_filter_words(subject))?
+    let filter = (!subject.is_empty())
+        .then(|| parse_spell_restriction_subject_filter_words(subject))??;
+    // "<spells> can't be cast": the passive cast restriction.
+    crate::word_claims::claim_words(&words[subject.len()..]);
+    Some(filter)
 }
 
 pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<ObjectFilter> {
@@ -398,11 +414,18 @@ pub fn parse_card_type_list_filter_words(
         filter.card_types.push(card_type);
         filters.push(filter);
     }
-    if filters.len() == 1 {
-        return filters.pop();
-    }
     if filters.is_empty() {
         return None;
+    }
+    // The card types and their list connectives are read here; other
+    // skipped words ("unless", "mana", ...) are not.
+    for word in words {
+        if !matches!(*word, "unless" | "theyre" | "mana" | "abilities") {
+            crate::word_claims::claim_word(word);
+        }
+    }
+    if filters.len() == 1 {
+        return filters.pop();
     }
     let mut disjunction = ObjectFilter::default();
     disjunction.any_of = filters;

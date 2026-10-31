@@ -247,12 +247,21 @@ fn parse_target_head_count(input: &mut LexStream<'_>) -> WResult<Option<ChoiceCo
         return Ok(Some(count));
     }
 
-    let mut number_probe = input.clone();
-    if let Ok(number) = parse_leaf_number_or_x_prefix_lexed.parse_next(&mut number_probe)
-        && (remaining_starts_target(&number_probe)
-            || remaining_starts_other_target(&number_probe)
-            || remaining_starts_object_selector(&number_probe))
-    {
+    // The count's words are read only when a target or selector follows it.
+    let counted = ironsmith_compiler_syntax::word_claims::speculative_keep_if(
+        || {
+            let mut number_probe = input.clone();
+            let number = parse_leaf_number_or_x_prefix_lexed
+                .parse_next(&mut number_probe)
+                .ok()?;
+            (remaining_starts_target(&number_probe)
+                || remaining_starts_other_target(&number_probe)
+                || remaining_starts_object_selector(&number_probe))
+            .then_some((number, number_probe))
+        },
+        Option::is_some,
+    );
+    if let Some((number, number_probe)) = counted {
         *input = number_probe;
         return Ok(Some(choice_count_from_leaf_number(number, false)));
     }

@@ -1512,6 +1512,9 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                     subject_words,
                 )
             {
+                // "<player> attack(s) with": the attacking player and the
+                // declaration verb; the attackers read themselves.
+                crate::word_claims::claim_tokens(&trigger_tokens[..shape.object_token_first]);
                 let mut object_tokens = &trigger_tokens[shape.object_token_first..];
                 if player == PlayerFilter::You
                     && let Some(trigger) =
@@ -1650,6 +1653,9 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                 ),
                 attacked_player_filter_from_words(attacked_words),
             ) {
+                // "<player> attack(s) <attacked player> with": read into the
+                // attacking player, the attacked player and the declaration.
+                crate::word_claims::claim_tokens(&trigger_tokens[..shape.object_token_first]);
                 let mut object_tokens = &trigger_tokens[shape.object_token_first..];
                 let mut min_total_attackers = None;
                 let mut exact_total_attackers = None;

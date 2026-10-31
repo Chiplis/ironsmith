@@ -140,5 +140,8 @@ pub fn apply_compiler_metadata_line(
             crate::front_end::MetadataLine::Defense(value)
         }
     };
-    apply_metadata_line(card, structural)
+    // Metadata lines are not rules lines: nothing read here may count as
+    // reading a rules-line word (a type-line "enchantment" must not cover an
+    // unread "this enchantment").
+    crate::word_claims::probe_only(|| apply_metadata_line(card, structural))
 }

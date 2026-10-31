@@ -267,6 +267,7 @@ pub(super) fn parse_article_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> 
         .as_word()
         .is_some_and(|word| matches!(word, "a" | "an" | "the"))
     {
+        crate::word_claims::claim_tokens(std::slice::from_ref(token));
         Ok(())
     } else {
         Err(winnow::error::ErrMode::Backtrack(

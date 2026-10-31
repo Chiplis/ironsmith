@@ -146,6 +146,11 @@ pub fn parse_craft_line_lexed(
         return Ok(None);
     };
     let material_text = crate::lexer::token_word_refs(spec.material_tokens).join(" ");
+    // A recognized material kind is a complete reading of the material
+    // phrase (count, "or more", card type or subtype slots).
+    if !matches!(spec.material, CraftMaterialKind::Unsupported) {
+        crate::word_claims::claim_tokens(spec.material_tokens);
+    }
     // CR 702.167a: craft exiles the source together with the listed
     // materials from among permanents you control and/or cards in your
     // graveyard. Each material slot is a separate exile payment.
@@ -343,7 +348,12 @@ pub fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilte
 pub fn parse_cycling_search_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    match keyword_activated_grammar::parse_cycling_search_spec_tokens(tokens) {
+    let spec = keyword_activated_grammar::parse_cycling_search_spec_tokens(tokens);
+    if spec.is_ok() {
+        // The complete "[quality]cycling" keyword the spec was read from.
+        crate::word_claims::claim_tokens(tokens);
+    }
+    match spec {
         Ok(CyclingSearchSpec::Draw) => Ok(None),
         Ok(CyclingSearchSpec::Search(CyclingFilterSpec {
             supertypes,

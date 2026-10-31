@@ -840,14 +840,15 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         for primitive in primitives.iter().filter(|primitive| {
             primitive.phase == phase && primitive.metadata.head.accepts(typed_head.first_word)
         }) {
-            let outcome = (primitive.parser)(tokens).within(primitive.metadata.id);
+            let (outcome, registry_claims) =
+                crate::word_claims::scoped(|| (primitive.parser)(tokens).within(primitive.metadata.id));
             match outcome {
                 ParseOutcome::NoMatch => {}
                 ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                     primitive.metadata,
                     matched.value,
                     matched.span,
-                )),
+                ).with_claims(registry_claims)),
                 ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
             }
         }
@@ -2173,6 +2174,8 @@ pub fn parse_anaphoric_object_deals_damage_clause(
     let source_tokens = &tokens[source_range];
     let body_tokens = &tokens[body_range.clone()];
     let body_words = TokenWordView::new(body_tokens).to_word_refs();
+    // The damage verb names the event every reading below builds.
+    crate::word_claims::claim_word(words[deal_idx]);
     // In a follow-up damage clause, "it deals an additional ..." continues
     // the preceding spell or ability's damage event. Binding that "it" to
     // last-object memory instead can incorrectly turn the previous damage

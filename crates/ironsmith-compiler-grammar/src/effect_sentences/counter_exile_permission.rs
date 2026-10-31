@@ -111,6 +111,8 @@ pub(crate) fn parse(
     ]) {
         return Err(unsupported());
     }
+    // Every token of the three sentences was compared above.
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(vec![EffectAst::subject_verb_counter_with_exile_permission(
         TargetAst::Spell(crate::util::span_from_tokens(&counter[1..])),
         CounterExilePermission { gate, allow_land },

@@ -642,6 +642,7 @@ pub fn parse_distribute_counters_sentence(
     {
         return Ok(None);
     }
+    crate::word_claims::claim_tokens(clause.tokens().get(..1).unwrap_or_default());
 
     let amount_clause = clause.from(1);
     if let Some(effect) = parse_distribute_stickers(amount_clause.tokens())? {
@@ -867,6 +868,8 @@ pub fn parse_sentence_transform_with_followup(
     if !is_transform && !is_convert {
         return Ok(None);
     }
+    // Every path below lowers this verb (or fails the sentence).
+    crate::word_claims::claim_tokens(std::slice::from_ref(first));
 
     let (head_clause, tail_clause) = if let Some((head, tail)) = clause.split_once_on_then_trimmed()
     {

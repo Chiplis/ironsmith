@@ -22,9 +22,15 @@ pub(super) fn prevention_recipient_filters(
             continue;
         }
         let left = parser_token_word_refs(&tokens[..index]);
-        let (player, object) = parse_damage_amount_replacement_target_filters(&left)?;
+        // A left half that names objects too is not this split's player
+        // operand; only the split this loop commits to has read its words.
+        let (player, object) = crate::word_claims::speculative_keep_if(
+            || parse_damage_amount_replacement_target_filters(&left),
+            |filters| matches!(filters, Ok((Some(_), None))),
+        )?;
         if player.is_some() && object.is_none() {
             let object = parse_object_filter_lexed(&tokens[index + 1..], false)?;
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
             return Ok((player, Some(object)));
         }
     }

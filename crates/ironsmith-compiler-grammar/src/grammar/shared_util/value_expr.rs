@@ -480,6 +480,7 @@ fn parse_devotion_value_words(words: &[&str]) -> Option<(Value, usize)> {
     }
     let color_index = to_index + 1;
     if words.get(color_index..color_index + 2) == Some(["that", "color"].as_slice()) {
+        crate::word_claims::claim_words(&words[to_index..color_index + 2]);
         return Some((Value::DevotionToChosenColor(player), color_index + 2));
     }
     let color = Color::from_name(words.get(color_index).copied()?)?;
@@ -490,6 +491,8 @@ fn parse_devotion_value_words(words: &[&str]) -> Option<(Value, usize)> {
         colors = colors.with(color);
         end += 2;
     }
+    // "to <color> [and <color>]..."
+    crate::word_claims::claim_words(&words[to_index..end]);
     Some((Value::devotion_to_colors(player, colors), end))
 }
 
@@ -524,6 +527,8 @@ pub fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
             break;
         };
         let (rhs, rhs_used) = parse_value_expr_term_words(&words[used + operator_words..])?;
+        // "plus" / "minus" / "in excess of" is the operator this sum reads.
+        crate::word_claims::claim_words(&words[used..used + operator_words]);
         used += operator_words + rhs_used;
         let rhs = if subtract {
             match rhs {

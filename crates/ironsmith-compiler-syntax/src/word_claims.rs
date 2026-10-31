@@ -223,6 +223,12 @@ impl ClaimSet {
         words.iter().any(|word| word_spans(word).into_iter().any(|span| !self.contains(span)))
     }
 
+    /// The claimed source positions as `(line, start, end)`, in source
+    /// order (debugging and traces).
+    pub fn claimed_spans(&self) -> Vec<(usize, usize, usize)> {
+        self.spans.iter().copied().collect()
+    }
+
     /// Every obligation with whether some claim covers it (debugging).
     pub fn obligations_debug(&self) -> Vec<(&Obligation, bool)> {
         self.obligations
@@ -429,8 +435,8 @@ pub fn reset_registry() {
 /// replaced. A string later allocated at the same address with the same text
 /// would otherwise inherit the dead word's span, so what a reader claims (and
 /// which `&str` filter words leave obligations) would depend on heap history:
-/// on which cards this thread compiled before. A tilde's `as_word` text is a
-/// static shared by every tilde token and stays registered.
+/// on which cards this thread compiled before. A tilde's `as_word` is its
+/// own `parser_text` ("this"), so it is forgotten with the token.
 pub(crate) fn forget_token_words(token: &OwnedLexToken) {
     // `try_with`: tokens can drop during thread-local teardown.
     if !REGISTERED.try_with(Cell::get).unwrap_or(false) {

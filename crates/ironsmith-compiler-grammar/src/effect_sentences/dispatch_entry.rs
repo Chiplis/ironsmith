@@ -1004,14 +1004,18 @@ fn sentence_contains(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
 }
 
 fn reflected_prevent_next_damage_from_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    if sentence_contains(tokens, THE_NEXT_TIME_PHRASE)
-        && sentence_contains(tokens, SOURCE_OF_YOUR_CHOICE_PHRASE)
-        && sentence_contains(tokens, WOULD_DEAL_DAMAGE_TO_YOU_THIS_TURN_PHRASE)
-        && sentence_contains(tokens, PREVENT_THAT_DAMAGE_PHRASE)
-        && sentence_contains(tokens, DAMAGE_IS_PREVENTED_THIS_WAY_PHRASE)
-        && sentence_contains(tokens, DEALS_THAT_MUCH_DAMAGE_TO_THAT_SOURCE_PHRASE)
-        && sentence_contains(tokens, CONTROLLER_PHRASE)
-    {
+    let all_phrases = || {
+        sentence_contains(tokens, THE_NEXT_TIME_PHRASE)
+            && sentence_contains(tokens, SOURCE_OF_YOUR_CHOICE_PHRASE)
+            && sentence_contains(tokens, WOULD_DEAL_DAMAGE_TO_YOU_THIS_TURN_PHRASE)
+            && sentence_contains(tokens, PREVENT_THAT_DAMAGE_PHRASE)
+            && sentence_contains(tokens, DAMAGE_IS_PREVENTED_THIS_WAY_PHRASE)
+            && sentence_contains(tokens, DEALS_THAT_MUCH_DAMAGE_TO_THAT_SOURCE_PHRASE)
+            && sentence_contains(tokens, CONTROLLER_PHRASE)
+    };
+    // A partial match reads nothing; only the complete reading keeps the
+    // claims of the phrases it matched.
+    if crate::word_claims::speculative_keep_if(all_phrases, |matched| *matched) {
         return Some(
             EffectAst::subject_verb_prevent_next_time_damage_with_reflection(
                 PreventNextTimeDamageSourceAst::Choice,
@@ -2908,11 +2912,20 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
-        if let Some(effect) = temporary_damage_addition::parse(authored_sentence)?
-            .or(temporary_damage_multiplier::parse(authored_sentence)?)
-            .or(scoped_damage_multiplier::parse(authored_sentence)?)
-            .or(destruction_damage_shield::parse(authored_sentence)?)
+        // First reading wins; a later reading never runs (and never claims)
+        // once an earlier one owns the sentence.
+        let damage_replacement = if let Some(effect) =
+            temporary_damage_addition::parse(authored_sentence)?
         {
+            Some(effect)
+        } else if let Some(effect) = temporary_damage_multiplier::parse(authored_sentence)? {
+            Some(effect)
+        } else if let Some(effect) = scoped_damage_multiplier::parse(authored_sentence)? {
+            Some(effect)
+        } else {
+            destruction_damage_shield::parse(authored_sentence)?
+        };
+        if let Some(effect) = damage_replacement {
             effects.push(effect);
             carried_context = None;
             sentence_idx += 1;
@@ -4873,7 +4886,9 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
         )));
     }
     // A sentence with a trailing condition is the conditional statement's.
-    if crate::grammar::structure::split_trailing_if_clause_lexed(tokens).is_some() {
+    if crate::word_claims::probe_only(|| {
+        crate::grammar::structure::split_trailing_if_clause_lexed(tokens).is_some()
+    }) {
         return Ok(None);
     }
     // A participant-scoped sentence ("each player ...") is the participant loop's.
@@ -5531,7 +5546,9 @@ pub(crate) fn parse_complete_create_statement(
         return Ok(None);
     }
     // A creation with a trailing condition is the conditional statement's; read alone, the condition was lost.
-    if crate::grammar::structure::split_trailing_if_clause_lexed(sentence).is_some() {
+    if crate::word_claims::probe_only(|| {
+        crate::grammar::structure::split_trailing_if_clause_lexed(sentence).is_some()
+    }) {
         return Ok(None);
     }
     {
@@ -5783,7 +5800,9 @@ pub(crate) fn parse_complete_get_pump_statement(
         return Ok(None);
     }
     // A pump with a trailing condition is the conditional statement's.
-    if crate::grammar::structure::split_trailing_if_clause_lexed(sentence).is_some() {
+    if crate::word_claims::probe_only(|| {
+        crate::grammar::structure::split_trailing_if_clause_lexed(sentence).is_some()
+    }) {
         return Ok(None);
     }
     // A pump followed by a fight is the pump-then-fight statement's.
@@ -5898,11 +5917,27 @@ pub(super) fn parse_complete_become_statement(
     {
         return Ok(None);
     }
-    super::clause_dispatch::parse_become_clause(&sentence[..verb_idx], &sentence[verb_idx + 1..])
-        .map(Some)
+    let effect = super::clause_dispatch::parse_become_clause(
+        &sentence[..verb_idx],
+        &sentence[verb_idx + 1..],
+    )?;
+    // The become statement reads its verb; the clause reads both sides.
+    crate::word_claims::claim_tokens(&sentence[verb_idx..=verb_idx]);
+    Ok(Some(effect))
 }
 
 pub(super) fn parse_complete_compound_gain_statement(
+    sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Most inputs are declined after trying shapes; only a statement this
+    // reading returns keeps what it read.
+    crate::word_claims::speculative_keep_if(
+        || parse_complete_compound_gain_statement_inner(sentence),
+        |result| matches!(result, Ok(Some(_))),
+    )
+}
+
+fn parse_complete_compound_gain_statement_inner(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if crate::grammar::structure::split_leading_result_prefix_lexed(sentence).is_some() {
@@ -7084,6 +7119,8 @@ fn parse_direct_typed_coordination(
 
     let mut effects = Vec::with_capacity(plan.members.len());
     let mut member_subjects = Vec::with_capacity(plan.members.len());
+    // Each member's verb word, which selects the leaf that lowers it.
+    let mut verb_tokens = Vec::with_capacity(plan.members.len());
     for member in &plan.members {
         let member_tokens = crate::util::trim_edge_punctuation_tokens(member.tokens);
         let Some((verb, verb_word_idx)) = super::find_verb(member_tokens) else {
@@ -7105,6 +7142,7 @@ fn parse_direct_typed_coordination(
         };
         effects.push(effect);
         member_subjects.push(subject);
+        verb_tokens.push(&member_tokens[verb_idx]);
     }
 
     for (boundary_index, boundary) in plan.boundaries.iter().enumerate() {
@@ -7142,6 +7180,9 @@ fn parse_direct_typed_coordination(
     let Some(coordination) = plan.into_ast(effects) else {
         return Ok(None);
     };
+    for verb_token in verb_tokens {
+        crate::word_claims::claim_tokens(std::slice::from_ref(verb_token));
+    }
     Ok(Some(vec![EffectAst::Coordination(coordination)]))
 }
 
@@ -8212,12 +8253,17 @@ pub fn parse_effect_sentences_lexed(
         return Ok(effects);
     }
     if let Some(effect) = dynamic_keyword_instructions::parse(tokens) { return Ok(vec![effect]); }
-    if let Some(effect) =
-        temporary_damage_addition::parse(tokens)?
-            .or(temporary_damage_multiplier::parse(tokens)?)
-            .or(scoped_damage_multiplier::parse(tokens)?)
-            .or(destruction_damage_shield::parse(tokens)?)
-    {
+    // First reading wins; later readings never run (and never claim).
+    let damage_replacement = if let Some(effect) = temporary_damage_addition::parse(tokens)? {
+        Some(effect)
+    } else if let Some(effect) = temporary_damage_multiplier::parse(tokens)? {
+        Some(effect)
+    } else if let Some(effect) = scoped_damage_multiplier::parse(tokens)? {
+        Some(effect)
+    } else {
+        destruction_damage_shield::parse(tokens)?
+    };
+    if let Some(effect) = damage_replacement {
         return Ok(vec![effect]);
     }
     if let Some(effect) = parse_temporary_token_creation_multiplier(tokens) {

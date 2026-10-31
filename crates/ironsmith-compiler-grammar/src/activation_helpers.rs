@@ -65,6 +65,8 @@ fn parse_add_mana_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
         [additional, rest @ ..] if additional.is_word("additional") => rest,
         _ => tokens,
     };
+    // "[an] additional" marks the added mana as extra; the amount follows.
+    crate::word_claims::claim_tokens(&tokens[..tokens.len() - amount_tokens.len()]);
     parse_value(amount_tokens).map(|(value, _)| value)
 }
 
@@ -323,6 +325,12 @@ pub fn parse_add_mana(
         ));
     }
     if facts.imprinted_colors {
+        // "mana of any of the exiled cards' colors".
+        for (index, word) in clause_words.iter().enumerate() {
+            if matches!(*word, "mana" | "exiled" | "card" | "cards" | "colors") {
+                crate::word_claims::claim_words(&clause_words[index..=index]);
+            }
+        }
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
     // "you add the mana lost this way" (Drain Power): the types of the mana
@@ -371,6 +379,24 @@ pub fn parse_add_mana(
     }
 
     if facts.commander_identity {
+        // "mana of any color in your commander's color identity".
+        if let Some(at) = clause_words.iter().position(|word| *word == "mana") {
+            let exact = matches!(
+                &clause_words[at..],
+                [
+                    "mana", "of", "any", "color", "in", "your",
+                    "commander" | "commanders" | "commander's" | "commander’s",
+                    "color", "identity"
+                ]
+            );
+            for (offset, word) in clause_words[at..].iter().enumerate() {
+                if exact
+                    || matches!(*word, "mana" | "commander" | "commanders" | "color" | "identity")
+                {
+                    crate::word_claims::claim_words(&clause_words[at + offset..=at + offset]);
+                }
+            }
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_commander_identity(
             player, amount,
@@ -378,6 +404,14 @@ pub fn parse_add_mana(
     }
 
     if facts.different_colors {
+        // "<amount> mana of different colors".
+        if let Some(at) = clause_words
+            .windows(2)
+            .position(|pair| pair == ["different", "colors"])
+        {
+            let start = if at >= 2 && clause_words[at - 2..at] == ["mana", "of"] { at - 2 } else { at };
+            crate::word_claims::claim_words(&clause_words[start..at + 2]);
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_any_color_with_distinct(
             player, amount, None, true,
@@ -468,6 +502,19 @@ pub fn parse_add_mana(
         ));
     }
     if !fixed_output.has_explicit_symbol && facts.chosen_color_reference {
+        if let Some(at) = clause_words
+            .windows(2)
+            .position(|pair| pair == ["chosen", "color"])
+        {
+            // "mana of the chosen color": the "of the" linking the mana to
+            // the chosen color is read with it.
+            let start = if at >= 2 && clause_words[at - 2..at] == ["of", "the"] {
+                at - 2
+            } else {
+                at
+            };
+            crate::word_claims::claim_words(&clause_words[start..at + 2]);
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_chosen_color(
             player, amount, None,
@@ -516,6 +563,7 @@ pub fn parse_add_mana(
     }
 
     if let Some(mana_choice) = facts.choice {
+        crate::word_claims::claim_tokens(mana_choice.phrase_tokens);
         let mut amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         let any_one = mana_choice.kind.any_one();
         let any_type = mana_choice.kind.allow_colorless();
@@ -614,6 +662,7 @@ pub fn parse_add_mana(
         }
 
         if activation_grammar::is_player_choice_tail(tail_tokens) {
+            crate::word_claims::claim_tokens(tail_tokens);
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -714,6 +763,23 @@ pub fn parse_add_mana(
     let for_each_idx = fixed_output.first_for_each_token;
 
     if !mana.is_empty() {
+        // "add an additional {R} ...": the lead-in marks the added mana as
+        // extra; every reading below adds that mana.
+        let word_of = |token: &OwnedLexToken| token.as_word().map(str::to_ascii_lowercase);
+        let lead_start = usize::from(
+            tokens.first().and_then(word_of).as_deref() == Some("add"),
+        );
+        let additional_lead = lead_start
+            + tokens[lead_start..]
+                .iter()
+                .take_while(|token| matches!(word_of(*token).as_deref(), Some("an" | "additional")))
+                .count();
+        if tokens[lead_start..additional_lead]
+            .iter()
+            .any(|token| word_of(token).as_deref() == Some("additional"))
+        {
+            crate::word_claims::claim_tokens(&tokens[lead_start..additional_lead]);
+        }
         if let Some(amount) = parse_add_mana_that_much_value(tokens) {
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,
@@ -745,6 +811,13 @@ pub fn parse_add_mana(
         if let Some(amount) = parse_equal_to_aggregate_filter_value(tokens)
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
         {
+            // "add an amount of {G} equal to ...": the lead-in names the
+            // scaled amount this reading builds.
+            let body = tokens
+                .first()
+                .filter(|token| token.is_word("add"))
+                .map_or(tokens, |_| &tokens[1..]);
+            let _ = crate::grammar::primitives::match_word_prefix(body, &["an", "amount", "of"]);
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,
             ));

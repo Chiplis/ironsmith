@@ -115,6 +115,23 @@ pub fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
         .collect()
 }
 
+/// Claim the possessor of each "its owner('s)" / "their owner('s)" in
+/// `tokens`. Readers that resolve an owner-relative zone or controller to the
+/// owner of the object they move call this once they matched the owner word:
+/// the possessor names that object, so reading "owner" reads it too.
+pub fn claim_owner_possessors(tokens: &[OwnedLexToken]) {
+    for pair in tokens.windows(2) {
+        if matches!(pair[0].parser_text(), "its" | "their")
+            && matches!(
+                pair[1].parser_text(),
+                "owner" | "owners" | "owner's" | "owners'"
+            )
+        {
+            crate::word_claims::claim_tokens(&pair[..1]);
+        }
+    }
+}
+
 pub fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     let view = TokenWordView::new(tokens);
     non_article_word_refs(&view.word_refs())

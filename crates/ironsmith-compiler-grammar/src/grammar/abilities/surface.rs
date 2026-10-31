@@ -57,6 +57,7 @@ pub(super) fn parse_phrase_words<'a>(
     input: &mut primitives::WordSliceInput<'a>,
     expected: &[&str],
 ) -> WResult<()> {
+    let start = *input;
     for expected_word in expected {
         let Some((word, rest)) = input.split_first() else {
             return Err(primitives::backtrack_err("ability word", "phrase word"));
@@ -66,6 +67,7 @@ pub(super) fn parse_phrase_words<'a>(
         }
         *input = rest;
     }
+    crate::word_claims::claim_words(&start[..start.len() - input.len()]);
     Ok(())
 }
 

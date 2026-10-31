@@ -190,6 +190,7 @@ fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleC
                 .parse_next(input)?;
         primitives::sentence_end().parse_next(input)?;
         if let Some(surface) = double_counter_source_surface(holder_tokens) {
+            crate::word_claims::claim_tokens(holder_tokens);
             DoubleCounterHolderShape::Source {
                 tokens: holder_tokens,
                 surface,

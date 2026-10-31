@@ -649,7 +649,12 @@ fn is_semantic_noise(token: &OwnedLexToken) -> bool {
 
 fn token_matches(token: &OwnedLexToken, expected: &str) -> bool {
     token.is_word(expected)
-        || matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+        || (matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
+            // The same word in its single-piece form; claimed as `is_word` does.
+            && {
+                crate::word_claims::claim_tokens(std::slice::from_ref(token));
+                true
+            })
 }
 
 fn semantic_finish<'a>(input: &mut LexStream<'a>) -> WResult<()> {

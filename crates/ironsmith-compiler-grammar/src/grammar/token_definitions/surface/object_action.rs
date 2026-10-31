@@ -15,6 +15,8 @@ pub fn parse_token_definition_shape_tokens(
         return Some(TokenDefinitionSpec::Builtin(shape));
     }
     let scope = token_description_scope(tokens);
+    // Every shape below takes its name from `scope.name`.
+    crate::word_claims::claim_tokens(&scope.name_tokens);
     let outer_words = parser_token_word_refs(&scope.outer);
     let descriptor_end = outer_words.iter().position(|word| matches!(*word,
         "token" | "tokens" | "with" | "named" | "when" | "whenever" | "has" | "gains"))
@@ -22,6 +24,8 @@ pub fn parse_token_definition_shape_tokens(
     let words = &outer_words[..descriptor_end];
     let rule_words = parser_token_word_refs(&scope.rule_source);
     let has = |word| common::word_present(&words, word);
+    // A characteristic word a shape keeps as a field.
+    let reads = |word| common::word_read(&words, word);
     let all = |expected: &[&str]| common::all_words_present(&words, expected);
     let pt = token_pt(&words);
     let named_card = &scope.name;
@@ -120,6 +124,9 @@ pub fn parse_token_definition_shape_tokens(
             BuiltinTokenShape::Gingerbrute | BuiltinTokenShape::Mutavault
             | BuiltinTokenShape::SpellgorgerWeird | BuiltinTokenShape::Tarmogoyf => unreachable!("complete card-name token leaf owns these shapes"),
         };
+        for word in identifier {
+            common::word_read(words, word);
+        }
         let additional_words: Vec<_> = words.iter().copied().filter(|word| !identifier.contains(word)).collect();
         shape.additional_subtypes = creature_subtypes(&additional_words);
         shape.keywords = token_keywords(&outer_words);
@@ -134,10 +141,10 @@ pub fn parse_token_definition_shape_tokens(
             name: names::vehicle_surface_name(&words, named_card.as_deref()),
             text_roles: described_roles(named_card.is_some()),
             power_toughness: pt,
-            colorless: has("colorless"),
+            colorless: reads("colorless"),
             colors: token_colors(words),
-            legendary: has("legendary"),
-            flying: common::word_present(&outer_words, "flying"),
+            legendary: reads("legendary"),
+            flying: common::word_read(&outer_words, "flying"),
             crew_amount: rules::parse_token_crew_shape_words(&outer_words).map(|shape| shape.amount),
         }));
     }
@@ -161,7 +168,7 @@ pub fn parse_token_definition_shape_tokens(
                         .contains(subtype)
                 })
                 .collect(),
-            legendary: has("legendary"),
+            legendary: reads("legendary"),
             colors: token_colors(&words),
             token_rules: rules::parse_token_rules_surfaces_tokens(&scope.rule_source),
         }));
@@ -191,6 +198,10 @@ pub fn parse_token_definition_shape_tokens(
             }
         }
         if complete {
+            // The card type and the (default) colorless descriptor are this
+            // shape's own facts: a land token, colorless unless colored.
+            reads("land");
+            reads("colorless");
             return Some(TokenDefinitionSpec::Land(LandTokenShape {
                 name: scope.name.clone().unwrap_or_else(|| {
                     if subtypes.is_empty() {
@@ -204,7 +215,7 @@ pub fn parse_token_definition_shape_tokens(
                     }
                 }),
                 subtypes,
-                legendary: has("legendary"),
+                legendary: reads("legendary"),
             }));
         }
     }
@@ -223,7 +234,7 @@ pub fn parse_token_definition_shape_tokens(
             if name.is_empty() { "Planeswalker Token".into() } else { format!("{name} Token") }
         });
         return Some(TokenDefinitionSpec::Planeswalker(crate::model::token_definition::PlaneswalkerTokenShape {
-            name, subtypes, colors: token_colors(words), legendary: has("legendary"), loyalty,
+            name, subtypes, colors: token_colors(words), legendary: reads("legendary"), loyalty,
         }));
     }
 
@@ -241,13 +252,15 @@ pub fn parse_token_definition_shape_tokens(
         ])
         .then(|| rules::damage_amount(&rule_words))
         .flatten();
+        // "artifact" is the card type of the shape built here.
+        reads("artifact");
         return Some(TokenDefinitionSpec::Artifact(ArtifactTokenShape {
             name: names::artifact_surface_name(&words, named_card.as_deref()),
             text_roles: described_roles(named_card.is_some()),
             subtypes: artifact_subtypes(&words),
-            legendary: has("legendary"),
-            snow: has("snow"),
-            colorless: has("colorless"),
+            legendary: reads("legendary"),
+            snow: reads("snow"),
+            colorless: reads("colorless"),
             colors: token_colors(&words),
             equipment_rules: equipment::parse_equipment_rules_tokens(&scope.rule_source),
             token_rules: rules::parse_token_rules_surfaces_tokens(&scope.rule_source),
@@ -307,7 +320,7 @@ pub fn parse_token_definition_shape_tokens(
             None
         };
         return Some(TokenDefinitionSpec::Construct(ConstructTokenShape {
-            snow: has("snow"),
+            snow: reads("snow"),
             power_toughness: pt.unwrap_or((0, 0)),
             artifact_scaling,
         }));
@@ -315,13 +328,13 @@ pub fn parse_token_definition_shape_tokens(
 
     if has("shapeshifter") && !has("creature") {
         return Some(TokenDefinitionSpec::Shapeshifter(ShapeshifterTokenShape {
-            changeling: common::word_present(&outer_words, "changeling") || common::phrase_exact(words, &["shapeshifter"]),
+            changeling: common::word_read(&outer_words, "changeling") || common::phrase_exact(words, &["shapeshifter"]),
         }));
     }
     if all(&["astartes", "warrior", "2/2", "white"]) && !has("creature") {
         return Some(TokenDefinitionSpec::AstartesWarrior(
             AstartesWarriorTokenShape {
-                vigilance: common::word_present(&outer_words, "vigilance"),
+                vigilance: common::word_read(&outer_words, "vigilance"),
             },
         ));
     }
@@ -346,8 +359,8 @@ pub fn parse_token_definition_shape_tokens(
         card_types: creature_card_types(&words),
         subtypes,
         power_toughness: pt.unwrap_or((0, 0)),
-        legendary: has("legendary"),
-        snow: has("snow"),
+        legendary: reads("legendary"),
+        snow: reads("snow"),
         colors: token_colors(&words),
         use_source_chosen_color,
         use_source_chosen_creature_type,

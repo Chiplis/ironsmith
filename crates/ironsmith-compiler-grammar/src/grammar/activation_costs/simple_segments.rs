@@ -162,9 +162,16 @@ pub fn parse_exert_segment_tokens(
         parse_exert_segment_lexed,
         "activation-exert-segment",
     )
-    .map(|()| ActivationCostSegmentCst::ExertSelf {
-        descriptive: false,
-        display_text: render_token_slice(tokens).trim().to_string(),
+    .map(|()| {
+        // "Exert this creature": the self reference is the exerted object.
+        let object = tokens.get(1..).unwrap_or_default();
+        if crate::util::is_source_reference_words(&crate::lexer::parser_token_word_refs(object)) {
+            crate::word_claims::claim_tokens(object);
+        }
+        ActivationCostSegmentCst::ExertSelf {
+            descriptive: false,
+            display_text: render_token_slice(tokens).trim().to_string(),
+        }
     })
     .map_err(|_| {
         CardTextError::ParseError(format!(

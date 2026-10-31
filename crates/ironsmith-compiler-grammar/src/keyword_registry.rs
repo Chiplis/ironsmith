@@ -38,7 +38,8 @@ pub fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcome<Recog
         if !rule.hints.iter().any(|candidate| candidate == &hint) {
             continue;
         }
-        let outcome = (rule.parse)(line, &tokens, &full_parse_tokens).within(rule.id);
+        let (outcome, registry_claims) =
+            crate::word_claims::scoped(|| (rule.parse)(line, &tokens, &full_parse_tokens).within(rule.id));
         match outcome {
             ParseOutcome::Match(matched) => {
                 candidates.push(RegistryCandidate::new(
@@ -48,7 +49,7 @@ pub fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcome<Recog
                     ),
                     (rule.cst_kind, matched.value),
                     matched.span,
-                ));
+                ).with_claims(registry_claims));
             }
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),

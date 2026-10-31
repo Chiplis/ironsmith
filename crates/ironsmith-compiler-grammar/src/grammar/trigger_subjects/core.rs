@@ -23,16 +23,6 @@ pub(super) fn exact_word_occurs(words: &[&str], expected: &[&str]) -> bool {
     false
 }
 
-pub(super) fn parse_normalized_phrase<'a>(
-    input: &mut primitives::WordSliceInput<'a>,
-    expected: &[&str],
-) -> WResult<()> {
-    for word in expected {
-        parse_normalized_word(input, word)?;
-    }
-    Ok(())
-}
-
 pub(super) fn parse_exact_phrase<'a>(
     input: &mut primitives::WordSliceInput<'a>,
     expected: &[&str],

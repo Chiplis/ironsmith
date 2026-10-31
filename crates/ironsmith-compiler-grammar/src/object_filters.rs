@@ -603,6 +603,9 @@ fn parse_generic_card_tail_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilt
         && let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(&words[2..])
         && consumed == words.len() - 2
     {
+        // "card with flash": the card noun and the with/without link are
+        // read here; the keyword constraint read its own words.
+        crate::word_claims::claim_words(&words[..2]);
         let mut filter = ObjectFilter::default();
         filter.set_explicit_card_noun(true);
         apply_filter_keyword_constraint(&mut filter, constraint, words[1] == "without");

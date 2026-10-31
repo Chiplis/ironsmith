@@ -4,6 +4,19 @@ use super::*;
 mod looked_card_filter_readings;
 
 pub fn parse_looked_card_reveal_filter_shape(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let filter = parse_looked_card_reveal_filter_shape_inner(tokens)?;
+    // The readings below drop the articles ("a white card", "an artifact
+    // card") before matching: a matched filter read them.
+    let (filter_tokens, _) = split_same_name_suffix(tokens);
+    for word in parser_token_word_refs(filter_tokens) {
+        if matches!(word, "a" | "an" | "the") {
+            crate::word_claims::claim_word(word);
+        }
+    }
+    Some(filter)
+}
+
+fn parse_looked_card_reveal_filter_shape_inner(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let (filter_tokens, same_name) = split_same_name_suffix(tokens);
     let all_words = parser_token_word_refs(filter_tokens);
     let words = non_article_word_refs(&all_words);

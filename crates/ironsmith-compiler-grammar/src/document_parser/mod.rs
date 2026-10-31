@@ -1662,26 +1662,31 @@ fn normalize_named_source_enter_agreement_tokens(
     subject: &str,
 ) -> bool {
     let subject_words: Vec<&str> = subject.split_whitespace().collect();
+    // A normalization, not a reader: its word tests claim nothing (the
+    // trigger and effect readers read these words themselves).
+    let is_word = |token: &OwnedLexToken, word: &str| {
+        crate::word_claims::probe_only(|| token.is_word(word))
+    };
     let mut changed = false;
     let mut index = 0;
     while index + subject_words.len() < tokens.len() {
         let subject_here = subject_words
             .iter()
             .enumerate()
-            .all(|(offset, word)| tokens[index + offset].is_word(word));
+            .all(|(offset, word)| is_word(&tokens[index + offset], word));
         let enter_index = index + subject_words.len();
         // `have <object> enter` is already grammatical. The entry-copy reader
         // accepts either spelling, so changing this to `enters` otherwise
         // survives into its retained display and hides the damaged source
         // sentence until the authoritative semantic-marker gate.
-        let causative_have = index > 0 && tokens[index - 1].is_word("have");
+        let causative_have = index > 0 && is_word(&tokens[index - 1], "have");
         // The string form only rewrote "enter" at the end of the text or
         // before a space, never before punctuation.
         let followed_by_word_or_end = tokens
             .get(enter_index + 1)
             .is_none_or(|next| matches!(next.kind, TokenKind::Word | TokenKind::Number));
         if subject_here && !causative_have
-            && tokens[enter_index].is_word("enter") && followed_by_word_or_end {
+            && is_word(&tokens[enter_index], "enter") && followed_by_word_or_end {
             let span = tokens[enter_index].span;
             tokens[enter_index] = OwnedLexToken::word("enters", span);
             changed = true;
@@ -2057,6 +2062,13 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
     }
 
     if previous_word == Some("as") {
+        return false;
+    }
+
+    // "each creature other than Massacre Girl gets -1/-1": the exclusion
+    // names the source, whatever verb follows. The object-filter grammar
+    // reads only the typed self-reference there, never the card name.
+    if previous_word == Some("than") && previous_previous_word == Some("other") {
         return false;
     }
 
@@ -2785,6 +2797,28 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     Ok(None)
 }
 
+/// "Max speed —": the label is the max-speed condition the line keeps
+/// (CR 702.179), read once the labeled ability is recognized.
+fn claim_max_speed_label(label_tokens: &[OwnedLexToken], chosen: Option<&ChosenOptionContext>) {
+    if matches!(chosen, Some(ChosenOptionContext::MaxSpeed)) {
+        crate::word_claims::claim_tokens(label_tokens);
+    }
+}
+
+/// "Forecast — <cost>: <effect>" (CR 702.57): the activated line keeps the
+/// label as its presentation, and the activated lowering reads that label as
+/// the forecast rules (activate only from hand during your upkeep, once each
+/// turn, the reveal lasts until the ability resolves).
+fn claim_forecast_label(
+    label: &str,
+    label_tokens: &[OwnedLexToken],
+    presentation: Option<&PresentationLabel>,
+) {
+    if label.trim().eq_ignore_ascii_case("forecast") && presentation.is_some() {
+        crate::word_claims::claim_tokens(label_tokens);
+    }
+}
+
 fn restore_authored_named_source_trigger_subject(
     card: &crate::card::CardBuilder,
     authored: &[OwnedLexToken],
@@ -3401,6 +3435,7 @@ fn try_parse_labeled_line_dispatch(
             // speed; the label is a condition, not just presentation.
             if triggered.chosen_option.is_none() && max_speed_chosen_option.is_some() {
                 triggered.chosen_option = max_speed_chosen_option.clone();
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation = trigger_presentation_from_preprocessed_line(line)
@@ -3426,6 +3461,7 @@ fn try_parse_labeled_line_dispatch(
             // speed; the label is a condition, not just presentation.
             if triggered.chosen_option.is_none() && max_speed_chosen_option.is_some() {
                 triggered.chosen_option = max_speed_chosen_option.clone();
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation = trigger_presentation_from_preprocessed_line(line)
@@ -3470,6 +3506,8 @@ fn try_parse_labeled_line_dispatch(
                     &preprocessed.card,
                     &effect_parse_tokens,
                 )?;
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
+                claim_forecast_label(&label, label_tokens, presentation.as_ref());
                 let activated = RecognizedActivatedLine {
                     info: line.info.clone(),
                     cost,
@@ -3559,6 +3597,7 @@ fn try_parse_labeled_line_dispatch(
         if let Some(mut static_line) = recognize_static_line(&rewritten_body_line)? {
             if let Some(chosen_option) = max_speed_chosen_option.clone() {
                 static_line.chosen_option = Some(chosen_option);
+                claim_max_speed_label(label_tokens, static_line.chosen_option.as_ref());
             } else if preserve_as_choice_label {
                 static_line.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -3590,6 +3629,7 @@ fn try_parse_labeled_line_dispatch(
     if let Some(mut static_line) = recognize_static_line(&body_line)? {
         if let Some(chosen_option) = max_speed_chosen_option.clone() {
             static_line.chosen_option = Some(chosen_option);
+                claim_max_speed_label(label_tokens, static_line.chosen_option.as_ref());
         } else if preserve_as_choice_label {
             static_line.chosen_option =
                 document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -3616,6 +3656,7 @@ fn try_parse_labeled_line_dispatch(
         if let Some(mut static_line) = recognize_static_line(&rewritten_body_line)? {
             if let Some(chosen_option) = max_speed_chosen_option.clone() {
                 static_line.chosen_option = Some(chosen_option);
+                claim_max_speed_label(label_tokens, static_line.chosen_option.as_ref());
             } else if preserve_as_choice_label {
                 static_line.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -3641,6 +3682,8 @@ fn try_parse_labeled_line_dispatch(
                     &preprocessed.card,
                     &effect_parse_tokens,
                 )?;
+                claim_max_speed_label(label_tokens, max_speed_chosen_option.as_ref());
+                claim_forecast_label(&label, label_tokens, presentation.as_ref());
                 let activated = RecognizedActivatedLine {
                     info: line.info.clone(),
                     cost,
@@ -3675,6 +3718,19 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if let Some(mut statement_line) = recognize_statement_line(&body_line)? {
+        // An Attraction's "Visit — <effect>" statement is its Visit program:
+        // it compiles into spell_effect, which the engine materializes as the
+        // "whenever you roll to visit your Attractions" triggered ability
+        // (CR 717.5, object.rs from_definition). The label is read here, and
+        // only on an Attraction, where that reading holds.
+        if label.eq_ignore_ascii_case("visit")
+            && preprocessed
+                .card
+                .subtypes_ref()
+                .contains(&crate::types::Subtype::Attraction)
+        {
+            crate::word_claims::claim_tokens(label_tokens);
+        }
         apply_labeled_statement_surface_facts(&mut statement_line, line, presentation);
         let (statement_line, next_idx) =
             extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
@@ -4186,6 +4242,12 @@ fn parse_card_text_to_semantic_document(
         PreprocessedItem::Metadata(_) => None,
         PreprocessedItem::Line(line) => Some((line.info.raw_line.as_str(), line.tokens.as_slice())),
     }));
+    crate::word_claims::note_card_line_normalizations(preprocessed.items.iter().filter_map(
+        |item| match item {
+            PreprocessedItem::Metadata(_) => None,
+            PreprocessedItem::Line(line) => Some(&line.info.normalized),
+        },
+    ));
     parse_trace::event(format!(
         "preprocessed document: {} item(s)",
         preprocessed.items.len()
@@ -4351,6 +4413,9 @@ pub fn recognize_document_with_context(
                             "intrinsic basic-land mana reminder disagrees with land type metadata".into(),
                         ));
                     }
+                    // The complete reminder shape was read symbol by symbol
+                    // and checked against the land types it restates.
+                    crate::word_claims::claim_tokens(&line.tokens);
                     idx += 1;
                     continue;
                 }

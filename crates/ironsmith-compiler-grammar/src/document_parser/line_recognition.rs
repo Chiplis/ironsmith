@@ -131,7 +131,9 @@ fn recognize_correlated_triggered_line(line: &PreprocessedLine) -> Option<Recogn
         .map_or(tokens_without_cap, |(body, _)| body);
     let (source_tokens_without_cap, _) =
         strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
-    let correlated_tail = |effect_tokens: &[OwnedLexToken]| {
+    // A yes/no gate (it may run on the authored, un-normalized body): the
+    // reading the split hands the body to reads its words itself.
+    let correlated_tail = |effect_tokens: &[OwnedLexToken]| crate::word_claims::probe_only(|| {
         crate::effect_sentences::counter_exile_permission::is_candidate(effect_tokens)
             || crate::semantic_line_parsing::has_created_token_reciprocal_lifecycle_surface(effect_tokens)
             || crate::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
@@ -147,7 +149,7 @@ fn recognize_correlated_triggered_line(line: &PreprocessedLine) -> Option<Recogn
             || crate::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
                 effect_tokens,
             )
-    };
+    });
 
     if parse_trigger_intro_tokens(source_tokens_without_cap).is_some()
         && let Some((leading_tokens, effect_tokens)) =

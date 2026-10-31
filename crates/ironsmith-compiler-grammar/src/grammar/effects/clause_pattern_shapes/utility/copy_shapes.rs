@@ -209,6 +209,10 @@ fn parse_copy_retarget_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CopyRetar
         ));
     }
     let has_new = marker_anywhere(tail, primitives::kw("new"));
+    if let Some(new) = tail.iter().find(|token| token.parser_text() == "new") {
+        // "choose [a] new target(s)": the retarget permission's own word.
+        crate::word_claims::claim_tokens(std::slice::from_ref(new));
+    }
     let has_target = marker_anywhere(tail, primitives::kw("target"));
     let has_targets = marker_anywhere(tail, primitives::kw("targets"));
     while any::<_, ErrMode<ContextError>>.parse_next(input).is_ok() {}
@@ -245,6 +249,16 @@ pub fn parse_copy_retarget_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Copy
             || !tail.iter().any(|word| matches!(*word, "copy" | "copies"))
         {
             return None;
+        }
+        // The retarget permission's words: its chooser and "may", "choose",
+        // the "new" target noun phrase and the copy it applies to.
+        if tail.iter().all(|word| {
+            matches!(
+                *word,
+                "a" | "new" | "target" | "targets" | "for" | "the" | "that" | "copy" | "copies"
+            )
+        }) {
+            crate::word_claims::claim_words(&words[..]);
         }
         Some(CopyRetargetShape {
             may_choose: crate::word_primitives::contains_word(&words[..choose], "may"),

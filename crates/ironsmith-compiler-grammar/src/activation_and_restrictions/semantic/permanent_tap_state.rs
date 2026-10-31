@@ -13,6 +13,7 @@ pub(super) fn parse_cost_qualified_tap_trigger(tokens: &[OwnedLexToken]) -> Resu
     let filter = parse_trigger_subject_filter_lexed(&tokens[..end])?.unwrap_or_else(|| {
         let mut filter = ObjectFilter::default(); filter.source = true; filter
     });
+    crate::word_claims::claim_words(&words[subject.len()..]);
     Ok(Some(TriggerSpec::PermanentTappedToPayCost { filter, cost_kind }))
 }
 
@@ -78,6 +79,12 @@ pub(super) fn parse_permanent_tap_state_trigger(
         None if *state == "tapped" => TriggerSpec::ThisBecomesTapped,
         None => TriggerSpec::ThisBecomesUntapped,
     };
+    // The grouping, the tap-state verb and any event-time turn
+    // qualification are all read into the trigger.
+    if grouped {
+        crate::word_claims::claim_words(&subject[..3]);
+    }
+    crate::word_claims::claim_words(&all_words[subject.len()..]);
     Ok(Some(if during_your_turn {
         TriggerSpec::ConditionQualified {
             trigger: Box::new(trigger),

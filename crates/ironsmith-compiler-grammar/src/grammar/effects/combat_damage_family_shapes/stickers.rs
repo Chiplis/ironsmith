@@ -88,6 +88,10 @@ pub fn parse_put_sticker_shape(tokens: &[OwnedLexToken]) -> Option<PutStickerSha
         .void(),
     )
     .is_some();
+    // "put a sticker": one sticker (the word match reads the article).
+    let _ = sticker_tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["a", "an"]));
     Some(PutStickerShape {
         action: classify_sticker_action(sticker_tokens),
         target_tokens,

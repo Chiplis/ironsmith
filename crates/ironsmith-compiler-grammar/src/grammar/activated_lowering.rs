@@ -94,7 +94,7 @@ pub fn parse_activated_presentation_kind_tokens(
     let label = tokens.get(..delimiter)?;
     let label_words = TokenWordView::new(label);
     let head = label_words.first()?;
-    match head {
+    let kind = match head {
         "throw" => Some(
             if label
                 .iter()
@@ -118,7 +118,10 @@ pub fn parse_activated_presentation_kind_tokens(
         "teleport" => Some(ActivatedPresentationKind::Teleport),
         "transmute" => Some(ActivatedPresentationKind::Transmute),
         _ => None,
-    }
+    }?;
+    // The keyword label ("Boast —") names the activated ability's kind.
+    crate::word_claims::claim_tokens(label);
+    Some(kind)
 }
 
 pub fn parse_activated_functional_zones_tokens(

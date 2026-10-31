@@ -21,7 +21,10 @@ fn words_at(tokens: &[OwnedLexToken], start: usize, words: &[&str]) -> bool {
 }
 
 fn sector_choice_position(tokens: &[OwnedLexToken]) -> Option<usize> {
-    (0..tokens.len()).find(|&start| words_at(tokens, start, &SECTOR_CHOICE))
+    // A locator: the choice reading claims the words it rewrites below.
+    crate::word_claims::probe_only(|| {
+        (0..tokens.len()).find(|&start| words_at(tokens, start, &SECTOR_CHOICE))
+    })
 }
 
 /// Read the sector instructions this sentence run opens with, if any.
@@ -55,7 +58,10 @@ fn parse_sector_of_your_choice(
             while let Some(start) = sector_choice_position(&tokens) {
                 // Keep "the sector"; drop "of your choice" so the object
                 // filter reads the definite chosen sector.
-                tokens.drain(start + 2..start + SECTOR_CHOICE.len());
+                // "of your choice" is the sector choice this reading makes.
+                crate::word_claims::claim_drained(
+                    tokens.drain(start + 2..start + SECTOR_CHOICE.len()),
+                );
             }
             SentenceInput::from_lexed(&tokens)
         })

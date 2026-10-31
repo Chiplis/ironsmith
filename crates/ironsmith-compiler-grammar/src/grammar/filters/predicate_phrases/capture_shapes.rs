@@ -254,13 +254,19 @@ fn parse_capture<'a, 'p>(
             take_words(input, count)?;
         }
         WinnowCaptureKind::WordCount(count) => take_words(input, count)?,
+        // A closed-vocabulary capture ("is"/"has", one of fixed phrases)
+        // reads its words like a literal atom: the match is the reading.
         WinnowCaptureKind::OneOf(expected) => {
+            let before = *input;
             any.verify(|word: &&str| one_of_words(word, expected))
                 .void()
                 .parse_next(input)?;
+            crate::word_claims::claim_words(&before[..before.len() - input.len()]);
         }
         WinnowCaptureKind::OneOfPhrase(alternatives) => {
+            let before = *input;
             parse_first_sequence(alternatives, input)?;
+            crate::word_claims::claim_words(&before[..before.len() - input.len()]);
         }
         WinnowCaptureKind::UntilPhrase(expected) => {
             let count = surface::find_words(input, expected)

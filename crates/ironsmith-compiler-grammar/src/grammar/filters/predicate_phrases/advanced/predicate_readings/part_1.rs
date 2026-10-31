@@ -98,6 +98,7 @@ pub(super) fn read_saddled(input: &Predicate<'_>) -> Result<Option<PredicateAst>
     // subject is therefore the source object, just as in the complete
     // "this creature is saddled" spelling handled below.
     if surface::exact(LexedClause::new(predicate_tokens), &[crate::keyword_forms::SADDLED]) {
+        crate::word_claims::claim_tokens(predicate_tokens);
         return Ok(Some(PredicateAst::Source(
             SourcePredicateAst::SourceIsSaddled,
         )));

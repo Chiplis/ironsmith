@@ -32,7 +32,10 @@ impl CantClause<'_> {
             .iter()
             .find(|reading| reading.id.as_str() == id)
             .is_some_and(|reading| {
-                (reading.admits)(self) && matches!((reading.read)(self), ParseOutcome::Match(_))
+                crate::word_claims::probe_only(|| {
+                    (reading.admits)(self)
+                        && matches!((reading.read)(self), ParseOutcome::Match(_))
+                })
             });
         self.read_by_cache.borrow_mut().insert(id, read);
         read
@@ -126,15 +129,17 @@ pub(super) fn read(input: &CantClause<'_>) -> ParseOutcome<RuleMatch<Vec<StaticA
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for reading in READINGS {
-        if !reading.head.accepts(head) || !(reading.admits)(input) {
+        if !reading.head.accepts(head) || !crate::word_claims::probe_only(|| (reading.admits)(input)) {
             continue;
         }
-        match (reading.read)(input).within(reading.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (reading.read)(input).within(reading.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(reading.id, reading.head),
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
@@ -199,11 +204,10 @@ fn read_cant_cast_restriction(
     input: &CantClause<'_>,
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let tokens = input.tokens;
-    let normalized_words_storage = normalize_cant_words(tokens);
-    let normalized_words = normalized_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    // Borrowed words, so the restriction reader's claims reach the authored
+    // words ("cast more than one spell each turn").
+    let normalized_words =
+        crate::grammar::keyword_action_costs::parse_normalized_keyword_word_refs_tokens(tokens);
     if let Some(restriction) = parse_cant_cast_restriction_words(&normalized_words) {
         return Ok(Some(vec![StaticAbility::restriction(
             restriction,
@@ -216,11 +220,7 @@ fn read_unspent_mana_retention(
     input: &CantClause<'_>,
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let tokens = input.tokens;
-    let normalized_words_storage = normalize_cant_words(tokens);
-    let normalized_words = normalized_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let normalized_words = normalize_cant_word_refs(tokens);
     // "Players/You don't lose unspent [color] mana as steps and phases end."
     // Parsed before the and-splitting below tears apart "steps and phases end".
     if let Some(ability) = parse_unspent_mana_retention_static(tokens, &normalized_words) {
@@ -254,11 +254,7 @@ fn declines_4(input: &CantClause<'_>) -> bool {
 /// A decline the ladder made before the readings ranked after it.
 fn declines_5(input: &CantClause<'_>) -> bool {
     let tokens = input.tokens;
-    let normalized_words_storage = normalize_cant_words(tokens);
-    let normalized_words = normalized_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let normalized_words = normalize_cant_word_refs(tokens);
     matches!(
         crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(
             &normalized_words,

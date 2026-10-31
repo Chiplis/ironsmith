@@ -46,6 +46,14 @@ pub(super) fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTrave
     if filter.is_empty() {
         return None;
     }
+    // "until you reveal ..." / "until they have exiled ...": the traversing
+    // player and the consult verb frame the stop condition.
+    if permission_shapes::exact_tokens_any(
+        &tokens[..verb.start],
+        &[&["you"], &["they"], &["that", "player"], &["he", "or", "she"]],
+    ) {
+        crate::word_claims::claim_tokens(&tokens[..verb.end]);
+    }
     if let Some((card_filter, total)) = primitives::split_lexed_once_on_separator(filter, || {
         primitives::phrase(&["with", "total", "mana", "value"]).void()
     }) {

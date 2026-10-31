@@ -87,6 +87,9 @@ pub fn parse_scaled_target_power_sentence(
             // "double its power": the pronoun names the previously chosen
             // object, whose own power is the amount.
             let pronoun = crate::lexer::token_word_refs(target_tokens).as_slice() == ["its"];
+            if pronoun {
+                crate::word_claims::claim_tokens(target_tokens);
+            }
             // "Double equipped creature's power": the source's attachment
             // host, exactly as "Equipped creature gets ..." names it.
             let attached_host = match crate::lexer::token_word_refs(target_tokens).as_slice() {

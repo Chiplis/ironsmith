@@ -266,6 +266,15 @@ pub(super) fn run_max_speed_labeled_line_family(
         );
     }
 
+    // "Max speed —": the label is read here as the max-speed condition.
+    if let Some(label_len) = ctx
+        .line
+        .tokens
+        .iter()
+        .position(|token| std::ptr::eq(token, &body_tokens[0]))
+    {
+        crate::word_claims::claim_tokens(&ctx.line.tokens[..label_len]);
+    }
     let body_line = rewrite_line_tokens(ctx.line, body_tokens);
     if shape.trigger_intro.is_some() {
         let triggered_tokens = max_speed_intervening_if_tokens(&body_line.tokens);

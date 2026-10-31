@@ -100,7 +100,7 @@ pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<Equipmen
             "hexproof",
             "indestructible",
         ] {
-            if common::word_present(&words, keyword) {
+            if common::word_read(&words, keyword) {
                 granted_keywords.push(keyword);
             }
         }
@@ -185,7 +185,7 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
         ("menace", TokenKeywordShape::Menace),
         ("reach", TokenKeywordShape::Reach),
     ] {
-        if common::word_present(words, word) {
+        if common::word_read(words, word) {
             keywords.push(keyword);
         }
     }

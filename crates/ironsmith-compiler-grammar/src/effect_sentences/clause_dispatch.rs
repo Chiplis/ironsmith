@@ -1003,6 +1003,12 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
         [first, rest @ ..] if first.as_word() == Some("additional") => (rest, true),
         _ => (action_tokens, false),
     };
+    if additional_modifier {
+        // "(an) additional +N/+N": the modifier adds to an earlier one.
+        crate::word_claims::claim_tokens(
+            &action_tokens[..action_tokens.len() - modifier_tokens.len()],
+        );
+    }
     let collapsed_modifier_tail = collapse_leading_signed_pt_modifier_tokens(modifier_tokens);
     let modifier_tail = collapsed_modifier_tail
         .as_deref()
@@ -1068,6 +1074,14 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             parser_trace("parse_get_pump_clause:modifier-shape-miss", modifier_tail);
             return Ok(None);
         };
+        // The modifier may be a collapsed copy ("-" + "1/-1"): claim the
+        // authored tokens it came from.
+        let authored_modifier = if collapsed_modifier_tail.is_some() {
+            modifier_tokens.get(..2)
+        } else {
+            modifier_tail.get(..1)
+        };
+        crate::word_claims::claim_tokens(authored_modifier.unwrap_or_default());
         values
     };
     let mut duration_before_for_each = false;
@@ -1249,6 +1263,7 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
                         &crate::lexer::parser_token_word_refs(filter_tokens),
                     )
                 {
+                    crate::word_claims::claim_tokens(filter_tokens);
                     EffectAst::subject_verb_pump_for_each(
                         power_per,
                         toughness_per,
@@ -1439,6 +1454,7 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
                 crate::lexer::parser_token_word_refs(filter_tokens).as_slice(),
                 ["the", "creature"] | ["the", "blocking", "creature"]
             ) {
+                crate::word_claims::claim_tokens(filter_tokens);
                 return Ok(Some(EffectAst::subject_verb_pump(
                     power,
                     toughness,
@@ -1455,6 +1471,8 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
                     &crate::lexer::parser_token_word_refs(filter_tokens),
                 )
             {
+                // "This creature gets ...": the whole subject names the source.
+                crate::word_claims::claim_tokens(filter_tokens);
                 return Ok(Some(EffectAst::subject_verb_pump(
                     power,
                     toughness,

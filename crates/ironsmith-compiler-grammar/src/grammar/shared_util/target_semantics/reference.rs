@@ -63,6 +63,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     ) {
         // "defending player" names the combat's defender; it is never a
         // target declaration.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Player(PlayerFilter::Defending, None));
     }
 
@@ -347,6 +348,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // consumed, only the object noun remains and the phrase would otherwise
     // widen from the source permanent to every matching permanent.
     if let Some(surface) = this_source_surface_for_words(&token_words) {
+        // The whole phrase names the source.
+        crate::word_claims::claim_tokens(tokens);
         let span = token_slice_span(tokens);
         if token_words == ["this", "card"] {
             return Ok(TargetAst::Object(
@@ -465,6 +468,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         if random_choice {
             count = count.at_random();
         }
+        // "<count> of them": the count and the back-reference.
+        crate::word_claims::claim_words(&all_words);
         return Ok(wrap_target_count(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
             Some(count),
@@ -879,6 +884,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         && second_word_is_object_head
         && matches_surface_word(remaining_words[2], CONTROLLER_OR_OWNER_PLURAL_WORD_PATTERN)
     {
+        // "that land's controller": the referenced object's noun.
+        crate::word_claims::claim_word(remaining_words[1]);
         let player = tagged_it_owner_or_controller_player_filter(remaining_words[2]);
         return Ok(wrap_target_count(
             // The referenced object may have been targeted earlier, but its
@@ -895,6 +902,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         && is_demonstrative_object_head(remaining_words[3])
         && matches_surface_word(remaining_words[4], CONTROLLER_OR_OWNER_PLURAL_WORD_PATTERN)
     {
+        crate::word_claims::claim_words(&[remaining_words[1], remaining_words[3]]);
         let player = tagged_it_owner_or_controller_player_filter(remaining_words[4]);
         return Ok(wrap_target_count(
             TargetAst::Player(player, None),
@@ -919,6 +927,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             "controller" | "controllers" | "owner" | "owners"
         ) && leaf::parse_leaf_object_reference_head_complete(object_head).is_ok()
         {
+            crate::word_claims::claim_words(&remaining_words[..2]);
             let player = tagged_it_owner_or_controller_player_filter(remaining_words[1]);
             return Ok(wrap_target_count(
                 TargetAst::Player(player, None),
@@ -936,6 +945,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ))
         .is_ok()
     {
+        crate::word_claims::claim_words(&remaining_words[..3]);
         let object_ref = crate::filter::ObjectRef::tagged(remaining_words[0]);
         let player = if remaining_words[2] == "controller" {
             PlayerFilter::ControllerOf(object_ref)
@@ -1492,6 +1502,34 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         }
     }
 
+    // "up to two target Swamps each become ...", "creature cards each with
+    // mana value 3 or less": a non-leading `each` that ends the phrase or
+    // precedes its `with` qualifier distributes the instruction over every
+    // selected object, which is how each target is acted on anyway. It is
+    // read here, not by the object filter.
+    let distributive_each = |index: usize| {
+        index > 0
+            && remaining[index].as_word() == Some("each")
+            && remaining
+                .get(index + 1)
+                .is_none_or(|next| next.as_word() == Some("with"))
+    };
+    let without_distributive_each: Vec<OwnedLexToken>;
+    let remaining = if (0..remaining.len()).any(distributive_each) {
+        let mut kept = Vec::with_capacity(remaining.len());
+        for (index, token) in remaining.iter().enumerate() {
+            if distributive_each(index) {
+                crate::word_claims::claim_tokens(std::slice::from_ref(token));
+            } else {
+                kept.push(token.clone());
+            }
+        }
+        without_distributive_each = kept;
+        without_distributive_each.as_slice()
+    } else {
+        remaining
+    };
+
     // "counter each spell you don't control" (Counterflux), "blocks each
     // attacking creature" (Blaze of Glory): a leading `each` is the set
     // quantifier of this untargeted selection, read here, not by the filter.
@@ -1610,6 +1648,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             if words.len() == 2 && crate::util::parse_card_type(words[1]).is_some() {
                 filter.card_types.clear();
                 filter.zone = None;
+                // The noun names the antecedent's kind (kept as the surface).
+                crate::word_claims::claim_tokens(remaining);
             }
             // A bare reference such as "that creature card" identifies the
             // earlier card in its own zone. The creature noun must not add

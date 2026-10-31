@@ -14,7 +14,9 @@ pub fn parse_counter_type_from_descriptor_tokens(tokens: &[OwnedLexToken]) -> Op
         return Some(counter_type);
     }
     if last == STRIKE_WORD && words.len() >= 2 {
-        return strike_counter_type_from_prefix(words[words.len() - 2]);
+        let counter_type = strike_counter_type_from_prefix(words[words.len() - 2])?;
+        crate::word_claims::claim_words(&words[words.len() - 2..]);
+        return Some(counter_type);
     }
     if last == ANOTHER_WORD || crate::grammar::leaf::parse_number_complete(last).is_ok() {
         return None;
@@ -23,6 +25,7 @@ pub fn parse_counter_type_from_descriptor_tokens(tokens: &[OwnedLexToken]) -> Op
         .chars()
         .all(|character| character.is_ascii_alphabetic())
     {
+        crate::word_claims::claim_word(last);
         return Some(CounterType::Named(intern_counter_name(last).into()));
     }
     None

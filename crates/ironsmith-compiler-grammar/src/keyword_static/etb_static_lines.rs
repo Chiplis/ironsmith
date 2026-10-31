@@ -200,6 +200,8 @@ pub fn parse_enters_with_counters_line(
     if !starts_with_etb_source_reference(captured.subject_tokens) {
         return Ok(None);
     }
+    // The whole subject names the entering source.
+    crate::word_claims::claim_tokens(captured.subject_tokens);
     let subject_words = crate::lexer::token_word_refs(captured.subject_tokens);
     let source_name_subject = matches!(
         crate::util::source_reference_surface_for_words(&subject_words),
@@ -270,6 +272,7 @@ pub fn parse_enters_with_counters_line(
         && etb_token_word_is(&after_with[1], "number")
         && etb_token_word_is(&after_with[2], "of")
     {
+        crate::word_claims::claim_tokens(&after_with[..3]);
         (Value::Fixed(1), 3)
     } else if after_with
         .first()
@@ -278,6 +281,7 @@ pub fn parse_enters_with_counters_line(
             .get(1)
             .is_some_and(|token| etb_token_word_is(token, ETB_ADDITIONAL_WORD))
     {
+        crate::word_claims::claim_tokens(&after_with[..2]);
         if let Some((value, value_used)) = parse_value(&after_with[2..]) {
             (value, 2 + value_used)
         } else {
@@ -311,20 +315,25 @@ pub fn parse_enters_with_counters_line(
         .iter()
         .any(|token| etb_token_word_is(token, ETB_ADDITIONAL_WORD));
     let mut tail = &after_with[counter_idx + 1..];
+    // The recipient ("on it", "on this creature") is the entering source.
     if token_slice_first_is(tail, "on") {
+        crate::word_claims::claim_tokens(&tail[..1]);
         tail = &tail[1..];
     }
     if tail.first().is_some_and(|token| token.is_any_word(&["it", "her", "him", "them"])) {
+        crate::word_claims::claim_tokens(&tail[..1]);
         tail = &tail[1..];
     } else if tail
         .first()
         .is_some_and(|token| etb_token_word_is_any(token, ETB_SOURCE_TAIL_HEAD_WORDS))
     {
+        crate::word_claims::claim_tokens(&tail[..1]);
         tail = &tail[1..];
         if let Some(word) = tail.first().and_then(OwnedLexToken::as_word)
             && (etb_word_is_any(word, ETB_SOURCE_TAIL_NOUN_WORDS)
                 || parse_card_type(word).is_some())
         {
+            crate::word_claims::claim_tokens(&tail[..1]);
             tail = &tail[1..];
         }
     }
@@ -3462,6 +3471,14 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
     } else {
         Value::Fixed(1)
     };
+    // "with an additional +1/+1 counter": the article is the (base) count.
+    if let Some(article) = additional_idx
+        .checked_sub(1)
+        .and_then(|idx| base_tokens.get(idx))
+        .filter(|token| etb_token_word_is_any(token, &["a", "an"]))
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(article));
+    }
 
     let counter_type = parse_counter_type_from_tokens(base_tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
@@ -3469,6 +3486,30 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
             clause_words.join(" ")
         ))
     })?;
+    // The counters go on the entering object: "... counter(s) on it/them".
+    if let Some(noun_idx) =
+        crate::grammar::primitives::locate_token_index(&base_tokens[additional_idx..], |token| {
+            etb_token_word_is_any(token, &["counter", "counters"])
+        })
+    {
+        let recipient_end = for_each_idx.unwrap_or(base_tokens.len());
+        let recipient = trim_edge_punctuation(
+            base_tokens
+                .get(additional_idx + noun_idx + 1..recipient_end)
+                .unwrap_or_default(),
+        );
+        let _ = crate::grammar::primitives::probe_all(
+            &recipient,
+            (
+                crate::grammar::primitives::kw("on"),
+                winnow::combinator::alt((
+                    crate::grammar::primitives::kw("it"),
+                    crate::grammar::primitives::kw("them"),
+                )),
+            ),
+            "entering counter recipient",
+        );
+    }
 
     let mut added_subtypes = Vec::new();
     if let Some(idx) = and_as_idx {

@@ -72,6 +72,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         return Ok(None);
     };
     let target = crate::util::parse_target_phrase(&tokens[range])?;
+    // The prevention frame around the targeted source ("prevent all damage
+    // [that would be dealt to and dealt by] ... [would deal]") is this shape.
+    crate::word_claims::claim_words(&words[start..source_start]);
+    crate::word_claims::claim_words(&words[source_end..end]);
     Ok(Some(if bidirectional {
         EffectAst::subject_verb_prevent_all_damage_to_and_by_target(target, duration)
     } else {

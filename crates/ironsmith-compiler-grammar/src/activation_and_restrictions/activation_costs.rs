@@ -904,8 +904,7 @@ fn restriction_duration_remainder_retains_mana(tokens: &[OwnedLexToken]) -> bool
     if remainder.len() >= tokens.len() {
         return false;
     }
-    let storage = normalize_cant_words(&remainder);
-    let words = storage.iter().map(String::as_str).collect::<Vec<_>>();
+    let words = normalize_cant_word_refs(&remainder);
     crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(&words)
         .is_some()
 }
@@ -1466,8 +1465,7 @@ fn parse_cant_clauses_unbound(
     // clause before generic "or" splitting can turn a hand-only prohibition
     // into a ban on every land play.
     if let Some((_, neg_end)) = find_negation_span(tokens) {
-        let tail_storage = normalize_cant_words(&tokens[neg_end..]);
-        let tail = tail_storage.iter().map(String::as_str).collect::<Vec<_>>();
+        let tail = normalize_cant_word_refs(&tokens[neg_end..]);
         if crate::grammar::activation_restrictions::parse_compound_player_action_restriction_words(
             &tail,
         )
@@ -1563,6 +1561,9 @@ fn parse_unspent_mana_retention_static(
 
     let parsed =
         crate::grammar::activation_restrictions::parse_unspent_mana_retention_static_words(words)?;
+    // `words` are normalized copies of every word of `tokens`, which the
+    // complete parse above read.
+    crate::word_claims::claim_tokens(tokens);
     let subject = match parsed.subject {
         ManaRetentionSubject::You => PlayerFilter::You,
         ManaRetentionSubject::AnyPlayer => PlayerFilter::Any,
@@ -1635,11 +1636,7 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
     {
         return Ok(None);
     }
-    let normalized_storage = normalize_cant_words(tokens);
-    let normalized = normalized_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let normalized = normalize_cant_word_refs(tokens);
     if matches!(
         crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(
             &normalized,

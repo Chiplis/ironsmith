@@ -260,16 +260,30 @@ pub fn parse_leaf_this_source_reference_surface(
 pub fn parse_leaf_this_source_reference_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     let normalized = words.join(" ");
     let mut input = normalized.as_str();
-    crate::grammar::primitives::take_leaf(&mut input, |input: &mut &str| {
+    let surface = crate::grammar::primitives::take_leaf(&mut input, |input: &mut &str| {
         parse_this_source_reference(input, words)
-    })
+    })?;
+    // The whole reference ("this creature") names the source.
+    if input.is_empty() {
+        ironsmith_compiler_syntax::word_claims::claim_words(words);
+    }
+    Some(surface)
 }
 
 pub fn parse_leaf_source_anaphor_words(words: &[&str]) -> Option<LeafSourceAnaphor> {
     let normalized = words.join(" ");
     let mut input = normalized.as_str();
+    let anaphor = read_leaf_source_anaphor(&mut input, words)?;
+    // The whole anaphor ("it", "this creature") names the source.
+    if input.is_empty() {
+        ironsmith_compiler_syntax::word_claims::claim_words(words);
+    }
+    Some(anaphor)
+}
+
+fn read_leaf_source_anaphor(input: &mut &str, words: &[&str]) -> Option<LeafSourceAnaphor> {
     crate::grammar::primitives::take_leaf(
-        &mut input,
+        input,
         alt((
             (literal("its"), eof).value(LeafSourceAnaphor::Its),
             (literal("it"), eof).value(LeafSourceAnaphor::It),

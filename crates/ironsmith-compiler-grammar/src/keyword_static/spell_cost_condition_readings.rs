@@ -31,7 +31,10 @@ impl SpellCostCondition<'_> {
             .iter()
             .find(|reading| reading.id.as_str() == id)
             .is_some_and(|reading| {
-                (reading.admits)(self) && matches!((reading.read)(self), ParseOutcome::Match(_))
+                crate::word_claims::probe_only(|| {
+                    (reading.admits)(self)
+                        && matches!((reading.read)(self), ParseOutcome::Match(_))
+                })
             });
         self.read_by_cache.borrow_mut().insert(id, read);
         read
@@ -144,15 +147,17 @@ pub(super) fn read(
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for reading in READINGS {
-        if !reading.head.accepts(head) || !(reading.admits)(input) {
+        if !reading.head.accepts(head) || !crate::word_claims::probe_only(|| (reading.admits)(input)) {
             continue;
         }
-        match (reading.read)(input).within(reading.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (reading.read)(input).within(reading.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(reading.id, reading.head),
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }

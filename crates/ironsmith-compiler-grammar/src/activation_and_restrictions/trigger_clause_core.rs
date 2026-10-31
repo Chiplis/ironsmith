@@ -528,8 +528,6 @@ const ATTACKS_ENCHANTED_PLAYER_OR_PLANESWALKER_TAIL_PATTERN: ClauseShape<'static
             ],
         ]
 );
-const ATTACKS_PLANESWALKER_OR_BATTLE_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["a", "planeswalker"], &["a", "battle"]]);
 
 fn parse_one_or_more_planeswalker_attack_target(
     tail: &[&str],
@@ -2350,6 +2348,7 @@ fn try_parse_enters_or_becomes_tapped_trigger_lexed(
     ) else {
         return Ok(None);
     };
+    crate::word_claims::claim_tokens(&tokens[or_idx..=or_idx]);
     Ok(Some(TriggerSpec::Either(Box::new(enters), Box::new(becomes))))
 }
 
@@ -2648,6 +2647,8 @@ fn try_parse_simple_source_enters_trigger_lexed(
         return None;
     }
     let surface = this_source_surface_for_words(&words[..2])?;
+    // "this <type> enters": the source subject and its entering event.
+    crate::word_claims::claim_words(&words);
     Some(apply_leading_trigger_intro_surface(
         this_enters_battlefield_trigger_spec(
             Some(surface),
@@ -2927,6 +2928,9 @@ fn try_parse_player_attack_with_one_or_more_lexed(
     let Ok(mut filter) = parse_object_filter_lexed(&tokens[filter_start..], false) else {
         return Ok(None);
     };
+    // The attacking player, "attack(s) with" and an explicit "one or more"
+    // are read here; the attacker filter reads itself.
+    crate::word_claims::claim_words(&words[..filter_word]);
     let per_attacking_player = player != PlayerFilter::You;
     filter.controller = Some(player);
     filter.set_union_one_or_more(true);
@@ -2964,7 +2968,10 @@ fn try_parse_source_and_another_attack_different_players(
             "players",
         ],
     )
-    .then_some(TriggerSpec::ThisAndAnotherAttackDifferentPlayers)
+    .then(|| {
+        crate::word_claims::claim_words(&words);
+        TriggerSpec::ThisAndAnotherAttackDifferentPlayers
+    })
 }
 
 /// Parse a serial trigger union whose latter branches elide one shared player
@@ -3314,6 +3321,8 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
             if let Ok(entry) = parse_trigger_clause_lexed_unstacked(left)
                 && let Some(face_up) = face_up_arm(&entry)
             {
+                // "or is turned face up" is the second arm, read here.
+                crate::word_claims::claim_tokens(&tokens[idx..]);
                 return Some(TriggerSpec::Either(Box::new(entry), Box::new(face_up)));
             }
             continue;

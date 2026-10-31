@@ -469,12 +469,10 @@ pub(super) fn run_pre_parse_followup_registry(
             effects: &mut effects,
             carried_context: &mut carried_context,
         };
-        match (rule.run)(
-            &mut candidate_state,
-            sentences,
-            sentence_idx,
-            sentence_tokens,
-        ) {
+        let (registry_outcome, registry_claims) = crate::word_claims::scoped(|| {
+            (rule.run)(&mut candidate_state, sentences, sentence_idx, sentence_tokens)
+        });
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(
                     RuleId::new(rule.id),
@@ -486,7 +484,7 @@ pub(super) fn run_pre_parse_followup_registry(
                     carried_context,
                 },
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
@@ -553,13 +551,16 @@ pub(super) fn run_post_parse_followup_registry(
             effects: &mut effects,
             carried_context: &mut carried_context,
         };
-        match (rule.run)(
-            &mut candidate_state,
-            sentences,
-            sentence_idx,
-            sentence_tokens,
-            &mut candidate_sentence_effects,
-        ) {
+        let (registry_outcome, registry_claims) = crate::word_claims::scoped(|| {
+            (rule.run)(
+                &mut candidate_state,
+                sentences,
+                sentence_idx,
+                sentence_tokens,
+                &mut candidate_sentence_effects,
+            )
+        });
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(
                     RuleId::new(rule.id),
@@ -572,7 +573,7 @@ pub(super) fn run_post_parse_followup_registry(
                     sentence_effects: candidate_sentence_effects,
                 },
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
@@ -2256,6 +2257,8 @@ fn pre_rule_damage_life_floor(
     } else {
         return Ok(None);
     };
+    // The sentence is this exact shape, duration included.
+    crate::word_claims::claim_words(&words);
     state
         .effects
         .push(EffectAst::subject_verb_cant_starting_with_duration_surface(

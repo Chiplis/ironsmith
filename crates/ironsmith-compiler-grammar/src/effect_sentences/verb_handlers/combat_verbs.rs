@@ -1097,7 +1097,11 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     let clause_words = crate::lexer::token_word_refs(tokens);
     let mut candidates = Vec::new();
     let span = span_from_tokens(tokens);
-    let mut add_candidate = |id: &'static str, value: Option<Value>| {
+    // Each reader runs in its own claim scope (`scoped`); only the candidate
+    // the resolver keeps passes its claims on.
+    let mut add_candidate = |id: &'static str,
+                             value: Option<Value>,
+                             claims: crate::word_claims::ClaimSet| {
         let Some(value) = value else { return };
         // Independently written grammars can prove the same typed amount.
         // Semantic identity ignores presentation-only surface hints: equal
@@ -1112,34 +1116,50 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
         {
             return;
         }
-        candidates.push(RegistryCandidate::new(
-            RegistryRuleMetadata::distinct(RuleId::new(id), HeadDiscriminator::grammar(id)),
-            value,
-            span,
-        ));
+        candidates.push(
+            RegistryCandidate::new(
+                RegistryRuleMetadata::distinct(RuleId::new(id), HeadDiscriminator::grammar(id)),
+                value,
+                span,
+            )
+            .with_claims(claims),
+        );
     };
-    let relative_aggregate = parse_equal_to_aggregate_filter_value(amount_tokens);
-    add_candidate("damage-amount-relative-aggregate", relative_aggregate.clone());
-    let object_count = parse_equal_to_number_of_filter_value(amount_tokens);
-    add_candidate("damage-amount-object-count", object_count.clone());
+    let (relative_aggregate, relative_aggregate_claims) =
+        crate::word_claims::scoped(|| parse_equal_to_aggregate_filter_value(amount_tokens));
     add_candidate(
-        "damage-amount-devotion",
-        parse_devotion_value_from_add_clause(amount_tokens)?,
+        "damage-amount-relative-aggregate",
+        relative_aggregate.clone(),
+        relative_aggregate_claims,
     );
+    let (object_count, object_count_claims) =
+        crate::word_claims::scoped(|| parse_equal_to_number_of_filter_value(amount_tokens));
+    add_candidate("damage-amount-object-count", object_count.clone(), object_count_claims);
+    let (devotion, devotion_claims) =
+        crate::word_claims::scoped(|| parse_devotion_value_from_add_clause(amount_tokens));
+    add_candidate("damage-amount-devotion", devotion?, devotion_claims);
     add_candidate(
         "damage-amount-event-result",
         shape
             .amount_is_event_result
             .then_some(Value::EventValue(EventValueSpec::Amount)),
+        crate::word_claims::ClaimSet::default(),
     );
-    let complete_maximum = crate::word_primitives::parse_sequence_suffix(
-        &crate::lexer::token_word_refs(amount_tokens),
-        &["whichever", "is", "greater"],
-    )
-    .then(|| parse_add_mana_equal_amount_value(amount_tokens))
-    .flatten();
-    add_candidate("damage-amount-complete-maximum", complete_maximum.clone());
-    let fixed_plus_history = parse_fixed_plus_turn_history_value(amount_tokens);
+    let (complete_maximum, complete_maximum_claims) = crate::word_claims::scoped(|| {
+        crate::word_primitives::parse_sequence_suffix(
+            &crate::lexer::token_word_refs(amount_tokens),
+            &["whichever", "is", "greater"],
+        )
+        .then(|| parse_add_mana_equal_amount_value(amount_tokens))
+        .flatten()
+    });
+    add_candidate(
+        "damage-amount-complete-maximum",
+        complete_maximum.clone(),
+        complete_maximum_claims,
+    );
+    let (fixed_plus_history, fixed_plus_history_claims) =
+        crate::word_claims::scoped(|| parse_fixed_plus_turn_history_value(amount_tokens));
     // The plain `equal to the number of <filter>` shape and the summed
     // `equal to <n> plus <history>` shape each own their complete amount
     // phrase; the dynamic cost-modifier grammar recovers fragments of the
@@ -1153,12 +1173,15 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
         && complete_maximum.is_none()
         && relative_aggregate.is_none()
     {
-        add_candidate(
-            "damage-amount-dynamic-cost-modifier",
-            parse_dynamic_cost_modifier_value(amount_tokens)?,
-        );
+        let (dynamic, dynamic_claims) =
+            crate::word_claims::scoped(|| parse_dynamic_cost_modifier_value(amount_tokens));
+        add_candidate("damage-amount-dynamic-cost-modifier", dynamic?, dynamic_claims);
     }
-    add_candidate("damage-amount-fixed-plus-turn-history", fixed_plus_history);
+    add_candidate(
+        "damage-amount-fixed-plus-turn-history",
+        fixed_plus_history,
+        fixed_plus_history_claims,
+    );
 
     let specific_amount = match resolve_registry_candidates(
         RuleId::new("damage-equal-amount-registry"),

@@ -1132,6 +1132,9 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
             .map(|idx| idx + timing_idx + 1)
         && comma_idx + 1 < first.len()
     {
+        // "As this <noun> enters,": the entry program's header names the
+        // source by its noun; the as-enters facts carry it.
+        crate::word_claims::claim_tokens(&first[..=timing_idx]);
         first.drain(..=comma_idx);
     }
     inline_counted_number_sentence(&mut sentences);

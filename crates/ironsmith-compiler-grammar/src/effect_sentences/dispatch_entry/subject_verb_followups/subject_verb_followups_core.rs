@@ -281,6 +281,14 @@ pub(super) fn pre_rule_otherwise_followup(
     let Some(without_otherwise) = strip_otherwise_sentence_prefix(sentence_tokens) else {
         return Ok(None);
     };
+    // "Otherwise[, then]": the else marker this follow-up wraps the body in.
+    for token in sentence_tokens.iter().take(3) {
+        if token.is_any_word(&["otherwise", "then"]) {
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
+        } else if !token.is_comma() {
+            break;
+        }
+    }
     let mut plan = SentenceParsePlan::new(rewrite_otherwise_referential_subject(without_otherwise));
     plan.wrap_if_result = Some(IfResultPredicate::Otherwise);
     Ok(Some(PreParseFollowupResult::Plan(plan)))

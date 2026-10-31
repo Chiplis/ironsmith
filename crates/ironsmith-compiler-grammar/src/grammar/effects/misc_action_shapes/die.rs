@@ -51,6 +51,13 @@ pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
 }
 
 pub fn parse_roll_die_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
+    let shape = read_roll_die_prefix_tokens(tokens)?;
+    // The die size words ("six-sided", "d20") are what this reading reads.
+    crate::word_claims::claim_tokens(tokens.get(..shape.consumed)?);
+    Some(shape)
+}
+
+fn read_roll_die_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
     let article = usize::from(tokens.first().is_some_and(|token| token.is_word("a") || token.is_word("an")));
     let tokens = if tokens
         .first()

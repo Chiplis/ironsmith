@@ -23,6 +23,7 @@ pub(super) fn parse_text_change(tokens: &[OwnedLexToken]) -> Result<Option<Effec
             return Err(CardTextError::ParseError("cumulative-upkeep predicate requires an object target".into()));
         };
         filter.has_cumulative_upkeep = Some(false);
+        crate::word_claims::claim_tokens(&tokens[qualifier..end]);
         target
     } else { parse_target_phrase(&tokens[start..end])? };
     let choice_start = clause.token_index_after_words(boundary + marker.len())
@@ -48,6 +49,9 @@ pub(super) fn parse_text_change(tokens: &[OwnedLexToken]) -> Result<Option<Effec
                 .ok_or_else(|| CardTextError::ParseError("fixed text replacement requires a creature type".into()))?),
         _ => return Err(CardTextError::ParseError("unsupported or incomplete text-change word choice".into())),
     };
+    // "change the text of" and the complete replacement clause.
+    crate::word_claims::claim_tokens(&tokens[..start]);
+    crate::word_claims::claim_tokens(&tokens[end..]);
     Ok(Some(EffectAst::subject_verb_change_text(target, selection, duration)))
 }
 

@@ -1138,7 +1138,7 @@ pub fn is_creature_subtype_subject_list_boundary(
                     | "an"
                     | "up"
                     | "to"
-            ) && crate::util::parse_number_word_u32(word).is_none()
+            ) && !crate::util::is_number_word(word)
         })
         .unwrap_or(current_words.len());
     let current_words = &current_words[subject_start..];

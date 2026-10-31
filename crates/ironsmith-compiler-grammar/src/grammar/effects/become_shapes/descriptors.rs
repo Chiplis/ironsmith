@@ -258,7 +258,11 @@ pub fn strip_become_addition_tail_words<'a, 'b>(words: &'b [&'a str]) -> (&'b [&
 
 fn strip_addition_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::strip_lexed_suffix_phrases(tokens, ADDITION_TAILS)
-        .map(|(_, head)| head)
+        .map(|(_, head)| {
+            // The type-retention tail every caller keeps as a surface.
+            crate::word_claims::claim_tokens(&tokens[head.len()..]);
+            head
+        })
         .unwrap_or(tokens)
 }
 
@@ -284,7 +288,10 @@ const STILL_A_CARD_TYPE_PREFIXES: &[&[&str]] = &[
 
 fn strip_still_a_land_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::strip_lexed_suffix_phrases(tokens, STILL_A_LAND_TAILS)
-        .map(|(_, head)| trim_lexed_commas(head))
+        .map(|(_, head)| {
+            crate::word_claims::claim_tokens(&tokens[head.len()..]);
+            trim_lexed_commas(head)
+        })
         .unwrap_or(tokens)
 }
 
@@ -313,6 +320,8 @@ fn split_still_a_card_type_tail_tokens(
         let prefix_matches = words[suffix_start..words.len() - 1] == **prefix;
         if prefix_matches {
             let start_token = positions[suffix_start].0;
+            // "that's still a <card type>": the retained type.
+            crate::word_claims::claim_tokens(&tokens[start_token..]);
             return Some((trim_lexed_commas(&tokens[..start_token]), card_type));
         }
     }

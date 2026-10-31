@@ -2,7 +2,7 @@ pub mod ability_loss_templates;
 pub mod characteristic_assertions;
 pub mod timed_draw_replacement;
 use super::super::activation_and_restrictions::{
-    normalize_cant_words, parse_cant_restriction_clause, parse_cant_restrictions,
+    normalize_cant_word_refs, parse_cant_restriction_clause, parse_cant_restrictions,
 };
 use super::super::grammar::structure::{
     IfClausePredicateSpec, split_if_clause_lexed, split_leading_result_prefix_lexed,
@@ -1632,11 +1632,14 @@ pub fn parse_prevent_damage_target_scope_lexed(
             .first()
             .is_some_and(|word| matches!(*word, "player" | "players"))
     {
+        // The recipient scope ("[each] player(s)").
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(
             EffectAst::subject_verb_prevent_all_combat_damage_to_players(duration),
         ));
     }
     if target_words.len() == 1 && target_words.first().is_some_and(|word| *word == "you") {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(
             EffectAst::subject_verb_prevent_all_combat_damage_to_you(duration),
         ));
@@ -1998,6 +2001,52 @@ fn dont_lose_mana_color(words: &[&str]) -> Option<crate::color::Color> {
     crate::color::Color::from_name(color_word)
 }
 
+/// Claim "don't lose this [color] mana as steps and phases end [this turn]"
+/// when the retention sentence is exactly that shape after its subject; a
+/// looser sentence keeps its unread words.
+fn claim_dont_lose_mana_words(words: &[&str]) {
+    fn take<'a, 'b>(rest: &mut &'a [&'b str], expected: &[&'static str]) -> bool {
+        if rest.starts_with(expected) {
+            *rest = &rest[expected.len()..];
+            true
+        } else {
+            false
+        }
+    }
+    let Some(negation) = words
+        .iter()
+        .position(|word| matches!(*word, "dont" | "don't" | "doesnt" | "doesn't"))
+    else {
+        return;
+    };
+    let mut rest = &words[negation + 1..];
+    if !take(&mut rest, &["lose"]) {
+        return;
+    }
+    take(&mut rest, &["this"]);
+    if !take(&mut rest, &["mana"]) {
+        // A color between "this" and "mana" ("this red mana").
+        if !rest.first().is_some_and(|word| crate::color::Color::from_name(word).is_some()) {
+            return;
+        }
+        rest = &rest[1..];
+        if !take(&mut rest, &["mana"]) {
+            return;
+        }
+    }
+    if !take(&mut rest, &["as", "steps"]) {
+        return;
+    }
+    take(&mut rest, &["and", "phases"]);
+    if !take(&mut rest, &["end"]) {
+        return;
+    }
+    take(&mut rest, &["this", "turn"]);
+    if rest.is_empty() {
+        crate::word_claims::claim_words(&words[negation..]);
+    }
+}
+
 fn dont_lose_mana_subject_player(words: &[&str]) -> PlayerAst {
     let Some(negation) = words
         .iter()
@@ -2339,6 +2388,7 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         return Ok(Some(vec![EffectAst::SubjectVerb(retention)]));
     }
     if words_contain_all(&words, LOSE_MANA_STEPS_PHASES_END_WORDS) {
+        claim_dont_lose_mana_words(&words);
         return Ok(Some(vec![
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
                 dont_lose_mana_subject_player(&words),
@@ -2361,6 +2411,7 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
             "1", "reduces", "it", "to", "1", "instead",
         ]
     {
+        crate::word_claims::claim_tokens(&clause_tokens);
         return Ok(Some(vec![
             EffectAst::subject_verb_cant_starting_with_duration_surface(
                 crate::effect::Restriction::damage_reduce_life_below_one(PlayerFilter::You),

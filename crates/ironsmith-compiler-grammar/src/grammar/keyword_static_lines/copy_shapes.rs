@@ -270,7 +270,7 @@ fn parse_copy_entry_counters_exception_lexed<'a>(input: &mut LexStream<'a>) -> W
         alt((alt((primitives::kw("a"), primitives::kw("an"))).value(1u32), leaf::parse_leaf_number_prefix_lexed)).map(Some),
     )).parse_next(input)?;
     opt(primitives::kw("additional")).parse_next(input)?;
-    let counter_type = any.verify_map(|token: &OwnedLexToken| crate::util::parse_counter_type_word(token.parser_text())).parse_next(input)?;
+    let counter_type = any.verify_map(|token: &OwnedLexToken| crate::util::parse_counter_type_lex_token(token)).parse_next(input)?;
     alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
     primitives::phrase(&["on", "it"]).parse_next(input)?;
     let controlled_copy = opt(primitives::phrase(&["if", "you", "control", "that", "creature"])).parse_next(input)?.is_some();
@@ -300,7 +300,7 @@ fn conditional_copy_counter_entry<'a>(
     primitives::kw("additional").parse_next(input)?;
     let counter_type = any
         .verify_map(|token: &OwnedLexToken| {
-            crate::util::parse_counter_type_word(token.parser_text())
+            crate::util::parse_counter_type_lex_token(token)
         })
         .parse_next(input)?;
     alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
@@ -385,6 +385,10 @@ fn parse_direct_enter_as_copy_lexed<'a>(
     let copy_source_kind = if primitives::parse_prefix(copy_source_tokens, primitives::kw("this"))
         .is_some()
     {
+        let source = trim_lexed_commas(copy_source_tokens);
+        if source.len() == 2 {
+            crate::word_claims::claim_tokens(source);
+        }
         CopySourceKind::Source
     } else if primitives::parse_prefix(copy_source_tokens, primitives::kw("enchanted")).is_some() {
         CopySourceKind::Enchanted
@@ -451,6 +455,10 @@ fn parse_may_enter_as_copy_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Enter
     let subject_tokens = trim_lexed_commas(subject_tokens);
     let named_subject_tokens =
         if primitives::parse_prefix(subject_tokens, primitives::kw("this")).is_some() {
+            // "this <noun>": the entering source itself.
+            if subject_tokens.len() == 2 {
+                crate::word_claims::claim_tokens(subject_tokens);
+            }
             None
         } else {
             Some(subject_tokens)
@@ -511,6 +519,10 @@ fn parse_as_enters_become_copy_lexed<'a>(
     let subject_tokens = trim_lexed_commas(subject_tokens);
     let named_subject_tokens =
         if primitives::parse_prefix(subject_tokens, primitives::kw("this")).is_some() {
+            // "this <noun>": the entering source itself.
+            if subject_tokens.len() == 2 {
+                crate::word_claims::claim_tokens(subject_tokens);
+            }
             None
         } else {
             Some(subject_tokens)

@@ -890,6 +890,7 @@ fn parse_granted_ability_component_for_gain_unlabeled(
     // "gain all creature types": the changeling characteristic as a
     // granted static ability.
     if ability_words == ["all", "creature", "types"] {
+        crate::word_claims::claim_words(&ability_words);
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
             StaticAbilityAst::Static(StaticAbility::changeling()),
         ))]));
@@ -1825,6 +1826,9 @@ fn is_definite_singular_object_subject(words: &[&str]) -> bool {
 }
 
 fn tagged_subject_target(tokens: &[OwnedLexToken]) -> TargetAst {
+    // The whole pronoun or demonstrative subject ("that creature") names the
+    // referenced object.
+    crate::word_claims::claim_tokens(tokens);
     let words = crate::lexer::parser_token_word_refs(tokens);
     if words.first() == Some(&"those") {
         let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
@@ -1985,6 +1989,8 @@ fn trim_trailing_also(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     while end > 0 && tokens[end - 1].as_word() == Some(ALSO_WORD) {
         end -= 1;
     }
+    // The additive adverb belongs to the verb, not to the subject.
+    crate::word_claims::claim_tokens(&tokens[end..]);
     &tokens[..end]
 }
 
@@ -2682,6 +2688,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_demonstrative_subject = subject_shape.demonstrative_object;
     if is_demonstrative_subject || subject_shape.target {
         let target = if is_demonstrative_subject {
+            crate::word_claims::claim_tokens(subject_tokens);
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_lexed_tokens(subject_tokens),

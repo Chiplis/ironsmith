@@ -24,6 +24,8 @@ pub(super) fn try_parse_level_header_block(
             && let (PtValue::Fixed(power), PtValue::Fixed(toughness)) =
                 (parsed_pt.power, parsed_pt.toughness)
         {
+            // The level band's whole power/toughness line.
+            crate::word_claims::claim_tokens(&next_line.tokens);
             pt = Some((power, toughness));
             probe_idx += 1;
             continue;

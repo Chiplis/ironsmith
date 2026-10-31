@@ -410,7 +410,20 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         return None;
     }
     let zone = match first_zone(destination_head) {
-        Some((_, zone)) => zone,
+        Some((index, zone)) => {
+            // "to the battlefield", "to the command zone": the definite
+            // article belongs to the zone noun phrase (`is_word` claims it).
+            let zone_start = if matches!(zone, ReturnZoneShape::Command) {
+                index.saturating_sub(1)
+            } else {
+                index
+            };
+            let _ = zone_start
+                .checked_sub(1)
+                .and_then(|article| destination_head.get(article))
+                .is_some_and(|article| article.is_word("the"));
+            zone
+        }
         // Controller-only destination (see `controller_only_destination_start`).
         None if primitives::parse_prefix(destination_head, primitives::kw("under")).is_some() => {
             ReturnZoneShape::Battlefield
@@ -426,6 +439,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
             primitives::kw("owners'"),
         )),
     ) {
+        crate::grammar::shared_util::token_facts::claim_owner_possessors(destination_head);
         None
     } else if marker_anywhere(
         destination_head,
@@ -501,6 +515,8 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
             primitives::kw("owners'"),
         )),
     ) {
+        // "under its owner's control" (`contains_word` claims "control").
+        let _ = primitives::contains_word(destination_head, "control");
         ReturnControllerShape::Owner
     } else {
         ReturnControllerShape::Preserve

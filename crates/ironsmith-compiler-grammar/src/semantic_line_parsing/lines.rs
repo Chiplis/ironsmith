@@ -2258,7 +2258,7 @@ fn is_optional_source_exile_collect_evidence_procedure(tokens: &[OwnedLexToken])
             &optional_words,
             &["you", "may", "exile", "it", "and", "collect", "evidence"],
         )
-        && crate::util::parse_number_word_u32(optional_words[7]).is_some()
+        && crate::util::is_number_word(optional_words[7])
         && followup_words.len() == 10
         && followup_words[0].eq_ignore_ascii_case("if")
         && crate::word_primitives::parse_sequence_complete(

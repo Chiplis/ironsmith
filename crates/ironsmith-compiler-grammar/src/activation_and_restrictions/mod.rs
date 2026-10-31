@@ -94,7 +94,8 @@ pub use choice_object_clauses::{
 };
 use keyword_action_costs::*;
 pub use keyword_action_costs::{
-    find_payment_alternative_or, normalize_cant_words, parse_ability_phrase,
+    find_payment_alternative_or, normalize_cant_word_refs, normalize_cant_words,
+    parse_ability_phrase,
     parse_payment_clause_as_total_cost, parse_single_graveyard_bottom_library_compiler_payment,
     parse_single_word_keyword_action, target_ast_to_object_filter,
 };

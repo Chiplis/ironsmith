@@ -175,15 +175,17 @@ pub(super) fn read(input: &TriggerClause<'_>) -> ParseOutcome<RuleMatch<TriggerS
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for reading in READINGS {
-        if !reading.head.accepts(head) || !(reading.admits)(input) {
+        if !reading.head.accepts(head) || !crate::word_claims::probe_only(|| (reading.admits)(input)) {
             continue;
         }
-        match (reading.read)(input).within(reading.id) {
+        let (registry_outcome, registry_claims) =
+            crate::word_claims::scoped(|| (reading.read)(input).within(reading.id));
+        match registry_outcome {
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
                 RegistryRuleMetadata::distinct(reading.id, reading.head),
                 matched.value,
                 matched.span,
-            )),
+            ).with_claims(registry_claims)),
             ParseOutcome::NoMatch => {}
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
@@ -275,6 +277,8 @@ fn read_while_qualified_event(
         ["this", "creature", "is", "exiled", "from", "battlefield", "while",
          "youre" | "you're", "activating", "craft", "ability"])
     {
+        // The whole clause (articles included) is this exact shape.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(TriggerSpec::ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker {
             marker: "craft".into(),
         }));
@@ -289,6 +293,7 @@ fn read_while_qualified_event(
             "of", "your", "library", "while", "scrying",
         ]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::ScryToBottom,
             player: crate::cards::builders::PlayerFilter::You,
@@ -324,11 +329,14 @@ fn read_while_qualified_event(
             && filter.source
         {
             filter.zone = Some(Zone::Exile);
+            crate::word_claims::claim_tokens(&tokens[while_idx..]);
             return Ok(Some(trigger));
         }
         let condition = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
             &condition_tokens,
         )?;
+        // "while" introduces the event-time condition (which reads itself).
+        crate::word_claims::claim_tokens(&tokens[while_idx..=while_idx]);
         return Ok(Some(TriggerSpec::ConditionQualified {
             trigger: Box::new(trigger),
             condition,

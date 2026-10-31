@@ -402,6 +402,11 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     // controller/owner relation is the semantic fact; the authored name is
     // retained by the enclosing ability surface.
     if slice.len() >= 2 && is_controller_or_owner(slice[slice.len() - 1]) {
+        // "its owner" / "their controller": the pronoun names the object
+        // whose owner or controller acts.
+        if slice.len() == 2 && matches!(slice[0], "its" | "their") {
+            crate::word_claims::claim_words(&slice[..1]);
+        }
         return SubjectAst::Player(if slice.last() == Some(&"owner") {
             PlayerAst::ItsOwner
         } else {

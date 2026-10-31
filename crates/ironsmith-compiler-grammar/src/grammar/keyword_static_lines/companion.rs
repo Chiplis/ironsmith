@@ -19,6 +19,8 @@ pub fn parse_companion_deck_condition_tokens(
     // the sentence that matches completely names the constraint.
     for (index, shape) in CONDITION_SHAPES.iter().enumerate() {
         if crate::word_primitives::parse_sequence_complete(condition, shape) {
+            // The "Companion" keyword label the condition belongs to.
+            crate::word_claims::claim_words(&words[..start]);
             return Some(condition_for(index));
         }
     }

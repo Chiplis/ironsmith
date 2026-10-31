@@ -548,8 +548,12 @@ pub fn parse_get_for_each_count_value(
     // Parse the authored object phrase at the grammar boundary before the
     // broad value vocabulary is considered. This preserves punctuation and
     // subtype-list provenance without a downstream semantic repair pass.
-    let authored_filter =
-        crate::grammar::primitives::probe_shape(parse_object_filter(shape.target_tokens, false));
+    // A surface enrichment only: its reading counts only when the value
+    // below keeps it.
+    let (authored_filter, authored_probe) = crate::word_claims::speculative(|| {
+        crate::grammar::primitives::probe_shape(parse_object_filter(shape.target_tokens, false))
+    });
+    let authored_kept = std::cell::Cell::new(false);
     let words = LexedClause::new(tokens).word_refs();
     let Some((value, used)) = parse_for_each_count_value_words(&words) else {
         return Err(CardTextError::ParseError(
@@ -572,6 +576,7 @@ pub fn parse_get_for_each_count_value(
         // for "modified creatures you controlled as you cast this spell")
         // whenever the ordinary object-filter parse denotes a different set.
         if authored == original {
+            authored_kept.set(true);
             authored
         } else {
             original
@@ -584,6 +589,11 @@ pub fn parse_get_for_each_count_value(
         }
         other => other,
     };
+    if authored_kept.get() {
+        authored_probe.keep();
+    } else {
+        drop(authored_probe);
+    }
     Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)))
 }
 

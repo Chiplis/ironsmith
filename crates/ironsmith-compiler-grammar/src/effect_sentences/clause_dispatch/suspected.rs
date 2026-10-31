@@ -35,6 +35,10 @@ pub(super) fn parse_clear_suspected_clause(tokens: &[OwnedLexToken]) -> Result<O
     if matches!(target, TargetAst::Player(..) | TargetAst::PlayerOrPlaneswalker(..)) {
         return Err(CardTextError::ParseError("suspected designation requires an object subject".into()));
     }
+    // The copula (or the contracted "they're") and "no longer suspected"
+    // are the designation change itself.
+    let predicate_start = if contracted { positions[0] } else { positions[copula] };
+    crate::word_claims::claim_tokens(&tokens[predicate_start..]);
     Ok(Some(EffectAst::subject_verb_clear_suspected(Some(target))))
 }
 

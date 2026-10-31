@@ -225,6 +225,8 @@ fn parse_status_subject(
             crate::util::source_reference_surface_for_words_with_context(context, &words).is_some()
         })
     {
+        // The whole subject names the source ("it's", "this creature").
+        crate::word_claims::claim_tokens(tokens);
         return Some(StatusConditionSubjectAst::Source);
     }
 
@@ -245,6 +247,11 @@ fn parse_status_subject(
                         token.parser_word_pieces(),
                         [piece] if piece.text == "it" || piece.text == "its"
                     )
+                })
+                // "it's" spelled as one word piece: the source pronoun (and
+                // its copula) is read here.
+                .map(|token: &OwnedLexToken| {
+                    crate::word_claims::claim_tokens(std::slice::from_ref(token));
                 })
                 .void(),
             ))

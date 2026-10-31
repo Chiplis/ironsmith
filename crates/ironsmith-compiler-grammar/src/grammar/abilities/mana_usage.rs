@@ -939,6 +939,9 @@ fn parse_legacy_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestric
     if !grant_uncounterable && !TokenWordView::new(tail).is_empty() {
         return None;
     }
+    // The whole sentence is read: the spend prefix, the spell type, the
+    // chosen-type requirement and the uncounterable grant.
+    crate::word_claims::claim_tokens(tokens);
     Some(ManaUsageRestriction::CastSpell {
         card_types: vec![parsed.card_type],
         subtype_requirement,
@@ -1009,6 +1012,18 @@ fn parse_filter_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestric
         (filter != ObjectFilter::default() || spec_shape == ManaUsageSpecShape::PlainSpell)
             .then_some(filter)
     })?;
+    // The spend-only-to-cast prefix and the uncounterable grant are read
+    // here; the spell filter reads its own words.
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if let Some(prefix_end) = parse_any_prefix_word_count(&words, SPEND_MANA_CAST_PREFIXES) {
+        crate::word_claims::claim_words(&words[..prefix_end]);
+    }
+    if parsed.grant_uncounterable
+        && let Some(tail) = last_exact_suffix_offset(&words, UNCOUNTERABLE_TAILS)
+    {
+        crate::word_claims::claim_words(&words[tail..]);
+    }
     Some(ManaUsageRestriction::CastSpellMatching {
         filter,
         restrict_to_matching_spell: true,

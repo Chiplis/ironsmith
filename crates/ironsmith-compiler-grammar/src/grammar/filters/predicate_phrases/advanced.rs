@@ -308,6 +308,9 @@ fn parse_turn_history_intervening_predicate(
                 if used == amount.tokens().len()
                     && let Some(count) = comparison_to_at_least_threshold(&comparison)
                 {
+                    // Every word of the clause is read: the player, the cast
+                    // verb, the count, the spell noun and the turn window.
+                    crate::word_claims::claim_tokens(clause.tokens());
                     return Ok(Some(PredicateAst::TurnHistory(
                         TurnHistoryPredicateAst::SpellsCastLastTurnAtLeast(count),
                     )));
@@ -366,6 +369,8 @@ fn parse_turn_history_intervening_predicate(
             2 => TurnHistoryPredicateAst::SourceEnteredBattlefieldThisTurn { surface },
             _ => TurnHistoryPredicateAst::SourceAttackedThisTurn { surface },
         };
+        // The lifecycle verb phrase ("was kicked", "entered this turn").
+        crate::word_claims::claim_words(&words[words.len() - action.len()..]);
         return Ok(Some(PredicateAst::TurnHistory(predicate)));
     }
 
@@ -1791,6 +1796,7 @@ pub(super) fn parse_turn_timing_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
             rest,
             ["an", "opponents" | "opponent's", "turn"] | ["opponents" | "opponent's", "turn"]
         ) {
+            crate::word_claims::claim_tokens(tokens);
             return Some(PredicateAst::Not(Box::new(PredicateAst::YourTurn)));
         }
     }
@@ -1821,6 +1827,8 @@ pub(super) fn parse_turn_timing_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
     if !is_your_turn_clause(turn_clause) {
         return None;
     }
+    // The whole clause was matched: "[it's] [not] your turn".
+    crate::word_claims::claim_tokens(tokens);
     let predicate = PredicateAst::YourTurn;
     if matched.capture("negation").is_some() {
         Some(PredicateAst::Not(Box::new(predicate)))
@@ -2377,6 +2385,10 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
     };
     let mut reference = crate::cost::OptionalCostRef::from(label);
     if this_turn { reference = reference.this_turn(); }
+    // The label ("this spell's additional", "its {1}{U}") and the paid tail
+    // ("cost was [not] paid [this turn]") are each read whole above.
+    crate::word_claims::claim_words(&label_clause.word_refs());
+    crate::word_claims::claim_tokens(&tokens[tail_start..]);
     let predicate = PredicateAst::ThisSpellPaidLabel(reference);
     if negated {
         Some(PredicateAst::Not(Box::new(predicate)))
@@ -3307,7 +3319,10 @@ pub(super) fn parse_you_cast_source_from_shape(tokens: &[OwnedLexToken]) -> Opti
     }
     let origin_words = origin_clause.word_refs();
     let zone = if origin_words.len() == 2 && origin_words[0] == "your" {
-        parse_zone_word(origin_words[1])?
+        let zone = parse_zone_word(origin_words[1])?;
+        // "from your hand": the caster's own zone.
+        crate::word_claims::claim_words(&origin_words[..1]);
+        zone
     } else {
         spell_cast_origin_zone_clause(origin_clause)?
     };
@@ -3490,7 +3505,10 @@ pub(super) fn parse_this_spell_was_cast_from_shape(
     if pronoun_subject {
         let origin_words = origin_clause.word_refs();
         let zone = if origin_words.len() == 2 && origin_words[0] == "your" {
-            parse_zone_word(origin_words[1])?
+            let zone = parse_zone_word(origin_words[1])?;
+            // "from your hand": the caster's own zone.
+            crate::word_claims::claim_words(&origin_words[..1]);
+            zone
         } else {
             spell_cast_origin_zone_clause(origin_clause)?
         };
@@ -3509,7 +3527,10 @@ pub(super) fn parse_this_spell_was_cast_from_shape(
     // pronoun spelling above.
     let origin_words = origin_clause.word_refs();
     let zone = if origin_words.len() == 2 && origin_words[0] == "your" {
-        parse_zone_word(origin_words[1])?
+        let zone = parse_zone_word(origin_words[1])?;
+        // "from your hand": the caster's own zone.
+        crate::word_claims::claim_words(&origin_words[..1]);
+        zone
     } else {
         spell_cast_origin_zone_clause(origin_clause)?
     };
@@ -3543,6 +3564,8 @@ pub(super) fn parse_no_spells_cast_last_turn_shape(
     if !is_last_turn_clause(window_clause) {
         return None;
     }
+    // "no spells were cast last turn": every word is read.
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::TurnEvents(
         TurnEventPredicateAst::NoSpellsWereCastLastTurn,
     ))
@@ -3626,8 +3649,13 @@ pub(super) fn parse_this_spell_was_kicked_with_cost_shape(
         .mana_cost()
         .map(|cost| cost.to_oracle())
         .unwrap_or_else(|| compiler_cost.display());
-    (!cost_text.is_empty())
-        .then(|| PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}").into()))
+    if cost_text.is_empty() {
+        return None;
+    }
+    // "was kicked with its <cost> kicker": the verb phrase and the named cost.
+    crate::word_claims::claim_tokens(&tokens[was_idx..cost_start]);
+    crate::word_claims::claim_tokens(&tokens[kicker_idx..]);
+    Some(PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}").into()))
 }
 
 pub(super) fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3710,6 +3738,8 @@ fn parse_this_spell_was_cast_using_teamwork_shape(
         "impending" => "Impending",
         _ => return None,
     };
+    // The whole authored predicate is this exact shape.
+    crate::word_claims::claim_words(&words);
     let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
     Some(if negated {
         PredicateAst::Not(Box::new(predicate))
@@ -3747,6 +3777,8 @@ pub(super) fn parse_named_spell_label_action_shape(
     if !input.is_empty() {
         return None;
     }
+    // "the gift was promised": the whole condition is this label check.
+    crate::word_claims::claim_words(&words);
     let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
     if negated {
         Some(PredicateAst::Not(Box::new(predicate)))
@@ -3924,6 +3956,8 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
         }
         comparison_to_at_least_threshold(&comparison)?
     };
+    // "mana from <source>": the preposition names the spent mana's source.
+    crate::word_claims::claim_words(&words[mana_idx + 1..=mana_idx + 1]);
     Some(PredicateAst::ValueComparison {
         left: Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
@@ -4307,6 +4341,11 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     filter.set_additional_cost_object_surface(Some(
         ironsmith_core::AdditionalCostObjectSurface::new(cost_action, subject_kind),
     ));
+    // The cost verb ("sacrificed"/"exiled") and the permanent noun captures.
+    if let Some(action) = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause) {
+        crate::word_claims::claim_tokens(action.tokens());
+    }
+    crate::word_claims::claim_tokens(subject.tokens());
     Ok(Some(PredicateAst::TaggedMatchedLastKnown(
         crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
         filter,
@@ -4714,7 +4753,8 @@ pub(super) fn parse_tagged_historical_identity_shape(
     let action_phrases: &[&[&str]] = &[&["was"], &["were"]];
     let atoms = [
         WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(action_phrases)),
-        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        // The past-tense copula: a closed-vocabulary capture reads it.
+        WinnowSequence::action("action", WinnowCaptureKind::OneOfPhrase(action_phrases)),
         WinnowSequence::object("descriptor", WinnowCaptureKind::Rest),
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
@@ -4882,6 +4922,8 @@ pub(super) fn parse_player_cards_in_graveyard_predicate(
         return None;
     }
     let player_filter = player_filter_for_turn_value(player)?;
+    // The graveyard owner's possessive, checked against the subject above.
+    crate::word_claims::claim_tokens(possessive.tokens());
 
     Some(PredicateAst::ValueComparison {
         left: Value::CardsInGraveyard(player_filter),
@@ -4911,6 +4953,8 @@ pub(super) fn parse_quantified_objects_in_graveyard_predicate(
         .iter()
         .all(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
     {
+        // A bare "card(s)" counts every card in the graveyard.
+        crate::word_claims::claim_tokens(descriptor_tokens);
         Some(ObjectFilter::default())
     } else {
         crate::grammar::primitives::probe_shape(parse_object_filter(descriptor_tokens, false))
@@ -5606,6 +5650,8 @@ pub(super) fn parse_counted_source_exiled_objects_predicate(
         .iter()
         .all(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
     {
+        // The bare "cards" noun: any exiled card.
+        crate::word_claims::claim_tokens(object_tokens);
         ObjectFilter::default()
     } else {
         crate::grammar::primitives::probe_shape(parse_object_filter(object_tokens, false))?
@@ -5935,9 +5981,18 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
     if descriptor.tokens().is_empty() {
         return None;
     }
+    // "in" joins the descriptor to the graveyard location both readings use.
+    let claim_preposition = || {
+        if let Some(preposition) =
+            matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)
+        {
+            crate::word_claims::claim_tokens(preposition.tokens());
+        }
+    };
     // "there are fewer than six creature cards in your graveyard" (Shadowborn
     // Demon): a stated count, not "a creature card".
     if let Some(predicate) = parse_counted_cards_in_your_graveyard(descriptor.tokens()) {
+        claim_preposition();
         return Some(predicate);
     }
     let mut filter =
@@ -5960,6 +6015,7 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
             .or_else(|| parse_subtype_card_descriptor_clause(descriptor))?;
     filter.zone = Some(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
+    claim_preposition();
 
     Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
         player: PlayerAst::You,

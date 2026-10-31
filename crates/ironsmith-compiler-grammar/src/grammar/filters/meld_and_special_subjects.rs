@@ -200,6 +200,8 @@ pub(super) fn parse_graveyard_threshold_predicate(
     }
 
     let mut filter = if non_article_tokens_are_card_or_cards(&normalized_filter_tokens) {
+        // A bare "card(s)" counts every card in the graveyard.
+        crate::word_claims::claim_tokens(&normalized_filter_tokens);
         ObjectFilter::default()
     } else {
         let Ok(filter) = parse_object_filter(&normalized_filter_tokens, false) else {

@@ -365,6 +365,23 @@ impl LayerValueContext<'_, '_> {
         spec: &ChooseSpec,
         property: crate::effects::helpers::value_eval::NumericProperty,
     ) -> i32 {
+        // "the exiled card's mana value/power" on a static ability (Idris,
+        // Soul of the TARDIS; Phyrexian Ingester): the cards currently
+        // exiled with this source (CR 607.2a); several sum (CR 607.3), none
+        // is zero.
+        if let ChooseSpec::Tagged(tag) = spec.base()
+            && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        {
+            let game = self.calculation.game;
+            return game
+                .get_exiled_with_source_links(self.source)
+                .iter()
+                .filter(|id| {
+                    game.object(**id)
+                        .is_some_and(|object| object.zone == crate::zone::Zone::Exile)
+                })
+                .fold(0i32, |total, id| total.saturating_add(self.number_at(*id, property)));
+        }
         object_for_value_spec(spec, self.calculation, self.source)
             .map(|object| self.number_at(object.id, property))
             .unwrap_or(0)

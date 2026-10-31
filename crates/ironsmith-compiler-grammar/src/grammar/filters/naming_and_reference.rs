@@ -1231,7 +1231,11 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
     {
         filter.has_x_in_cost = true;
     }
-    if words.iter().any(|word| matches!(*word, crate::keyword_forms::KICKED | "kick")) {
+    if let Some(kicked) = words
+        .iter()
+        .find(|word| matches!(**word, crate::keyword_forms::KICKED | "kick"))
+    {
+        crate::word_claims::claim_word(kicked);
         filter.ability_markers.push(crate::keyword_forms::KICKED.to_string());
     }
     let mut idx = 0usize;
@@ -1243,6 +1247,23 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         }
 
         let word = words[idx];
+        // "instant or sorcery", "Cleric, Rogue, Warrior, or Wizard": a
+        // connective between two type atoms is the union the collected
+        // type lists match (any listed type).
+        if matches!(word, "or" | "and/or")
+            && idx > 0
+            && let Some(next) = words.get(idx + 1)
+        {
+            // Only like with like: card types and subtypes are separate
+            // lists, so a mixed pair would not be one union.
+            let prev = words[idx - 1];
+            let both_card_types = parse_card_type(prev).is_some() && parse_card_type(next).is_some();
+            let both_subtypes =
+                parse_subtype_flexible(prev).is_some() && parse_subtype_flexible(next).is_some();
+            if both_card_types || both_subtypes {
+                crate::word_claims::claim_word(word);
+            }
+        }
         // The multi-word "Time Lord" creature type is one subtype atom.
         if words.get(idx..idx + 2) == Some(&["time", "lord"][..]) {
             push_unique_filter_value(&mut filter.subtypes, Subtype::TimeLord);
@@ -1317,10 +1338,16 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         } else if let Some(subtype) = parse_subtype_flexible(word) {
             push_unique_filter_value(&mut filter.subtypes, subtype);
         }
+        // The head noun of a spell filter: this reading is the spell domain.
+        if matches!(word, "spell" | "spells") {
+            crate::word_claims::claim_word(word);
+        }
         if word == COLORLESS_WORD {
+            crate::word_claims::claim_word(word);
             filter.colorless = true;
         }
         if word == MULTICOLORED_WORD {
+            crate::word_claims::claim_word(word);
             filter.multicolored = true;
         }
         // "Commander spells you cast cost {1} less" (Myth Unbound, rewritten
@@ -1344,6 +1371,10 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
             "monocolored" => filter.monocolored = true,
             _ => {}
         }
+        // The spell noun this filter describes, and its plain qualifiers.
+        if matches!(word, "historic" | "nonhistoric" | "monocolored" | "spell" | "spells") {
+            crate::word_claims::claim_word(word);
+        }
         if let Some(color) = parse_color(word) {
             let existing = filter.colors.unwrap_or_default();
             filter.colors = Some(existing.union(color));
@@ -1353,7 +1384,19 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
 }
 
 pub(super) fn apply_spell_filter_chosen_type_reference(filter: &mut ObjectFilter, words: &[&str]) {
-    let has_phrase = |phrase: &[&str]| crate::word_primitives::sequence_occurs(words, phrase);
+    let has_phrase = |phrase: &[&str]| {
+        let Some(start) = crate::word_primitives::parse_sequence_start(words, phrase) else {
+            return false;
+        };
+        // "spells of the chosen type": the preposition attaches the choice.
+        if start >= 2 && words[start - 2] == "of" && words[start - 1] == "the" {
+            crate::word_claims::claim_words(&words[start - 2..start]);
+        } else if start >= 1 && words[start - 1] == "of" {
+            // The article may already be stripped from these words.
+            crate::word_claims::claim_words(&words[start - 1..start]);
+        }
+        true
+    };
 
     if has_phrase(&["chosen", "card", "type"]) {
         filter.chosen_card_type = true;

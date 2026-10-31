@@ -317,11 +317,15 @@ fn damage_source_choice_filter(tokens: &[OwnedLexToken]) -> Option<Option<Object
             && token_is_word(&window[2], "choice")
     })?;
 
+    // "of your choice" (and its "source" head noun) names the chooser of the
+    // damage source this shape builds.
+    crate::word_claims::claim_tokens(&tokens[choice_index..choice_index + 3]);
     let mut descriptor = tokens[..choice_index].to_vec();
     if descriptor
         .last()
         .is_some_and(|token| token_is_word(token, "source"))
     {
+        crate::word_claims::claim_tokens(&tokens[choice_index - 1..choice_index]);
         descriptor.pop();
     }
     descriptor.extend_from_slice(&tokens[choice_index + 3..]);

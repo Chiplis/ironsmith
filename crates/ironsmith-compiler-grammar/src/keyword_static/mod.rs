@@ -363,6 +363,8 @@ fn parse_enchant_attachment_restriction_line(
         return Ok(None);
     }
     let words = parser_token_word_refs(target_tokens);
+    // The keyword itself is read by the head check above.
+    crate::word_claims::claim_tokens(&tokens[..1]);
     let filter = if crate::word_primitives::parse_sequence_complete(&words, &["player"]) {
         crate::object::AuraAttachmentFilter::Player(crate::target::PlayerFilter::Any)
     } else if crate::word_primitives::parse_any_sequence_complete(
@@ -2150,8 +2152,10 @@ fn recognize_static_ability_ast_line_registry(
 
     for idx in candidate_indices {
         let rule = &rules[idx];
-        let (result, loss) = crate::parse_loss::capture(|| {
-            run_static_ability_ast_line_rule(rule.id, rule.parse, tokens)
+        let ((result, loss), registry_claims) = crate::word_claims::scoped(|| {
+            crate::parse_loss::capture(|| {
+                run_static_ability_ast_line_rule(rule.id, rule.parse, tokens)
+            })
         });
         match result {
             ParseOutcome::Match(matched) => {
@@ -2162,7 +2166,8 @@ fn recognize_static_ability_ast_line_registry(
                     ),
                     (matched.value, loss),
                     matched.span,
-                );
+                )
+                .with_claims(registry_claims);
                 // Multiple grammars may prove the same typed static fact.
                 // Exact AST and loss-report equality is an explicit semantic
                 // equivalence policy; different results remain ambiguous.
@@ -7715,7 +7720,10 @@ pub(crate) fn damage_multiplier_parts_from_shape(
             if !same {
                 return Ok(None);
             }
+            crate::word_claims::claim_words(&repeated);
         }
+        // The recipient words were read as a whole by the filter match above.
+        crate::word_claims::claim_words(&words);
         filters
     } else {
         if spec.repeated_target_tokens.is_some() {
@@ -7882,6 +7890,18 @@ fn damage_source_filter_from_shape(
 }
 
 fn parse_damage_amount_replacement_target_filters(
+    words: &[&str],
+) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
+    // Every arm below matches the whole recipient phrase exactly, so a
+    // recognized phrase was read word for word.
+    let filters = damage_amount_replacement_target_filters_exact(words)?;
+    if filters.0.is_some() || filters.1.is_some() {
+        crate::word_claims::claim_words(words);
+    }
+    Ok(filters)
+}
+
+fn damage_amount_replacement_target_filters_exact(
     words: &[&str],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
     let simple = strip_leading_word_refs_any(words, &["a", "an"]);
@@ -9049,6 +9069,42 @@ pub(crate) fn characteristic_pt_uses_named_subject_surface(tokens: &[OwnedLexTok
         })
 }
 
+/// "This token's power and toughness are each equal to ...": the source
+/// possessive subject and the "are (each)" copula around the shared value.
+/// Only an exact source possessive and copula are read.
+fn claim_characteristic_pt_subject_and_copula(tokens: &[OwnedLexToken]) {
+    let words = parser_token_word_refs(tokens);
+    let Some(pt) = words
+        .windows(3)
+        .position(|window| window == ["power", "and", "toughness"])
+    else {
+        return;
+    };
+    let Some(equal) = words[pt + 3..]
+        .windows(2)
+        .position(|window| window == ["equal", "to"])
+        .map(|offset| pt + 3 + offset)
+    else {
+        return;
+    };
+    let subject = &words[..pt];
+    let source_possessive = match subject {
+        ["its"] => true,
+        ["this", noun] => noun.ends_with("'s") || noun.ends_with('s'),
+        ["this", noun, "s"] => !noun.is_empty(),
+        _ => false,
+    };
+    if source_possessive {
+        crate::word_claims::claim_words(subject);
+    }
+    if matches!(
+        &words[pt + 3..equal],
+        ["are"] | ["are", "each"] | ["is"] | ["is", "each"] | ["each"]
+    ) {
+        crate::word_claims::claim_words(&words[pt + 3..equal]);
+    }
+}
+
 pub fn parse_characteristic_defining_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -9112,6 +9168,7 @@ pub fn parse_characteristic_defining_pt_line(
             ))
         })?;
         let value = preserve_subject(value);
+        claim_characteristic_pt_subject_and_copula(&sentence_tokens);
         return Ok(Some(StaticAbility::characteristic_defining_pt(
             value.clone(),
             value,
@@ -9680,11 +9737,23 @@ pub fn parse_spell_cost_increase_per_target_beyond_first_line(
     let search_tokens = &tokens[line_start..];
     let costs_idx = cost_head.costs.token.saturating_sub(line_start);
     let amount_tokens = &search_tokens[costs_idx + 1..];
+    // The per-extra-target surcharge is strive's rule (CR 702.111): its
+    // "Strive" label and the "to cast" of the cast cost are read here.
+    let claim_strive_surface = || {
+        if crate::lexer::token_word_refs(&tokens[..line_start]) == ["strive"] {
+            crate::word_claims::claim_tokens(&tokens[..line_start]);
+        }
+        let _ = crate::word_primitives::parse_sequence_start(
+            &crate::lexer::token_word_refs(amount_tokens),
+            &["to", "cast"],
+        );
+    };
     if let Some((cost, used)) = parse_cost_modifier_mana_cost(amount_tokens)
         && keyword_static_lines::parse_more_cost_tail_prefix_tokens(
             amount_tokens.get(used..).unwrap_or_default(),
         )
     {
+        claim_strive_surface();
         return Ok(Some(
             StaticAbility::cost_increase_mana_cost_per_target_beyond_first(cost),
         ));
@@ -9697,6 +9766,7 @@ pub fn parse_spell_cost_increase_per_target_beyond_first_line(
         1
     };
 
+    claim_strive_surface();
     Ok(Some(StaticAbility::cost_increase_per_target_beyond_first(
         amount,
     )))
@@ -9771,6 +9841,11 @@ pub fn parse_if_this_spell_costs_less_to_cast_line_lexed(
         || static_mid_facts::parse_cast_marker_fact(remaining_tokens).is_none()
     {
         return Ok(None);
+    }
+    // The exact "less to cast" tail is this reduction's direction and the
+    // casting it applies to.
+    if remaining_words == ["less", "to", "cast"] {
+        crate::word_claims::claim_tokens(remaining_tokens);
     }
 
     if let Some((reduction, _)) = parsed_mana_cost {

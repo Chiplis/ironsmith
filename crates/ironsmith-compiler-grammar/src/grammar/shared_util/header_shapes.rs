@@ -50,6 +50,11 @@ pub fn parse_saga_chapter_header_tokens(
         .presentation_label_tokens
         .map(render_token_slice)
         .map(|label| label.trim().to_string());
+    if chapters.is_empty() || body_shape.body_tokens.is_empty() {
+        return None;
+    }
+    // The roman numerals are the chapter numbers this header returns.
+    crate::word_claims::claim_tokens(&tokens[..tokens.len() - rest_tokens.len()]);
     (!chapters.is_empty() && !body_shape.body_tokens.is_empty()).then_some(
         SagaChapterHeaderTokens {
             chapters,
@@ -128,8 +133,20 @@ pub fn parse_level_header_tokens(tokens: &[OwnedLexToken]) -> Option<LevelHeader
     let words = TokenWordView::new(tokens);
     let range_start = words.token_index_after_words(1)?;
     let range_tokens = tokens.get(range_start..)?;
-    parse_level_header_range_tokens(range_tokens)
-        .or_else(|| words.get(1).and_then(parse_level_header_range_word))
+    if let Some(header) = parse_level_header_range_tokens(range_tokens) {
+        // The range's number, "+", or "-<number>" tokens.
+        let used = match range_tokens.get(1).map(|token| token.kind) {
+            Some(TokenKind::Plus) => 2,
+            Some(TokenKind::Dash) => 3,
+            _ => 1,
+        };
+        crate::word_claims::claim_tokens(&range_tokens[..used.min(range_tokens.len())]);
+        return Some(header);
+    }
+    let word_refs = words.word_refs();
+    let header = word_refs.get(1).and_then(|word| parse_level_header_range_word(word))?;
+    crate::word_claims::claim_words(&word_refs[1..2]);
+    Some(header)
 }
 
 fn parse_saga_prefix<'a>(input: &mut LexStream<'a>) -> WResult<Vec<u32>> {

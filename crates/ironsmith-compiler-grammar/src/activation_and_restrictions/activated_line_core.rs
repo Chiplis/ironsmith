@@ -1057,7 +1057,19 @@ pub fn parse_enters_tapped_line(
         EntersTappedLineShape::NoMatch
         | EntersTappedLineShape::NegatedUntap
         | EntersTappedLineShape::AttackingVariant => Ok(None),
-        EntersTappedLineShape::EntersTapped => Ok(Some(StaticAbility::enters_tapped_ability())),
+        EntersTappedLineShape::EntersTapped => {
+            // "This <type> enters tapped.": the source subject, its entry
+            // and the tapped status. Only an exact source subject is read;
+            // other words between "this" and "enters" stay unread.
+            let words = crate::lexer::token_word_refs(tokens);
+            if let [subject @ .., "enters", "tapped"] = words.as_slice()
+                && (subject == ["this"]
+                    || crate::util::this_source_surface_for_words(subject).is_some())
+            {
+                crate::word_claims::claim_words(&words);
+            }
+            Ok(Some(StaticAbility::enters_tapped_ability()))
+        }
         EntersTappedLineShape::MixedNegatedUntap => Err(CardTextError::ParseError(format!(
             "unsupported mixed enters-tapped and negated-untap clause (clause: '{clause}')"
         ))),
@@ -1416,8 +1428,7 @@ pub fn scale_dynamic_cost_modifier_value(dynamic: Value, multiplier: i32) -> Val
 pub fn parse_all_creatures_able_to_block_source_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let words_storage = normalize_cant_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
+    let words = normalize_cant_word_refs(tokens);
     if activated_line_grammar::parse_activated_block_requirement_words(&words)
         == Some(ActivatedBlockRequirement::AllCreaturesBlockSource)
     {
@@ -1435,8 +1446,7 @@ pub fn parse_all_creatures_able_to_block_source_line(
 pub fn parse_source_must_be_blocked_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words_storage = normalize_cant_words(tokens);
-    let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
+    let words = normalize_cant_word_refs(tokens);
     if activated_line_grammar::parse_activated_block_requirement_words(&words)
         == Some(ActivatedBlockRequirement::SourceMustBeBlocked)
     {

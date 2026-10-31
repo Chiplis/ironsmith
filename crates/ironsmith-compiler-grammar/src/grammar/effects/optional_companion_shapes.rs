@@ -19,6 +19,7 @@ pub struct SharedSubjectOptionalCompanionShape<'a> {
 pub enum LeadingOptionalCompanionVerb {
     Destroy,
     Tap,
+    Untap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +126,9 @@ pub fn parse_leading_optional_companion_shape(
     let (verb, body) = match tokens.first().and_then(word) {
         Some("destroy") => (LeadingOptionalCompanionVerb::Destroy, &tokens[1..]),
         Some("tap") => (LeadingOptionalCompanionVerb::Tap, &tokens[1..]),
+        // "Untap up to one target creature and up to one target land" (Kiora,
+        // Master of the Depths): two independently counted target slots.
+        Some("untap") => (LeadingOptionalCompanionVerb::Untap, &tokens[1..]),
         _ => return None,
     };
     let separator = optional_companion_separator(body)?;
@@ -145,6 +149,10 @@ pub fn parse_leading_optional_companion_shape(
     {
         return None;
     }
+    // The verb is re-stated synthetically for each branch, and the "and"
+    // joins the two target slots: both are read by this coordination.
+    crate::word_claims::claim_tokens(&tokens[..1]);
+    crate::word_claims::claim_tokens(&body[separator..separator + 1]);
     Some(LeadingOptionalCompanionShape {
         verb,
         first_target_tokens,

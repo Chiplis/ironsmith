@@ -482,8 +482,19 @@ fn each_player_exile_top_cast_uses_captured_exile_and_cast_clauses() {
 
 #[test]
 fn zone_replacement_uses_captured_condition_and_replacement_clauses() {
-    for text in [
+    // The program carries no object filter, so only "a card" (any card) is
+    // read; a tagged "that card" must not be widened to every card.
+    let tagged = crate::lexer::lex_line(
         "If that card would be put into your graveyard this turn, exile that card instead.",
+        0,
+    )
+    .expect("tagged replacement text should lex");
+    assert!(
+        parse_zone_replacement_subject_verb(&tagged)
+            .expect("zone replacement parser should not error")
+            .is_none()
+    );
+    for text in [
         "If a card would be put into your graveyard from anywhere this turn, exile that card instead.",
     ] {
         let tokens = crate::lexer::lex_line(text, 0)

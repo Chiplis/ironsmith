@@ -94,8 +94,8 @@ pub fn parse_condition_predicate_lexed_with_context(
 pub(super) use reference_tag_stage::*;
 
 pub use counter_constraints::{
-    intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_word,
-    parse_counter_type_words, parse_filter_counter_constraint_words,
+    intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_lex_token,
+    parse_counter_type_word, parse_counter_type_words, parse_filter_counter_constraint_words,
     preserve_filter_counter_constraint_surface_tokens,
     preserve_filter_counter_constraint_surface_words,
 };

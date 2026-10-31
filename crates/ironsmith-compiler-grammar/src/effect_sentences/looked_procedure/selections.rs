@@ -119,6 +119,14 @@ fn hand_selection(
         )));
     };
     filter.zone = Some(Zone::Library);
+    // "... from among them and put it into your hand": the selection's
+    // destination, read here (the filter reads its own words).
+    if to_battlefield.is_none() {
+        let tail = &action_tokens[shape.filter.end..];
+        if let Some(hand) = tail.iter().position(|token| token.as_word() == Some("hand")) {
+            crate::word_claims::claim_tokens(&tail[..=hand]);
+        }
+    }
     Ok(Some(HandSelection {
         chooser: leading_may_actor_to_player(action.actor, owner),
         count,

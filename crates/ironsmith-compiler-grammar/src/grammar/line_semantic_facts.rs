@@ -296,7 +296,7 @@ fn parse_keyword_line_identity(tokens: &[OwnedLexToken]) -> Option<&'static str>
         let keyword = crate::keyword_forms::official_keyword_ability(&leading[..len])?;
         let parameter = leading.get(len).is_none_or(|next| {
             matches!(*next, "from" | "for" | "with" | "a" | "an" | "x")
-                || crate::util::parse_number_word_u32(next).is_some()
+                || crate::util::is_number_word(next)
         });
         parameter.then_some(keyword)
     })
@@ -319,7 +319,11 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
 ) -> LineSemanticFacts {
     let static_cost = lowering_surfaces::parse_this_spell_cost_surface_tokens(tokens);
     let trigger_zones = functional_zones::parse_trigger_functional_zone_facts_tokens(tokens);
-    let trigger_frequency = trigger_surface::parse_trigger_frequency_tokens(tokens);
+    // Line facts for every line: a lookup, not a reading. The trigger line's
+    // frequency suffix is read where the document parser strips it.
+    let trigger_frequency = crate::word_claims::probe_only(|| {
+        trigger_surface::parse_trigger_frequency_tokens(tokens)
+    });
 
     LineSemanticFacts {
         ability_cant_be_countered: super::ability_stack_rules::remove_cant_be_countered_instruction(tokens).is_some(),

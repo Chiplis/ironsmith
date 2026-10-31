@@ -1287,6 +1287,10 @@ fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option
 }
 
 pub fn validate_life_keyword(rest: &[OwnedLexToken]) -> Result<(), CardTextError> {
+    // The amount's unit noun ("X life"); `is_word` claims it.
+    if rest.first().is_some_and(|token| token.is_word(LIFE_WORD)) {
+        return Ok(());
+    }
     if rest
         .first()
         .and_then(OwnedLexToken::as_word)

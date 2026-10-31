@@ -580,6 +580,13 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         )));
     }
 
+    // "once", "twice" and "again" are the repetition count read above.
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["once", "again", "twice"]))
+    {
+        crate::word_claims::claim_tokens(&tokens[..1]);
+    }
     Ok(EffectAst::subject_verb_proliferate(count))
 }
 

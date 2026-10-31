@@ -527,6 +527,8 @@ fn parse_named_player_counter_count(
         clause_words.first().copied(),
         Some("a" | "an" | "another" | "one")
     ) {
+        // The singular article is the count.
+        crate::word_claims::claim_words(&clause_words[..1]);
         return Ok(Value::Fixed(1));
     }
     Ok(parse_value(tokens)
@@ -996,6 +998,18 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "untap clause missing target".to_string(),
+        ));
+    }
+    // "untap up to one target creature and up to one target land" names two
+    // independently counted target slots (the optional-companion fanout's).
+    // One target phrase would fold them into a single "creature or land"
+    // choice.
+    let words: Vec<&str> = tokens.iter().filter_map(OwnedLexToken::as_word).collect();
+    if words.windows(3).any(|window| window == ["and", "up", "to"])
+        && words.iter().filter(|word| **word == "target").count() == 2
+    {
+        return Err(CardTextError::ParseError(
+            "untap of two independently counted target slots".to_string(),
         ));
     }
     if let Some(choice) = parse_inline_creature_type_choice_tokens(tokens) {

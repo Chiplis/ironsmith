@@ -345,6 +345,24 @@ impl ZoneMovementInstruction for ExileEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(SelectedZoneMovement::Finished(EffectOutcome::count(0)));
         }
+        // "Exile that many cards from your graveyard instead. If you can't,
+        // you lose the game." (Nefarious Lich): exiling fewer than an exact
+        // dynamic count isn't doing what the instruction says (CR 608.2c), so
+        // a result gate sees it as not having happened, as for an incomplete
+        // sacrifice, though every card that could be exiled still is.
+        let count = self.spec.count();
+        let incomplete = if !self.spec.is_target() && count.dynamic_x && !count.up_to_x {
+            match self.spec.count_value() {
+                Some(value) => {
+                    let required =
+                        crate::effects::helpers::resolve_value(game, value, ctx)?.max(0) as usize;
+                    objects.len() < required
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
         let snapshots = objects
             .iter()
             .filter_map(|id| {
@@ -484,6 +502,11 @@ impl ZoneMovementInstruction for ExileEffect {
                     }
                 } else {
                     EffectOutcome::count(originals.len() as i32)
+                };
+                let outcome = if incomplete {
+                    outcome.with_execution_fact(crate::effect::ExecutionFact::Impossible)
+                } else {
+                    outcome
                 };
                 Ok(outcome
                     .with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveCards(original_arrivals))

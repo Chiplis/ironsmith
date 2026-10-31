@@ -20,6 +20,9 @@ pub fn parse_activation_restriction_tokens(
     let words = crate::lexer::parser_token_word_refs(tokens);
     if words.len() == 5 && words.ends_with(&["only", "as", "a", "sorcery"]) {
         let synthetic = crate::lexer::synthetic_word_tokens(["activate", "only", "as", "a", "sorcery"]);
+        // The synthetic sentence carries no authored spans: the authored
+        // "<activation verb> only as a sorcery" is what this reading reads.
+        crate::word_claims::claim_tokens(tokens);
         return Some(parse_activation_restriction_surface_tokens(&synthetic));
     }
     if matches!(words.as_slice(), ["activate", "only", "if", "this", "equipment" | "permanent", "is", "attached", "to", "a", "creature"]) {

@@ -94,6 +94,14 @@ fn origin(words: &[&str]) -> Option<ZoneOrigin> {
 }
 
 pub fn parse_zone_change_surface(words: &[&str]) -> Option<ZoneChangeSurface> {
+    // The movement, its zones and possessors, and the turn qualifier are read
+    // whole; the subject is left to the object-filter reader.
+    let surface = zone_change_surface(words)?;
+    crate::word_claims::claim_words(&words[surface.subject_word_end..]);
+    Some(surface)
+}
+
+fn zone_change_surface(words: &[&str]) -> Option<ZoneChangeSurface> {
     let (words, during_turn) = if let Some(rest) = words.strip_suffix(&["during", "your", "turn"]) {
         (rest, Some(PlayerFilter::You))
     } else if let Some(rest) = words

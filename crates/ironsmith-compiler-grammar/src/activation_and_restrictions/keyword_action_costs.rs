@@ -329,6 +329,12 @@ pub fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
     parse_normalized_keyword_words_tokens(tokens).words
 }
 
+/// [`normalize_cant_words`] borrowing each unchanged word from `tokens`, so a
+/// reader of the normalized words can claim the words it interprets.
+pub fn normalize_cant_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::grammar::keyword_action_costs::parse_normalized_keyword_word_refs_tokens(tokens)
+}
+
 pub fn keyword_title(keyword: &str) -> String {
     let mut out = String::new();
     let mut saw_word = false;

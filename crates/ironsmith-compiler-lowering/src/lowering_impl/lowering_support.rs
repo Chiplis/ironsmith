@@ -373,6 +373,43 @@ fn object_filter_has_single_tag_reference(filter: &ObjectFilter, tag: &crate::ta
         })
 }
 
+/// The lowered "sacrifice ... when you lose control of this creature" the
+/// grammar reads (a one-shot `SourceControllerLosesControl` schedule).
+fn is_source_control_loss_schedule(effect: &Effect) -> bool {
+    effect
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .is_some_and(|schedule| {
+            schedule.one_shot
+                && matches!(
+                    schedule.trigger,
+                    ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl { .. }
+                )
+        })
+}
+
+/// "When you lose control of this creature, sacrifice it", watching the
+/// ability's source and sacrificing the object tagged `tag`.
+fn source_control_loss_sacrifice_schedule(
+    tag: crate::tag::TagKey,
+) -> crate::effects::ScheduleDelayedTriggerEffect {
+    let delayed_sacrifice = Effect::sacrifice_player(
+        ObjectFilter::tagged(tag.clone()),
+        Value::Fixed(1),
+        PlayerFilter::You,
+    );
+    crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+        tag,
+        ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
+            source_description: "this creature".to_string(),
+        },
+        vec![delayed_sacrifice],
+        true,
+        Vec::new(),
+        PlayerFilter::You,
+    )
+    .watch_ability_source()
+}
+
 fn fuse_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) -> bool {
     let Some(first_segment) = lowered.effects.segments.first() else {
         return false;
@@ -413,6 +450,48 @@ fn fuse_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffe
         || !matches!(returned.target.base(), ChooseSpec::Tagged(tag) if tag == &triggering_tag)
     {
         return false;
+    }
+
+    // The grammar's own reading of "Sacrifice it when you lose control of
+    // this creature": a control-loss schedule right after the delayed return
+    // (in the next segment, or inline). It moves inside the return so it
+    // watches, and sacrifices, the object that return puts onto the
+    // battlefield.
+    let control_loss_followup = if first_segment.default_effects.len() == 2 {
+        lowered
+            .effects
+            .segments
+            .get(1)
+            .filter(|followup| {
+                followup.self_replacements.is_empty()
+                    && followup.default_effects.len() == 1
+                    && is_source_control_loss_schedule(&followup.default_effects[0])
+            })
+            .map(|_| true)
+    } else if first_segment.default_effects.len() == 3
+        && is_source_control_loss_schedule(&first_segment.default_effects[2])
+    {
+        Some(false)
+    } else {
+        None
+    };
+    if let Some(split) = control_loss_followup {
+        let returned_tag = crate::tag::CompilerReferenceTag::ReturnedControlLoss.bind();
+        let tagged_return = Effect::new(crate::effects::TaggedEffect::new(
+            returned_tag.clone(),
+            Effect::new(returned),
+        ));
+        let control_loss_schedule =
+            source_control_loss_sacrifice_schedule(returned_tag.key.clone());
+        let mut rewritten_end_step = end_step_schedule;
+        rewritten_end_step.effects = vec![tagged_return, Effect::new(control_loss_schedule)];
+        lowered.effects.segments[0].default_effects[1] = Effect::new(rewritten_end_step);
+        if split {
+            lowered.effects.segments.remove(1);
+        } else {
+            lowered.effects.segments[0].default_effects.truncate(2);
+        }
+        return true;
     }
 
     let split_followup_segment = if first_segment.default_effects.len() == 2 {
@@ -590,8 +669,58 @@ fn fuse_delayed_return_characteristics_followup(lowered: &mut LoweredEffects) {
     lowered.effects.replace_segments(segments);
 }
 
+/// "put that card onto the battlefield under your control. Sacrifice it when
+/// you lose control of this creature" (Krovikan Vampire): the grammar's
+/// control-loss schedule after an immediate tagged return watches, and
+/// sacrifices, the returned object.
+fn fuse_immediate_return_control_loss_schedule(lowered: &mut LoweredEffects) -> bool {
+    let Some(first_segment) = lowered.effects.segments.first() else {
+        return false;
+    };
+    if !first_segment.self_replacements.is_empty() {
+        return false;
+    }
+    let Some((move_index, moved_tag)) =
+        first_segment.default_effects.iter().enumerate().find_map(|(index, effect)| {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            let moved = tagged.effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            (moved.zone == Zone::Battlefield
+                && moved.battlefield_controller == crate::effects::BattlefieldController::You)
+                .then(|| (index, tagged.tag.clone()))
+        })
+    else {
+        return false;
+    };
+    let inline = first_segment
+        .default_effects
+        .get(move_index + 1)
+        .is_some_and(is_source_control_loss_schedule)
+        && first_segment.default_effects.len() == move_index + 2;
+    let split = !inline
+        && first_segment.default_effects.len() == move_index + 1
+        && lowered.effects.segments.get(1).is_some_and(|followup| {
+            followup.self_replacements.is_empty()
+                && followup.default_effects.len() == 1
+                && is_source_control_loss_schedule(&followup.default_effects[0])
+        });
+    if !inline && !split {
+        return false;
+    }
+    let schedule = Effect::new(source_control_loss_sacrifice_schedule(moved_tag));
+    if inline {
+        lowered.effects.segments[0].default_effects[move_index + 1] = schedule;
+    } else {
+        lowered.effects.segments[0].default_effects.push(schedule);
+        lowered.effects.segments.remove(1);
+    }
+    true
+}
+
 fn fuse_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) {
     if fuse_delayed_return_control_loss_sacrifice_followup(lowered) {
+        return;
+    }
+    if fuse_immediate_return_control_loss_schedule(lowered) {
         return;
     }
     let split_followup_segment = match lowered.effects.segments.as_slice() {

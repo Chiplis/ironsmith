@@ -1420,11 +1420,15 @@ pub fn parse_become_clause(
         if let Some(words) = become_words.strip_suffix(tail)
             && let Some(colors) = become_grammar::parse_become_color_words(words)
         {
+            // The color words and the addition tail are this whole reading.
+            crate::word_claims::claim_words(become_words);
             return Ok(EffectAst::subject_verb_add_colors(target, colors, duration));
         }
     }
 
     if let Some(colors) = become_grammar::parse_become_color_words(become_words) {
+        // "all colors", "colorless", or a color list: the whole descriptor.
+        crate::word_claims::claim_words(become_words);
         return Ok(EffectAst::subject_verb_set_colors(target, colors, duration));
     }
 

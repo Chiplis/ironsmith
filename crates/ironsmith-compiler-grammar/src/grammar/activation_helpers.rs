@@ -51,6 +51,9 @@ impl AddManaChoiceKind {
 #[derive(Debug, Clone, Copy)]
 pub struct AddManaChoiceClause<'a> {
     pub kind: AddManaChoiceKind,
+    /// The choice phrase itself ("any one color"), for the reader that
+    /// keeps this choice to claim.
+    pub phrase_tokens: &'a [OwnedLexToken],
     pub tail_tokens: &'a [OwnedLexToken],
 }
 
@@ -193,6 +196,8 @@ pub fn classify_fixed_mana_tail(tokens: &[OwnedLexToken]) -> FixedManaTailKind {
             MANA_CHOICE_TAIL_WORDS,
         )
     {
+        // "or one mana of the chosen color" names the alternative output.
+        crate::word_claims::claim_words(&words[..CHOSEN_COLOR_MANA_TAIL_PREFIX.len()]);
         return FixedManaTailKind::ChosenColor;
     }
     if words_are_allowed(&words, MANA_CHOICE_TAIL_WORDS) {
@@ -357,6 +362,17 @@ pub fn parse_any_combination_mana_colors(
     if colors.is_empty() {
         return Err(AnyCombinationManaError::MissingColors);
     }
+    // "[mana in] any combination of <colors>", up to a "where" clause.
+    let mut read_end = words.len() - input.len();
+    if read_end > offset + 3 && words[read_end - 1] == "where" {
+        read_end -= 1;
+    }
+    let read_start = if offset >= 2 && words[offset - 2..offset] == ["mana", "in"] {
+        offset - 2
+    } else {
+        offset
+    };
+    crate::word_claims::claim_words(&words[read_start..read_end]);
     Ok(Some(colors))
 }
 
@@ -466,8 +482,14 @@ fn parse_add_mana_choice_clause<'a>(
     }
     let (offset, length, kind) = best?;
     let tail_start = view.token_index_after_words(offset + length)?;
+    // "mana of any color": the linking "of" belongs to the choice phrase.
+    let phrase_start = match offset.checked_sub(1) {
+        Some(of) if words.get(of) == Some(&"of") => view.map_word_to_token_start(of)?,
+        _ => view.map_word_to_token_start(offset)?,
+    };
     Some(AddManaChoiceClause {
         kind,
+        phrase_tokens: &tokens[phrase_start..tail_start],
         tail_tokens: trim_leading_commas(&tokens[tail_start..]),
     })
 }

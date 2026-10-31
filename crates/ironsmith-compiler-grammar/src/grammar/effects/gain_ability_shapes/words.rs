@@ -97,6 +97,14 @@ enum VerbSearch {
 /// This is source-order recognition within one rule, not registry dispatch:
 /// the caller has already selected the gain-ability grammar family.
 fn earliest_lexical_verb(words: &[&str], search: VerbSearch) -> Option<(usize, GainAbilityVerb)> {
+    // A locator: the reading built at this position reads the verb itself.
+    crate::word_claims::probe_only(|| earliest_lexical_verb_probe(words, search))
+}
+
+fn earliest_lexical_verb_probe(
+    words: &[&str],
+    search: VerbSearch,
+) -> Option<(usize, GainAbilityVerb)> {
     let mut offset = 0usize;
     while offset < words.len() {
         let mut input = &words[offset..];

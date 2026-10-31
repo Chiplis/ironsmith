@@ -4938,7 +4938,16 @@ pub fn parse_anthem_clause(
         .unwrap_or(tail_tokens);
     let mut explicit_values = None;
     let (raw_power, raw_toughness) = match parse_pt_modifier_values(modifier_token) {
-        Ok(values) => values,
+        Ok(values) => {
+            // Callers hand over rebuilt token copies whose words are not
+            // registered, so claim the modifier token by span.
+            crate::word_claims::claim_tokens(
+                tokens
+                    .get(modifier_shape.modifier_token..modifier_shape.modifier_token + 1)
+                    .unwrap_or_default(),
+            );
+            values
+        }
         Err(_) => {
             if let Some(values) = parse_dynamic_xy_anthem_values(modifier_token, anthem_tail_tokens)
             {

@@ -16,6 +16,11 @@ pub fn parse_sacrifice_object_shape(tokens: &[OwnedLexToken]) -> SacrificeObject
     } else {
         None
     };
+    if tagged_reference.is_some() {
+        // The whole object phrase is the back-reference ("it", "that token",
+        // "one of them", "those creatures").
+        crate::word_claims::claim_words(&words);
+    }
     SacrificeObjectShape {
         filter_tokens,
         tagged_reference,

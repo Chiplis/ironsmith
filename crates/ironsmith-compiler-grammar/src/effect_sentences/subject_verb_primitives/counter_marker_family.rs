@@ -374,6 +374,25 @@ fn lower_counter_placements(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let mut effects = Vec::with_capacity(placements.len());
     for placement in placements {
+        if let Some(joiner) = placement.recipient_joiner {
+            // "on him and up to one target God": the recipients' "and".
+            crate::word_claims::claim_tokens(std::slice::from_ref(joiner));
+        }
+        // "him"/"her" is the card's personal pronoun for itself (Beta Ray
+        // Bill), the same source reference "this creature" is.
+        if let [pronoun] = placement.target_tokens
+            && matches!(pronoun.as_word(), Some("him" | "her"))
+        {
+            crate::word_claims::claim_tokens(placement.target_tokens);
+            effects.push(EffectAst::subject_verb_put_counters(
+                placement.descriptor.counter_type,
+                Value::Fixed(placement.descriptor.count as i32),
+                TargetAst::Source(None),
+                None,
+                false,
+            ));
+            continue;
+        }
         if let Some(filter_tokens) =
             zone_counter_shapes::strip_each_counter_prefix(placement.target_tokens)
             && parse_counter_target_count_prefix(placement.target_tokens)?.is_none()
