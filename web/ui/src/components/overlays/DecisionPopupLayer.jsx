@@ -1,5 +1,9 @@
+import TriggerMatchingControl from '@/components/decisions/TriggerMatchingControl';
+import { currentPriorityPhaseLabel } from "@/lib/constants";
+import { priorityStepKey } from "@/lib/priority-stops";
+import { resolvableTriggerGroup } from '@/lib/resolve-group.js';
+import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import { animateEffect as animate } from "@/lib/motion/native-effects";
-import { selectedPriorityAdvanceLabel } from '@/lib/priority-stops';
 import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
 import { LoopShortcutButton } from "@/components/decisions/LoopShortcutControls";
 import useUiText from "@/i18n/useUiText";
@@ -1442,6 +1446,7 @@ function MobileDecisionDock({
                 ) : null}
               </>
             )}
+            <PriorityShortcutHint number="1" />
           </Button>          )}
 
         </PeerWaitPopover>
@@ -1643,8 +1648,6 @@ function MobileBattleDecisionLayer({
     dispatch,
     cancelDecision,
     effectOrderingState,
-    priorityStops,
-    phasePassing,
     startPhaseAdvance,
   } = useGame();
   const {
@@ -1770,7 +1773,7 @@ function MobileBattleDecisionLayer({
         ? "Resolve"
         : hasCustomPassLabel
           ? passAction.label
-          : selectedPriorityAdvanceLabel(state, priorityStops, phasePassing, t)
+          : "Pass priority"
     )
     : passAdvanceLabel;
   const objectNameById = useMemo(
@@ -2488,8 +2491,7 @@ function PriorityBar({
     multiplayer,
     playerAccentOverrides,
     startResolveAll,
-    priorityStops,
-    phasePassing,
+    startResolveGroup,
     startPhaseAdvance,
     postActionPriorityWindow,
   } = useGame();
@@ -2544,6 +2546,8 @@ function PriorityBar({
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
   const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
   const passControlAdvanceLabel = "";
+  const resolveGroup = resolvableTriggerGroup(state);
+  const resolveBatchLabel = resolveGroup ? "Resolve group" : "Resolve all";
   // A deep stack splits the main button into Resolve / Resolve all, laid out
   // like the opening hand's Keep hand / Mulligan pair.
   const showResolveAllButton = showPriorityAdvanceButton
@@ -2556,8 +2560,11 @@ function PriorityBar({
     : (
       hasCustomPassLabel
         ? passAction.label
-        : selectedPriorityAdvanceLabel(state, priorityStops, phasePassing, t)
+        : "Pass priority"
     );
+  const passPhaseLabel = passCurrentLabel === "Pass priority"
+    ? currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t)
+    : "";
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
     [state?.players]
@@ -2733,8 +2740,8 @@ function PriorityBar({
     if (peerWaitLocked || !canAct || !passAction) return;
     dispatchHandActionHover(null);
     clearHover();
-    startResolveAll();
-  }, [canAct, clearHover, passAction, peerWaitLocked, startResolveAll]);
+    if (resolveGroup) startResolveGroup(); else startResolveAll();
+  }, [canAct, clearHover, passAction, peerWaitLocked, startResolveAll, startResolveGroup, resolveGroup]);
   const handleActionHoverStart = useCallback(
     (group) => {
       if (!canAct || !group) return;
@@ -2912,6 +2919,7 @@ function PriorityBar({
           ) : (
             <SymbolText text={showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
           )}
+          <PriorityShortcutHint number="1" />
         </Button>
       </PeerWaitPopover>
     ) : null
@@ -3008,6 +3016,7 @@ function PriorityBar({
         <div className="priority-inline-panel priority-inline-panel--segmented priority-inline-panel--main-only pointer-events-auto relative flex h-full w-full">
           {canCancelDecision ? <div className="combat-floating-hint">{renderCancelControl()}</div> : null}
           <div className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2">
+            <TriggerMatchingControl canAct={canAct} />
             <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
               <div className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
                 {renderExpandedPrimaryControl(false, true)}
@@ -3099,6 +3108,7 @@ function PriorityBar({
                         }}
                       >
                         {peerWaiting ? <PeerWaitButtonContent /> : ui("Done Looking")}
+                        <PriorityShortcutHint number="1" />
                       </Button>
                     </PeerWaitPopover>
                   </div>
@@ -3148,7 +3158,13 @@ function PriorityBar({
                         <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
                           <div className="action-strip-main-title-row">
                             <ActionStripMainTitleText key={passCurrentLabel}>{ui(passCurrentLabel)}</ActionStripMainTitleText>
+                            <PriorityShortcutHint number="1" />
                           </div>
+                          {passPhaseLabel && (
+                            <span className="action-strip-current-phase text-[10px] font-normal leading-tight text-muted-foreground">
+                              {passPhaseLabel}
+                            </span>
+                          )}
                           <div
                             className="action-strip-main-controls"
                             onPointerDown={(event) => event.stopPropagation()}
@@ -3181,14 +3197,16 @@ function PriorityBar({
                         data-local-action={localDecisionButton ? "true" : "false"}
                         disabled={!canAct || multiplayer?.submittingAction}
                         aria-disabled={peerWaitLocked || !canAct}
-                        aria-label={ui("Resolve all")}
+                        data-secondary-priority-action="true"
+                        aria-label={ui(resolveBatchLabel)}
                         onClick={triggerResolveAll}
                       >
-                        <span className="sr-only">{ui("Resolve all")}</span>
+                        <span className="sr-only">{ui(resolveBatchLabel)}</span>
                       </Button>
                       <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
-                          <ActionStripMainTitleText>{ui("Resolve all")}</ActionStripMainTitleText>
+                          <ActionStripMainTitleText>{ui(resolveBatchLabel)}</ActionStripMainTitleText>
+                          <PriorityShortcutHint number={resolveGroup ? "7" : null} />
                         </div>
                       </div>
                     </div>
@@ -3216,6 +3234,7 @@ function PriorityBar({
                       <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
                           <ActionStripMainTitleText>{ui(openingHandMulliganLabel)}</ActionStripMainTitleText>
+                          <PriorityShortcutHint number="1" />
                         </div>
                       </div>
                     </div>
@@ -3243,6 +3262,7 @@ function PriorityBar({
                       <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
                           <ActionStripMainTitleText>{ui(action.label)}</ActionStripMainTitleText>
+                          <PriorityShortcutHint number="1" />
                         </div>
                       </div>
                     </div>
@@ -3497,6 +3517,7 @@ function PriorityBar({
                     }}
                   >
                     {peerWaiting ? <PeerWaitButtonContent /> : ui("Done Looking")}
+                    <PriorityShortcutHint number="1" />
                   </Button>
                 </PeerWaitPopover>
               </div>
@@ -3532,7 +3553,13 @@ function PriorityBar({
                       <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
                           <ActionStripMainTitleText key={passCurrentLabel}>{ui(passCurrentLabel)}</ActionStripMainTitleText>
+                          <PriorityShortcutHint number="1" />
                         </div>
+                        {passPhaseLabel && (
+                          <span className="action-strip-current-phase text-[10px] font-normal leading-tight text-muted-foreground">
+                            {passPhaseLabel}
+                          </span>
+                        )}
                         <div
                           className="action-strip-main-controls"
                           onPointerDown={(event) => event.stopPropagation()}
@@ -3557,10 +3584,12 @@ function PriorityBar({
                       style={decisionButtonStyle}
                       data-local-action={localDecisionButton ? "true" : "false"}
                       disabled={!canAct || peerWaitLocked}
-                      aria-label={ui("Resolve all")}
+                      data-secondary-priority-action="true"
+                      aria-label={ui(resolveBatchLabel)}
                       onClick={triggerResolveAll}
                     >
-                      {ui("Resolve all")}
+                      {ui(resolveBatchLabel)}
+                      <PriorityShortcutHint number={resolveGroup ? "7" : null} />
                     </Button>
                   )}
                   {openingHandMulliganAction && (
@@ -3575,6 +3604,7 @@ function PriorityBar({
                       onClick={() => triggerPriorityAction(openingHandMulliganAction)}
                     >
                       {ui(openingHandMulliganLabel)}
+                      <PriorityShortcutHint number="1" />
                     </Button>
                   )}
                   {pregameActions.map((action) => (
@@ -3590,6 +3620,7 @@ function PriorityBar({
                       onClick={() => triggerPriorityAction(action)}
                     >
                       <SymbolText text={ui(action.label)} style={{ whiteSpace: "inherit" }} />
+                      <PriorityShortcutHint number="1" />
                     </Button>
                   ))}
               </>
@@ -3650,6 +3681,7 @@ function PriorityBar({
                         ) : (
                           <SymbolText text={showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
                         )}
+                        <PriorityShortcutHint number="1" />
                       </Button>
                     </PeerWaitPopover>
                     ) : null}
@@ -3895,6 +3927,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
         {peerWaiting ? <PeerWaitButtonContent /> : (
           combatMainLabel
         )}
+        <PriorityShortcutHint number="1" />
       </Button>
     </PeerWaitPopover>
   );

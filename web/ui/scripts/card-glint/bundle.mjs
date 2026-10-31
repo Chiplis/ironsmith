@@ -33,6 +33,13 @@ const result = await build({
     name:'ironsmith-live-land-palette',
     enforce:'pre',
     transform(code,id) {
+      if (id.endsWith('/presentation/prepare-frame.ts')) {
+        // Prepared has no dedicated colorless stock. Use its neutral artifact
+        // plate for colorless faces, without changing their types or colors.
+        const before = "  throw Error('The pinned Prepared source has no colorless plate.');";
+        if (!code.includes(before)) throw new Error('card-glint neutral Prepared plate patch needs updating');
+        return code.replace(before, "  return 'a';");
+      }
       if (id.endsWith('/packages/browser/src/gpu/device.ts')) {
         // A WebGL context can exist even when Chrome is rasterizing on the CPU.
         // Fine print/foil shaders can then monopolize the compositor for tens

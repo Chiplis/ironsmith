@@ -39,7 +39,7 @@ async function harness(fixtureState = state) {
   page.on("pageerror", (error) => errors.push(String(error?.message || error)));
   await page.route("**/api.scryfall.com/**", (route) => route.abort());
   await page.route("**/cards.scryfall.io/**", (route) => route.abort());
-  await page.addInitScript((fixture) => { window.__handKeyboardFixture = fixture; }, { state: fixtureState });
+  await page.addInitScript((fixture) => { window.__handKeyboardFixture = fixture; localStorage.setItem('ironsmith.priorityShortcutPreset','classic'); }, { state: fixtureState });
   await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/hand-keyboard-cast.html`);
   await page.locator('[data-hand-case] .game-card.hand-card').first().waitFor();
   return {
@@ -112,13 +112,13 @@ test("small hands select single digits immediately", { timeout: 120000 }, async 
   } finally { await close(); }
 });
 
-test("Ctrl raises the numbered hand until period closes it", { timeout: 120000 }, async () => {
+test("H raises the numbered hand until period closes it", { timeout: 120000 }, async () => {
   const large = structuredClone(state);
   large.players[0].hand_cards = Array.from({ length: 12 }, (_, i) => ({ ...bears, id: 100 + i }));
   const { page, casts, errors, close } = await harness(large);
   try {
     assert.equal(await page.locator('.hand-card-number').count(), 0);
-    await page.keyboard.press('Control');
+    await page.keyboard.press('h');
     assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'true');
     assert.deepEqual(await page.locator('.hand-card-number').allTextContents(), Array.from({ length: 12 }, (_, i) => String(i + 1)));
     assert.equal(await page.locator('.hand-card-number').first().isVisible(), true);
@@ -133,7 +133,7 @@ test("Ctrl raises the numbered hand until period closes it", { timeout: 120000 }
       document.body.append(input);
       input.focus();
     });
-    await page.keyboard.press('Control');
+    await page.keyboard.press('h');
     assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'false');
     assert.deepEqual(await casts(), []);
     assert.deepEqual(errors, []);
@@ -281,4 +281,42 @@ test("Enter on a keyboard-selected card puts the hand back down", { timeout: 120
     assert.deepEqual(errors, []);
     await close();
   }
+});
+
+test("MTGO numbers select the open hand and resume priority shortcuts when closed", { timeout: 120000 }, async () => {
+  const large = structuredClone(state);
+  large.players[0].hand_cards = Array.from({ length: 12 }, (_, i) => ({ ...bears, id: 100 + i }));
+  large.decision.actions = [];
+  const { page, casts, errors, close } = await harness(large);
+  const selected = () => page.evaluate(() => document.activeElement?.getAttribute('data-object-id'));
+  try {
+    await page.evaluate(async () => {
+      localStorage.setItem('ironsmith.priorityShortcutPreset', 'mtgo');
+      const { installPriorityShortcuts } = await import('/src/lib/priority-shortcuts.js');
+      window.__priorityKeys = [];
+      installPriorityShortcuts(document, {
+        state: () => window.__handKeyboardFixture.state,
+        start: mode => window.__priorityKeys.push(mode),
+        clear: () => window.__priorityKeys.push('clear'),
+        group: () => window.__priorityKeys.push('group'),
+        maintain: () => {}, answer: () => window.__priorityKeys.push('answer'),
+      });
+    });
+    await page.keyboard.press('h');
+    await page.keyboard.press('1');
+    await page.keyboard.press('1');
+    assert.equal(await selected(), '110');
+    await page.keyboard.press('6');
+    assert.equal(await selected(), '105');
+    assert.deepEqual(await page.evaluate(() => window.__priorityKeys), []);
+    await page.keyboard.press('.');
+    await page.keyboard.press('6');
+    assert.deepEqual(await page.evaluate(() => window.__priorityKeys), ['turn']);
+    await page.keyboard.press('.');
+    await page.keyboard.press('2');
+    assert.equal(await selected(), '101');
+    assert.deepEqual(await page.evaluate(() => window.__priorityKeys), ['turn']);
+    assert.deepEqual(await casts(), []);
+    assert.deepEqual(errors, []);
+  } finally { await close(); }
 });

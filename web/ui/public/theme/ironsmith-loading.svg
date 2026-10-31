@@ -2,6 +2,8 @@
 <title id="title">IronSmith — forging your table</title>
 
 <style>
+    /* Match the dark host so embedded SVG documents retain transparency. */
+    :root { color-scheme: dark; background: transparent; }
     .sparks { opacity: 0; }
     #working:target .rest-sparks { opacity: 0; }
     /* The forearm turns at the shoulder; the tool turns inside the stationary glove at

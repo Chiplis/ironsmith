@@ -1,3 +1,4 @@
+import usePrioritySettings from "@/hooks/usePrioritySettings";
 import useGraphicsQuality from '@/hooks/useGraphicsQuality';
 import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import useUiText from "@/i18n/useUiText";
@@ -111,8 +112,7 @@ export default function TopbarMenuSheet({
     wasmRegistryCount,
     wasmRegistryTotal,
     multiplayer,
-    autoResolveEnabled,
-    setAutoResolveEnabled,
+    priorityPolicy,
     fixedStartingBoard,
     setFixedStartingBoard,
     inspectorDebug,
@@ -128,6 +128,7 @@ export default function TopbarMenuSheet({
     followActivePlayer,
     setFollowActivePlayer,
   } = useGame();
+  const priorityStatus = usePrioritySettings();
   const [showShortcutsOnStart, setShowShortcutsOnStart] = useShowShortcutsOnStart();
   const { locale, locales, setLocale, t } = useI18n();
   const [graphicsQuality, setGraphicsQuality] = useGraphicsQuality();
@@ -466,11 +467,11 @@ export default function TopbarMenuSheet({
               <div className="grid gap-2">
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox
-                    checked={autoResolveEnabled}
-                    title={ui("Keep Resolve available while any spell is on the stack.")}
-                    onCheckedChange={(value) => setAutoResolveEnabled(Boolean(value))}
+                    checked={!!priorityStatus?.fullControl}
+                    title={ui("Manually confirm every priority and choice.")}
+                    onCheckedChange={(value) => priorityPolicy?.setFullControl(Boolean(value), state)}
                   />
-                  {t("action.autoPass")}
+                  {ui("Full control")}
                 </label>
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox

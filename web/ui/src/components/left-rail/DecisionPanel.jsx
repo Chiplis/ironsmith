@@ -1,3 +1,5 @@
+import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
+import usePrioritySettings from "@/hooks/usePrioritySettings";
 import { priorityStepKey } from '@/lib/priority-stops';
 import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
 import { LoopShortcutButton } from "@/components/decisions/LoopShortcutControls";
@@ -110,7 +112,6 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     dispatch,
     cancelDecision,
     postActionPriorityWindow,
-    holdRule,
     multiplayer,
     startRematchSideboarding,
     readyForRematch,
@@ -120,6 +121,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     setSurrenderRequested,
     loopShortcut,
   } = useGame();
+  const priorityStatus = usePrioritySettings();
   const { t } = useI18n();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
@@ -179,7 +181,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     ? (decision.actions || []).find((action) => action.kind === "pass_priority")
     : null;
   const stackSize = state?.stack_size || 0;
-  const holdingPriority = holdRule === "always";
+  const holdingPriority = !!priorityStatus?.fullControl;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
   const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
   const translatedPassAdvanceLabel = resolvingStackPriority
@@ -410,6 +412,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                       ? rematchReady ? t("game.waitingPlayers") : t("game.ready")
                       : t("game.playAgain")
                   )}
+                  <PriorityShortcutHint number="1" />
                 </Button>
               </PeerWaitPopover>
             </div>
@@ -449,6 +452,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                         advanceLabel={translatedPassAdvanceLabel}
                       />
                     )}
+                    <PriorityShortcutHint number="1" />
                   </Button>                  )}
 
                 </PeerWaitPopover>

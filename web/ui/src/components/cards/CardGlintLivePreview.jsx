@@ -36,12 +36,14 @@ export default function CardGlintLivePreview({face,presentation,onBorderClick,on
   useEffect(() => {
     if (!fallback || !settled) return undefined;
     let cancelled = false;
+    setStillFailed(false);
     renderCardGlint(settled).then(result => {
       if (cancelled) return;
       const target = still.current;
       target.width = result.canvas.width; target.height = result.canvas.height;
       target.getContext('2d').drawImage(result.canvas,0,0);
       setStillKey(settledKey);
+      setStillFailed(false);
     }).catch(error => {if (!cancelled) {console.error('[card-glint] Card render failed',error); setStillFailed(true);}});
     return () => {cancelled = true;};
   },[fallback,settled,settledKey]);

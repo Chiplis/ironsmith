@@ -1,3 +1,4 @@
+import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import { createPortal } from "react-dom";
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -213,7 +214,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
         {inlineSubmit ? quickControls : null}
       </div>
       {inlineSubmit && <div className="mana-payment-pay-region">
-        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title={`${ui('Pay')} (SPACE)`} disabled={payDisabled} onClick={pay}>{ui('Pay')}</Button>
+        <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" title={`${ui('Pay')} (SPACE)`} disabled={payDisabled} onClick={pay}>{ui('Pay')}<PriorityShortcutHint number="1" /></Button>
         {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
       </div>}
       </div>

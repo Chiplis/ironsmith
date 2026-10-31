@@ -30,6 +30,7 @@ import AddCardBar from "./AddCardBar";
 import DiagnosticsSheet from "./DiagnosticsSheet";
 import TableActionControls from "./TableActionControls";
 import Workspace from "./Workspace";
+import LoadingSmith from "./LoadingSmith";
 import TableErrorBoundary from "./TableErrorBoundary";
 import MobileLandscapeGate from "./MobileLandscapeGate";
 import LogDrawer from "@/components/overlays/LogDrawer";
@@ -684,7 +685,9 @@ export default function Shell() {
     [multiplayer.matchStarted, changeGoldfishPlayer]
   );
 
-  if (loading) {
+  const [smithComplete, setSmithComplete] = useState(false);
+
+  if (loading || (!smithComplete && !wasmError && !initializationError)) {
     const widthPct = Math.max(0, Math.min(100, wasmProgress * 100));
     // Avoid showing 100% until progress has actually completed.
     const pct = wasmProgress >= 1 ? 100 : Math.floor(widthPct);
@@ -695,7 +698,7 @@ export default function Shell() {
       "Initializing";
     return (
       <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
-        <img className="game-loading-wordmark" src={`${import.meta.env.BASE_URL}theme/ironsmith-loading.svg#working`} alt="IronSmith" />
+        <LoadingSmith progress={wasmProgress} ready={!loading && !!state} onComplete={() => setSmithComplete(true)} />
         {wasmPhase === "init" ? (
           <span className="game-loading-status text-[16px] font-semibold">
             {ui(phaseLabel)}
@@ -744,7 +747,7 @@ export default function Shell() {
   if (!state) {
     return (
       <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
-        <img className="game-loading-wordmark" src={`${import.meta.env.BASE_URL}theme/ironsmith-loading.svg#working`} alt="IronSmith" />
+        <LoadingSmith progress={wasmProgress} />
         <span className="game-loading-status text-[16px] font-semibold">{ui("Preparing Game")}<span className="loading-dots" aria-hidden="true">
             <span className="loading-dot loading-dot-1">.</span>
             <span className="loading-dot loading-dot-2">.</span>

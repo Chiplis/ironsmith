@@ -1274,11 +1274,29 @@ impl WasmGame {
                     CustomCardLayoutInput::Single => "single-face",
                     CustomCardLayoutInput::TransformLike => "double-faced",
                     CustomCardLayoutInput::Split => "split",
+                    CustomCardLayoutInput::Adventure => "adventure",
                     CustomCardLayoutInput::Prepare => "prepare",
+                    CustomCardLayoutInput::Omen => "omen",
+                    CustomCardLayoutInput::Flip => "flip",
+                    CustomCardLayoutInput::Transform => "transform",
+                    CustomCardLayoutInput::ModalDfc => "modal_dfc",
+                    CustomCardLayoutInput::Room => "room",
+                    CustomCardLayoutInput::Aftermath => "aftermath",
                     CustomCardLayoutInput::Meld => "meld",
                 },
                 expected_faces
             )));
+        }
+
+        if matches!(draft.layout, CustomCardLayoutInput::Adventure | CustomCardLayoutInput::Omen) {
+            let subtype = match draft.layout { CustomCardLayoutInput::Adventure => Some("Adventure"), CustomCardLayoutInput::Omen => Some("Omen"), _ => None };
+            let spell = &draft.faces[1];
+            if subtype.is_some_and(|kind| !spell.subtypes.iter().any(|t| t == kind))
+                || !spell.card_types.iter().any(|t| t == "Instant" || t == "Sorcery")
+                || subtype.is_some_and(|kind| draft.faces[0].subtypes.iter().any(|t| t == kind))
+            {
+                return Err(JsValue::from_str("This layout requires a main card and an Instant or Sorcery spell with the matching spell subtype"));
+            }
         }
 
         let mut names = std::collections::BTreeSet::new();
@@ -1363,6 +1381,7 @@ impl WasmGame {
                 };
             }
             definition.card.linked_face_layout = draft.layout.linked_face_layout();
+            definition.card.transforming_dfc = draft.layout == CustomCardLayoutInput::Transform;
             definitions.push(definition);
         }
 
@@ -1618,13 +1637,22 @@ impl WasmGame {
 
         let sample_index = loaded_deck_sample_index(eligible.len());
         let definition = eligible[sample_index].clone();
-        let layout = if definition.card.meld_partner_name.is_some() {
+        let linked_spell_layout = self.registry.linked_face_definition_by_name_or_id(
+            definition.card.other_face_name.as_deref(), definition.card.other_face,
+        ).and_then(|other| {
+            if other.card.subtypes.contains(&ironsmith::types::Subtype::Omen) { Some(CustomCardLayoutInput::Omen) }
+            else if other.card.subtypes.contains(&ironsmith::types::Subtype::Adventure) { Some(CustomCardLayoutInput::Adventure) }
+            else { None }
+        });
+        let layout = if let Some(layout) = linked_spell_layout {
+            layout
+        } else if definition.card.meld_partner_name.is_some() {
             CustomCardLayoutInput::Meld
         } else {
             match definition.card.linked_face_layout {
                 ironsmith::card::LinkedFaceLayout::Split => CustomCardLayoutInput::Split,
-                ironsmith::card::LinkedFaceLayout::TransformLike
-                | ironsmith::card::LinkedFaceLayout::Flip => CustomCardLayoutInput::TransformLike,
+                ironsmith::card::LinkedFaceLayout::TransformLike => if definition.card.transforming_dfc { CustomCardLayoutInput::Transform } else { CustomCardLayoutInput::ModalDfc },
+                ironsmith::card::LinkedFaceLayout::Flip => CustomCardLayoutInput::Flip,
                 ironsmith::card::LinkedFaceLayout::Prepare => CustomCardLayoutInput::Prepare,
                 ironsmith::card::LinkedFaceLayout::None => CustomCardLayoutInput::Single,
             }
@@ -2537,5 +2565,61 @@ impl WasmGame {
             Ok(_) => Err(format!("unknown card name: {query}")),
             Err(err) => Err(Self::card_lookup_error_for_query(query, err)),
         }
+    }
+}
+
+#[cfg(all(test, feature = "dynamic-compile"))]
+mod custom_adventure_tests {
+    use super::*;
+
+    #[test]
+    fn multipart_layouts_preserve_runtime_identity() {
+        use ironsmith::card::LinkedFaceLayout;
+        for (layout, expected, transforming, subtype) in [
+            ("omen", LinkedFaceLayout::None, false, "Omen"),
+            ("prepare", LinkedFaceLayout::Prepare, false, ""),
+            ("flip", LinkedFaceLayout::Flip, false, ""),
+            ("transform", LinkedFaceLayout::TransformLike, true, ""),
+            ("modal_dfc", LinkedFaceLayout::TransformLike, false, ""),
+            ("room", LinkedFaceLayout::Split, false, "Room"),
+            ("aftermath", LinkedFaceLayout::Split, false, ""),
+        ] {
+            let types = if layout == "room" { vec!["Enchantment"] } else { vec!["Sorcery"] };
+            let draft: CustomCardInput = serde_json::from_value(serde_json::json!({
+                "layout": layout,
+                "faces": [
+                    {"name":"Forge Main", "cardTypes":["Creature"], "power":"2", "toughness":"2"},
+                    {"name":"Forge Other", "cardTypes":types, "subtypes":if subtype.is_empty() {vec![]} else {vec![subtype]}, "oracleText":if layout == "room" { "" } else { "Draw a card." }}
+                ]
+            })).unwrap();
+            let faces = WasmGame::new().compile_custom_card_faces(&draft).unwrap();
+            assert_eq!(faces.len(), 2, "{layout}");
+            assert_eq!(faces[0].card.other_face, Some(faces[1].card.id), "{layout}");
+            for face in faces {
+                assert_eq!(face.card.linked_face_layout, expected, "{layout}");
+                assert_eq!(face.card.transforming_dfc, transforming, "{layout}");
+            }
+        }
+    }
+
+    #[test]
+    fn custom_adventure_compiles_linked_spell_without_dfc_layout() {
+        let draft: CustomCardInput = serde_json::from_value(serde_json::json!({
+            "layout": "adventure",
+            "faces": [
+                {"name": "Forge Traveler", "cardTypes": ["Creature"], "manaCost": "{2}{G}", "power": "3", "toughness": "3"},
+                {"name": "Forge Journey", "cardTypes": ["Instant"], "subtypes": ["Adventure"], "manaCost": "{G}", "oracleText": "Draw a card."}
+            ]
+        })).unwrap();
+        let wasm = WasmGame::new();
+        let faces = wasm.compile_custom_card_faces(&draft).expect("Adventure should compile");
+        assert_eq!(faces.len(), 2);
+        assert_eq!(faces[0].card.other_face, Some(faces[1].card.id));
+        assert_eq!(faces[1].card.other_face, Some(faces[0].card.id));
+        for face in &faces {
+            assert_eq!(face.card.linked_face_layout, ironsmith::card::LinkedFaceLayout::None);
+            assert!(!face.card.transforming_dfc);
+        }
+        assert!(faces[1].card.subtypes.contains(&ironsmith::types::Subtype::Adventure));
     }
 }

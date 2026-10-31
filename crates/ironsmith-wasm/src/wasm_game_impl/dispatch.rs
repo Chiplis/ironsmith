@@ -1771,6 +1771,7 @@ impl WasmGame {
         &mut self,
         player_names: JsValue,
         starting_life: i32,
+        seed: Option<u32>,
     ) -> Result<(), JsValue> {
         let names: Vec<String> = serde_wasm_bindgen::from_value(player_names)
             .map_err(|e| JsValue::from_str(&format!("invalid player_names: {e}")))?;
@@ -1779,14 +1780,18 @@ impl WasmGame {
             return Err(JsValue::from_str("player_names cannot be empty"));
         }
 
-        let seed = deterministic_match_seed(
-            &names,
-            starting_life,
-            MatchFormatInput::Normal,
-            None,
-            None,
-            7,
-        );
+        // Browser resets supply a fresh seed in the recorded worker command.
+        // Preserve older replay journals that predate the explicit seed argument.
+        let seed = seed.map(u64::from).unwrap_or_else(|| {
+            deterministic_match_seed(
+                &names,
+                starting_life,
+                MatchFormatInput::Normal,
+                None,
+                None,
+                7,
+            )
+        });
         self.initialize_empty_match(names, starting_life, seed);
         self.populate_demo_libraries()
             .map_err(|error| JsValue::from_str(&error))?;
@@ -1800,6 +1805,7 @@ impl WasmGame {
         &mut self,
         player_names: JsValue,
         starting_life: i32,
+        seed: Option<u32>,
     ) -> Result<(), JsValue> {
         let names: Vec<String> = serde_wasm_bindgen::from_value(player_names)
             .map_err(|e| JsValue::from_str(&format!("invalid player_names: {e}")))?;
@@ -1808,14 +1814,18 @@ impl WasmGame {
             return Err(JsValue::from_str("player_names cannot be empty"));
         }
 
-        let seed = deterministic_match_seed(
-            &names,
-            starting_life,
-            MatchFormatInput::Normal,
-            None,
-            None,
-            0,
-        );
+        // Browser resets supply a fresh seed in the recorded worker command.
+        // Preserve older replay journals that predate the explicit seed argument.
+        let seed = seed.map(u64::from).unwrap_or_else(|| {
+            deterministic_match_seed(
+                &names,
+                starting_life,
+                MatchFormatInput::Normal,
+                None,
+                None,
+                0,
+            )
+        });
         self.initialize_empty_match(names, starting_life, seed);
         self.reset_runtime_state();
         Ok(())

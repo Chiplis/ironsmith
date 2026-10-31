@@ -110,6 +110,8 @@ pub(super) struct StackObjectSnapshot {
     pub(super) ability_text: Option<String>,
     /// Full source ability, including its activation cost or trigger condition.
     pub(super) source_ability_text: Option<String>,
+    /// Structural identity used by local ability automation preferences.
+    pub(super) automation_identity: Option<String>,
     pub(super) targets: Vec<TargetChoiceView>,
 }
 
@@ -302,6 +304,13 @@ pub(super) fn build_stack_object_snapshot(
             colors: None,
             effect_text: None,
             ability_kind: Some(ability_kind.to_string()),
+            automation_identity: entry.trigger_identity.map(|identity| format!("trigger:{}", identity.0))
+                .or_else(|| entry.ability_index.map(|index| {
+                    use std::hash::{Hash, Hasher};
+                    let mut hash = std::collections::hash_map::DefaultHasher::new();
+                    format!("{:?}", entry.ability_effects).hash(&mut hash);
+                    format!("activated:{index}:{}", hash.finish())
+                })),
             source_ability_text,
             ability_text,
             targets,
@@ -346,6 +355,7 @@ pub(super) fn build_stack_object_snapshot(
             ability_kind: None,
             ability_text: None,
             source_ability_text: None,
+            automation_identity: None,
             targets,
         }
     }
@@ -447,6 +457,10 @@ mod source_ability_tests {
         game.object_mut(source).unwrap().abilities = Default::default();
         let first_view = build_stack_object_snapshot(&game, alice, None, &first);
         let second_view = build_stack_object_snapshot(&game, alice, None, &second);
+        assert!(first_view.automation_identity.is_some());
+        assert_ne!(first_view.automation_identity, second_view.automation_identity);
+        assert_eq!(first_view.automation_identity,
+            build_stack_object_snapshot(&game, alice, None, &first).automation_identity);
         assert_eq!(
             first_view.source_ability_text.as_deref(),
             Some(expected[0].as_str())
@@ -463,6 +477,7 @@ mod source_ability_tests {
             .with_trigger_identity(ironsmith::triggers::compute_trigger_identity(triggered))
             .with_source_snapshot(captured);
         let trigger_view = build_stack_object_snapshot(&game, alice, None, &trigger);
+        assert!(trigger_view.automation_identity.as_ref().unwrap().starts_with("trigger:"));
         assert_eq!(
             trigger_view.source_ability_text.as_deref(),
             Some(expected[2].as_str())

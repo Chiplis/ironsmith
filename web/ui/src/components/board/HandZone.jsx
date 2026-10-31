@@ -97,6 +97,7 @@ function buildPlayableMaps(state, player) {
   };
   for (const snapshotPlayer of state?.players || []) {
     const ownerId = snapshotPlayer?.id;
+    addZoneCards(snapshotPlayer?.library_cards, ownerId);
     addZoneCards(snapshotPlayer?.graveyard_cards, ownerId);
     addZoneCards(snapshotPlayer?.exile_cards, ownerId);
     addZoneCards(snapshotPlayer?.command_cards, ownerId);
@@ -166,6 +167,7 @@ function buildPlayableMaps(state, player) {
   };
 
   for (const snapshotPlayer of state?.players || []) {
+    addPseudoHandCandidates(snapshotPlayer?.library_cards, "library");
     addPseudoHandCandidates(snapshotPlayer?.graveyard_cards, "graveyard");
     addPseudoHandCandidates(snapshotPlayer?.exile_cards, "exile");
     addPseudoHandCandidates(snapshotPlayer?.command_cards, "command");

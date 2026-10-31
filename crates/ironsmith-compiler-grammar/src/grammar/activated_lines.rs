@@ -348,14 +348,14 @@ fn negated_untap_fact(words: &[&str]) -> bool {
     has_untap && has_negation
 }
 
-/// "This creature enters prepared." — the printed way a prepare card starts out
-/// prepared. The card's own name has already been normalized to `this`, and a
-/// noun ("creature"/"permanent") may or may not be spelled out.
+/// A permanent enters prepared. Resolve the subject using the shared source
+/// reference grammar, including type and subtype nouns such as Vehicle.
 pub fn parse_enters_prepared_line_shape(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    words_are_exact(&words, &["this", "enters", "prepared"])
-        || words_are_exact(&words, &["this", "creature", "enters", "prepared"])
-        || words_are_exact(&words, &["this", "permanent", "enters", "prepared"])
+    let Some(subject) = words.strip_suffix(&["enters", "prepared"]) else {
+        return false;
+    };
+    crate::util::is_source_reference_words(subject)
 }
 
 pub fn parse_enters_tapped_line_shape(tokens: &[OwnedLexToken]) -> EntersTappedLineShape {

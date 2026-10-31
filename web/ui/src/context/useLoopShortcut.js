@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { describeLoopStep, recordLoopStep, recordResolveStackStep, resolveLoopStep } from "@/lib/loop-shortcut";
 
 // A replayed step that leaves the snapshot unchanged this long was rejected.
@@ -256,7 +256,7 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
     && nextStep?.type === "select_targets"
     && !resolveLoopStep(nextStep, state).error);
 
-  return {
+  return useMemo(() => ({
     replayingTargets,
     recording: Boolean(recording),
     recordedStepCount: recording?.steps?.length || 0,
@@ -270,5 +270,6 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
     shortcut,
     recordingDispatch,
     recordResolveStack,
-  };
+  }), [replayingTargets, recording, startRecording, stopRecording, discardRecording,
+    proposalDraft, propose, respond, cancel, shortcut, recordingDispatch, recordResolveStack]);
 }

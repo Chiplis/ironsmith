@@ -220,6 +220,11 @@ export default function StackCard({
     "data-card-name": name,
     "data-pending-trigger": isPendingTrigger ? "true" : undefined,
     "data-pending-replacement": isPendingReplacement ? "true" : undefined,
+    onContextMenu: event => {
+      if (!entry.ability_kind || isLeaving) return;
+      event.preventDefault(); event.stopPropagation();
+      window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', { detail: { entry } }));
+    },
     onClick: handleClick,
     onPointerDown: handlePointerDown,
     onMouseEnter: event => { hoverPause.onMouseEnter(); handleHoverEnter(event); },
@@ -237,6 +242,12 @@ export default function StackCard({
     isLeaving && "pointer-events-none",
   );
 
+  const automationControl = !isLeaving && entry.ability_kind && entry.automation_identity
+    ? <button type="button" className="stack-automation-button" aria-label={`Automation for ${name}`}
+        title="Ability automation" onPointerDown={event => event.stopPropagation()}
+        onClick={event => { event.stopPropagation(); window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', { detail: { entry } })); }}>⋯</button>
+    : null;
+
   // A rendered card in the desktop stack pile (CardStackPile). The
   // pile supplies the face; the tile keeps every hover, pick and arrow path.
   if (variant === "frame") {
@@ -250,6 +261,7 @@ export default function StackCard({
         tabIndex={-1}
         aria-label={name}
       >
+        {automationControl}
         {children}
       </div>
     );
@@ -263,6 +275,7 @@ export default function StackCard({
         {...sharedProps}
         className={cn("game-card stack-card stack-card--compact overflow-hidden", stateClasses, className)}
       >
+        {automationControl}
         {artUrl && (
           <img
             className="stack-card-compact-art"
@@ -290,6 +303,7 @@ export default function StackCard({
       )}
       data-density={density}
     >
+      {automationControl}
       <span className="stack-card-accent" aria-hidden="true" />
 
       <div className="stack-card-body">

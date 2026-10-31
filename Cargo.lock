@@ -1462,6 +1462,7 @@ name = "ironsmith-dynamic-compile"
 version = "0.1.0"
 dependencies = [
  "ironsmith-compiler",
+ "ironsmith-engine",
  "ironsmith-registry",
 ]
 

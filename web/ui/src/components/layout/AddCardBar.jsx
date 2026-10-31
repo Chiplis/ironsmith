@@ -1,3 +1,4 @@
+import usePrioritySettings from "@/hooks/usePrioritySettings";
 import { useGame } from "@/context/GameContext";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useI18n } from "@/i18n/I18nContext";
@@ -8,9 +9,9 @@ export default function AddCardBar({
   utilityControls,
 }) {
   const {
-    autoResolveEnabled,
-    setAutoResolveEnabled,
+    state, priorityPolicy,
   } = useGame();
+  const priorityStatus = usePrioritySettings();
   const { t } = useI18n();
 
   return (
@@ -25,11 +26,11 @@ export default function AddCardBar({
 
         <label className="toolbar-checkbox add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
           <Checkbox
-            checked={autoResolveEnabled}
-            onCheckedChange={(value) => setAutoResolveEnabled(!!value)}
+            checked={!!priorityStatus?.fullControl}
+            onCheckedChange={(value) => priorityPolicy?.setFullControl(!!value, state)}
             className="h-3.5 w-3.5"
           />
-          {t("action.autoPass")}
+          {t("game.fullControl", null, "Full control")}
         </label>
       </div>
     </div>

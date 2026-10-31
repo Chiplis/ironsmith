@@ -1,3 +1,5 @@
+import TriggerMatchingControl from './TriggerMatchingControl';
+import PriorityShortcutHint from "./PriorityShortcutHint";
 import DecisionObjectLabel from "./DecisionObjectLabel";
 import { isOrderingDecision, isDistributionDecision, isCounterOptionsDecision, isPaymentDecision, isSpellCastFlowDecision } from "@/lib/decision-semantics";
 import useUiText from "@/i18n/useUiText";
@@ -221,6 +223,7 @@ function optionLabelContent(
   opt,
   onInspectObject = null,
   localizeText = (text) => text,
+  shortcut = null,
 ) {
   const normalizedText = localizeText(normalizeDecisionText(opt.description));
   const objectName =
@@ -242,7 +245,8 @@ function optionLabelContent(
     : "";
 
   const label = (
-    <HighlightedDecisionText
+    <span>
+      <HighlightedDecisionText
       className="decision-option-label"
       text={normalizedText}
       highlightText={objectName}
@@ -250,6 +254,8 @@ function optionLabelContent(
         ? (event) => onInspectObject(opt.object_id, event.currentTarget)
         : null}
     />
+      <PriorityShortcutHint number={shortcut} />
+    </span>
   );
 
   if (!relatedText) return label;
@@ -927,6 +933,7 @@ function SingleSelectDecision({
                         opt,
                         showAnchoredCardPreview,
                         localizeDecisionText,
+                    decision.choice_kind === "boolean" ? (opt.index === 1 ? "3" : opt.index === 0 ? "4" : null) : null,
                       )}
                       {opt.group_count > 1 && (
                         <span
@@ -1203,6 +1210,7 @@ function MultiSelectDecision({
                     opt,
                     showAnchoredCardPreview,
                     localizeDecisionText,
+                    decision.choice_kind === "boolean" ? (opt.index === 1 ? "3" : opt.index === 0 ? "4" : null) : null,
                   )}
                   canAct={canAct}
                   isHighlighted={isHighlighted}
@@ -1444,7 +1452,7 @@ function OrderingDecision({
   );
 
   if (effectOrderingHintOnly && stripLayout) {
-    return null;
+    return <TriggerMatchingControl canAct={canAct} />;
   }
 
   if (trivialOrdering && stripLayout) {
@@ -1459,6 +1467,7 @@ function OrderingDecision({
           : "flex h-full min-h-0 flex-col gap-1",
       )}
     >
+      <TriggerMatchingControl canAct={canAct} />
       {stripLayout ? (
         <>
           {!hideDescription && (

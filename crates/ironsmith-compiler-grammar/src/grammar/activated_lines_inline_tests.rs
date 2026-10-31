@@ -2,6 +2,37 @@ use super::*;
 use crate::lexer::{TokenKind, lex_line};
 
 #[test]
+fn enters_prepared_accepts_generic_source_references() {
+    for subject in [
+        "This",
+        "This permanent",
+        "This creature",
+        "This artifact",
+        "This enchantment",
+        "This land",
+        "This planeswalker",
+        "This battle",
+        "This Vehicle",
+        "This Equipment",
+        "This Aura",
+        "This token",
+    ] {
+        let tokens = lex_line(&format!("{subject} enters prepared."), 0).unwrap();
+        assert!(parse_enters_prepared_line_shape(&tokens), "{subject}");
+    }
+    for raw in [
+        "That Vehicle enters prepared.",
+        "This Vehicle you control enters prepared.",
+        "Enters prepared.",
+        "Target artifact enters prepared.",
+        "This artifact enters prepared if you control a creature.",
+    ] {
+        let tokens = lex_line(raw, 0).unwrap();
+        assert!(!parse_enters_prepared_line_shape(&tokens), "{raw}");
+    }
+}
+
+#[test]
 fn splits_activated_line_and_classifies_primary_mana_shape() {
     let tokens = lex_line("{T}: Target player adds one mana of any color.", 0).unwrap();
     let split = parse_activated_line_split_tokens(&tokens).unwrap();

@@ -1,3 +1,5 @@
+import usePrioritySettings from "@/hooks/usePrioritySettings";
+import { useState } from "react";
 import { CircleCheck, FlagTriangleRight, Hand, Shield, Sword, Swords, Zap } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
 import { useI18n } from '@/i18n/I18nContext';
@@ -32,7 +34,9 @@ function StopHand({ className, size = 24 }) {
 }
 
 export default function PhaseTrack({ compact = false, reserveCombatSpace = false }) {
-  const { state, priorityStops = DEFAULT_PRIORITY_STOPS, cyclePriorityStop } = useGame();
+  const { state, priorityStops = DEFAULT_PRIORITY_STOPS, cyclePriorityStop, setPriorityStop } = useGame();
+  const priorityStatus = usePrioritySettings();
+  const [locked, setLocked] = useState(false);
   const { t } = useI18n();
   const active = state ? normalizePhaseStep(state.phase, state.step) : null;
   const players = state?.players?.length ? state.players : [{ id: state?.active_player ?? 0, name: 'Turn' }];
@@ -44,7 +48,8 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   const multiplayer = players.length > 2;
   const playerName = player => playerDisplayName(players, player);
   const ownsTurn = player => Number(state?.active_player) === Number(player.id);
-  const hasPriority = player => Number(state?.priority_player) === Number(player.id);
+  const hasPriority = player => state?.decision?.kind === "priority"
+    && Number(state.decision.player) === Number(player.id);
   const phaseLabel = (entry, kind) => kind === 'step' ? combatLabels[entry] : t(`game.track.${entry}`, null, entry);
 
   const renderStop = (entry, kind, player, shared = false) => {
@@ -56,10 +61,19 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
     const status = mode === 'always' ? 'Stop every time' : mode ? 'Stop when I can act' : 'No stop';
     return <button type="button" className="phase-track-stop-button" disabled={disabled}
       data-stop-player={player.id} data-stop-phase={entry} data-stop={mode || 'off'}
+      data-yield-target={priorityStatus?.yield?.mode === 'until' && priorityStatus.yield.key === key
+        && Number(priorityStatus.yield.player) === Number(player.id) ? 'true' : undefined}
       data-opponent-stop={shared && Number(player.id) !== Number(self.id) ? 'true' : undefined}
       aria-label={`${shared ? `${playerName(player)}: ` : ''}${label}: ${disabled ? 'No priority during untap' : status}`}
-      aria-pressed={Boolean(mode)} title={`${playerName(player)} — ${label}: ${disabled ? 'No priority during untap' : `${status}. Click to cycle when I can act, every time, off.`}`}
-      onClick={() => cyclePriorityStop?.(key, state?.players?.length ? player.id : undefined)}>
+      aria-pressed={Boolean(mode)} title={`${playerName(player)} — ${label}: ${disabled ? 'No priority during untap' : `${status}. Click to toggle. Right-click for future yields and advanced stops.`}`}
+      onContextMenu={event => {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', { detail: { phase: key, player: player.id } }));
+      }}
+      onClick={() => { if (!locked) {
+        if (setPriorityStop) setPriorityStop(key, mode ? "off" : "always", player.id);
+        else cyclePriorityStop?.(key, state?.players?.length ? player.id : undefined);
+      } }}>
       {!disabled && <Icon className="phase-track-stop-icon" size={14} aria-hidden="true" />}
       {!shared && <span className="phase-track-step-label">{label}</span>}
     </button>;
@@ -115,6 +129,7 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
   const combatOwner = players.find(ownsTurn) || self;
 
   return <div className={`phase-track-group phase-track-group--players${multiplayer ? ' phase-track-group--fields' : ''}${duel ? ' phase-track-group--duel' : ''}`}>
+    <button type="button" className="phase-track-lock" aria-pressed={locked} onClick={() => setLocked(!locked)} title="Lock phase stops against accidental clicks">{locked ? "Unlock stops" : "Lock stops"}</button>
     {duel ? <>
       {renderTrack(PHASE_TRACK, active, 'phase', self, false, true)}
     </> : <div className="phase-track-player-grid">

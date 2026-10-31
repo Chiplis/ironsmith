@@ -1,3 +1,4 @@
+import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import useUiText from "@/i18n/useUiText";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
@@ -524,6 +525,7 @@ export default function AttackersDecision({
             ) : (
               <>{ui(attackerSubmitLabel(declarations.length))}</>
             )}
+            <PriorityShortcutHint number="1" />
           </Button>
         </PeerWaitPopover>
       </div>

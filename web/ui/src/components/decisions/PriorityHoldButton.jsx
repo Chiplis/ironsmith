@@ -1,3 +1,4 @@
+import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import { useLayoutEffect, useRef } from 'react';
 import { Hand } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,7 @@ export default function PriorityHoldButton({ className = '', disabled = false })
     >
       <span className="priority-hold-window-label">{label}</span>
       <span className="priority-hold-window-fill" aria-hidden="true">{label}</span>
+      <PriorityShortcutHint number="1" />
     </Button>
   );
 }

@@ -26,6 +26,7 @@ test('Meld builder edits all three cards and submits both components with their 
     await dialog.getByRole('textbox', { name: 'Rules text', exact: true }).fill('Trample');
     await page.screenshot({ path: 'web/ui/test-results/meld-builder.png' });
     await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.waitForFunction(() => window.lastAdded?.custom);
     const payload = (await page.evaluate(() => window.lastAdded)).custom;
     assert.equal(payload.draft.layout, 'meld');
     assert.deepEqual(payload.draft.faces.map(face => face.name), ['Forge Left', 'Forge Right', 'Forge Whole']);

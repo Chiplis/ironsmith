@@ -18,12 +18,11 @@ const TURN_STOPS = [
   ['Main2'], ['End'], ['Cleanup'],
 ];
 
-// Stops default to "I can act": they pause only when the player has something
-// to do besides pass or make mana. "always" pauses unconditionally, and is the
-// default for the two main phases.
+// Only the two main phases stop by default. Other phases and combat steps
+// are off until explicitly enabled; "always" pauses unconditionally.
 export const CAN_ACT_STOP = 'can_act';
 const DEFAULT_STOP_MODES = Object.freeze({ 'phase:Main': 'always', 'phase:Main2': 'always' });
-const defaultStopMode = key => DEFAULT_STOP_MODES[key.replace(/^player:\d+:/, '')] ?? CAN_ACT_STOP;
+const defaultStopMode = key => DEFAULT_STOP_MODES[key.replace(/^player:\d+:/, '')] ?? 'off';
 export const PRIORITY_STOP_MODES = Object.freeze([CAN_ACT_STOP, 'always', 'off']);
 export const PRIORITY_STOP_KEYS = Object.freeze([
   ...PHASE_TRACK.filter(phase => phase !== 'Untap').map(phase => `phase:${phase}`),
@@ -55,28 +54,42 @@ export function hasPotentialAttackers(state) {
     .some(type => String(type).toLowerCase() === 'creature') && !card.summoning_sick && !card.tapped);
 }
 
-// "I can act" stops depend on the board when they arrive, so only "always"
-// stops name the destination of an advance.
+function remainingPriorityStops(state) {
+  const phase = normalizePhaseStep(state?.phase, state?.step);
+  const step = priorityStepKey(state);
+  const current = TURN_STOPS.findIndex(([candidatePhase, candidateStep]) =>
+    candidatePhase === phase && (!candidateStep || candidateStep === step));
+  return TURN_STOPS.slice(current + 1);
+}
+
+// Conditional stops can interrupt before this destination; the button must
+// account for those separately rather than promising to reach this stop.
 export function nextSelectedPriorityStop(state, stops = {}) {
   stops = Object.fromEntries(Object.entries(priorityStopsForPlayer(stops, state?.active_player))
     .filter(([, mode]) => mode === 'always'));
   if (hasPotentialAttackers(state)) stops['step:DeclareAttackers'] = 'always';
   const phase = normalizePhaseStep(state?.phase, state?.step);
-  const step = priorityStepKey(state);
-  const current = TURN_STOPS.findIndex(([candidatePhase, candidateStep]) =>
-    candidatePhase === phase && (!candidateStep || candidateStep === step));
-  return TURN_STOPS.slice(current + 1).find(([candidatePhase, candidateStep]) =>
+  return remainingPriorityStops(state).find(([candidatePhase, candidateStep]) =>
     (candidatePhase !== phase && stops[`phase:${candidatePhase}`])
     || (candidateStep && stops[`step:${candidateStep}`])) || null;
 }
 
 export function selectedPriorityAdvanceLabel(state, stops, passing, t) {
-  stops = Object.fromEntries(Object.entries(priorityStopsForPlayer(stops || {}, state?.active_player))
-    .filter(([, mode]) => mode === 'always'));
   if (passing) return t('action.skippingPhase', {
     phase: currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t),
   });
-  const target = nextSelectedPriorityStop(state, stops);
+  const target = nextSelectedPriorityStop(state, stops || {});
+  stops = priorityStopsForPlayer(stops || {}, state?.active_player);
+  const phase = normalizePhaseStep(state?.phase, state?.step);
+  const remaining = remainingPriorityStops(state);
+  const targetIndex = target ? remaining.indexOf(target) : remaining.length;
+  const mayStopEarlier = remaining.slice(0, targetIndex).some(([candidatePhase, candidateStep]) =>
+    (candidatePhase !== phase && stops[`phase:${candidatePhase}`] === CAN_ACT_STOP)
+    || (candidateStep && stops[`step:${candidateStep}`] === CAN_ACT_STOP));
+  if (mayStopEarlier) return t('action.continueFromPhase', {
+    phase: currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t),
+  });
+  stops = Object.fromEntries(Object.entries(stops).filter(([, mode]) => mode === 'always'));
   if (hasPotentialAttackers(state)) stops['step:DeclareAttackers'] = 'always';
   if (target && !stops?.[`phase:${target[0]}`]
     && ['DeclareAttackers', 'DeclareBlockers'].includes(target[1])) {
@@ -106,7 +119,7 @@ export function readStoredPriorityStops(storage = globalThis.localStorage) {
       return Object.fromEntries(Object.entries(saved.stops).filter(([key, mode]) =>
         validKey(key) && PRIORITY_STOP_MODES.includes(mode)));
     }
-    // Older saves only listed "always" stops; everything else becomes "I can act".
+    // Older saves only listed "always" stops; unspecified stops use the defaults.
     const legacy = saved?.version === 2 && saved.stops && typeof saved.stops === 'object'
       ? Object.entries(saved.stops).filter(([, mode]) => mode === 'always').map(([key]) => key)
       : (Array.isArray(saved) ? saved : []);
@@ -240,6 +253,17 @@ export function createPriorityStops({
     windowFor: state => Boolean(window && isLocalPriority(state) && window.key === priorityKey(state)),
     stopReason,
     awaitsCanAct,
+    setStop(key, mode, state, player) {
+      observe(state);
+      if (!PRIORITY_STOP_MODES.includes(mode)) return;
+      const scoped = player == null ? key : playerPriorityStopKey(key, player);
+      stops = { ...stops, [scoped]: mode };
+      for (const [candidate, visit] of candidates(state)) {
+        if (candidate === key) consumed.delete(`${scoped}|${visit}`);
+      }
+      if (storage) storePriorityStops(storage, stops);
+      publish();
+    },
     cycleStop(key, state, player) {
       observe(state);
       stops = { ...stops };
@@ -262,7 +286,10 @@ export function createPriorityStops({
       observe(state);
       const checkpoint = { stops: { ...stops }, consumed: new Set(consumed), attackersDeclaredIn };
       if (isLocalTurnDecision(state)) {
-        releaseStops(state);
+        const pass = state.decision?.actions?.find(action => action.kind === 'pass_priority');
+        if (command.type === 'declare_attackers' || command.type === 'declare_blockers'
+          || (command.type === 'priority_action' && (command.action_ref?.kind === 'pass_priority'
+            || (pass && command.action_index === pass.index)))) releaseStops(state);
         heldKey = null;
         if (window) { window = null; publish(); }
       }

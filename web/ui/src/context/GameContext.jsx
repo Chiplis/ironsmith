@@ -1,12 +1,12 @@
-import { readAutoResolveMode, AUTO_RESOLVE_STORAGE_KEY } from "@/lib/priority-clock";
-import { tryBuildAutoResolveCommand } from "@/lib/auto-resolve-decision";
+import PriorityPreferences from "@/components/priority/PriorityPreferences";
+import { createPriorityPolicy, groupedTriggerOrder, moveTriggerGroup } from "@/lib/priority-policy.js";
+import { installPriorityShortcuts, handleTriggerShortcut } from "@/lib/priority-shortcuts.js";
 import useLoopShortcut from "./useLoopShortcut";
-import { stackArrivalActivity } from "@/lib/stack-arrival-activity";
 import { isOwnPassCancellation } from "@/lib/sync-commands.js";
 import { useAutomaticHandReveal } from "@/hooks/useAutomaticHandReveal";
 import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
 import { selectGoldfishPlayer } from "@/lib/goldfish-player.js";
-import { createPriorityStops, priorityStopsForPlayer } from "@/lib/priority-stops";
+import { createPriorityStops } from "@/lib/priority-stops";
 import { useHandManaCosts } from "@/hooks/useHandManaCosts";
 import { usePaymentOptions } from "@/hooks/usePaymentOptions";
 import { ManaPaymentEditorProvider } from "@/context/ManaPaymentEditorContext";
@@ -36,9 +36,7 @@ import {
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { cardsMeetingThresholdFromStats, loadSemanticStats } from "@/lib/semanticCache";
 import {
-  buildMultiplayerSmartAutoPass,
   findPassPriorityAction,
-  priorityHoldReason,
 } from "@/lib/priority-automation";
 import {
   DEFAULT_WASM_INTERACTION_DEBOUNCE_MS,
@@ -62,8 +60,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
-import { createPregameFollower, emptyPregameAction, hotseatFollowTarget, isAutomatedSeat, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
-import { forcedObjectSelectionCommand, localForcedObjectSelectionCommand } from "@/lib/forced-object-selection";
+import { createPregameFollower, isAutomatedSeat, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
 
 import { GameContext } from "./GameContext.shared";
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
@@ -208,33 +205,6 @@ function readStoredPlayerAccentOverrides() {
   }
 }
 
-function decodeAttackTargetChoice(choice) {
-  if (choice && typeof choice === "object") {
-    if ("Player" in choice) return { kind: "player", player: Number(choice.Player) };
-    if ("Planeswalker" in choice)
-      return { kind: "planeswalker", object: Number(choice.Planeswalker) };
-    if ("Battle" in choice) return { kind: "battle", object: Number(choice.Battle) };
-    if (choice.kind === "player") return { kind: "player", player: Number(choice.player) };
-    if (choice.kind === "battle") return { kind: "battle", object: Number(choice.object) };
-    if (choice.kind === "planeswalker")
-      return { kind: "planeswalker", object: Number(choice.object) };
-  }
-  return { kind: "player", player: Number(choice) };
-}
-
-function defaultOpponentAttackerDeclarations(decision) {
-  const declarations = [];
-  for (const option of decision.attacker_options || []) {
-    if (!option.must_attack) continue;
-    const firstTarget = (option.valid_targets || [])[0];
-    if (firstTarget == null) continue;
-    declarations.push({
-      creature: Number(option.creature),
-      target: decodeAttackTargetChoice(firstTarget),
-    });
-  }
-  return declarations;
-}
 
 function normalizeMultiplayerTarget(target) {
   if (!target || typeof target !== "object") return target;
@@ -641,6 +611,7 @@ function objectStableIdMapFromState(state) {
   const zoneKeys = [
     "battlefield",
     "hand_cards",
+    "library_cards",
     "graveyard_cards",
     "exile_cards",
     "command_cards",
@@ -775,41 +746,35 @@ export function GameProvider({ children }) {
   const { state, setState, stateRef, subscribeState, isSnapshotRendered } = useGameSnapshot();
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
-  const [autoResolveMode, setAutoResolveModeRaw] = useState(readAutoResolveMode);
-  const autoResolveModeRef = useRef(autoResolveMode);
-  const autoResolveEnabled = autoResolveMode !== "off";
+  const [autoResolveMode, setAutoResolveModeRaw] = useState("manual");
+  const autoResolveEnabled = autoPassEnabled;
   const autoResolveEnabledRef = useRef(autoResolveEnabled);
-  const [phasePassing, setPhasePassing] = useState(false);
+  const phasePassing = false;
   const [holdRule, setHoldRule] = useState("never");
   const [priorityStops] = useState(() => createPriorityStops({
-    phaseStopsEnabled: autoResolveMode !== "all",
-    resolveMode: autoResolveMode,
+    phaseStopsEnabled: false,
+    resolveMode: "manual",
     storage: typeof window === "undefined" ? null : window.localStorage,
   }));
-  const setAutoResolveMode = useCallback(value => {
-    const mode = typeof value === "function" ? value(autoResolveModeRef.current) : value;
-    const enabled = mode !== "off";
-    autoResolveModeRef.current = mode;
-    autoResolveEnabledRef.current = enabled;
-    priorityStops.setResolveMode(mode);
-    priorityStops.resume(stateRef.current);
-    priorityStops.setPhaseStopsEnabled(mode !== "all");
-    priorityStops.observe(stateRef.current);
-    setAutoResolveModeRaw(mode);
-    try { window.localStorage.setItem(AUTO_RESOLVE_STORAGE_KEY, mode); } catch { /* Storage may be unavailable. */ }
-  }, [priorityStops, stateRef]);
+  const [priorityPolicy] = useState(() => createPriorityPolicy({ stops: priorityStops }));
+  const priorityPolicyRevision = useSyncExternalStore(priorityPolicy.subscribe, priorityPolicy.getSnapshot);
+  const maintainPriorityRef = useRef(false);
+  useEffect(() => { priorityPolicy.setFullControl(holdRule === "always", stateRef.current); }, [holdRule, priorityPolicy, stateRef]);
+  const setAutoResolveMode = useCallback(() => {
+    setAutoResolveModeRaw("manual");
+  }, []);
   const setAutoResolveEnabled = useCallback(value => {
     const enabled = typeof value === "function" ? value(autoResolveEnabledRef.current) : value;
-    setAutoResolveMode(enabled ? "safe" : "off");
-  }, [setAutoResolveMode]);
-  const pendingStackArrivals = useSyncExternalStore(stackArrivalActivity.subscribe, stackArrivalActivity.getSnapshot);
+    setAutoPassEnabled(Boolean(enabled));
+    priorityPolicy.setFullControl(!enabled, stateRef.current);
+  }, [priorityPolicy, stateRef]);
   const priorityStopsState = useSyncExternalStore(priorityStops.subscribe, priorityStops.getSnapshot);
   const cyclePriorityStop = useCallback((key, player) => priorityStops.cycleStop(key, stateRef.current, player), [priorityStops, stateRef]);
   const holdPostActionPriority = useCallback(() => priorityStops.hold(stateRef.current), [priorityStops, stateRef]);
   const pausePostActionPriority = useCallback(id => priorityStops.pauseWindow(id), [priorityStops]);
   const resumePostActionPriority = useCallback(id => priorityStops.resumeWindow(id), [priorityStops]);
   useEffect(() => subscribeState(priorityStops.observe), [subscribeState, priorityStops]);
-  useEffect(() => { priorityStops.reset(); }, [game, priorityStops]);
+  useEffect(() => { priorityStops.reset(); priorityPolicy.reset(); }, [game, priorityStops, priorityPolicy]);
   const [surrenderRequested, setSurrenderRequested] = useState(false);
   const [fixedStartingBoard, setFixedStartingBoard] = useState(readFixedStartingBoard);
   const [uiFont, setUiFont] = useState(() => {
@@ -1014,6 +979,9 @@ export function GameProvider({ children }) {
       const currentOrder = current.key === key
         ? normalizeEffectOrderingOrder(current.order, decision)
         : defaultEffectOrderingOrder(decision);
+      if (decision.choice_kind === "trigger_order" && priorityPolicy.status(stateRef.current).groupTriggers) {
+        return { key, order: moveTriggerGroup(decision, currentOrder, Number(position), Number(direction)) };
+      }
       const nextPosition = Number(position) + Number(direction);
       if (
         !Number.isInteger(position)
@@ -1031,7 +999,19 @@ export function GameProvider({ children }) {
         order: nextOrder,
       };
     });
-  }, [stateRef]);
+  }, [stateRef, priorityPolicy]);
+
+  useEffect(() => {
+    const decision = state?.decision;
+    if (decision?.choice_kind !== "trigger_order" || !priorityPolicy.status(state).groupTriggers) return;
+    const key = buildEffectOrderingKey(decision);
+    setEffectOrderingState(current => {
+      const order = currentOrderForDecision(current, decision, key);
+      const grouped = groupedTriggerOrder(decision, order);
+      return current.key === key && JSON.stringify(order) === JSON.stringify(grouped)
+        ? current : { key, order: grouped };
+    });
+  }, [state, priorityPolicy, priorityPolicyRevision]);
 
   const activeEffectOrderingState = useMemo(() => {
     const decision = state?.decision || null;
@@ -1103,413 +1083,69 @@ export function GameProvider({ children }) {
       .catch(() => {});
   }, [game, wasmRegistryCount, semanticThreshold, semanticStats]);
 
-  const opponentHoldReason = useCallback(
-    (decision, currentState) => (
-      priorityStops.observe(currentState),
-      isAutomatedSeat(automatedSeatsRef.current, decision?.player) ? null : priorityHoldReason({
-        autoPassEnabled,
-        holdRule,
-        decision,
-        currentState,
-        perspectiveMode: "opponent",
-      })
-    ),
-    [autoPassEnabled, holdRule, priorityStops]
-  );
+  const opponentHoldReason = useCallback((decision, currentState) =>
+    isAutomatedSeat(automatedSeatsRef.current, decision?.player) ? null
+      : priorityPolicy.evaluate({ ...currentState, perspective: decision?.player }) ? null : "Player decision",
+  [priorityPolicy]);
 
-  const localTurnHoldReason = useCallback(
-    (decision, currentState, canAct) => (
-      priorityStops.stopReason(currentState, canAct) || priorityHoldReason({
-        autoPassEnabled,
-        holdRule,
-        decision,
-        currentState,
-        perspectiveMode: "local",
-        requireNonEmptyStack: true,
-        manualResolveOnLocalStack: true,
-      })
-    ),
-    [autoPassEnabled, holdRule, priorityStops]
-  );
-
-  const localOffTurnHoldReason = useCallback(
-    (decision, currentState, canAct) => (
-      priorityStops.stopReason(currentState, canAct) || priorityHoldReason({
-        autoPassEnabled,
-        holdRule,
-        decision,
-        currentState,
-        perspectiveMode: "local",
-        manualResolveOnLocalStack: true,
-      })
-    ),
-    [autoPassEnabled, holdRule, priorityStops]
-  );
-
-  // Automation snapshots skip the presentation menu, so an "I can act" stop
-  // asks the engine directly. Null keeps the stop until the analysis finishes.
-  const resolveStopCanAct = useCallback(async (currentGame, currentState) => {
-    const known = currentState?.decision?.can_act ?? null;
-    if (known != null || !priorityStops.awaitsCanAct(currentState, known)
-        || typeof currentGame?.getPriorityCanAct !== "function") return known;
-    try {
-      return await currentGame.getPriorityCanAct();
-    } catch {
-      return null;
-    }
-  }, [priorityStops]);
-
-  const settleLocalStackPriority = useCallback(
-    async (currentGame, currentState) => {
-      if (!currentState) {
-        return { state: currentState, autoPasses: 0, holdReason: null, trace: [] };
-      }
-
-      if (multiplayerActiveRef.current || !autoPassEnabled) {
-        return { state: currentState, autoPasses: 0, holdReason: null, trace: [] };
-      }
-
-      let st = currentState;
-      let autoPasses = 0;
-      let holdReason = null;
-      const trace = [];
-
-      for (let i = 0; i < 4; i++) {
-        if (!st?.decision || st.decision.kind !== "priority" || !samePlayerId(st.decision.player, st.perspective)) {
-          break;
+  const settlePriorityAutomation = useCallback(async (currentGame, currentState) => {
+    let st = currentState;
+    const trace = [];
+    let autoPasses = 0, autoDeclares = 0;
+    if (multiplayerActiveRef.current) return { state: st, autoPasses, autoDeclares, trace };
+    for (let i = 0; i < 160 && st?.decision && !st.game_over && !st.loop_shortcut; i++) {
+      const actor = st.decision.player;
+      let command = null;
+      if (isAutomatedSeat(automatedSeatsRef.current, actor)) {
+        command = await buildOpponentDecisionCommand(st, currentGame, { automated: true });
+      } else {
+        const view = { ...st, perspective: actor };
+        let canAct = st.decision.can_act ?? null;
+        if (canAct == null && priorityPolicy.needsAnalysis(view) && currentGame.getPriorityCanAct) {
+          canAct = await currentGame.getPriorityCanAct();
         }
-        if (st.active_player !== st.perspective) {
-          break;
-        }
-
-        holdReason = localTurnHoldReason(st.decision, st, await resolveStopCanAct(currentGame, st));
-        if (holdReason) break;
-
-        const externalReason = externalAutoPassGateRef.current
-          ? externalAutoPassGateRef.current(st)
-          : null;
-        if (externalReason) {
-          holdReason = String(externalReason);
-          break;
-        }
-
-        const passAction = (st.decision.actions || []).find((action) => action.kind === "pass_priority");
-        if (!passAction) {
-          holdReason = "no pass action available";
-          break;
-        }
-        if (passAction.label && passAction.label !== "Pass priority") {
-          holdReason = "custom pass action";
-          break;
-        }
-
-        const stepStartedAt = performance.now();
-        const decisionBefore = summarizeDecision(st?.decision || null);
-        st = await dispatchForAutomation(currentGame, priorityCommandForAction(passAction));
-        autoPasses += 1;
-        const elapsedMs = performance.now() - stepStartedAt;
-        const workerPerf = readDispatchPerf(st);
-        trace.push({
-          kind: "local_auto_pass",
-          iteration: i + 1,
-          elapsed_ms: elapsedMs,
-          decision_before: decisionBefore,
-          decision_after: summarizeDecision(st?.decision || null),
-          stack_size_after: st?.stack_size ?? null,
-          worker_round_trip_ms: workerPerf?.worker_round_trip_ms ?? null,
-          worker: workerPerf,
-        });
-
-        if (Number(st?.stack_size || 0) <= 0) break;
-      }
-
-      return { state: st, autoPasses, holdReason, trace };
-    },
-    [autoPassEnabled, localTurnHoldReason, resolveStopCanAct]
-  );
-
-  const settleOpponentPriority = useCallback(
-    async (currentGame, currentState) => {
-      if (!currentState) {
-        return {
-          state: currentState,
-          autoPasses: 0,
-          autoDeclares: 0,
-          phaseAdvances: 0,
-          holdReason: null,
-          trace: [],
-        };
-      }
-
-      if (multiplayerActiveRef.current) {
-        return {
-          state: currentState,
-          autoPasses: 0,
-          autoDeclares: 0,
-          phaseAdvances: 0,
-          holdReason: null,
-          trace: [],
-        };
-      }
-
-      let st = currentState;
-      let autoPasses = 0;
-      let autoDeclares = 0;
-      let phaseAdvances = 0;
-      let holdReason = null;
-      const trace = [];
-      const playerCount = Math.max(2, Array.isArray(st?.players) ? st.players.length : 2);
-      const maxAutoPasses = Math.max(80, playerCount * playerCount * 16);
-      const maxPhaseAdvances = Math.max(24, playerCount * 12);
-      const maxSettleIterations = maxPhaseAdvances + playerCount * 4;
-
-      let perspectiveSwitches = 0;
-      for (let i = 0; i < maxSettleIterations; i++) {
-        while (st && st.decision) {
-          const pregameTarget = pregameFollowerRef.current(st);
-          const emptyPregame = emptyPregameAction(st);
-          if (emptyPregame) {
-            if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
-            const decisionBefore = summarizeDecision(st.decision);
-            st = await dispatchForAutomation(currentGame, priorityCommandForAction(emptyPregame));
-            autoPasses += 1;
-            trace.push({ kind: "empty_pregame", decision_before: decisionBefore,
-              decision_after: summarizeDecision(st?.decision || null) });
-            continue;
-          }
-          const followTarget = typeof currentGame.setPerspective === "function"
-            ? pregameTarget ?? (autoPassEnabled && followActivePlayerRef.current ? hotseatFollowTarget(st, automatedSeatsRef.current) : null)
-            : null;
-          if (followTarget !== null && perspectiveSwitches < playerCount * 4) {
-            const decisionBefore = summarizeDecision(st.decision);
-            await currentGame.setPerspective(followTarget);
+        command = autoPassEnabled ? priorityPolicy.evaluate(view, canAct) : null;
+        if (!command) {
+          // Required choices and responses belong to the human seat making them.
+          const follow = pregameFollowerRef.current(st)
+            ?? (followActivePlayerRef.current && !samePlayerId(actor, st.perspective) ? Number(actor) : null);
+          if (follow != null && currentGame.setPerspective) {
+            await currentGame.setPerspective(follow);
             st = await currentGame.uiState();
-            perspectiveSwitches += 1;
-            const handoffTurn = st?.turn_number ?? null;
-            const handoffReason = st?.decision?.kind === "priority" ? "turn" : st?.decision?.kind || "decision";
-            setPerspectiveHandoff(current => ({
-              player: followTarget,
-              turn: handoffTurn,
-              reason: handoffReason,
-              seq: (current?.seq || 0) + 1,
-            }));
-            trace.push({ kind: "hotseat_follow", player: followTarget, decision_before: decisionBefore,
-              decision_after: summarizeDecision(st?.decision || null) });
-            continue;
+            setPerspectiveHandoff(current => ({ player: follow, turn: st.turn_number,
+              reason: st.decision?.kind, seq: (current?.seq || 0) + 1 }));
           }
-          if (!autoPassEnabled) break;
-          if (samePlayerId(st.decision.player, st.perspective)
-            && samePlayerId(st.active_player, st.perspective)) break;
-          if (st.decision.kind === "priority") {
-            const isLocalOffTurnPriority = samePlayerId(st.decision.player, st.perspective);
-            const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
-            if (!passAction) {
-              if (isLocalOffTurnPriority) { holdReason = "no pass action available"; break; }
-              if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
-              const command = await buildOpponentDecisionCommand(st, currentGame);
-              if (!command) { holdReason = "no automatic priority response available"; break; }
-              const decisionBefore = summarizeDecision(st.decision);
-              st = await dispatchForAutomation(currentGame, command);
-              autoPasses += 1;
-              trace.push({ kind: "opponent_required_priority_choice", decision_before: decisionBefore,
-                decision_after: summarizeDecision(st?.decision || null) });
-              continue;
-            }
-            const isCustomPassAction = !!passAction.label && passAction.label !== "Pass priority";
-            if (!isLocalOffTurnPriority && isCustomPassAction) {
-              if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
-              const stepStartedAt = performance.now();
-              const decisionBefore = summarizeDecision(st?.decision || null);
-              st = await dispatchForAutomation(currentGame, priorityCommandForAction(passAction));
-              autoPasses += 1;
-              const elapsedMs = performance.now() - stepStartedAt;
-              const workerPerf = readDispatchPerf(st);
-              trace.push({
-                kind: "opponent_auto_pass_custom",
-                iteration: autoPasses,
-                elapsed_ms: elapsedMs,
-                decision_before: decisionBefore,
-                decision_after: summarizeDecision(st?.decision || null),
-                stack_size_after: st?.stack_size ?? null,
-                worker: workerPerf,
-              });
-              continue;
-            }
-            holdReason = isLocalOffTurnPriority
-              ? localOffTurnHoldReason(st.decision, st, await resolveStopCanAct(currentGame, st))
-              : opponentHoldReason(st.decision, st);
-            if (holdReason) break;
-            if (passAction.label && passAction.label !== "Pass priority") {
-              holdReason = "custom pass action";
-              break;
-            }
-            if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
-            const stepStartedAt = performance.now();
-            const decisionBefore = summarizeDecision(st?.decision || null);
-            st = await dispatchForAutomation(currentGame, priorityCommandForAction(passAction));
-            autoPasses += 1;
-            const elapsedMs = performance.now() - stepStartedAt;
-            const workerPerf = readDispatchPerf(st);
-            trace.push({
-              kind: isLocalOffTurnPriority ? "local_off_turn_auto_pass" : "opponent_auto_pass",
-              iteration: autoPasses,
-              elapsed_ms: elapsedMs,
-              decision_before: decisionBefore,
-              decision_after: summarizeDecision(st?.decision || null),
-              stack_size_after: st?.stack_size ?? null,
-              worker: workerPerf,
-            });
-            continue;
-          }
-          if (samePlayerId(st.decision.player, st.perspective)) {
-            holdReason = "local decision requires input";
-            break;
-          }
-          if (autoDeclares >= 40) { holdReason = "auto-declare safety limit reached"; break; }
-          if (st.decision.kind === "attackers") {
-            const command = currentGame.getDefaultSelectionCommand
-              ? await currentGame.getDefaultSelectionCommand()
-              : { type: "declare_attackers", declarations: defaultOpponentAttackerDeclarations(st.decision) };
-            if (!command) { holdReason = "no legal attacker response available"; break; }
-            const stepStartedAt = performance.now();
-            const decisionBefore = summarizeDecision(st?.decision || null);
-            st = await dispatchForAutomation(currentGame, command);
-            autoDeclares += 1;
-            const elapsedMs = performance.now() - stepStartedAt;
-            const workerPerf = readDispatchPerf(st);
-            trace.push({
-              kind: "auto_declare_attackers",
-              iteration: autoDeclares,
-              elapsed_ms: elapsedMs,
-              decision_before: decisionBefore,
-              decision_after: summarizeDecision(st?.decision || null),
-              worker: workerPerf,
-            });
-            continue;
-          }
-          if (st.decision.kind === "blockers") {
-            const stepStartedAt = performance.now();
-            const decisionBefore = summarizeDecision(st?.decision || null);
-            const command = currentGame.getDefaultSelectionCommand
-              ? await currentGame.getDefaultSelectionCommand()
-              : { type: "declare_blockers", declarations: [] };
-            if (!command) { holdReason = "no legal blocker response available"; break; }
-            st = await dispatchForAutomation(currentGame, command);
-            autoDeclares += 1;
-            const elapsedMs = performance.now() - stepStartedAt;
-            const workerPerf = readDispatchPerf(st);
-            trace.push({
-              kind: "auto_declare_blockers",
-              iteration: autoDeclares,
-              elapsed_ms: elapsedMs,
-              decision_before: decisionBefore,
-              decision_after: summarizeDecision(st?.decision || null),
-              worker: workerPerf,
-            });
-            continue;
-          }
-          const command = await buildOpponentDecisionCommand(st, currentGame);
-          if (!command) { holdReason = "no automatic response available"; break; }
-          const decisionBefore = summarizeDecision(st.decision);
-          st = command.type === "cancel_decision"
-            ? await currentGame.cancelDecision()
-            : await dispatchForAutomation(currentGame, command);
-          autoDeclares += 1;
-          trace.push({ kind: "opponent_effect_decision", decision_before: decisionBefore,
-            decision_after: summarizeDecision(st?.decision || null) });
-          continue;
+          break;
         }
-        if (holdReason || !autoPassEnabled) break;
-        if (!st || st.game_over || st.decision) break;
-        if (phaseAdvances >= maxPhaseAdvances) { holdReason = "phase auto-advance safety limit reached"; break; }
-        const before = `${st.turn_number}|${st.phase}|${st.step}|${st.priority_player}|${st.stack_size}`;
-        const advanceStartedAt = performance.now();
-        await currentGame.advancePhase();
-        const advancePhaseMs = performance.now() - advanceStartedAt;
-        phaseAdvances += 1;
-        const uiStateStartedAt = performance.now();
-        st = await currentGame.uiState();
-        const uiStateMs = performance.now() - uiStateStartedAt;
-        const after = `${st.turn_number}|${st.phase}|${st.step}|${st.priority_player}|${st.stack_size}`;
-        trace.push({
-          kind: "phase_advance",
-          iteration: phaseAdvances,
-          advance_phase_ms: advancePhaseMs,
-          ui_state_ms: uiStateMs,
-          state_before: before,
-          state_after: after,
-          worker: readDispatchPerf(st),
-        });
-        if (before === after) { holdReason = "advance phase made no progress"; break; }
       }
-
-      return { state: st, autoPasses, autoDeclares, phaseAdvances, holdReason, trace };
-    },
-    [autoPassEnabled, localOffTurnHoldReason, opponentHoldReason, resolveStopCanAct]
-  );
-
-  const settlePriorityAutomation = useCallback(
-    async (currentGame, currentState) => {
-      const localAutoResult = await settleLocalStackPriority(currentGame, currentState);
-      const opponentAutoResult = await settleOpponentPriority(currentGame, localAutoResult.state);
-      return {
-        ...opponentAutoResult,
-        localAutoPasses: localAutoResult.autoPasses,
-        localHoldReason: localAutoResult.holdReason,
-        trace: [
-          ...(localAutoResult.trace || []),
-          ...(opponentAutoResult.trace || []),
-        ],
-      };
-    },
-    [settleLocalStackPriority, settleOpponentPriority]
-  );
+      if (!command) break;
+      const before = summarizeDecision(st.decision);
+      const actorView = { ...st, perspective: actor };
+      const checkpoint = !isAutomatedSeat(automatedSeatsRef.current, actor)
+        ? priorityPolicy.beforeAutomaticCommand(command, actorView) : null;
+      try {
+        st = command.type === "cancel_decision" ? await currentGame.cancelDecision()
+          : await dispatchForAutomation(currentGame, command);
+      } catch (error) {
+        if (checkpoint) priorityPolicy.rollback(checkpoint, actorView);
+        throw error;
+      }
+      if (command.type === "priority_action") autoPasses++; else autoDeclares++;
+      trace.push({ kind: "priority_policy", decision_before: before, decision_after: summarizeDecision(st?.decision) });
+    }
+    return { state: st, autoPasses, autoDeclares, localAutoPasses: 0, phaseAdvances: 0, trace };
+  }, [priorityPolicy, autoPassEnabled]);
 
   const autoResolveTrivialDecisions = useCallback(
-    async (currentGame, currentState, settle) => {
+    async (_currentGame, currentState) => {
       let resolved = 0;
       let st = currentState;
       const trace = [];
-      while (holdRule !== "always" && autoPassEnabled && resolved < 50 && st && st.decision) {
-        // Peer answers must go through submitMultiplayerCommand after the
-        // snapshot is published, so the actor can provide verified openings.
-        const forcedObjects = !multiplayerActiveRef.current
-          ? forcedObjectSelectionCommand(st.decision)
-          : null;
-        const auto = forcedObjects
-          ? { cmd: forcedObjects, label: "Auto: only required card selected" }
-          : tryBuildAutoResolveCommand(st.decision);
-        if (!auto) break;
-        try {
-          const dispatchStartedAt = performance.now();
-          const decisionBefore = summarizeDecision(st?.decision || null);
-          st = await dispatchForAutomation(currentGame, auto.cmd);
-          resolved++;
-          const dispatchMs = performance.now() - dispatchStartedAt;
-          const dispatchWorker = readDispatchPerf(st);
-          const settleStartedAt = performance.now();
-          const settleResult = await settle(currentGame, st);
-          const settleMs = performance.now() - settleStartedAt;
-          st = settleResult.state;
-          trace.push({
-            kind: "trivial_auto_resolve",
-            iteration: resolved,
-            label: auto.label,
-            dispatch_ms: dispatchMs,
-            settle_ms: settleMs,
-            decision_before: decisionBefore,
-            decision_after: summarizeDecision(st?.decision || null),
-            dispatch_worker: dispatchWorker,
-            settle_trace: settleResult.trace || [],
-          });
-        } catch (err) {
-          console.warn("Auto-resolve failed:", err);
-          break;
-        }
-      }
+      // Goldfish choices and explicit ability preferences are handled by the
+      // shared policy. Human targets, discards and payments remain manual.
       return { state: st, resolved, trace };
     },
-    [holdRule, autoPassEnabled]
+    []
   );
 
   const settleNoop = useCallback(async (_currentGame, currentState) => ({
@@ -1926,7 +1562,7 @@ export function GameProvider({ children }) {
   useEffect(() => {
     if (!game || typeof game.setAutoCleanupDiscard !== "function") return;
     game
-      .setAutoCleanupDiscard(autoPassEnabled && holdRule !== "always" && !multiplayer.matchStarted)
+      .setAutoCleanupDiscard(false)
       .catch((err) => console.warn("setAutoCleanupDiscard failed:", err));
   }, [autoPassEnabled, holdRule, game, multiplayer.matchStarted]);
 
@@ -1939,19 +1575,8 @@ export function GameProvider({ children }) {
     if (stateRef.current !== state) return;
 
     const currentState = state;
-    const emptyBlockers = autoPassEnabled && holdRule !== "always"
-      && samePlayerId(currentState?.decision?.player, currentState?.perspective)
-      && ["blockers", "attackers"].includes(currentState?.decision?.kind)
-      ? tryBuildAutoResolveCommand(currentState.decision)?.cmd : null;
-    const forcedObjects = holdRule === "always" ? null : (emptyBlockers || localForcedObjectSelectionCommand(currentState));
-    if (!forcedObjects && (priorityStops.stopReason(currentState)
-      || Number(currentState?.stack_size || 0) > 0)) return;
-    const result = forcedObjects ? { command: forcedObjects } : buildMultiplayerSmartAutoPass({
-      autoPassEnabled,
-      holdRule,
-      decision: currentState?.decision || null,
-      currentState,
-    });
+    const forcedObjects = false;
+    const result = { command: autoPassEnabled ? priorityPolicy.evaluate(currentState) : null };
 
     if (!result.command) {
       multiplayerAutomationAttemptRef.current = "";
@@ -1985,11 +1610,13 @@ export function GameProvider({ children }) {
       return;
     }
 
+    const groupCheckpoint = priorityPolicy.beforeAutomaticCommand(result.command, currentState);
     multiplayerSubmitInFlightRef.current = true;
     submitMultiplayerCommand(syncedCommand, forcedObjects
       ? "Auto: only required card selected"
-      : "Auto-passed priority")
+      : result.command.type === "priority_action" ? "Auto-passed priority" : "Replayed group choice")
       .catch((err) => {
+        priorityPolicy.rollback(groupCheckpoint, currentState);
         const message = err instanceof Error ? err.message : String(err);
         emitSyncFailureNotice("Automatic action failed", message);
         setStatus(`Automatic action failed: ${message}`, true);
@@ -2009,6 +1636,7 @@ export function GameProvider({ children }) {
     multiplayer.matchStarted,
     multiplayer.submittingAction,
     multiplayerSubmissionRevision,
+    priorityPolicy, priorityPolicyRevision,
     setStatus,
     state,
     stateRef,
@@ -2068,6 +1696,28 @@ export function GameProvider({ children }) {
   usePaymentOptions({ game, state, stateRef, setState,
     enabled: samePlayerId(state?.decision?.player, state?.perspective) });
 
+  useEffect(() => {
+    if (!game || multiplayer.matchStarted || !state?.decision || state?.loop_shortcut) return;
+    let timer;
+    let cancelled = false;
+    const resume = () => {
+      if (cancelled || stateRef.current !== state) return;
+      if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()) {
+        timer = setTimeout(resume, 25); return;
+      }
+      const actorView = { ...state, perspective: state.decision.player };
+      if (!isAutomatedSeat(automatedSeatsRef.current, state.decision.player)
+        && (!autoPassEnabled || !priorityPolicy.evaluate(actorView))) return;
+      void wasmInteractionGateRef.current.runAutomatic(async () => {
+        try { await finalizeState(game, stateRef.current); }
+        catch (err) { setStatus(`Automatic action failed: ${err}`, true); }
+      });
+    };
+    timer = setTimeout(resume, 0);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [automatedSeats, priorityPolicy, priorityPolicyRevision, priorityStopsState, autoPassEnabled,
+    game, multiplayer.matchStarted, state, stateRef, isSnapshotRendered, finalizeState, setStatus]);
+
   const automatedAnalysisRevisionRef = useRef(null);
   useEffect(() => {
     const revision = state?.__priority_revision;
@@ -2118,6 +1768,7 @@ export function GameProvider({ children }) {
       );
       // Loop continuations must survive the previous action's cooldown and wait
       // for rendering, but become obsolete when another snapshot replaces theirs.
+      const maintainRequested = maintainPriorityRef.current;
       const loopSnapshotId = expectedLoopSnapshotId ?? stateRef.current?.snapshot_id;
       const runInteraction = waitForLoopReady
         ? (task) => wasmInteractionGateRef.current.runWhenReady(task,
@@ -2201,6 +1852,7 @@ export function GameProvider({ children }) {
             if (isTargetSubmit) armTargetSubmitDebounce();
             const syncedCommand = serializeMultiplayerCommand(command, currentState);
             priorityCheckpoint = priorityStops.beforeCommand(command, currentState);
+            priorityCheckpoint.policy = priorityPolicy.beforeCommand(command, currentState, { maintain: maintainRequested });
             multiplayerSubmitInFlightRef.current = true;
             multiplayerTraceId = beginActionTrace({
               label: describeCommandLabel(command),
@@ -2232,6 +1884,7 @@ export function GameProvider({ children }) {
               outcome: "failed",
               meta: { error: err instanceof Error ? err.message : String(err) },
             });
+            priorityPolicy.rollback(priorityCheckpoint?.policy, stateRef.current);
             priorityStops.rollbackAction(priorityCheckpoint, stateRef.current);
             emitSyncFailureNotice(
               "Sync failed",
@@ -2266,6 +1919,7 @@ export function GameProvider({ children }) {
             && (stateRef.current?.pass_intents || []).length > 0;
           const isYield = command.type === "priority_yield" || continuingYield;
           priorityCheckpoint = priorityStops.beforeCommand(command, stateRef.current);
+          priorityCheckpoint.policy = priorityPolicy.beforeCommand(command, stateRef.current, { maintain: maintainRequested });
           let st = await dispatchForAutomation(game, command);
           st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => dispatchForAutomation(game, nextCommand));
           // Goldfish opponents already governed by the automatic hold policy
@@ -2338,7 +1992,8 @@ export function GameProvider({ children }) {
             });
           }
         } catch (err) {
-          priorityStops.rollbackAction(priorityCheckpoint, stateRef.current);
+          priorityPolicy.rollback(priorityCheckpoint?.policy, stateRef.current);
+            priorityStops.rollbackAction(priorityCheckpoint, stateRef.current);
           const errorMessage = err instanceof Error ? err.message : String(err);
           let decisionAfterError = null;
           if (isTargetSubmit) clearTargetSubmitDebounce();
@@ -2387,6 +2042,7 @@ export function GameProvider({ children }) {
       priorityStops,
       finishMultiplayerSubmission,
       opponentHoldReason,
+      priorityPolicy,
       holdRule,
       game,
       multiplayer.matchStarted,
@@ -2411,79 +2067,12 @@ export function GameProvider({ children }) {
     if (state?.decision?.kind !== "mana_payment") manuallyControlledPaymentRef.current = null;
   }, [state?.decision?.kind]);
 
-  // The visual drain and this deadline share the same origin. Only submit a
-  // normal local pass, and revalidate authoritative state after any input/sync.
-  useEffect(() => {
-    const window = priorityStopsState.window;
-    // Replay owns its exact sequence of passes; the timer must not race it.
-    if (!window || state?.loop_shortcut) return;
-    // Read live activity too: child layout effects register arrivals before
-    // this effect, potentially after this render read the store.
-    if (stackArrivalActivity.getSnapshot() > 0) {
-      priorityStops.deferWindow(window.id);
-      return;
-    }
-    if (window.pausedAt != null) return;
-    // Start only after the snapshot is drawn and every stack arrival settles.
-    if (window.startedAt === null) {
-      if (state === stateRef.current && isSnapshotRendered() && priorityStops.windowFor(state)) priorityStops.armWindow(window.id);
-      return;
-    }
-    if (!autoPassEnabled || holdRule === "always") {
-      priorityStops.hold(stateRef.current);
-      return;
-    }
-    let timer;
-    const passWhenReady = () => {
-      const current = stateRef.current;
-      if (current?.loop_shortcut) return;
-      priorityStops.observe(current);
-      if (priorityStops.getSnapshot().window?.id !== window.id) return;
-      const remaining = window.startedAt + window.duration - performance.now();
-      if (remaining > 0) {
-        timer = setTimeout(passWhenReady, Math.ceil(remaining));
-        return;
-      }
-      if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
-        || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
-        timer = setTimeout(passWhenReady, 25);
-        return;
-      }
-      const pass = findPassPriorityAction(current?.decision);
-      if (!pass || (pass.label && pass.label !== "Pass priority")) {
-        priorityStops.hold(current);
-        return;
-      }
-      if (priorityStops.expire(window.id, current)) {
-        void userDispatch(priorityCommandForAction(pass), "Passed priority");
-      } else if (priorityStops.getSnapshot().window?.id === window.id) {
-        timer = setTimeout(passWhenReady, 25);
-      }
-    };
-    timer = setTimeout(passWhenReady, Math.max(0, Math.ceil(window.startedAt + window.duration - performance.now())));
-    return () => clearTimeout(timer);
-  }, [priorityStops, priorityStopsState.window, autoResolveEnabled, autoPassEnabled, holdRule, userDispatch,
-    isSnapshotRendered, multiplayer.submittingAction, stateRef, state, pendingStackArrivals]);
-
-  // Each run sends one authenticated intention. The engine drains authorized
-  // priority without intermediate renders and reports retained consent.
-  const [resolveAllTick, setResolveAllTick] = useState(0);
-  const resolveAllRef = useRef(null);
-  const stopResolveAll = useCallback(() => {
-    resolveAllRef.current = null;
-    setPhasePassing(false);
-  }, []);
-  useEffect(() => { stopResolveAll(); }, [game, stopResolveAll]);
-  // A stop ends the current phase run. It must not switch off auto-pass or
-  // the saved auto-resolve preference: the stop itself keeps holding until the
-  // player acts, and with default stops a paused run is the normal outcome.
-  const pausePassing = useCallback(() => {
-    const run = resolveAllRef.current;
-    if (!run) return;
-    run.cancelRequested = true;
-    setPhasePassing(false);
-    setResolveAllTick(tick => tick + 1);
-  }, []);
+  const startPriorityYield = useCallback((mode, target) => {
+    setAutoPassEnabled(true);
+    priorityPolicy.start(mode, stateRef.current, target);
+  }, [priorityPolicy, stateRef]);
+  const stopResolveAll = useCallback(() => priorityPolicy.clear(stateRef.current), [priorityPolicy, stateRef]);
+  const clearPriorityYields = stopResolveAll;
   const changeGoldfishPlayer = useCallback(async (playerId) => runWasmInteraction(async () => {
     if (!game || multiplayerActiveRef.current) return;
     stopResolveAll();
@@ -2507,155 +2096,23 @@ export function GameProvider({ children }) {
       setStatus(`Change player failed: ${error}`, true);
     }
   }), [game, runWasmInteraction, stopResolveAll, priorityStops, finalizeState, setStatus, stateRef]);
-  // continueThroughOwn (double-click Pay): keep resolving through items this
-  // seat adds while the stack resolves; only an opponent's addition pauses.
-  const startResolveAll = useCallback(({ continueThroughOwn = false } = {}) => {
+  const startResolveGroup = useCallback(() => priorityPolicy.startGroup(stateRef.current), [priorityPolicy, stateRef]);
+  const startResolveAll = useCallback(() => startPriorityYield("stack"), [startPriorityYield]);
+  const togglePhasePassing = useCallback(() => startPriorityYield("turn"), [startPriorityYield]);
+  const startPhaseAdvance = useCallback(() => {
     const current = stateRef.current;
-    const stackSize = Number(current?.stack_size || 0);
-    if (stackSize <= 0) return;
-    setAutoPassEnabled(true);
     const pass = findPassPriorityAction(current?.decision);
-    if (pass && samePlayerId(current?.decision?.player, current?.perspective)) {
-      priorityStops.beforeCommand(priorityCommandForAction(pass), current);
-    }
-    resolveAllRef.current = {
-      turn: current?.turn_number ?? null,
-      stackIds: new Set((current.stack_objects || []).map(entry => String(entry.id))),
-      continueThroughOwn,
-      stackSize,
-      passes: 0,
-      inFlight: false,
-      dispatchedFrom: null,
-    };
-    setPhasePassing(false);
-    setResolveAllTick((tick) => tick + 1);
-  }, [stateRef, priorityStops]);
+    if (pass) void userDispatch(priorityCommandForAction(pass), "Passed priority");
+  }, [stateRef, userDispatch]);
 
-  const beginPhasePassing = useCallback((ignoreStops = false) => {
-    if (resolveAllRef.current?.phases) {
-      pausePassing();
-      return;
-    }
-    const current = stateRef.current;
-    if (!current || current.game_over
-      || (ignoreStops && !samePlayerId(current.active_player, current.perspective))
-      || current.mana_payment || current.decision?.kind === "mana_payment") return;
-    // Explicitly resume automation, but leave phase/step stops intact.
-    priorityStops.resume(current);
-    // Release the starting stop; Go To honors later stops and End turn bypasses them.
-    const pass = findPassPriorityAction(current.decision);
-    if (pass && samePlayerId(current.decision?.player, current.perspective)) {
-      priorityStops.beforeCommand(priorityCommandForAction(pass), current);
-    }
-    setAutoPassEnabled(true);
-    setHoldRule("never");
-    resolveAllRef.current = {
-      phases: true,
-      ignoreStops,
-      turn: current.turn_number ?? null,
-      stackSize: Number(current.stack_size || 0),
-      passes: 0,
-      inFlight: false,
-      dispatchedFrom: null,
-    };
-    setPhasePassing(true);
-    setResolveAllTick(tick => tick + 1);
-  }, [stateRef, pausePassing, priorityStops]);
-  const togglePhasePassing = useCallback(() => beginPhasePassing(true), [beginPhasePassing]);
-  const startPhaseAdvance = useCallback(() => beginPhasePassing(false), [beginPhasePassing]);
-
-  useEffect(() => {
-    const run = resolveAllRef.current;
-    if (state?.loop_shortcut) {
-      if (run) stopResolveAll();
-      return;
-    }
-    if (!run || run.inFlight || stateRef.current !== state) return;
-    if (!state || state.game_over || state.turn_number !== run.turn) {
-      stopResolveAll();
-      return;
-    }
-    if (run.submitted && (run.stopKeys !== JSON.stringify(priorityStopsState.stops)
-        || holdRule === "always" || !autoPassEnabled)) run.cancelRequested = true;
-    const additions = (state.stack_objects || []).filter(entry => !run.stackIds.has(String(entry.id)));
-    if (run.continueThroughOwn && !run.phases && additions.length > 0
-      && additions.every(entry => samePlayerId(entry.controller, state.perspective))) {
-      // Our own new items join the run; the engine stopped for them, so resume.
-      for (const entry of additions) run.stackIds.add(String(entry.id));
-      if (run.submitted && !(state.pass_intents || []).includes(Number(state.perspective))
-        && state.decision?.kind === "priority" && samePlayerId(state.decision.player, state.perspective)) {
-        run.submitted = false;
-        run.dispatchedFrom = null;
-      }
-    }
-    if (run.submitted && !(state.pass_intents || []).includes(Number(state.perspective))) {
-      // The engine stops at every "I can act" step; only this client knows
-      // whether its seat can act there, so it resumes the advance when not.
-      const canActStop = run.phases && !run.ignoreStops && !run.cancelRequested
-        && state.decision?.kind === "priority" && samePlayerId(state.decision.player, state.perspective)
-        && Number(state.stack_size || 0) === 0 && !priorityStops.stopReason(state, false);
-      const canAct = state.decision?.can_act ?? null;
-      if (canActStop && canAct == null) return;
-      if (canActStop && canAct === false) {
-        run.submitted = false;
-        run.dispatchedFrom = null;
-      } else {
-        priorityStops.holdCurrentPriority(state);
-        stopResolveAll();
-        return;
-      }
-    }
-    if (run.cancelRequested) {
-      if (!run.submitted) { stopResolveAll(); return; }
-      const timer = setTimeout(() => {
-        if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
-            || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
-          setResolveAllTick(tick => tick + 1);
-          return;
-        }
-        run.inFlight = true;
-        Promise.resolve(dispatch({ type: "cancel_priority_yield", player: Number(state.perspective) }, "Passing paused"))
-          .finally(() => { run.inFlight = false; setResolveAllTick(tick => tick + 1); });
-      }, 25);
-      return () => clearTimeout(timer);
-    }
-    if (run.dispatchedFrom === state) return;
-    if (state.decision?.kind !== "priority" || (!run.phases && (!state.stack_size
-        || (state.stack_objects || []).some(entry => !run.stackIds.has(String(entry.id)))))) {
-      stopResolveAll();
-      return;
-    }
-    if (!samePlayerId(state.decision?.player, state.perspective)) return;
-    const pass = findPassPriorityAction(state.decision);
-    if (!pass || (pass.label && pass.label !== "Pass priority") || holdRule === "always") {
-      stopResolveAll();
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (stateRef.current !== state || wasmInteractionGateRef.current.isBlocked()
-          || !isSnapshotRendered() || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
-        setResolveAllTick(tick => tick + 1);
-        return;
-      }
-      const continuing = run.submitted;
-      run.inFlight = true;
-      run.submitted = true;
-      run.dispatchedFrom = state;
-      run.stopKeys = JSON.stringify(priorityStops.getSnapshot().stops);
-      Promise.resolve(dispatch(continuing ? priorityCommandForAction(pass) : {
-        type: "priority_yield",
-        mode: run.phases ? "phases" : "stack",
-        stops: run.ignoreStops ? [] : Object.keys(priorityStopsForPlayer(priorityStops.getSnapshot().stops, state.active_player)),
-      }, run.phases ? "Advance to next pause" : "Resolve all"))
-        .catch(stopResolveAll)
-        .finally(() => {
-          run.inFlight = false;
-          setResolveAllTick(tick => tick + 1);
-        });
-    }, 25);
-    return () => clearTimeout(timer);
-  }, [dispatch, isSnapshotRendered, multiplayer.submittingAction, resolveAllTick,
-    state, stateRef, stopResolveAll, priorityStops, priorityStopsState, holdRule, autoPassEnabled]);
+  useEffect(() => installPriorityShortcuts(document, {
+    state: () => stateRef.current,
+    maintain: value => { maintainPriorityRef.current = value; },
+    start: startPriorityYield,
+    clear: clearPriorityYields,
+    group: () => handleTriggerShortcut(priorityPolicy, stateRef.current),
+    answer: command => userDispatch(command, "Answered choice"),
+  }), [stateRef, startPriorityYield, clearPriorityYields, priorityPolicy, userDispatch, startResolveGroup]);
 
   const automaticRevealBlocked = useCallback(() =>
     wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
@@ -3332,9 +2789,14 @@ export function GameProvider({ children }) {
       setAutoResolveMode,
       holdRule,
       setHoldRule,
+      priorityPolicy,
+      priorityStatus: priorityPolicy.status(state),
+      startPriorityYield,
+      clearPriorityYields,
       priorityStops: priorityStopsState.stops,
       postActionPriorityWindow: priorityStops.windowFor(state) ? priorityStopsState.window : null,
       cyclePriorityStop,
+      setPriorityStop: (key, mode, player) => priorityStops.setStop(key, mode, stateRef.current, player),
       holdPostActionPriority, pausePostActionPriority, resumePostActionPriority,
       fixedStartingBoard,
       setFixedStartingBoard,
@@ -3383,12 +2845,13 @@ export function GameProvider({ children }) {
       toggleAutomatedSeat,
       perspectiveHandoff,
       startResolveAll: userStartResolveAll,
+      startResolveGroup,
       requestResolveAfterPayment,
       phasePassing,
       togglePhasePassing,
       startPhaseAdvance,
     }),
-    [
+    [priorityPolicy, startPriorityYield, clearPriorityYields, startResolveGroup, priorityStops, stateRef,
       setState,
       matchClockStore,
       game,
@@ -3439,6 +2902,7 @@ export function GameProvider({ children }) {
   return <GameContext.Provider value={value}>
     <ManaPaymentEditorProvider state={state} dispatch={userDispatch} cancelBackgroundDispatch={cancelBackgroundDispatch}>
       {children}
+      <PriorityPreferences />
     </ManaPaymentEditorProvider>
   </GameContext.Provider>;
 }

@@ -1,3 +1,4 @@
+import { readShortcutPreset } from "./keyboard-preferences.js";
 import { useLayoutEffect, useSyncExternalStore } from "react";
 
 export const TOGGLE_HAND_EVENT = "ironsmith:toggle-hand";
@@ -31,6 +32,8 @@ export function onHandOpenChange(listener) {
   return subscribe(() => listener(open));
 }
 
+export function isHandOpen() { return open; }
+
 export function useHandOpen() {
   return useSyncExternalStore(subscribe, () => open, () => false);
 }
@@ -44,10 +47,10 @@ function visible(element) {
   return element.getClientRects().length > 0 && style.visibility !== "hidden";
 }
 
-// Ctrl raises the numbered hand and leaves it open; "." toggles it.
+// H raises the numbered hand and leaves it open; "." toggles it.
 export function installHandToggleShortcut(document) {
   const onKeyDown = event => {
-    const showNumbers = event.key === "Control";
+    const showNumbers = event.key.toLowerCase() === "h";
     if ((!showNumbers && event.key !== ".") || event.defaultPrevented || event.isComposing || event.repeat
         || (!showNumbers && event.ctrlKey) || event.altKey || event.metaKey || event.shiftKey) return;
     if (event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"]')) return;
@@ -84,6 +87,7 @@ export function installHandNumberShortcut(document, getCards, selectCard) {
       reset();
       return;
     }
+    if (readShortcutPreset() === "mtgo" && !open) { reset(); return; }
     const cards = getCards();
     const now = event.timeStamp;
     let next = cards.length > 9 && now - lastTime <= 700 ? digits + event.key : event.key;

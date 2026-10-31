@@ -146,6 +146,11 @@ function createGameProxy(callWorker, callZiffleWorker) {
   const proxy = {};
   for (const method of WORKER_METHODS) {
     proxy[method] = (...args) => {
+      // Choose once, before journaling: analysis replicas must replay the same
+      // seed, while each new local table gets fresh randomness.
+      if ((method === "reset" || method === "resetEmpty") && args[2] == null) {
+        args[2] = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
+      }
       if (ZIFFLE_WORKER_METHODS.has(method) && typeof callZiffleWorker === "function") {
         return callZiffleWorker(method, args);
       }

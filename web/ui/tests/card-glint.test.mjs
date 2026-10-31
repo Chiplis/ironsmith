@@ -217,7 +217,7 @@ test('special layout imports preserve physical frames and compiler-compatible la
   const {normalizeDraftForApi}=await import('../src/lib/custom-card-draft.js');
   const {cardGlintDraftFace}=await import('../src/lib/card-glint/draft.mjs');
   const {specialLayoutCard}=await import('./card-glint-special-layouts-fixture.mjs');
-  for(const [layout,compiler] of [['prepare','prepare'],['room','split'],['flip','transform_like'],['modal_dfc','transform_like'],['aftermath','split'],['battle','transform_like']]) {
+  for(const [layout,compiler] of [['prepare','prepare'],['room','room'],['flip','flip'],['modal_dfc','modal_dfc'],['aftermath','aftermath'],['battle','transform']]) {
     const card=specialLayoutCard(layout),draft=cardBuildDraft(card);
     assert.equal(draft.frameLayout,layout);
     assert.equal(normalizeDraftForApi(draft).layout,compiler);
@@ -254,4 +254,9 @@ test('frame audit retains printing treatments, canonical types, Saga stats, stam
   assert.equal(cardGlintFace(card,{faceIndex:1,printing:{security_stamp:'oval',frame:'2003'}}).securityStamp,'none');
   assert.equal(cardGlintFace(card,{faceIndex:1,printing:{frame:'2003'}}).frameAssetFamily,undefined);
   assert.equal(cardGlintFace({...card,card_faces:[{type_line:'Enchantment — Saga'}, {type_line:'Land'}]}).reverseStats,undefined);
+});
+
+test('Omen renders both panels using the inset spell frame', () => {
+ const face = cardGlintFace({layout:'omen', card_faces:[{name:'Dragon',type_line:'Creature — Dragon'}, {name:'Omen',type_line:'Instant — Omen',oracle_text:'Draw a card.'}]}, {faceIndex:1});
+ assert.equal(face.name,'Dragon'); assert.equal(face.layout,'adventure'); assert.equal(face.faces.length,2);
 });

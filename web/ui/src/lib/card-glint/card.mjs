@@ -52,7 +52,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   // turn an Adventure's outer frame into an instant/sorcery frame.
   let cardLayout = card.layout;
   if (parts?.length === 2) {
-    if (parts.some(part => /\bAdventure\b/.test(part.type_line ?? ''))) cardLayout = 'adventure';
+    if (parts.some(part => /\b(Adventure|Omen)\b/.test(part.type_line ?? ''))) cardLayout = 'adventure';
     else if (['split', 'aftermath'].includes(cardLayout) &&
       (card.keywords?.includes('Aftermath') || parts.some(part => /^\s*Aftermath\b/m.test(rules(part))))) cardLayout = 'aftermath';
   }

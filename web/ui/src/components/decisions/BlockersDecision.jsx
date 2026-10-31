@@ -1,3 +1,4 @@
+import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import useUiText from "@/i18n/useUiText";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
@@ -408,6 +409,7 @@ export default function BlockersDecision({
             ) : (
               <>{ui(blockerSubmitLabel(declarations.length))}</>
             )}
+            <PriorityShortcutHint number="1" />
           </Button>
         </PeerWaitPopover>
       </div>

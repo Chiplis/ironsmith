@@ -177,3 +177,25 @@
 .phase-track-group--duel .phase-track-duel-legend :is(svg, .phase-track-turn-cue, .phase-track-priority-cue) { flex-shrink: 0; }
 .phase-track-group--duel [data-phase-name="Untap"] { border-bottom: 0 !important; }
 .phase-track-group--duel [data-phase-name="Untap"]::after { display: none !important; }
+
+/* The floating phase shell ignores clicks; each interactive control opts in. */
+.phase-track-lock { align-self: flex-end; font-size: 10px; line-height: 1.2; color: #aabbd0; padding: 2px 6px; border: 1px solid #54607866; border-radius: 3px; cursor: pointer; pointer-events: auto; }
+
+.phase-track-stop-button[data-yield-target="true"] { background: #a87e2466; outline: 2px solid #f5cc6a; border-radius: 4px; }
+
+/* Keep shortcut badges separate from the action label, including compact docks. */
+.priority-shortcut-hint {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: 6px;
+  padding: 1px 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font: 10px/1.2 system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: .8;
+  vertical-align: middle;
+}

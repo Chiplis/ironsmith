@@ -29,10 +29,10 @@ export function defaultOptionSelection(decision) {
   return null;
 }
 
-export async function buildOpponentDecisionCommand(state, game) {
+export async function buildOpponentDecisionCommand(state, game, { automated = false } = {}) {
   const decision = state?.decision;
-  if (!decision || Number(decision.player) === Number(state.perspective)) return null;
-  if (['select_objects', 'targets'].includes(decision.kind) && game?.getDefaultSelectionCommand) {
+  if (!decision || (!automated && Number(decision.player) === Number(state.perspective))) return null;
+  if (['select_objects', 'targets', 'attackers', 'blockers'].includes(decision.kind) && game?.getDefaultSelectionCommand) {
     return game.getDefaultSelectionCommand();
   }
   switch (decision.kind) {

@@ -878,7 +878,17 @@ with it. A full refresh and deploy looks like this:
   && rsync -a --delete web/ui/dist/ /path/to/site/ironsmith/
 ```
 
-Serving from a subdirectory needs no extra configuration.
+Serving from a subdirectory needs no extra configuration. Only publish after the
+build succeeds: an interrupted or failed build can leave `dist/` incomplete.
+`pnpm build` verifies that all public assets and entry bundles are present. To
+check an existing copy before publishing it, run:
+
+```sh
+node web/ui/scripts/verify-deployment.mjs /path/to/site/ironsmith
+```
+
+Copy the entire `dist/`, including `card-glint/`, `card-frames/`, `card-i18n/`,
+and `cards/`; these runtime assets are not contained in the JavaScript bundle.
 
 ### npm package
 

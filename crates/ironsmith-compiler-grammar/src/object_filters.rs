@@ -1762,8 +1762,9 @@ fn apply_same_controller_suffix(filter: &mut ObjectFilter, opponent: bool) {
     }
 }
 
-/// "with the same power and/or same toughness as this creature": each named
-/// characteristic of the candidate equals the source's. Several
+/// "with the same power and/or same toughness as this creature" (or as a
+/// referenced object, "as that creature"): each named characteristic of the
+/// candidate equals that object's. Several
 /// characteristics joined by "and" must all match; joined by "or" or
 /// "and/or", any one suffices.
 struct SamePowerToughnessAsSource {
@@ -1830,7 +1831,7 @@ fn split_same_power_toughness_as_source_suffix(
     if rest.first() != Some(&"as") {
         return None;
     }
-    let surface = crate::util::source_reference_surface_for_words(&rest[1..])?;
+    let source = same_power_toughness_reference(&rest[1..])?;
 
     let token_end = *words.token_start_indices().get(with_index)?;
     if token_end == 0 {
@@ -1844,9 +1845,27 @@ fn split_same_power_toughness_as_source_suffix(
             toughness: !first_is_power || both,
             disjunctive: both && disjunctive,
             and_or,
-            source: crate::util::source_choose_spec_for_surface(surface),
+            source,
         },
     ))
+}
+
+/// The object after "as": this object, or a previously referenced one
+/// ("it", "that creature", "the creature") bound to the "it" tag.
+fn same_power_toughness_reference(words: &[&str]) -> Option<crate::target::ChooseSpec> {
+    if let Some(surface) = crate::util::source_reference_surface_for_words(words) {
+        return Some(crate::util::source_choose_spec_for_surface(surface));
+    }
+    match words {
+        ["it"]
+        | [
+            "that" | "the",
+            "creature" | "permanent" | "object" | "card" | "artifact" | "spell",
+        ] => Some(crate::target::ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind().into(),
+        )),
+        _ => None,
+    }
 }
 
 fn apply_same_power_toughness_as_source(

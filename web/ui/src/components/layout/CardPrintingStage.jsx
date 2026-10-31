@@ -20,24 +20,20 @@ function cyclePresentation(options, value) {
 function PresentationChoices({ label, options, value, onChange, translate = true }) {
   const ui = useUiText();
   return (
-    <div className="card-forge-inline-row">
+    <label className="card-forge-inline-row">
       <span className="card-forge-section-label">{label}</span>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+      <select
+        className="card-forge-input card-forge-input--compact"
+        value={value ?? ""}
+        onChange={(event) => onChange(options.find((option) => String(option.id ?? "") === event.target.value)?.id ?? null)}
+      >
         {options.map((option) => (
-          <button
-            key={option.id ?? "default"}
-            type="button"
-            aria-pressed={value === option.id}
-            disabled={option.disabled}
-            title={option.reason}
-            className={cn("card-forge-chip", value === option.id && "is-active")}
-            onClick={() => onChange(option.id)}
-          >
+          <option key={String(option.id)} value={option.id ?? ""} disabled={option.disabled} title={option.reason}>
             {translate ? ui(option.label) : option.label}
-          </button>
+          </option>
         ))}
-      </div>
-    </div>
+      </select>
+    </label>
   );
 }
 
@@ -121,20 +117,22 @@ export default function CardPrintingStage({ draft, faceIndex, printing, onPresen
         />
       </div>
       <div className="card-forge-printing-controls">
+        <CreditFields presentation={presentation} printing={printing} onChange={change} />
         <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide"
           title={ui("Preview foil and print textures (uses more graphics resources)")}>
           <Checkbox checked={previewEffects} onCheckedChange={(checked) => setPreviewEffects(checked === true)}
             className="h-3.5 w-3.5" />{ui("Preview finish effects")}
         </label>
-        <PresentationChoices label={ui("Finish")} options={CARD_GLINT_FINISHES} value={presentation.finish}
-          onChange={(finish) => change({ finish })} />
-        <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide"
-          title={ui("Fine cardstock texture and irregular ink dots")}>
-          <Checkbox
-            checked={presentation.printEffects}
-            onCheckedChange={(checked) => change({ printEffects: checked === true })}
-            className="h-3.5 w-3.5"
-          />{ui("Print effects")}</label>
+        {previewEffects ? (
+          <>
+            <PresentationChoices label={ui("Finish")} options={CARD_GLINT_FINISHES} value={presentation.finish}
+              onChange={(finish) => change({ finish })} />
+            <PresentationChoices label={ui("Print effects")}
+              options={[{ id: "on", label: "On" }, { id: "off", label: "Off" }]}
+              value={presentation.printEffects ? "on" : "off"}
+              onChange={(value) => change({ printEffects: value === "on" })} />
+          </>
+        ) : null}
         {styles.length ? (
           <PresentationChoices label={ui("Printing style")} translate={false}
             options={styles.map(({ style, disabled, reason }) => ({
@@ -156,7 +154,6 @@ export default function CardPrintingStage({ draft, faceIndex, printing, onPresen
           onChange={(borderColor) => change({ borderColor })} />
         <PresentationChoices label={ui("Rarity")} options={CARD_RARITIES} value={presentation.rarity}
           onChange={(rarity) => change({ rarity })} />
-        <CreditFields presentation={presentation} printing={printing} onChange={change} />
 
       </div>
     </section>

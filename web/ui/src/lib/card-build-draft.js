@@ -28,7 +28,7 @@ export function localCardBuildSource(payload) {
   });
   return sources.length === 1 ? faces[0] : {
     ...metadata, name: group.combinedName || payload.canonicalName,
-    layout: group.layout, keywords: group.hasFuse ? ['Fuse'] : [], card_faces: faces,
+    layout: metadata.layout || group.layout, keywords: group.hasFuse ? ['Fuse'] : [], card_faces: faces,
   };
 }
 
@@ -36,7 +36,13 @@ export function cardBuildDraft(card) {
   const faces = card?.card_faces?.length ? card.card_faces : [card];
   const supertypes = new Set(['Legendary', 'Basic', 'Snow', 'World', 'Ongoing']);
   return {
-    layout: faces.length === 1 ? 'single' : ['split', 'aftermath', 'room'].includes(card.layout) ? 'split' : card.layout === 'prepare' ? 'prepare' : 'transform_like',
+    layout: faces.length === 1 ? 'single'
+      : faces.some(face => /\bAdventure\b/.test(face.type_line ?? '')) ? 'adventure'
+      : faces.some(face => /\bOmen\b/.test(face.type_line ?? '')) ? 'omen'
+      : faces.every(face => /\bRoom\b/.test(face.type_line ?? '')) ? 'room'
+      : faces.some(face => /^Aftermath\b/m.test(face.oracle_text ?? '')) ? 'aftermath'
+      : card.layout === 'battle' ? 'transform'
+      : ['split', 'aftermath', 'room', 'prepare', 'adventure', 'omen', 'flip', 'modal_dfc', 'transform', 'meld'].includes(card.layout) ? card.layout : 'transform_like',
     frameLayout: card.layout,
     hasFuse: (card.keywords || []).includes('Fuse'),
     faces: faces.map(face => {

@@ -4005,3 +4005,53 @@
 .card-forge-layout-art-row:has(.custom-card-art-crop) {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* Oracle editing and tabbed compilation share the right-hand column. */
+.card-forge-details .card-forge-inline-frame {
+  grid-template-rows: repeat(4, auto);
+  align-content: start;
+}
+.card-forge-side {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(200px, 0.8fr) minmax(240px, 1fr);
+}
+.card-forge-oracle-panel {
+  grid-template-rows: auto minmax(120px, 1fr);
+}
+.card-forge-compilation {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.card-forge-side .card-forge-compile-panel {
+  max-height: none;
+}
+@media (max-width: 960px) {
+  .card-forge-side {
+    grid-template-rows: 260px auto;
+    overflow: visible;
+  }
+  .card-forge-compilation { overflow: visible; }
+}
+
+.card-forge-printing-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+}
+.card-forge-printing-controls > .card-forge-credit-fields,
+.card-forge-printing-controls > .toolbar-checkbox {
+  grid-column: 1 / -1;
+}
+.card-forge-printing-controls .card-forge-inline-row { min-width: 0; }
+@media (max-width: 960px) {
+  .card-forge-workbench,
+  .card-forge-printing,
+  .card-forge-details {
+    overflow: visible;
+  }
+  .card-forge-workbench { grid-template-rows: max-content max-content; }
+  .card-forge-printing { grid-template-rows: max-content max-content; }
+  .card-forge-grid { grid-template-rows: max-content max-content; }
+  .card-forge-details .card-forge-inline-editor,
+  .card-forge-details .card-forge-inline-frame { height: auto; }
+}

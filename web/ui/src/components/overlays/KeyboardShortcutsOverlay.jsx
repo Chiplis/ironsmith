@@ -13,8 +13,16 @@ const SHORTCUTS = [
   { keys: ["Enter"], scope: "on a hand card", action: "Play or cast that card. If there are several ways to play it, a numbered menu opens" },
   { keys: ["1–9"], scope: "in the play menu", action: "Choose that way to play the card" },
   { keys: ["."], action: "Open or close your hand" },
-  { keys: ["Ctrl"], action: "Raise your hand and show card numbers. Press . to close it" },
-  { keys: ["1–9"], action: "Show a card in your hand by position. For card 10 or higher, type its digits within 700 ms (1 then 1 shows card 11)" },
+  { keys: ["Ctrl"], action: "Hold while starting a spell or ability to retain priority after it reaches the stack" },
+  { keys: ["H"], action: "Raise your hand. Press . to close it" },
+  { keys: ["1"], action: "Pass priority or confirm the main action" },
+  { keys: ["2"], action: "Pass until a response is needed this turn" },
+  { keys: ["3", "4"], action: "Yes / No at a Boolean choice" },
+  { keys: ["5"], action: "Clear yields and automated choices; keep phase stops" },
+  { keys: ["6"], action: "Yield through this turn; required choices remain manual" },
+  { keys: ["7"], action: "Resolve a group of matching stacked triggers; otherwise enable automatic ordering of identical target-free triggers" },
+  { keys: ["8"], action: "Yield whenever no play is possible, for this game" },
+  { keys: ["1–9"], scope: "Hand open, or Classic keyboard preset", action: "Show a card in your hand by position. For card 10 or higher, type its digits within 700 ms (1 then 1 shows card 11)" },
   { keys: ["Esc"], action: "Cancel casting or placing a card, or close a menu" },
   { keys: ["Tab"], action: "Move focus between controls" },
   { keys: ["Double-click"], scope: "on a hand card", action: "Play or cast that card, keeping any required choices manual" },
@@ -22,7 +30,7 @@ const SHORTCUTS = [
 ];
 
 const TIPS = [
-  "Click a phase on the turn track to cycle its stop: when I can act, every time, or off. Each player has a separate track. By default every step stops only when you can do something besides pass.",
+  "Click a phase to toggle its stop; right-click for future yields and conditional stops. Stops wait for input without a countdown. With your hand open, numbers select cards in either preset. Close it with . to use MTGO priority numbers. Priority settings also offer Classic hand numbers with Alt+number yields.",
   "In local games the table follows the active player, so you can play both sides. Turn this off in Settings.",
 ];
 

@@ -7,8 +7,9 @@ export function reconcilePseudoHand(previous, current, state) {
       || state.decision.analysis_complete !== false) return next;
   const zones = new Map();
   for (const player of state.players || []) {
-    for (const zone of ["graveyard", "exile", "command", "ante"]) {
+    for (const zone of ["graveyard", "exile", "command", "ante", "library"]) {
       for (const card of player[`${zone}_cards`] || []) {
+        if (zone === "library" && !card.show_in_pseudo_hand) continue;
         zones.set(Number(card.id), { card, zone, ownerId: player.id });
       }
     }

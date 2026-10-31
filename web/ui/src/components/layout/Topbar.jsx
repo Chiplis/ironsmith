@@ -77,7 +77,9 @@ export default function Topbar({
   const passPriorityAction = priorityActions.find((action) => action.kind === "pass_priority");
   const openingHandDecision = isOpeningHandDecision(priorityActions, passPriorityAction);
   const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
-  const priorityPlayer = players.find((player) => samePlayerId(player.id, state?.priority_player)) || null;
+  const priorityPlayer = state?.decision?.kind === "priority"
+    ? players.find((player) => samePlayerId(player.id, state.decision.player)) || null
+    : null;
   const decisionPlayer = state?.decision?.player != null
     ? players.find((player) => samePlayerId(player.id, state.decision.player)) || null
     : null;

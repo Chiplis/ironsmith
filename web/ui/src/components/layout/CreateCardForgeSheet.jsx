@@ -1,3 +1,4 @@
+import CardLayoutIcon from './CardLayoutIcon';
 import CommunityFormatEditor from './CommunityFormatEditor';
 import { emptyCommunityFormat } from '@/lib/community-format';
 import { normalizeDraftForApi } from "@/lib/custom-card-draft";
@@ -18,7 +19,7 @@ import { tokenKey } from "@/lib/custom-tokens";
 import { CUSTOM_TOKENS_CHANGED, deleteCustomToken, listCustomTokens, saveCustomCard, saveCustomToken, previewCustomDraft, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleHelp, Copy, Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
+import { CircleHelp, Copy, Loader2, RefreshCw } from "lucide-react";
 
 import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
@@ -69,10 +70,17 @@ const ZONE_OPTIONS = [
   ["command", "Command"],
 ];
 const LAYOUT_OPTIONS = [
-  { value: "single", label: "Single", icon: Sparkles },
-  { value: "transform_like", label: "Double-Faced", icon: Layers3 },
-  { value: "split", label: "Split", icon: SquareSplitHorizontal },
-  { value: "meld", label: "Meld", icon: Layers3 },
+  { value: "single", label: "Single" },
+  { value: "transform", label: "Double-Faced" },
+  { value: "modal_dfc", label: "Modal Double-Faced" },
+  { value: "flip", label: "Flip" },
+  { value: "split", label: "Split" },
+  { value: "adventure", label: "Adventure" },
+  { value: "omen", label: "Omen" },
+  { value: "prepare", label: "Prepared" },
+  { value: "room", label: "Room" },
+  { value: "aftermath", label: "Aftermath" },
+  { value: "meld", label: "Meld" },
 ];
 
 function blankFace(label = "Custom Card") {
@@ -96,7 +104,7 @@ function blankDraft() {
   return {
     layout: "single",
     hasFuse: false,
-    faces: [{ ...blankFace(), manaCost: "{0}" }],
+    faces: [{ ...blankFace(), manaCost: "{B/P}" }],
     presentation: normalizeCardPresentation(),
   };
 }
@@ -243,7 +251,7 @@ function cloneDraft(draft) {
     customMechanics: structuredClone(draft?.customMechanics || []),
     ...(draft?.customTokens?.length ? { customTokens: structuredClone(draft.customTokens) } : {}),
     ...(draft?.token === true ? { token: true } : {}),
-    layout: draft?.layout || "single",
+    layout: draft?.faces?.length === 2 && draft.faces[1]?.subtypes?.includes("Omen") ? "omen" : draft?.faces?.length === 2 && draft.faces[1]?.subtypes?.includes("Adventure") ? "adventure" : (draft?.layout === "transform_like" ? (["transform", "battle"].includes(draft.frameLayout) ? "transform" : "modal_dfc") : draft?.layout) || "single",
     frameLayout: draft?.frameLayout,
     hasFuse: draft?.hasFuse === true,
     presentation: normalizeCardPresentation(draft?.presentation),
@@ -270,9 +278,11 @@ function cloneDraft(draft) {
 
 
 function faceTabLabel(layout, index) {
+  if (["adventure", "omen", "prepare"].includes(layout)) return index === 0 ? "Main Card" : ({ adventure: "Adventure Spell", omen: "Omen Spell", prepare: "Prepared Spell" })[layout];
+  if (layout === "flip") return index === 0 ? "Unflipped" : "Flipped";
   if (layout === "meld") return ["First Card", "Second Card", "Meld Result"][index];
-  if (layout === "split") return index === 0 ? "Left Half" : "Right Half";
-  if (layout === "transform_like") return index === 0 ? "Front Face" : "Back Face";
+  if (["split", "room", "aftermath"].includes(layout)) return index === 0 ? "Left Half" : "Right Half";
+  if (["transform_like", "transform", "modal_dfc"].includes(layout)) return index === 0 ? "Front Face" : "Back Face";
   return "Card";
 }
 
@@ -296,21 +306,20 @@ function toggleChoice(values, item) {
 function LayoutPicker({ value, onChange }) {
   const ui = useUiText();
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid min-w-0 gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 140px), 1fr))" }}>
       {LAYOUT_OPTIONS.map((option) => {
-        const Icon = option.icon;
         const active = value === option.value;
         return (
           <button
             key={option.value}
             type="button"
             aria-pressed={active}
-            className={cn("card-forge-choice", active && "is-active")}
+            className={cn("card-forge-choice min-w-0 whitespace-normal", active && "is-active")}
             onClick={() => onChange(option.value)}
           >
-            <span className="flex items-center gap-2">
-              <Icon className="size-4" />
-              {ui(option.label)}
+            <span className="flex min-w-0 items-center gap-2">
+              <CardLayoutIcon layout={option.value} />
+              <span className="min-w-0 whitespace-normal">{ui(option.label)}</span>
             </span>
           </button>
         );
@@ -442,6 +451,8 @@ function CompiledAbilitiesPanel({ face, faces, previewError, busy }) {
 }
 
 function layoutLabel(layout) {
+  const option = LAYOUT_OPTIONS.find(option => option.value === layout);
+  if (option) return option.label;
   if (layout === "meld") return "Meld";
   if (layout === "split") return "Split";
   if (layout === "transform_like") return "Double-faced";
@@ -453,7 +464,7 @@ function InlineFaceEditor({ face, layout, hasFuse, token = false, busy, updateFa
   return (
     <section className="card-forge-inline-editor">
       <div className="card-forge-preview-aurora" />
-      <div className="card-forge-inline-frame">
+      <div className="card-forge-inline-frame" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
         <div className="card-forge-inline-header">
           <div className="min-w-0">
             <input
@@ -521,13 +532,6 @@ function InlineFaceEditor({ face, layout, hasFuse, token = false, busy, updateFa
           </label>
         </div>
 
-        <textarea
-          className="card-forge-inline-rules"
-          aria-label={ui("Rules text")}
-          placeholder={ui("Write oracle-style rules text here...")}
-          value={face.oracleText}
-          onChange={(event) => updateFace({ oracleText: event.target.value })}
-        />
 
         <div className="card-forge-inline-stats">
           <label className="card-forge-stat-field">
@@ -796,6 +800,8 @@ export default function CreateCardForgeSheet({
       const nextFaces = [...current.faces];
       if (nextLayout === "single") {
         return {
+          ...current,
+          frameLayout: undefined,
           layout: nextLayout,
           hasFuse: false,
           faces: [nextFaces[0] || blankFace()],
@@ -806,7 +812,26 @@ export default function CreateCardForgeSheet({
       while (nextFaces.length < faceCount) {
         nextFaces.push(blankFace(faceTabLabel(nextLayout, nextFaces.length)));
       }
+      if (["adventure", "omen", "prepare"].includes(nextLayout)) {
+        nextFaces[1] = {
+          ...nextFaces[1],
+          cardTypes: [nextFaces[1].cardTypes.includes("Sorcery") ? "Sorcery" : "Instant"],
+          subtypes: nextLayout === "prepare" ? [] : [nextLayout === "omen" ? "Omen" : "Adventure"],
+          power: "", toughness: "", loyalty: "", defense: "",
+        };
+      } else if (["adventure", "omen"].includes(current.layout)) {
+        nextFaces[1] = { ...nextFaces[1], subtypes: nextFaces[1].subtypes.filter(type => !["Adventure", "Omen"].includes(type)) };
+      }
+      if (nextLayout === "room") {
+        for (let i = 0; i < 2; i++) nextFaces[i] = { ...nextFaces[i], cardTypes: ["Enchantment"], subtypes: ["Room"], power: "", toughness: "", loyalty: "", defense: "" };
+      }
+      if (nextLayout === "aftermath") {
+        for (let i = 0; i < 2; i++) nextFaces[i] = { ...nextFaces[i], cardTypes: ["Sorcery"], subtypes: [], power: "", toughness: "", loyalty: "", defense: "" };
+        if (!/^Aftermath\b/m.test(nextFaces[1].oracleText)) nextFaces[1] = { ...nextFaces[1], oracleText: `Aftermath\n${nextFaces[1].oracleText}`.trim() };
+      }
       return {
+        ...current,
+        frameLayout: undefined,
         layout: nextLayout,
         hasFuse: nextLayout === "split" ? current.hasFuse : false,
         faces: nextFaces.slice(0, faceCount),
@@ -996,7 +1021,7 @@ export default function CreateCardForgeSheet({
     draft.faces.map((face, index) => ({
       value: `face-${index}`,
       title: faceTabLabel(draft.layout, index),
-      subtitle: face.name || faceTabLabel(draft.layout, index),
+      subtitle: index === 0 ? face.name : null,
     }))
   ), [draft.faces, draft.layout]);
   const triggerNode = trigger && isValidElement(trigger)
@@ -1042,6 +1067,9 @@ export default function CreateCardForgeSheet({
             </span>
           ))}
         </div>
+      ) : null}
+      {draft.layout === "prepare" ? (
+        <p className="text-xs text-muted-foreground">{ui("Add a preparation ability to the main card, for example: This creature enters prepared.")}</p>
       ) : null}
       {draft.layout === "meld" ? (
         <p className="text-xs text-muted-foreground">{ui("Edit both cards and their meld result. Add a meld ability to a component’s rules text using the exact partner and result names. Adding creates both component cards in the selected zone.")}</p>
@@ -1300,9 +1328,11 @@ export default function CreateCardForgeSheet({
                       >
                         <span className="grid text-left">
                           <span>{ui(tab.title)}</span>
-                          <span className="card-forge-tab-subtitle text-[10px] uppercase tracking-[0.2em]">
-                            {ui(tab.subtitle)}
-                          </span>
+                          {tab.subtitle ? (
+                            <span className="card-forge-tab-subtitle text-[10px] uppercase tracking-[0.2em]">
+                              {ui(tab.subtitle)}
+                            </span>
+                          ) : null}
                         </span>
                       </TabsTrigger>
                     ))}
@@ -1331,8 +1361,31 @@ export default function CreateCardForgeSheet({
             </div>
 
             <div className="card-forge-side">
-              <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
-              <CompiledAbilitiesPanel face={previewFace} faces={preview?.faces} previewError={previewError} busy={previewLoading} />
+              <label className="card-forge-panel card-forge-oracle-panel">
+                <span className="card-forge-panel-title">{ui("Oracle text")}</span>
+                <textarea
+                  className="card-forge-inline-rules"
+                  aria-label={ui("Rules text")}
+                  placeholder={ui("Write oracle-style rules text here...")}
+                  value={draft.faces[activeFaceIndex]?.oracleText ?? ""}
+                  onChange={(event) => updateFace(activeFaceIndex, { oracleText: event.target.value })}
+                />
+              </label>
+              <section className="card-forge-compilation" aria-label={ui("Compilation")}>
+                <div className="card-forge-panel-title">{ui("Compilation")}</div>
+                <Tabs defaultValue="text">
+                  <TabsList variant="line" className="w-full justify-start">
+                    <TabsTrigger value="text">{ui("Compiled Text")}</TabsTrigger>
+                    <TabsTrigger value="abilities">{ui("Compiled Abilities")}</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="text">
+                    <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
+                  </TabsContent>
+                  <TabsContent value="abilities">
+                    <CompiledAbilitiesPanel face={previewFace} faces={preview?.faces} previewError={previewError} busy={previewLoading} />
+                  </TabsContent>
+                </Tabs>
+              </section>
             </div>
 
           </div>

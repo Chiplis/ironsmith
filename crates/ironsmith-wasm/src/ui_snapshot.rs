@@ -1312,6 +1312,11 @@ impl SnapshotJsEncodingCache {
             "sideboard_cards",
             self.encode_zone_cards(&player.sideboard_cards)?.as_ref(),
         )?;
+        self.set_value(
+            &object,
+            "library_cards",
+            self.encode_zone_cards(&player.library_cards)?.as_ref(),
+        )?;
         self.set_serde(&object, "library_top", &player.library_top)?;
         self.set_value(
             &object,
@@ -2198,7 +2203,7 @@ fn pseudo_hand_glow_kind_with_grants(
     if object.zone != zone
         || matches!(
             zone,
-            Zone::Hand | Zone::Library | Zone::Battlefield | Zone::Stack
+            Zone::Hand | Zone::Battlefield | Zone::Stack
         )
     {
         return None;
@@ -2342,6 +2347,17 @@ fn build_zone_card_snapshot_with_grants(
     grants: Option<&std::cell::OnceCell<Vec<ironsmith::grant_registry::Grant>>>,
 ) -> ZoneCardSnapshot {
     let visible = object_visible_to_perspective(game, perspective, viewed_cards, object.id);
+    build_zone_card_snapshot_with_visibility(game, perspective, object, zone, grants, visible)
+}
+
+fn build_zone_card_snapshot_with_visibility(
+    game: &GameState,
+    perspective: PlayerId,
+    object: &ironsmith::object::Object,
+    zone: Zone,
+    grants: Option<&std::cell::OnceCell<Vec<ironsmith::grant_registry::Grant>>>,
+    visible: bool,
+) -> ZoneCardSnapshot {
     let pseudo_hand_glow_kind = visible
         .then(|| pseudo_hand_glow_kind_with_grants(game, perspective, object, zone, grants))
         .flatten()
@@ -2936,6 +2952,8 @@ pub(super) struct PlayerSnapshot {
     pub(super) command_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
     pub(super) ante_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
     pub(super) sideboard_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
+    /// Only the currently visible library top, never the rest of the library.
+    pub(super) library_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
     pub(super) library_top: Option<String>,
     pub(super) persistent_look_cards: Arc<Vec<Arc<ViewedCardSnapshot>>>,
     pub(super) graveyard_top: Option<String>,
@@ -3323,6 +3341,24 @@ impl GameSnapshot {
                         &active_grants,
                         potential_grants,
                     ),
+                    library_cards: Arc::new(if can_view_library_top {
+                        p.library
+                            .last()
+                            .and_then(|id| game.object(*id))
+                            .map(|object| {
+                                vec![Arc::new(build_zone_card_snapshot_with_visibility(
+                                    game,
+                                    perspective,
+                                    object,
+                                    Zone::Library,
+                                    Some(&active_grants),
+                                    true,
+                                ))]
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    }),
                     library_top: can_view_library_top
                         .then(|| {
                             p.library
@@ -3626,6 +3662,7 @@ impl GameSnapshot {
                     ability_kind: None,
                     ability_text: None,
                     source_ability_text: None,
+                    automation_identity: None,
                     targets: Vec::new(),
                 },
             );
@@ -5760,6 +5797,50 @@ mod tests {
             "an opponent-owned native escape card should not be surfaced in Alice's pseudo-hand"
         );
         assert_eq!(graveyard_card.pseudo_hand_glow_kind, None);
+    }
+
+    #[test]
+    fn pseudo_hand_library_top_requires_visibility_and_play_permission() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for playable in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let text = if playable {
+                "You may look at the top card of your library any time.\nYou may play lands and cast spells from the top of your library. If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost."
+            } else {
+                "You may look at the top card of your library any time."
+            };
+            let source = CardDefinitionBuilder::new(CardId::new(), "Library permission probe")
+                .card_types(vec![CardType::Artifact]).parse_text(text).unwrap();
+            let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+            let card = CardBuilder::new(CardId::new(), "Library spell")
+                .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(30)]))
+                .card_types(vec![CardType::Sorcery])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Library);
+            let top = game.create_object_from_card(&card, alice, Zone::Library);
+            let snapshot = |game: &GameState, perspective| GameSnapshot::from_game(
+                game, perspective, None, None, None, None, None, Vec::new(), None, false, None, 0,
+            );
+            let own = snapshot(&game, alice);
+            let cards = &own.players[0].library_cards;
+            assert_eq!(cards.len(), 1);
+            assert_eq!(cards[0].id, top.0);
+            assert_eq!(cards[0].name, "Library spell");
+            assert_eq!(cards[0].show_in_pseudo_hand, playable);
+            assert!(snapshot(&game, bob).players[0].library_cards.is_empty());
+            let land = CardBuilder::new(CardId::new(), "Library land")
+                .card_types(vec![CardType::Land])
+                .build();
+            let next_top = game.create_object_from_card(&land, alice, Zone::Library);
+            let next = snapshot(&game, alice);
+            assert_eq!(next.players[0].library_cards.len(), 1);
+            assert_eq!(next.players[0].library_cards[0].id, next_top.0);
+            assert_eq!(next.players[0].library_cards[0].show_in_pseudo_hand, playable);
+            game.move_object_by_game_rule(source_id, Zone::Graveyard);
+            assert!(snapshot(&game, alice).players[0].library_cards.is_empty());
+        }
     }
 
     #[test]

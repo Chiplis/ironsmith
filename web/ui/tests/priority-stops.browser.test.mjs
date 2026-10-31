@@ -33,7 +33,8 @@ function Probe() {
 }
 createRoot(document.getElementById('root')).render(h(I18nProvider,null,h(GameProvider,null,h(Probe))));`;
 const mockPeer = `import {useEffect} from 'react';
-const multiplayer={matchStarted:true,role:'client',submittingAction:false};
+const local = new URLSearchParams(location.search).has('local');
+const multiplayer={matchStarted:!local,role:local?null:'client',submittingAction:false};
 window.submissions=[];
 export function usePeerLobby({setState}) {
   useEffect(()=>{window.publish=state=>{window.currentState=state;setState(state);};},[setState]);
@@ -48,7 +49,11 @@ export function usePeerLobby({setState}) {
     window.publish(next);
   }};
 }`;
-const mockWasm = `const game={setAutoCleanupDiscard:async()=>{}};
+const mockWasm = `const game={setAutoCleanupDiscard:async()=>{},
+ uiState:async()=>window.currentState,
+ dispatch:async command=>{window.submissions.push({command});
+ window.currentState={...window.currentState,snapshot_id:window.currentState.snapshot_id+1,decision:null,game_over:{kind:'draw'}};
+ return window.currentState;}};
 export function useWasmGame(){return {game,loading:false};}`;
 const actions = [
   { index: 0, kind: 'pass_priority', label: 'Pass priority', action_ref: { kind: 'pass_priority' } },
@@ -64,7 +69,7 @@ const priority = (snapshot_id, overrides = {}) => ({
 const ALL_STOPS = ['phase:Upkeep', 'phase:Draw', 'phase:Main', 'phase:Combat', 'phase:Main2', 'phase:End', 'phase:Cleanup',
   'step:BeginCombat', 'step:DeclareAttackers', 'step:DeclareBlockers', 'step:FirstStrikeDamage', 'step:CombatDamage', 'step:EndCombat'];
 
-test('real provider times only opponent phase stops and preserves stack priority', { timeout: 90000 }, async () => {
+test('real provider uses persistent stops and Ctrl hold without countdowns', { timeout: 90000 }, async () => {
   const server = await createServer({ root, logLevel: 'error', server: { host: '127.0.0.1', port: 0, hmr: false }, plugins: [{
     name: 'priority-stop-fixture',
     transform(code, id) {
@@ -73,7 +78,7 @@ test('real provider times only opponent phase stops and preserves stack priority
     },
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
-        if (request.url === '/priority-stops.html') {
+        if (request.url?.startsWith('/priority-stops.html')) {
           response.setHeader('Content-Type', 'text/html');
           response.end('<div id="root"></div><script type="module" src="/priority-stops-fixture.jsx"></script>');
         } else next();
@@ -89,326 +94,56 @@ test('real provider times only opponent phase stops and preserves stack priority
     await page.addInitScript(() => localStorage.setItem('ironsmith.priorityStops', '[]'));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const load = async state => {
-      await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/priority-stops.html`);
+    const load = async (state, local = false) => {
+      await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/priority-stops.html${local ? "?local" : ""}`);
       await page.waitForFunction(() => window.context && window.publish).catch(error => { throw new Error(error.message + ': ' + errors.join('; ')); });
       await page.evaluate(state => window.publish(state), state);
-      await page.waitForFunction(id => window.context.state?.snapshot_id === id, state.snapshot_id);
+      await page.waitForFunction(id => window.context.state?.snapshot_id >= id, state.snapshot_id);
+      await page.waitForTimeout(150);
     };
-    const hold = page.getByRole('button', { name: 'Hold Priority', exact: true });
-    await load(priority(0));
-    assert.equal(await page.getByRole('button', { name: /^Auto-pass:/ }).getAttribute('data-resolve-mode'), 'safe');
-    for (const action of ['Cast', 'Activate']) {
-      await load(priority(action === 'Cast' ? 1 : 10));
-      await page.getByRole('button', { name: action, exact: true }).click();
-      await page.waitForTimeout(2200);
-      assert.equal(await hold.count(), 0, `${action} has no countdown`);
-      assert.equal(await page.evaluate(() => window.submissions.length), 1, `${action} retains priority`);
-      await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-      await page.waitForFunction(() => window.submissions.length === 2);
-    }
-
-    await load(priority(20));
-    const upkeep = page.getByRole('button', { name: /^Upkeep:/ });
-    assert.equal(await upkeep.locator('svg').count(), 1, 'stops remain discoverable');
-    assert.equal(await upkeep.evaluate(el => getComputedStyle(el).pointerEvents), 'auto', 'stop controls override the HUD pointer-events guard');
-    assert.equal(await upkeep.getAttribute('data-stop'), 'can_act', 'I can act is the default');
-    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(255, 255, 255)');
-    assert.equal(await upkeep.locator('.phase-track-stop-fill').evaluate(el => getComputedStyle(el).fill), 'rgb(255, 255, 255)',
-      'the silhouette fills the whole hand');
+    await load(priority(1));
+    // This compact fixture omits the table divider that separates these HUDs
+    // in the app. Hide its overlapping action dock while exercising the track.
+    await page.locator('.battlefield-human-action-dock').evaluate(el => { el.style.display = 'none'; });
+    const lock = page.getByRole('button', { name: 'Lock stops', exact: true });
+    assert.equal(await lock.evaluate(el => getComputedStyle(el).pointerEvents), 'auto');
+    const upkeep = page.locator('[data-stop-phase="Upkeep"]').first();
+    const originalStop = await upkeep.getAttribute('data-stop');
+    await lock.click({ timeout: 3000 });
+    await page.getByRole('button', { name: 'Unlock stops', exact: true }).waitFor();
     await upkeep.click();
-    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
-    assert.equal(await upkeep.locator('.phase-track-stop-fill').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
-    await page.evaluate(state => window.publish(state), priority(21, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
-    await page.waitForTimeout(150);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'phase stop waits for the countdown');
-    await hold.waitFor();
-    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
-    assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'always', 'every-time stop is kept');
-
-    // Concurrent arrivals keep both the deadline and visual drain unarmed
-    // until the final landing completes.
-    await load(priority(220));
+    assert.equal(await upkeep.getAttribute('data-stop'), originalStop, 'locked stops ignore edits');
+    await page.getByRole('button', { name: 'Unlock stops', exact: true }).click();
     await upkeep.click();
-    await page.evaluate(state => {
-      window.finishArrivals = [window.beginStackArrival(), window.beginStackArrival()];
-      window.publish(state);
-    }, priority(221, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
-    await hold.waitFor();
+    assert.notEqual(await upkeep.getAttribute('data-stop'), originalStop, 'unlocked stops accept edits');
+    await load(priority(1));
     await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.context.postActionPriorityWindow.startedAt), null);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    await page.evaluate(() => window.finishArrivals[0]());
-    await page.waitForTimeout(100);
-    assert.equal(await page.evaluate(() => window.context.postActionPriorityWindow.startedAt), null);
-    await page.evaluate(() => { window.lastLanding = performance.now(); window.finishArrivals[1](); });
-    await page.waitForFunction(() => window.context.postActionPriorityWindow?.startedAt != null);
-    assert.ok(await page.evaluate(() => window.context.postActionPriorityWindow.startedAt >= window.lastLanding));
-    await page.waitForFunction(() => window.submissions.length === 1);
-    assert.ok(await page.evaluate(() => window.submissions[0].time - window.lastLanding >= 2000));
-
-    // Hover freezes both the pass deadline and its visual countdown.
-    await load(priority(23));
-    await upkeep.click();
-    await page.evaluate(state => window.publish(state), priority(24, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
-    await hold.waitFor();
-    await page.waitForTimeout(600);
-    await hold.hover();
-    const elapsed = await page.evaluate(() => {
-      const w = window.context.postActionPriorityWindow;
-      return w.pausedAt - w.startedAt;
-    });
-    assert.ok(elapsed >= 600);
-    const drainTime = () => hold.locator('.priority-hold-window-fill').evaluate(el => el.getAnimations()[0].currentTime);
-    const frozenTime = await drainTime();
-    const holdBox = await hold.boundingBox();
-    await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'hover prevents automatic passing');
-    assert.equal(await drainTime(), frozenTime, 'visual timer stays frozen');
-    await page.mouse.move(0, 0);
-    const resumedElapsed = await page.evaluate(() => {
-      const w = window.context.postActionPriorityWindow;
-      return performance.now() - w.startedAt;
-    });
-    assert.ok(Math.abs(resumedElapsed - elapsed) < 150, 'leaving resumes the remaining time');
-    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 2200 });
-
-    // Appearing beneath a parked cursor must not acquire a pause.
-    await load(priority(240));
-    await upkeep.click();
-    await page.mouse.move(holdBox.x + holdBox.width / 2, holdBox.y + holdBox.height / 2);
-    await page.evaluate(state => window.publish(state), priority(241, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
-    await hold.waitFor();
-    assert.equal(await hold.evaluate((el, box) => el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)), holdBox), true, 'button appears under the parked cursor');
-    await page.waitForTimeout(150);
-    assert.equal(await page.evaluate(() => window.context.postActionPriorityWindow.pausedAt ?? null), null);
-    await page.mouse.move(holdBox.x + holdBox.width / 2 + 2, holdBox.y + holdBox.height / 2 + 2);
-    await page.waitForFunction(() => window.context.postActionPriorityWindow?.pausedAt != null);
-    await page.mouse.move(0, 0);
-    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
-
-    // Hovering the actual stack object freezes and resumes the same countdown.
-    await load(priority(242, { stack_size: 1, stack_objects: [{ id: 81, controller: 1, name: 'Test spell' }] }));
-    await page.evaluate(() => window.context.setAutoResolveMode('off'));
-    await hold.waitFor();
-    await page.locator('.stack-card').hover();
-    await page.waitForFunction(() => window.context.postActionPriorityWindow?.pausedAt != null);
-    await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'stack hover prevents automatic resolution');
-    await page.mouse.move(0, 0);
-    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
-    await page.evaluate(() => window.context.setAutoResolveMode('safe'));
-
-    // Clicking Hold keeps an opponent-turn phase pause beyond the deadline.
-    await load(priority(25));
-    await upkeep.click();
-    await page.evaluate(state => window.publish(state), priority(26, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
-    await hold.click();
-    await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 1);
-
-    // The yellow clock cancels an active phase countdown.
-    await load(priority(27));
-    await upkeep.click();
-    await page.evaluate(state => window.publish(state), priority(28, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
-    await hold.waitFor();
-    await page.evaluate(() => window.context.setAutoResolveMode('all'));
-    await page.waitForTimeout(2200);
-    assert.equal(await hold.count(), 0);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    await page.getByRole('button', { name: /^Auto-pass:/ }).click();
-    await hold.waitFor();
-    await page.waitForFunction(() => window.submissions.length === 1);
-
+    assert.equal(await page.evaluate(()=>window.submissions.length),0,'main stop has no timeout');
+    assert.equal(await page.evaluate(()=>window.context.postActionPriorityWindow),null);
+    await load(priority(10,{active_player:1,phase:'Beginning',step:'Upkeep'}));
+    await page.waitForFunction(()=>window.submissions.length===1);
+    await load(priority(20,{stack_size:1,stack_objects:[{id:50,controller:1,name:'Opponent spell'}]}));
+    await page.waitForTimeout(250);
+    assert.equal(await page.evaluate(()=>window.submissions.length),0,'opponent spell always gets a response');
     await load(priority(30));
-    await upkeep.click();
-    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
-    await upkeep.click();
-    assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'off');
-    assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'none');
-    await page.evaluate(state => window.publish(state), priority(31, { phase: 'combat phase', step: 'declare blockers' }));
-    await page.getByRole('navigation', { name: 'Combat steps' }).waitFor();
-    assert.deepEqual(await page.locator('.phase-track-group nav').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), ['Turn phases', 'Combat steps']);
-    const combatIcons = await page.getByRole('navigation', { name: 'Combat steps' }).locator('svg').evaluateAll(nodes => nodes.map(node => node.getAttribute('class')));
-    assert.equal(new Set(combatIcons).size, 6, 'each combat step has a dedicated icon');
-    const blockers = page.getByRole('button', { name: /^Blockers:/ });
-    assert.equal(await blockers.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(255, 255, 255)');
-    await blockers.click();
-    assert.equal(await blockers.locator('svg').count(), 1);
-    assert.equal(await blockers.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(246, 214, 74)');
-    if (process.env.PRIORITY_STOP_SCREENSHOTS) {
-      await page.locator('.topbar-phase-shell').screenshot({ path: '/tmp/priority-stop-trackers.png' });
-    }
-    const firstStrike = page.getByRole('button', { name: /^First strike:/ });
-    await firstStrike.click();
-    await page.evaluate(state => window.publish(state), priority(32, {
-      phase: 'combat phase', step: 'combat damage', combat_damage_step: 'first_strike',
-    }));
-    await page.waitForFunction(() => window.context.state?.snapshot_id === 32);
-    assert.equal(await firstStrike.locator('..').getAttribute('data-phase-active'), 'true');
-    const damage = page.getByRole('button', { name: /^Damage:/ });
-    await damage.click();
-    await page.evaluate(state => window.publish(state), priority(33, {
-      phase: 'combat phase', step: 'combat damage', combat_damage_step: 'regular',
-    }));
-    await page.waitForFunction(() => window.context.state?.snapshot_id === 33);
-    assert.equal(await damage.locator('..').getAttribute('data-phase-active'), 'true');
-    assert.equal(await firstStrike.locator('..').getAttribute('data-phase-active'), 'false');
-    // A fresh browser defaults to white; each click persists the next clock mode.
-    await page.evaluate(() => localStorage.removeItem('ironsmith.autoResolveEnabled'));
-    await load(priority(45, { stack_size: 1, stack_objects: [{ id: 80, controller: 1 }] }));
-    const clock = page.getByRole('button', { name: /^Auto-pass:/ });
-    assert.equal(await clock.getAttribute('data-resolve-mode'), 'safe');
-    assert.equal(await clock.locator('svg.lucide-clock').count(), 1);
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.battlefield-auto-pass-toggle')).borderTopColor === 'rgb(255, 255, 255)');
-    assert.equal(await hold.count(), 0);
-    await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await clock.click();
-    assert.equal(await clock.getAttribute('data-resolve-mode'), 'all');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.battlefield-auto-pass-toggle')).borderTopColor === 'rgb(255, 212, 92)');
-    await load(priority(46, { stack_size: 1, stack_objects: [{ id: 81, controller: 1, ability_kind: 'triggered' }] }));
-    assert.equal(await clock.getAttribute('data-resolve-mode'), 'all', 'yellow survives reload');
-    assert.equal(await hold.count(), 0);
-    await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    await clock.click();
-    assert.equal(await clock.getAttribute('data-resolve-mode'), 'off');
-    await load(priority(47, { stack_size: 1, stack_objects: [{ id: 82, controller: 0 }] }));
-    assert.equal(await clock.getAttribute('data-resolve-mode'), 'off', 'off survives reload');
-    await hold.waitFor();
-    await hold.hover();
-    await page.waitForFunction(() => window.context.postActionPriorityWindow?.pausedAt != null);
-    await page.waitForTimeout(2200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    await hold.click();
-    assert.equal(await hold.count(), 0);
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await clock.click();
-    await load(priority(48));
-    assert.equal(await clock.getAttribute('data-resolve-mode'), 'safe', 'white survives reload');
+    await page.keyboard.down('Control');
+    await page.evaluate(()=>window.context.dispatch({type:'priority_action',action_ref:{kind:'cast_spell',spell_id:7,casting_method:{kind:'normal'}}}));
+    await page.keyboard.up('Control');
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(()=>window.submissions.length),1,'Ctrl retains priority after casting');
+    await load(priority(40));
+    await page.getByRole('button',{name:'Cast',exact:true}).click();
+    await page.waitForFunction(()=>window.submissions.length===2);
+    assert.equal(await page.evaluate(()=>window.submissions[1].command.action_ref.kind),'pass_priority');
     await load(priority(50));
-    await upkeep.click();
-    await page.evaluate(() => window.context.setAutoResolveEnabled(true));
-    const stoppedStack = priority(51, { active_player: 1, phase: 'beginning phase', step: 'upkeep',
-      stack_size: 1, stack_objects: [{ id: 71, controller: 1 }] });
-    await page.evaluate(state => window.publish(state), stoppedStack);
-    await page.waitForTimeout(150);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'tracker stop overrides Auto-pass');
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), { ...stoppedStack, snapshot_id: 52, turn_number: 2 });
-    await page.waitForTimeout(150);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'recurring stop returns next turn');
-    // Reproduce the multiplayer stall: no pause, opponent turn, unfinished analysis.
-    await load(priority(60, { active_player: 1,
-      decision: { kind: 'priority', player: 0, analysis_complete: false, can_act: false, actions } }));
-    await page.waitForFunction(() => window.submissions.length === 1);
-
-    // An I can act stop waits while the answer is unknown, passes once it is "no",
-    // and holds when it is "yes".
-    await load(priority(90, { active_player: 1, phase: 'beginning phase', step: 'upkeep',
-      decision: { kind: 'priority', player: 0, analysis_complete: false, can_act: null, actions } }));
-    await page.waitForTimeout(200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'unknown holds');
-    await page.evaluate(state => window.publish(state), priority(91, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await load(priority(92, { active_player: 1, phase: 'beginning phase', step: 'upkeep',
-      decision: { kind: 'priority', player: 0, analysis_complete: true, can_act: true, actions } }));
-    await hold.waitFor();
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'a seat that can act gets the countdown');
-
-    // A stack-only hold must not strand empty-stack phases either. Keep
-    // analysis unfinished across successive snapshots; no manual clicks.
-    await load(priority(62));
-    await page.evaluate(() => window.context.setHoldRule('stack'));
-    for (const [id, phase, step] of [[63, 'first main phase', null],
-      [65, 'combat phase', 'begin combat'], [67, 'second main phase', null]]) {
-      const before = await page.evaluate(() => window.submissions.length);
-      await page.evaluate(state => window.publish(state), priority(id, { active_player: 1, phase, step,
-        decision: { kind: 'priority', player: 0, analysis_complete: false, can_act: false, actions } }));
-      await page.waitForFunction(count => window.submissions.length === count + 1, before);
-    }
-
-    // The engine publishes consent while passing continues, then revokes it at a stop.
-    await load(priority(70));
-    await page.evaluate(() => {
-      window.context.cyclePriorityStop('step:DeclareBlockers');
-      window.context.startPhaseAdvance();
-    });
-    await page.waitForFunction(() => window.submissions.length === 1);
-    assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {
-      type:'priority_yield', mode:'phases', stops:ALL_STOPS,
-    });
-    await page.waitForTimeout(100);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'never submits remote priority');
-    await page.evaluate(state => window.publish(state), priority(72, {
-      phase:'combat phase',step:'begin combat',pass_intents:[0],
-    }));
-    await page.waitForFunction(() => window.submissions.length === 2);
-    await page.evaluate(state => window.publish(state), priority(74, {
-      phase:'combat phase',step:'declare blockers',pass_intents:[],
-    }));
-    await page.waitForFunction(() => window.context.phasePassing === false);
-    assert.equal(await page.evaluate(() => window.submissions.length), 2);
-    assert.equal(await page.evaluate(() => window.context.priorityStops['step:DeclareBlockers']), 'always');
-
-    // The engine also stops at every I can act step; this client resumes the
-    // advance where its seat cannot act and keeps the stop where it can.
-    await load(priority(76));
-    await page.evaluate(() => window.context.startPhaseAdvance());
-    await page.waitForFunction(() => window.submissions.length === 1);
-    await page.evaluate(state => window.publish(state), priority(77, { phase:'combat phase', step:'begin combat', pass_intents:[] }));
-    await page.waitForFunction(() => window.submissions.length === 2);
-    assert.equal(await page.evaluate(() => window.submissions[1].command.type), 'priority_yield', 'resumed, not a single pass');
-    await page.evaluate(state => window.publish(state), priority(78, { phase:'combat phase', step:'end combat', pass_intents:[],
-      decision: { kind: 'priority', player: 0, analysis_complete: true, can_act: true, actions } }));
-    await page.waitForFunction(() => window.context.phasePassing === false);
-    assert.equal(await page.evaluate(() => window.submissions.length), 2);
-
-    // Per-player UI preferences are lowered to ordinary stops for this turn's consent.
-    await load(priority(80));
-    await page.evaluate(() => {
-      window.context.cyclePriorityStop('phase:End', 0);
-      window.context.cyclePriorityStop('phase:Upkeep', 0);
-      window.context.cyclePriorityStop('phase:Upkeep', 0);
-      window.context.cyclePriorityStop('phase:Draw', 1);
-      window.context.cyclePriorityStop('phase:Draw', 1);
-      window.context.startPhaseAdvance();
-    });
-    await page.waitForFunction(() => window.submissions.length === 1);
-    assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {
-      type:'priority_yield',mode:'phases',stops:ALL_STOPS.filter(key => key !== 'phase:Upkeep'),
-    });
-
-    // Devourer's pregame reveal and acknowledged upkeep look must not strand
-    // phase passing on a retained viewed_cards snapshot.
-    const reveal = {subject:0, zone:'Hand', visibility:'public', card_ids:[7], cards:[{id:7,name:'Devourer of Destiny'}]};
-    for (const view of [reveal, {...reveal, zone:'Library', visibility:'private', acknowledged:true}]) {
-      await load(priority(200, {phase:'beginning phase', step:'upkeep', viewed_cards:view}));
-      await page.evaluate(() => window.context.startPhaseAdvance());
-      await page.waitForFunction(() => window.submissions.length === 1);
-    }
-    // With no legal blockers the signed local answer is automatic, unless full control is on.
-    await load(priority(300));
-    await page.getByRole('button', { name: 'Full control', exact: true }).click();
-    const emptyBlocks = priority(301, { phase:'combat phase', step:'declare blockers',
-      decision:{kind:'blockers',player:0,blocker_options:[{attacker:7,valid_blockers:[]}]} });
-    await page.evaluate(state => window.publish(state), emptyBlocks);
-    await page.waitForTimeout(200);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0);
-    assert.equal(await page.evaluate(() => window.context.holdRule), 'always');
-    await page.getByRole('button', { name: 'Full control', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 1);
-    assert.deepEqual(await page.evaluate(() => window.submissions[0].command), {type:'declare_blockers',declarations:[]});
-
-    await load(priority(110, { decision: { kind: 'mana_payment', player: 0 } }));
-    assert.equal(await page.getByRole('button', {name:'Auto-pass', exact:true}).count(), 0);
-    assert.deepEqual(errors, []);
+    await page.getByRole('button',{name:'Full control',exact:true}).click();
+    await page.evaluate(()=>window.publish({...window.currentState,snapshot_id:51,phase:'Beginning',step:'Upkeep'}));
+    await page.waitForTimeout(250);
+    assert.equal(await page.evaluate(()=>window.submissions.length),0);
+    await load(priority(60,{active_player:1,decision:{kind:'select_objects',player:1,min:1,max:1,candidates:[{id:5},{id:6}]}}),true);
+    await page.evaluate(()=>{window.context.setAutoPassEnabled(false);window.context.toggleAutomatedSeat(1);});
+    await page.waitForFunction(()=>window.submissions.length===1);
+    assert.deepEqual(await page.evaluate(()=>window.submissions[0].command),{type:'select_objects',object_ids:[5]});
+    assert.deepEqual(errors,[]);
   } finally { await browser.close(); await server.close(); }
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHECKING_PLAYABLE_ACTIONS, createPriorityStops } from '../src/lib/priority-stops.js';
 
-// Default "I can act" stops stay quiet unless a test says the seat can act.
+// Conditional stops stay quiet unless a test says the seat can act.
 const state = (changes = {}) => ({
   turn_number: 2, active_player: 1, perspective: 0, phase: 'beginning phase', step: 'upkeep',
   stack_size: 0, stack_objects: [], decision: { kind: 'priority', player: 0, actions: [], can_act: false }, ...changes,
@@ -10,16 +10,16 @@ const state = (changes = {}) => ({
 const pass = { type: 'priority_action', action_ref: { kind: 'pass_priority' } };
 const cast = { type: 'priority_action', action_ref: { kind: 'cast_spell' } };
 const onStack = (id = 10) => state({ stack_size: 1, stack_objects: [{ id, controller: 0 }] });
-test('tracker cycles I can act (default) / every time / off', () => {
+test('tracker cycles off (default) / I can act / every time', () => {
   const stops = createPriorityStops({ phaseStopsEnabled: true });
-  for (const expected of ['always', 'off', undefined]) {
+  for (const expected of ['can_act', 'always', undefined]) {
     stops.cycleStop('phase:Upkeep', state());
     assert.equal(stops.getSnapshot().stops['phase:Upkeep'], expected);
   }
 });
 
 test('I can act stops hold only when the seat can act, and wait while that is unknown', () => {
-  const stops = createPriorityStops({ phaseStopsEnabled: true });
+  const stops = createPriorityStops({ phaseStopsEnabled: true, initialStops: { 'phase:Upkeep': 'can_act' } });
   const canAct = value => state({ decision: { kind: 'priority', player: 0, actions: [], can_act: value } });
   assert.equal(stops.stopReason(state({ decision: { kind: 'priority', player: 1 } })), null);
   assert.equal(stops.stopReason(canAct(false)), null);
@@ -38,7 +38,7 @@ test('I can act stops hold only when the seat can act, and wait while that is un
 });
 
 test('I can act counts down on an opponent turn only once the seat can act', () => {
-  const stops = createPriorityStops({ phaseStopsEnabled: true });
+  const stops = createPriorityStops({ phaseStopsEnabled: true, initialStops: { 'phase:Upkeep': 'can_act' } });
   for (const value of [false, null]) {
     stops.observe(state({ decision: { kind: 'priority', player: 0, actions: [], can_act: value } }));
     assert.equal(stops.getSnapshot().window, null);
@@ -50,6 +50,7 @@ test('I can act counts down on an opponent turn only once the seat can act', () 
 test('recurring stops do not retrigger in the same step, but return next turn', () => {
   const stops = createPriorityStops({ phaseStopsEnabled: true });
   stops.cycleStop('phase:Upkeep', state());
+  stops.cycleStop('phase:Upkeep', state());
   stops.beforeCommand(pass, state());
   assert.equal(stops.stopReason(onStack()), null);
   assert.match(stops.stopReason(state({ turn_number: 3 })), /Upkeep/);
@@ -59,6 +60,8 @@ test('combat step stops remain independent of a broad combat stop and rearm for 
   const stops = createPriorityStops({ phaseStopsEnabled: true });
   const combat = step => state({ phase: 'combat phase', step });
   stops.cycleStop('phase:Combat', combat('begin combat'));
+  stops.cycleStop('phase:Combat', combat('begin combat'));
+  stops.cycleStop('step:DeclareBlockers', combat('begin combat'));
   stops.cycleStop('step:DeclareBlockers', combat('begin combat'));
   assert.match(stops.stopReason(combat('begin combat')), /Combat/);
   stops.beforeCommand(pass, combat('begin combat'));
@@ -80,6 +83,7 @@ test('mana activations never create a post-action timer', () => {
 test('cancelling a cast clears its pending window without consuming future step stops', () => {
   const stops = createPriorityStops({ phaseStopsEnabled: true });
   stops.cycleStop('phase:Draw', state());
+  stops.cycleStop('phase:Draw', state());
   stops.beforeCommand(cast, state());
   stops.cancelAction();
   stops.observe(state());
@@ -89,6 +93,7 @@ test('cancelling a cast clears its pending window without consuming future step 
 
 test('failed submissions restore a stop instead of silently consuming it', () => {
   const stops = createPriorityStops({ phaseStopsEnabled: true });
+  stops.cycleStop('phase:Upkeep', state());
   stops.cycleStop('phase:Upkeep', state());
   const checkpoint = stops.beforeCommand(pass, state());
   assert.equal(stops.stopReason(state()), null);
@@ -100,7 +105,10 @@ test('failed submissions restore a stop instead of silently consuming it', () =>
 test('first-strike and regular damage have distinct recurring stops', () => {
   const stops = createPriorityStops({ phaseStopsEnabled: true });
   const damage = state({ phase: 'combat phase', step: 'combat damage', combat_damage_step: 'first_strike' });
-  for (const key of ['FirstStrikeDamage', 'CombatDamage']) stops.cycleStop(`step:${key}`, state());
+  for (const key of ['FirstStrikeDamage', 'CombatDamage']) {
+    stops.cycleStop(`step:${key}`, state());
+    stops.cycleStop(`step:${key}`, state());
+  }
   assert.equal(stops.stopReason(damage), 'stop at FirstStrikeDamage');
   stops.beforeCommand(pass, damage);
   assert.equal(stops.stopReason(damage), null);
@@ -253,7 +261,7 @@ test('seat stops override defaults independently and persist every mode', async 
   const mainPhases = new Set(['phase:Main', 'phase:Main2']);
   for (const player of [0, 1, 2, 3]) {
     for (const key of PRIORITY_STOP_KEYS) assert.equal(priorityStopMode(controller.getSnapshot().stops, key, player),
-      mainPhases.has(key) ? 'always' : 'can_act');
+      mainPhases.has(key) ? 'always' : undefined);
   }
   controller.cycleStop('phase:Main', state(), 1);
   let stops = controller.getSnapshot().stops;
@@ -261,9 +269,10 @@ test('seat stops override defaults independently and persist every mode', async 
   assert.equal(priorityStopMode(stops, 'phase:Main', 0), 'always');
   assert.equal(priorityStopMode(readStoredPriorityStops(storage), 'phase:Main', 1), undefined);
   controller.cycleStop('phase:End', state(), 0);
+  controller.cycleStop('phase:End', state(), 0);
   stops = readStoredPriorityStops(storage);
   assert.equal(priorityStopMode(stops, 'phase:End', 0), 'always');
-  assert.equal(priorityStopMode(stops, 'phase:End', 1), 'can_act');
+  assert.equal(priorityStopMode(stops, 'phase:End', 1), undefined);
   assert.equal(priorityStopsForPlayer(stops, 1)['phase:Main'], undefined);
   assert.equal(priorityStopsForPlayer(stops, 0)['phase:End'], 'always');
   controller.cycleStop('phase:Main', state(), 1);
@@ -278,5 +287,5 @@ test('version 2 saves keep deliberate every-time stops; the main phases keep the
   const stops = readStoredPriorityStops(storage);
   assert.equal(priorityStopMode(stops, 'phase:Main', 0), 'always');
   assert.equal(priorityStopMode(stops, 'step:DeclareBlockers', 0), 'always');
-  assert.equal(priorityStopMode(stops, 'phase:End', 1), 'can_act');
+  assert.equal(priorityStopMode(stops, 'phase:End', 1), undefined);
 });

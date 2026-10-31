@@ -51,6 +51,7 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  overlayStyle,
   onOpenAutoFocus,
   onCloseAutoFocus,
   style,
@@ -69,7 +70,7 @@ function SheetContent({
 
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay style={overlayStyle} />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         data-side={side}

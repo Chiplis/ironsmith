@@ -1,3 +1,4 @@
+import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import useUiText from "@/i18n/useUiText";
 import PlayNavigation from "@/components/layout/PlayNavigation";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
@@ -177,7 +178,8 @@ export default function TableCore({
   const sharedMiddleControls = !mergeActionBarIntoMyZone
     && (focusedHudDesktop || Boolean(middleTopbar || middleAddCardBar));
   const isActivePlayer = Number(state?.active_player) === Number(me?.id);
-  const isPriorityPlayer = Number(state?.priority_player) === Number(me?.id);
+  const isPriorityPlayer = state?.decision?.kind === "priority"
+    && Number(state.decision.player) === Number(me?.id);
   const castPlayerHovered = useCastPlayerHovered(me?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(me?.id)) || legalTargetPlayerIds.has(Number(me?.index));
@@ -439,10 +441,10 @@ export default function TableCore({
         className="decision-phase-pass"
         aria-pressed={Boolean(phasePassing)}
         aria-label={ui("End turn")}
-        title={ui("End the turn, ignoring phase pauses")}
+        title={ui("Yield through this turn; combat and required choices stay manual")}
         disabled={Boolean(state?.game_over)}
         onClick={togglePhasePassing}
-      >{ui("End turn")}</button>}
+      >{ui("End turn")}<PriorityShortcutHint number="6" /></button>}
     </div>
   ) : null;
   const middleTopbarElement = focusedHudDesktop && middleTopbar

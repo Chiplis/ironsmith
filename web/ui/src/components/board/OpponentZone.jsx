@@ -330,7 +330,8 @@ function OpponentSlot({
   const showZoneHeaders = visibleZones.size > 1;
   const playerIdx = player.index ?? player.id;
   const isActivePlayer = Number(state?.active_player) === Number(player?.id);
-  const isPriorityPlayer = Number(state?.priority_player) === Number(player?.id);
+  const isPriorityPlayer = state?.decision?.kind === "priority"
+    && Number(state.decision.player) === Number(player?.id);
   const castPlayerHovered = useCastPlayerHovered(player?.index ?? player?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));

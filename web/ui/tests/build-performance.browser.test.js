@@ -25,10 +25,22 @@ test('Build defers the custom library and compiles only rules changes', { timeou
     await page.waitForFunction(() => window.buildPreviewCalls?.length === 1);
     assert.equal(poolRequests, 0, 'opening Build must not download/parse the unused custom pool');
 
-    await dialog.getByRole('group', { name: 'Finish', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
-    await dialog.getByRole('checkbox', { name: 'Print effects', exact: true }).click();
-    await dialog.getByRole('group', { name: 'Border', exact: true }).getByRole('button', { name: 'Black', exact: true }).click();
-    await dialog.getByRole('group', { name: 'Rarity', exact: true }).getByRole('button', { name: 'Rare', exact: true }).click();
+    assert.equal(await dialog.getByRole('combobox', { name: 'Finish', exact: true }).count(), 0);
+    assert.equal(await dialog.getByRole('combobox', { name: 'Print effects', exact: true }).count(), 0);
+    await dialog.getByRole('checkbox', { name: 'Preview finish effects', exact: true }).check();
+    await dialog.getByRole('combobox', { name: 'Finish', exact: true }).selectOption({ label: 'None' });
+    await dialog.getByRole('combobox', { name: 'Print effects', exact: true }).selectOption('off');
+    await dialog.getByRole('combobox', { name: 'Border', exact: true }).selectOption('black');
+    await dialog.getByRole('combobox', { name: 'Rarity', exact: true }).selectOption('rare');
+    await dialog.getByRole('checkbox', { name: 'Preview finish effects', exact: true }).uncheck();
+    assert.equal(await dialog.getByRole('combobox', { name: 'Finish', exact: true }).count(), 0);
+    const compilation = dialog.getByRole('region', { name: 'Compilation', exact: true });
+    assert.equal(await compilation.getByRole('tab', { name: 'Compiled Text', exact: true }).getAttribute('aria-selected'), 'true');
+    await compilation.getByRole('tab', { name: 'Compiled Abilities', exact: true }).click();
+    await compilation.getByRole('button', { name: 'Copy card definition', exact: true }).waitFor();
+    await compilation.getByRole('tab', { name: 'Compiled Text', exact: true }).click();
+    assert.equal(await dialog.locator('.card-forge-side').getByRole('textbox', { name: 'Rules text' }).count(), 1);
+    assert.equal(await dialog.locator('.card-forge-printing-controls > :first-child').getByRole('textbox', { name: 'Artist', exact: true }).count(), 1);
     await page.waitForTimeout(400);
     assert.equal(await page.evaluate(() => window.buildPreviewCalls.length), 1, 'appearance changes must not recompile rules');
 

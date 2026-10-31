@@ -34,7 +34,7 @@ export function cardGlintDraftFace(draft, faceIndex = 0, printingSource = null) 
   if (!faces.length) return null;
   const presentation = normalizeCardPresentation(draft.presentation);
   const art = face => face.image_uris?.art_crop ?? imageUrl;
-  const layout = faces.some(face => /\bAdventure\b/.test(face.type_line)) ? 'adventure' : draft.frameLayout ?? draft.layout;
+  const layout = faces.some(face => /\b(Adventure|Omen)\b/.test(face.type_line)) ? 'adventure' : draft.frameLayout ?? draft.layout;
   if (['split', 'aftermath', 'adventure', 'prepare', 'room', 'flip'].includes(layout) && faces.length > 1) {
     return cardGlintFace({layout, keywords: draft.hasFuse ? ['Fuse'] : [], name: faces.map(face => face.name).join(' // '), card_faces: faces},
       {imageUrl: art(faces[0]), printing, presentation, builderCreated:true});

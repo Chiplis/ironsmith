@@ -968,6 +968,8 @@ pub struct OrderContext {
     /// permanent (or graveyard card) a trigger came from, so it can preview
     /// it. Empty when every item id is already a real object.
     pub item_sources: Vec<Option<ObjectId>>,
+    /// Only target-free trigger groups expose an automation identity.
+    pub automation_identities: Vec<Option<String>>,
 }
 
 impl OrderContext {
@@ -985,12 +987,18 @@ impl OrderContext {
             description: description.into(),
             items,
             item_sources: Vec::new(),
+            automation_identities: Vec::new(),
         }
     }
 
     /// Name the game object behind each item, parallel to `items`.
     pub fn with_item_sources(mut self, item_sources: Vec<Option<ObjectId>>) -> Self {
         self.item_sources = item_sources;
+        self
+    }
+
+    pub fn with_automation_identities(mut self, identities: Vec<Option<String>>) -> Self {
+        self.automation_identities = identities;
         self
     }
 

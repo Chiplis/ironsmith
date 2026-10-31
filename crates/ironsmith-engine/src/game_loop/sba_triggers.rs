@@ -1044,11 +1044,16 @@ fn order_triggers_for_controller(
                 .or_else(|| game.find_object_by_stable_id(trigger.source_stable_id))
         })
         .collect();
+    let automation_identities = triggers.iter().map(|trigger| {
+        (!trigger.ability.choices.iter().any(ChooseSpec::is_target))
+            .then(|| format!("trigger:{}", trigger.trigger_identity.0))
+    }).collect();
     let ctx = crate::decisions::context::enrich_display_hints(
         game,
         crate::decisions::context::DecisionContext::Order(
             crate::decisions::context::OrderContext::new(decision_player, None, description, items)
-                .with_item_sources(item_sources),
+                .with_item_sources(item_sources)
+                .with_automation_identities(automation_identities),
         ),
     )
     .into_order();

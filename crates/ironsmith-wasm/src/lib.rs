@@ -2908,6 +2908,7 @@ impl CastingMethodRef {
 
 #[derive(Debug, Clone, Serialize)]
 struct OptionView {
+    automation_identity: Option<String>,
     index: usize,
     description: String,
     legal: bool,
@@ -3326,6 +3327,7 @@ impl DecisionView {
                 max: 1,
                 options: vec![
                     OptionView {
+                        automation_identity: None,
                         index: 1,
                         description: "Yes".to_string(),
                         legal: boolean.can_accept,
@@ -3337,6 +3339,7 @@ impl DecisionView {
                         related_object_ids: None,
                     },
                     OptionView {
+                        automation_identity: None,
                         index: 0,
                         description: "No".to_string(),
                         legal: true,
@@ -3474,6 +3477,7 @@ impl DecisionView {
                                     opt.description.clone()
                                 };
                             OptionView {
+                                automation_identity: None,
                                 index: opt.index,
                                 description: Self::text_with_visible_hidden_cards(
                                     game,
@@ -3514,6 +3518,7 @@ impl DecisionView {
                     .modes
                     .iter()
                     .map(|mode| OptionView {
+                        automation_identity: None,
                         index: mode.index,
                         description: mode.description.clone(),
                         legal: mode.legal,
@@ -3547,6 +3552,7 @@ impl DecisionView {
                     .options
                     .iter()
                     .map(|opt| OptionView {
+                        automation_identity: None,
                         index: opt.index,
                         description: opt.label.clone(),
                         legal: true,
@@ -3585,6 +3591,7 @@ impl DecisionView {
                             .filter(|source| decision_object_visible(*source))
                             .map(|source| vec![source.0]);
                         OptionView {
+                            automation_identity: order.automation_identities.get(index).cloned().flatten(),
                             index,
                             description: if visible || !is_real_object {
                                 name.clone()
@@ -3634,6 +3641,7 @@ impl DecisionView {
                             _ => None,
                         };
                         OptionView {
+                            automation_identity: None,
                             index,
                             description: if matches!(target.target, Target::Object(_))
                                 && visible_object_id.is_none()
@@ -3680,6 +3688,7 @@ impl DecisionView {
                         .into_iter()
                         .enumerate()
                         .map(|(index, color)| OptionView {
+                            automation_identity: None,
                             index,
                             description: color_name(color).to_string(),
                             legal: true,
@@ -3711,6 +3720,7 @@ impl DecisionView {
                     .iter()
                     .enumerate()
                     .map(|(index, (counter_type, available))| OptionView {
+                        automation_identity: None,
                         index,
                         description: format!(
                             "{} ({available} available)",
@@ -3778,6 +3788,7 @@ impl DecisionView {
                     .iter()
                     .enumerate()
                     .map(|(index, (_, name))| OptionView {
+                        automation_identity: None,
                         index,
                         description: format!("Permanent: {name}"),
                         legal: true,
@@ -3800,6 +3811,7 @@ impl DecisionView {
                     })
                     .chain(proliferate.eligible_players.iter().enumerate().map(
                         |(offset, (_, name))| OptionView {
+                            automation_identity: None,
                             index: proliferate.eligible_permanents.len() + offset,
                             description: format!("Player: {name}"),
                             legal: true,
@@ -5150,7 +5162,14 @@ enum CustomCardLayoutInput {
     #[default]
     Single,
     TransformLike,
+    Transform,
+    ModalDfc,
+    Flip,
+    Adventure,
+    Omen,
     Split,
+    Room,
+    Aftermath,
     Prepare,
     Meld,
 }
@@ -5161,6 +5180,13 @@ impl CustomCardLayoutInput {
             CustomCardLayoutInput::Single => 1,
             CustomCardLayoutInput::Meld => 3,
             CustomCardLayoutInput::TransformLike
+            | CustomCardLayoutInput::Transform
+            | CustomCardLayoutInput::ModalDfc
+            | CustomCardLayoutInput::Flip
+            | CustomCardLayoutInput::Omen
+            | CustomCardLayoutInput::Room
+            | CustomCardLayoutInput::Aftermath
+            | CustomCardLayoutInput::Adventure
             | CustomCardLayoutInput::Split
             | CustomCardLayoutInput::Prepare => 2,
         }
@@ -5168,13 +5194,18 @@ impl CustomCardLayoutInput {
 
     fn linked_face_layout(self) -> ironsmith::card::LinkedFaceLayout {
         match self {
-            CustomCardLayoutInput::Single | CustomCardLayoutInput::Meld => {
+            // Adventures are linked by their spell subtype, not a DFC/split layout.
+            CustomCardLayoutInput::Single
+            | CustomCardLayoutInput::Meld
+            | CustomCardLayoutInput::Omen
+            | CustomCardLayoutInput::Adventure => {
                 ironsmith::card::LinkedFaceLayout::None
             }
-            CustomCardLayoutInput::TransformLike => {
+            CustomCardLayoutInput::TransformLike | CustomCardLayoutInput::Transform | CustomCardLayoutInput::ModalDfc => {
                 ironsmith::card::LinkedFaceLayout::TransformLike
             }
-            CustomCardLayoutInput::Split => ironsmith::card::LinkedFaceLayout::Split,
+            CustomCardLayoutInput::Flip => ironsmith::card::LinkedFaceLayout::Flip,
+            CustomCardLayoutInput::Split | CustomCardLayoutInput::Room | CustomCardLayoutInput::Aftermath => ironsmith::card::LinkedFaceLayout::Split,
             CustomCardLayoutInput::Prepare => ironsmith::card::LinkedFaceLayout::Prepare,
         }
     }

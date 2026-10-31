@@ -34,21 +34,21 @@ test('Build previews finish, print effects and printing styles with card-glint',
     await settled(page);
     const stage=page.locator('[data-card-glint-live]');
     assert.equal(await stage.getAttribute('data-card-glint-live'),'live','WebGL renderer paints the preview');
-    const pressed=(group,name)=>page.getByRole('group',{name:group}).getByRole('button',{name,exact:true}).getAttribute('aria-pressed');
+    const pressed=async(group,name)=>String(await page.getByRole('combobox',{name:group,exact:true}).locator('option:checked').textContent() === name);
     assert.equal(await pressed('Finish','Shiny'),'true','Shiny is the default finish');
     assert.equal(await pressed('Printing style','Current printing'),'true','the current printing is the default style');
-    assert.equal(await page.getByRole('checkbox',{name:'Print effects'}).getAttribute('aria-checked'),'true','print effects default on');
+    assert.equal(await page.getByRole('combobox',{name:'Print effects',exact:true}).inputValue(),'on','print effects default on');
 
     const card=page.locator('.card-glint-live__tilt');
     const shot=async()=>{await page.mouse.move(0,0);await page.waitForTimeout(300);return card.screenshot();};
     const shiny=await shot();
     await page.screenshot({path:'test-results/card-glint-build-shiny.png'});
 
-    await page.getByRole('checkbox',{name:'Print effects'}).click();
+    await page.getByRole('combobox',{name:'Print effects',exact:true}).selectOption('off');
     assert.notDeepEqual(await shot(),shiny,'print effects change the printed surface');
-    await page.getByRole('checkbox',{name:'Print effects'}).click();
+    await page.getByRole('combobox',{name:'Print effects',exact:true}).selectOption('on');
 
-    await page.getByRole('group',{name:'Finish'}).getByRole('button',{name:'Prismatic'}).click();
+    await page.getByRole('combobox',{name:'Finish',exact:true}).selectOption({label:'Prismatic'});
     const prismatic=await shot();
     assert.notDeepEqual(prismatic,shiny,'finish changes the painted foil');
     const box=await card.boundingBox();
@@ -65,14 +65,14 @@ test('Build previews finish, print effects and printing styles with card-glint',
       assert.equal(await card.evaluate(el => getComputedStyle(el).transform), 'none');
     }
 
-    await page.getByRole('group',{name:'Printing style'}).getByRole('button',{name:'Fourth Edition'}).click();
+    await page.getByRole('combobox',{name:'Printing style',exact:true}).selectOption({label:'Fourth Edition'});
     await settled(page);
     const fourth=await shot();
     assert.notDeepEqual(fourth,prismatic,'a set style repaints the frame');
     await page.screenshot({path:'test-results/card-glint-build-4ed.png'});
 
-    await page.getByRole('group',{name:'Printing style'}).getByRole('button',{name:'Future Sight'}).click();
-    await page.getByRole('group',{name:'Frame'}).getByRole('button',{name:'Futureshifted',exact:true}).click();
+    await page.getByRole('combobox',{name:'Printing style',exact:true}).selectOption({label:'Future Sight'});
+    await page.getByRole('combobox',{name:'Frame',exact:true}).selectOption({label:'Futureshifted'});
     await settled(page);
     assert.notDeepEqual(await shot(),fourth,'a style frame repaints the card');
     await page.screenshot({path:'test-results/card-glint-build-futureshifted.png'});
