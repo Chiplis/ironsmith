@@ -1261,8 +1261,20 @@ impl WasmGame {
         Ok(lines.join("\n"))
     }
 
+    /// Card-builder compiles are strict: a filter word no reader reads fails
+    /// the card instead of being silently dropped.
     #[cfg(feature = "dynamic-compile")]
     fn compile_custom_card_faces(
+        &self,
+        draft: &CustomCardInput,
+    ) -> Result<Vec<CardDefinition>, JsValue> {
+        ironsmith_dynamic_compile::with_word_claim_enforcement(|| {
+            self.compile_custom_card_faces_strict(draft)
+        })
+    }
+
+    #[cfg(feature = "dynamic-compile")]
+    fn compile_custom_card_faces_strict(
         &self,
         draft: &CustomCardInput,
     ) -> Result<Vec<CardDefinition>, JsValue> {

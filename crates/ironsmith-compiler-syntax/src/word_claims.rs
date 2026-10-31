@@ -245,17 +245,40 @@ thread_local! {
     // Whether WORD_SPANS may hold entries, so a token drop outside the audit
     // costs one flag read.
     static REGISTERED: Cell<bool> = const { Cell::new(false) };
+    // Set while a caller asked for enforcement on this thread
+    // (`with_enforcement`), independent of the process environment.
+    static ENFORCED: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Whether claims are recorded for this process: when auditing
-/// (`IRONSMITH_FILTER_CLAIM_AUDIT`) or enforcing
-/// (`IRONSMITH_FILTER_CLAIM_ENFORCE`).
+/// Whether claims are recorded: when auditing
+/// (`IRONSMITH_FILTER_CLAIM_AUDIT`) or enforcing, for the process
+/// (`IRONSMITH_FILTER_CLAIM_ENFORCE`) or inside [`with_enforcement`].
 pub fn audit_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {
         std::env::var_os("IRONSMITH_FILTER_CLAIM_AUDIT").is_some()
             || std::env::var_os("IRONSMITH_FILTER_CLAIM_ENFORCE").is_some()
-    })
+    }) || enforcement_requested()
+}
+
+/// Compile inside `f` in the strict mode: a card whose object filters leave
+/// authored words no reader reads fails, as under
+/// `IRONSMITH_FILTER_CLAIM_ENFORCE`, but only for this call on this thread
+/// (the card builder's compiles).
+pub fn with_enforcement<T>(f: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ENFORCED.with(|enforced| enforced.set(self.0));
+        }
+    }
+    let _restore = Restore(ENFORCED.with(|enforced| enforced.replace(true)));
+    f()
+}
+
+/// Whether a caller on this thread asked for enforcement.
+pub fn enforcement_requested() -> bool {
+    ENFORCED.with(Cell::get)
 }
 
 pub fn is_recording() -> bool {

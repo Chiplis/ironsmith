@@ -9,6 +9,8 @@ pub use ironsmith_registry::{
 };
 pub use ironsmith_compiler::cards::CardDefinition as CompilerCardDefinition;
 pub use ironsmith_compiler::with_custom_tokens;
+/// Strict compilation for authored cards: unread filter words fail the card.
+pub use ironsmith_compiler::word_claims::with_enforcement as with_word_claim_enforcement;
 
 /// Compile a custom token's own rules text strictly. The compiler-level
 /// definition is what token-creation lowering substitutes for a reference
@@ -93,5 +95,22 @@ mod tests {
         assert!(created_tokens(&plain)[0].abilities.is_empty());
         let treasure = maker("Create a Treasure token.");
         assert!(created_tokens(&treasure)[0].card.name.starts_with("Treasure"));
+    }
+
+    #[test]
+    fn enforcement_fails_a_card_whose_filter_drops_a_word() {
+        let compile = || {
+            let builder =
+                CompilerCardDefinitionBuilder::new(ironsmith_compiler::ids::CardId::new(), "Gilded Banner");
+            compile_builder_to_runtime_definition(
+                builder,
+                "Mana cost: {1}{W}\nType: Enchantment\nBlorp creatures you control get +1/+1.",
+                false,
+            )
+        };
+        assert!(compile().is_ok(), "the default compile drops the unknown word");
+        let error = with_word_claim_enforcement(compile).expect_err("strict compile fails");
+        assert!(error.to_string().contains("does not read 'blorp'"), "{error}");
+        assert!(compile().is_ok(), "enforcement ends with the call");
     }
 }

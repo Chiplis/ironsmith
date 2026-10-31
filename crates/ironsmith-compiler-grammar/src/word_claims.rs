@@ -57,11 +57,12 @@ fn audit_path() -> Option<&'static std::path::Path> {
 }
 
 /// Whether a card whose filters leave authored words that nothing reads
-/// fails (`IRONSMITH_FILTER_CLAIM_ENFORCE`). Off by default until the
-/// readers those words reach all claim (plan stage 5).
+/// fails: for the process (`IRONSMITH_FILTER_CLAIM_ENFORCE`) or inside
+/// [`with_enforcement`] (the card builder). Off by default otherwise.
 fn enforce_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_FILTER_CLAIM_ENFORCE").is_some())
+        || enforcement_requested()
 }
 
 fn depth_guard(depth: &'static std::thread::LocalKey<Cell<usize>>) -> impl Drop {

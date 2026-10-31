@@ -42,15 +42,18 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
     for identity in &input.custom_keyword_identities {
         builder = builder.with_custom_keyword(identity.clone());
     }
-    let mut compiled = CompilerFacade::new()
-        .compile_definition(
+    // Card-builder compiles are strict: a filter word no reader reads fails
+    // the card instead of being silently dropped.
+    let mut compiled = ironsmith_compiler::word_claims::with_enforcement(|| {
+        CompilerFacade::new().compile_definition(
             builder,
             input.text.clone(),
             CompilePolicy {
                 allow_unsupported: input.allow_unsupported,
             },
         )
-        .map_err(|error| error.to_string())?;
+    })
+    .map_err(|error| error.to_string())?;
     for keyword in &input.custom_keyword_payments {
         compiled.definition.attribute_custom_keyword_payment(keyword);
     }
