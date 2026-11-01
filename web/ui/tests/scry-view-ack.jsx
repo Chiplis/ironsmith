@@ -35,14 +35,14 @@ function Fixture() {
     window.addEventListener(LOOK_DONE_EVENT, done);
     return () => window.removeEventListener(LOOK_DONE_EVENT, done);
   }, []);
-  const dispatch = command => setState(current => ({ ...current, snapshot_id: current.snapshot_id + 1,
+  const dispatch = command => { window.__lastLookCommand = command; setState(current => ({ ...current, snapshot_id: current.snapshot_id + 1,
     viewed_cards: { ...current.viewed_cards, acknowledged: true },
     decision: command.type === "select_objects" ? {
       kind: "select_options", player: 0, source_id: 10, source_name: "Sphinx of Foresight",
       reason: "Ordering", description: "Reorder cards to keep on top of your library", min: 3, max: 3,
       options: cards.map((card, index) => ({ index, description: card.name, object_id: card.id, legal: true })),
     } : priority,
-  }));
+  })); };
   return <I18nProvider><GameContext.Provider value={{ state, dispatch, game: null,
     multiplayer: { mode: "idle" }, holdRule: "never", setHoldRule: () => {}, playerAccentOverrides: {} }}>
     <ObjectSelectionProvider><HoverProvider><TooltipProvider>

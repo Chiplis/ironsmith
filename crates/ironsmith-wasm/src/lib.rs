@@ -5248,9 +5248,17 @@ struct CustomCardFaceInput {
     defense: Option<u32>,
 }
 
+fn default_claim_enforcement() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CustomCardInput {
+    #[serde(default = "default_claim_enforcement")]
+    enforce_filter_claims: bool,
+    #[serde(default = "default_claim_enforcement")]
+    enforce_line_claims: bool,
     #[serde(default)]
     layout: CustomCardLayoutInput,
     #[serde(default)]

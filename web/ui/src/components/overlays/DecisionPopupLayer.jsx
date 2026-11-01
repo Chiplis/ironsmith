@@ -1,3 +1,5 @@
+import HandPriorityAction from '@/components/decisions/HandPriorityAction';
+import useHandPriorityAction from '@/hooks/useHandPriorityAction';
 import TriggerMatchingControl from '@/components/decisions/TriggerMatchingControl';
 import { currentPriorityPhaseLabel } from "@/lib/constants";
 import { priorityStepKey } from "@/lib/priority-stops";
@@ -7,7 +9,7 @@ import { animateEffect as animate } from "@/lib/motion/native-effects";
 import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
 import { LoopShortcutButton } from "@/components/decisions/LoopShortcutControls";
 import useUiText from "@/i18n/useUiText";
-import { LOOK_DONE_EVENT, temporaryLookView } from "@/lib/look-pile";
+import { temporaryLookView } from "@/lib/look-pile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
@@ -1341,6 +1343,7 @@ function MobileDecisionDock({
   onPrimary,
   secondaryLabel = "",
   secondaryDisabled = false,
+  secondaryShortcut = null,
   onSecondary,
   pregameActions = [],
   onPregameAction,
@@ -1349,6 +1352,7 @@ function MobileDecisionDock({
 }) {
   const ui = useUiText();
   const { state, multiplayer, playerAccentOverrides, postActionPriorityWindow } = useGame();
+  const handAction = useHandPriorityAction(state);
   const decision = useMemo(
     () => presentOptionalReplacementDecision(state?.decision || null),
     [state?.decision],
@@ -1385,11 +1389,12 @@ function MobileDecisionDock({
             type="button"
             variant="ghost"
             size="sm"
-            className="mobile-decision-secondary-button"
+            className={cn("mobile-decision-secondary-button", secondaryShortcut === "0" && "action-strip-mulligan-button")}
             disabled={secondaryDisabled || multiplayer?.submittingAction}
             onClick={onSecondary}
           >
             <SymbolText text={ui(secondaryLabel)} style={{ whiteSpace: "inherit" }} />
+            <PriorityShortcutHint number={secondaryShortcut} availableWhileHandOpen={secondaryShortcut === "0"} />
           </Button>
         ) : null}
         {pregameActions.length > 0 && (
@@ -1410,7 +1415,9 @@ function MobileDecisionDock({
           </div>
         )}
         <PeerWaitPopover peerWait={peerWait}>
-          {postActionPriorityWindow && decision?.kind === "priority" && !peerWaiting ? (
+          {handAction.active && !peerWaiting ? (
+            <HandPriorityAction action={handAction} disabled={peerWaitLocked} style={decisionButtonStyle} className="mobile-decision-primary-button" />
+          ) : postActionPriorityWindow && decision?.kind === "priority" && !peerWaiting ? (
             <PriorityHoldButton className="mobile-decision-primary-button" disabled={peerWaitLocked || effectivePrimaryDisabled} />
           ) : (
           <Button
@@ -1669,7 +1676,7 @@ function MobileBattleDecisionLayer({
   const peerWaiting = Boolean(peerWait);
 
   const [actionsSheetState, setActionsSheetState] = useState({ key: "", open: false });
-  const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
+
   const [submitState, setSubmitState] = useState({ key: "", action: null });
   const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
 
@@ -1692,14 +1699,9 @@ function MobileBattleDecisionLayer({
     () => buildViewedCardsIdentity(viewedCards),
     [viewedCards]
   );
-  const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
-  const viewAcknowledged = useViewedCardsAcknowledgement(decision, viewedCards, viewedCardsIdentity);
-  const showViewedCardsStep = decision?.kind === "priority"
-    && Boolean(viewedCardsToken)
-    && !viewAcknowledged
-    && acknowledgedViewedCardsToken !== viewedCardsToken;
-  const showInlineViewedCards = Boolean(viewedCardsToken)
-    && !showViewedCardsStep
+  useViewedCardsAcknowledgement(decision, viewedCards, viewedCardsIdentity);
+
+  const showInlineViewedCards = Boolean(viewedCardsIdentity)
     && !["select_objects", "select_options", "targets"].includes(decision?.kind);
   const actionsSheetOpen = actionsSheetState.key === decisionIdentity
     ? actionsSheetState.open
@@ -1921,11 +1923,6 @@ function MobileBattleDecisionLayer({
     (decision?.kind === "targets" || decision?.kind === "select_objects")
     && canUseMobileBoardSelection(state, decision)
   );
-  const completeViewedCardsStep = useCallback(() => {
-    if (!viewedCardsToken) return;
-    setAcknowledgedViewedCardsToken(viewedCardsToken);
-    window.dispatchEvent(new Event(LOOK_DONE_EVENT));
-  }, [viewedCardsToken]);
 
   if (!decision) return null;
 
@@ -1965,41 +1962,6 @@ function MobileBattleDecisionLayer({
     );
   }
 
-  if (showViewedCardsStep) {
-    return renderMobileBattlePortal(
-      <MobileDecisionOverlay
-        eyebrow={canAct ? "Your Action" : "Opponent Action"}
-        title={ui(viewedCardsLabel)}
-        subtitle={ui(viewedCards?.description || viewedCardsSourceName)}
-      >
-        <ViewedCardsStrip
-          label={ui(viewedCardsLabel)}
-          description={ui(viewedCards?.description || "")}
-          sourceName={viewedCardsSourceName}
-          cards={viewedCardEntries}
-          players={state?.players || []}
-          perspective={state?.perspective}
-          objectControllerById={objectControllerById}
-          hoveredObjectId={hoveredObjectId}
-          selectedObjectId={selectedObjectId}
-          onCardHoverStart={handleViewedCardHoverStart}
-          onCardHoverEnd={handleViewedCardHoverEnd}
-        />
-        <div className="mobile-decision-overlay-footer">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="decision-done-looking-button mobile-decision-primary-button mobile-decision-primary-button--full"
-            disabled={!decision}
-            onClick={completeViewedCardsStep}
-          >
-            <span className="mobile-decision-primary-label">{ui("Done Looking")}</span>
-          </Button>
-        </div>
-      </MobileDecisionOverlay>
-    );
-  }
 
   if (isPriorityDecision) {
     if (dockHidden) {
@@ -2071,6 +2033,7 @@ function MobileBattleDecisionLayer({
             primaryDisabled={primaryDisabled}
             onPrimary={handlePrimary}
             secondaryLabel={secondaryAction?.label || ""}
+            secondaryShortcut={openingHandMulliganAction ? "0" : null}
             secondaryDisabled={secondaryAction?.disabled || false}
             onSecondary={secondaryAction?.onClick}
             pregameActions={pregameActions}
@@ -2504,6 +2467,7 @@ function PriorityBar({
     clearHoverLinkedObjects,
     showAnchoredCardPreview,
   } = useHover();
+  const handAction = useHandPriorityAction(state);
   const decision = useMemo(
     () => presentOptionalReplacementDecision(state?.decision || null),
     [state?.decision],
@@ -2605,20 +2569,14 @@ function PriorityBar({
     () => buildViewedCardsIdentity(viewedCards),
     [viewedCards]
   );
-  const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
-  const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
-  const viewAcknowledged = useViewedCardsAcknowledgement(decision, viewedCards, viewedCardsIdentity);
-  const showViewedCardsStep = isPriorityDecision
-    && Boolean(viewedCardsToken)
-    && !viewAcknowledged
-    && acknowledgedViewedCardsToken !== viewedCardsToken;
-  const showInlineViewedCards = Boolean(viewedCardsToken)
-    && !showViewedCardsStep
+
+  useViewedCardsAcknowledgement(decision, viewedCards, viewedCardsIdentity);
+
+  const showInlineViewedCards = Boolean(viewedCardsIdentity)
     && !["select_objects", "select_options", "targets"].includes(decision?.kind);
   const effectOrderingDecision = isEffectOrderingDecision(decision);
   const showStripDecisionSummary = (
     decision?.kind === "targets"
-    && !showViewedCardsStep
     && !effectOrderingDecision
   );
   const toolbarDecisionSummary = useMemo(() => {
@@ -2807,14 +2765,9 @@ function PriorityBar({
     && !!secondarySubmitAction
     && !secondarySubmitAction.disabled
     && typeof secondarySubmitAction.onSubmit === "function";
-  const canAdvanceViewedCardsStep = !!decision;
+
   const compactLandscapeViewport = typeof window !== "undefined"
     && window.matchMedia("(max-width: 720px) and (orientation: landscape)").matches;
-  const completeViewedCardsStep = useCallback(() => {
-    if (!viewedCardsToken) return;
-    setAcknowledgedViewedCardsToken(viewedCardsToken);
-    window.dispatchEvent(new Event(LOOK_DONE_EVENT));
-  }, [viewedCardsToken]);
 
   const topbarMainDecisionHost = inline
     && !isPriorityDecision
@@ -2829,14 +2782,12 @@ function PriorityBar({
     && inline
     && !isPriorityDecision
     && effectiveSubmitAction
-    && !showViewedCardsStep
     && !peerWaiting
   );
   const decisionSubmitPortalHost = inline
     && !submitInFooter
     && !isPriorityDecision
     && effectiveSubmitAction
-    && !showViewedCardsStep
     && !peerWaiting
     && typeof document !== "undefined"
     ? document.querySelector('[data-decision-submit-portal-host="true"]')
@@ -2864,7 +2815,7 @@ function PriorityBar({
     </Button>
   );
   const renderExpandedPrimaryControl = (ported = false, belowToolbar = false) => (
-    (peerWaiting || showViewedCardsStep || effectiveSubmitAction) ? (
+    (peerWaiting || effectiveSubmitAction) ? (
       <PeerWaitPopover peerWait={peerWait}>
         <Button
           variant="ghost"
@@ -2884,40 +2835,31 @@ function PriorityBar({
           )}
           style={decisionButtonStyle}
           data-local-action={localDecisionButton ? "true" : "false"}
-          aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-          disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-          title={peerWaiting ? t("decision.waitingForPeers") : `${ui(showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain")))} (SPACE)`}
+          aria-disabled={peerWaitLocked || !canSubmitFocused}
+          disabled={peerWaiting ? false : !canSubmitFocused}
+          title={peerWaiting ? t("decision.waitingForPeers") : `${ui((effectiveSubmitAction?.label || t("decision.submitPlain")))} (SPACE)`}
           onPointerDown={(event) => {
             if (peerWaitLocked) return;
-            if (showViewedCardsStep) {
-              if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-              event.preventDefault();
-              completeViewedCardsStep();
-              return;
-            }
+
             if (!canSubmitFocused || event.button !== 0) return;
             event.preventDefault();
             effectiveSubmitAction.onSubmit();
           }}
           onClick={(event) => {
             if (peerWaitLocked) return;
-            if (showViewedCardsStep) {
-              if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-              completeViewedCardsStep();
-              return;
-            }
+
             if (!canSubmitFocused || event.detail !== 0) return;
             effectiveSubmitAction.onSubmit();
           }}
         >
           {peerWaiting ? (
             <PeerWaitButtonContent />
-          ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep && inline && !belowToolbar && !effectOrderingDecision ? (
+          ) : !isPriorityDecision && effectiveSubmitAction && inline && !belowToolbar && !effectOrderingDecision ? (
             <span className="sr-only">
               {effectiveSubmitAction.label || t("decision.submitPlain")}
             </span>
           ) : (
-            <SymbolText text={showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
+            <SymbolText text={ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
           )}
           <PriorityShortcutHint number="1" />
         </Button>
@@ -3010,7 +2952,7 @@ function PriorityBar({
 
   // Ordering choices already live in the effect rail / stack. Only the
   // confirmation belongs here, in the same slot as priority and combat.
-  if (inline && dockSubmitFooter && effectOrderingDecision && !showViewedCardsStep && !showPeerWaitOpeningPreviews) {
+  if (inline && dockSubmitFooter && effectOrderingDecision && !showPeerWaitOpeningPreviews) {
     return (
       <div ref={inlineRootRef} className="pointer-events-none absolute inset-0 z-[120] flex items-stretch">
         <div className="priority-inline-panel priority-inline-panel--segmented priority-inline-panel--main-only pointer-events-auto relative flex h-full w-full">
@@ -3075,48 +3017,7 @@ function PriorityBar({
           data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
         >
           {isPriorityDecision ? (
-            showViewedCardsStep ? (
-              <div
-                className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
-                style={decisionButtonStyle}
-              >
-                <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
-                  <div
-                    className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch"
-                    style={decisionButtonStyle}
-                    data-local-action={localDecisionButton ? "true" : "false"}
-                  >
-                    <PeerWaitPopover peerWait={peerWait}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="decision-done-looking-button decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
-                        style={decisionButtonStyle}
-                        data-local-action={localDecisionButton ? "true" : "false"}
-                        aria-disabled={peerWaitLocked || !canAdvanceViewedCardsStep}
-                        disabled={peerWaiting ? false : !canAdvanceViewedCardsStep}
-                        onPointerDown={(event) => {
-                          if (peerWaitLocked) return;
-                          if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                          event.preventDefault();
-                          completeViewedCardsStep();
-                        }}
-                        onClick={(event) => {
-                          if (peerWaitLocked) return;
-                          if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                          completeViewedCardsStep();
-                        }}
-                      >
-                        {peerWaiting ? <PeerWaitButtonContent /> : ui("Done Looking")}
-                        <PriorityShortcutHint number="1" />
-                      </Button>
-                    </PeerWaitPopover>
-                  </div>
-                </div>
-
-              </div>
-            ) : (
-              <div
+            <div
                 className={cn(
                   "action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2",
                   pregameActions.length > 0 && "action-strip-layout--pregame-choice"
@@ -3131,7 +3032,9 @@ function PriorityBar({
                       data-local-action={localDecisionButton ? "true" : "false"}
                     >
                       <PeerWaitPopover peerWait={peerWait}>
-                        {postActionPriorityWindow && canAct && !peerWaiting ? (
+                        {handAction.active && !peerWaiting ? (
+                          <HandPriorityAction action={handAction} disabled={peerWaitLocked || !canAct} style={decisionButtonStyle} className="h-full w-full rounded-none px-2 text-[12px] font-bold uppercase" />
+                        ) : postActionPriorityWindow && canAct && !peerWaiting ? (
                           <PriorityHoldButton className="h-full w-full rounded-none px-3 text-[14px] font-bold uppercase" disabled={peerWaitLocked} />
                         ) : (
                         <Button
@@ -3154,7 +3057,7 @@ function PriorityBar({
                         </Button>                        )}
 
                       </PeerWaitPopover>
-                      {!peerWaiting && !postActionPriorityWindow && (
+                      {!peerWaiting && !handAction.active && !postActionPriorityWindow && (
                         <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
                           <div className="action-strip-main-title-row">
                             <ActionStripMainTitleText key={passCurrentLabel}>{ui(passCurrentLabel)}</ActionStripMainTitleText>
@@ -3235,6 +3138,7 @@ function PriorityBar({
                       <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
                           <ActionStripMainTitleText>{ui(openingHandMulliganLabel)}</ActionStripMainTitleText>
+                          <PriorityShortcutHint number="0" availableWhileHandOpen />
                         </div>
                       </div>
                     </div>
@@ -3269,7 +3173,6 @@ function PriorityBar({
                   </div>
                 ))}
               </div>
-            )
           ) : (
             <div
               className="action-strip-decision-stack flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 py-1"
@@ -3404,22 +3307,7 @@ function PriorityBar({
                     wrap
                   />
                 ) : canAct ? (
-                  showViewedCardsStep ? (
-                    <ViewedCardsStrip
-                      label={ui(viewedCardsLabel)}
-                      description={ui(viewedCards?.description || "")}
-                      sourceName={viewedCardsSourceName}
-                      cards={viewedCardEntries}
-                      players={state?.players || []}
-                      perspective={state?.perspective}
-                      objectControllerById={objectControllerById}
-                      hoveredObjectId={hoveredObjectId}
-                      selectedObjectId={selectedObjectId}
-                      onCardHoverStart={handleViewedCardHoverStart}
-                      onCardHoverEnd={handleViewedCardHoverEnd}
-                      compact
-                    />
-                  ) : (!effectOrderingDecision && (
+                  (!effectOrderingDecision && (
                     <>
                       {showInlineViewedCards ? (
                         <ViewedCardsStrip
@@ -3489,40 +3377,7 @@ function PriorityBar({
           style={isPriorityDecision ? decisionButtonStyle : undefined}
         >
           {isPriorityDecision ? (
-            showViewedCardsStep ? (
-              <div
-                    className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch"
-                    style={decisionButtonStyle}
-                    data-local-action={localDecisionButton ? "true" : "false"}
-                  >
-                <PeerWaitPopover peerWait={peerWait}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="decision-done-looking-button decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
-                    style={decisionButtonStyle}
-                    data-local-action={localDecisionButton ? "true" : "false"}
-                    aria-disabled={peerWaitLocked || !canAdvanceViewedCardsStep}
-                    disabled={peerWaiting ? false : !canAdvanceViewedCardsStep}
-                    onPointerDown={(event) => {
-                      if (peerWaitLocked) return;
-                      if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                      event.preventDefault();
-                      completeViewedCardsStep();
-                    }}
-                    onClick={(event) => {
-                      if (peerWaitLocked) return;
-                      if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                      completeViewedCardsStep();
-                    }}
-                  >
-                    {peerWaiting ? <PeerWaitButtonContent /> : ui("Done Looking")}
-                    <PriorityShortcutHint number="1" />
-                  </Button>
-                </PeerWaitPopover>
-              </div>
-            ) : (
-              <>
+            <>
                 {showPriorityAdvanceButton && (
                   <div
                       className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch"
@@ -3530,7 +3385,7 @@ function PriorityBar({
                       data-local-action={localDecisionButton ? "true" : "false"}
                     >
                     <PeerWaitPopover peerWait={peerWait}>
-                      <Button
+                      {handAction.active && !peerWaiting ? <HandPriorityAction action={handAction} disabled={peerWaitLocked || !canAct} style={decisionButtonStyle} className="h-full w-full rounded-none px-2 text-[12px] font-bold uppercase" /> : <Button
                         variant="ghost"
                         size="sm"
                         className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
@@ -3547,9 +3402,9 @@ function PriorityBar({
                         ) : (
                           <span className="sr-only">{ui(passCurrentLabel)}</span>
                         )}
-                      </Button>
+                      </Button>}
                     </PeerWaitPopover>
-                    {!peerWaiting && (
+                    {!peerWaiting && !handAction.active && (
                       <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
                           <ActionStripMainTitleText key={passCurrentLabel}>{ui(passCurrentLabel)}</ActionStripMainTitleText>
@@ -3605,6 +3460,7 @@ function PriorityBar({
                       onClick={() => triggerPriorityAction(openingHandMulliganAction)}
                     >
                       {ui(openingHandMulliganLabel)}
+                      <PriorityShortcutHint number="0" availableWhileHandOpen />
                     </Button>
                   )}
                   {pregameActions.map((action) => (
@@ -3624,7 +3480,6 @@ function PriorityBar({
                     </Button>
                   ))}
               </>
-            )
           ) : (
             <>
               <div className="action-strip-decision-stack flex min-w-0 w-full flex-col gap-y-1">
@@ -3633,7 +3488,7 @@ function PriorityBar({
                     "decision-primary-controls flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
-                    {(peerWaiting || showViewedCardsStep || effectiveSubmitAction) ? (
+                    {(peerWaiting || effectiveSubmitAction) ? (
                     <PeerWaitPopover peerWait={peerWait}>
                       <Button
                         variant="ghost"
@@ -3646,40 +3501,31 @@ function PriorityBar({
                         )}
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
-                        aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-                        title={peerWaiting ? t("decision.waitingForPeers") : `${ui(showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain")))} (SPACE)`}
-                        disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+                        aria-disabled={peerWaitLocked || !canSubmitFocused}
+                        title={peerWaiting ? t("decision.waitingForPeers") : `${ui((effectiveSubmitAction?.label || t("decision.submitPlain")))} (SPACE)`}
+                        disabled={peerWaiting ? false : !canSubmitFocused}
                         onPointerDown={(event) => {
                           if (peerWaitLocked) return;
-                          if (showViewedCardsStep) {
-                            if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                            event.preventDefault();
-                            completeViewedCardsStep();
-                            return;
-                          }
+
                           if (!canSubmitFocused || event.button !== 0) return;
                           event.preventDefault();
                           effectiveSubmitAction.onSubmit();
                         }}
                         onClick={(event) => {
                           if (peerWaitLocked) return;
-                          if (showViewedCardsStep) {
-                            if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                            completeViewedCardsStep();
-                            return;
-                          }
+
                           if (!canSubmitFocused || event.detail !== 0) return;
                           effectiveSubmitAction.onSubmit();
                         }}
                       >
                         {peerWaiting ? (
                           <PeerWaitButtonContent />
-                        ) : !isPriorityDecision && effectiveSubmitAction && !showViewedCardsStep && !effectOrderingDecision ? (
+                        ) : !isPriorityDecision && effectiveSubmitAction && !effectOrderingDecision ? (
                           <span className="sr-only">
                             {effectiveSubmitAction.label || t("decision.submitPlain")}
                           </span>
                         ) : (
-                          <SymbolText text={showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
+                          <SymbolText text={ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
                         )}
                         <PriorityShortcutHint number="1" />
                       </Button>
@@ -3751,23 +3597,7 @@ function PriorityBar({
       </div>
       <div className={cn("action-strip-body-shell pointer-events-auto flex-1 border-b px-2 py-1.5", !isPriorityDecision && ACTION_STRIP_BODY_CLASS)}>
         {isPriorityDecision ? (
-          showViewedCardsStep ? (
-            <ViewedCardsStrip
-              label={ui(viewedCardsLabel)}
-              description={ui(viewedCards?.description || "")}
-              sourceName={viewedCardsSourceName}
-              cards={viewedCardEntries}
-              players={state?.players || []}
-              perspective={state?.perspective}
-              objectControllerById={objectControllerById}
-              hoveredObjectId={hoveredObjectId}
-              selectedObjectId={selectedObjectId}
-              onCardHoverStart={handleViewedCardHoverStart}
-              onCardHoverEnd={handleViewedCardHoverEnd}
-              compact
-            />
-          ) : (
-            <div className="flex min-h-[46px] items-stretch gap-2">
+          <div className="flex min-h-[46px] items-stretch gap-2">
               <PriorityActionStrip
                 groups={visibleActionGroups}
                 canAct={canAct}
@@ -3790,7 +3620,6 @@ function PriorityBar({
                 className="ml-auto min-w-[104px]"
               />
             </div>
-          )
         ) : (
           <div className="action-strip-decision-content min-w-0 h-full">
             {showPeerWaitOpeningPreviews ? (
@@ -3807,21 +3636,6 @@ function PriorityBar({
                 onCardHoverStart={handleViewedCardHoverStart}
                 onCardHoverEnd={handleViewedCardHoverEnd}
                 wrap
-              />
-            ) : showViewedCardsStep ? (
-              <ViewedCardsStrip
-                label={ui(viewedCardsLabel)}
-                description={ui(viewedCards?.description || "")}
-                sourceName={viewedCardsSourceName}
-                cards={viewedCardEntries}
-                players={state?.players || []}
-                perspective={state?.perspective}
-                objectControllerById={objectControllerById}
-                hoveredObjectId={hoveredObjectId}
-                selectedObjectId={selectedObjectId}
-                onCardHoverStart={handleViewedCardHoverStart}
-                onCardHoverEnd={handleViewedCardHoverEnd}
-                compact
               />
             ) : (!effectOrderingDecision && (
               <>

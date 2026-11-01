@@ -68,7 +68,7 @@ export default function PriorityPreferences() {
       <div className="priority-options">
         {menu.phase && <Button variant="ghost" onClick={() => execute(() => startPriorityYield('until', { key: menu.phase, player: menu.player }))}>Yield until {menu.phase.split(':')[1]} on {(state.players || []).find(player => player.id === menu.player)?.name}’s turn</Button>}
         <Button variant="ghost" onClick={() => execute(() => startPriorityYield('responses'))}><span>Pass until a response is needed</span><PriorityShortcutHint number="2" /><small>This turn. Stop for opponents’ spells and required choices.</small></Button>
-        <Button variant="ghost" onClick={() => execute(() => startPriorityYield('turn'))}><span>Yield through this turn</span><PriorityShortcutHint number="6" /><small>Skip responses. Attackers, blockers and other choices stay manual.</small></Button>
+        <Button variant="ghost" onClick={() => execute(() => startPriorityYield('turn'))}><span>Yield through this turn</span><PriorityShortcutHint number="6" /><small>Skip responses and declare no attackers. Required attacks, blockers and other choices stay manual.</small></Button>
         <Button variant="ghost" onClick={() => execute(() => startPriorityYield('no_play'))}><span>Yield when no play is possible</span><PriorityShortcutHint number="8" /><small>All turns this game. Pause whenever a legal play is available.</small></Button>
         <Button variant="ghost" onClick={() => execute(() => startPriorityYield('until', { key: 'phase:End', anyPlayer: true }))}>Yield until the next end step</Button>
       </div>
@@ -89,7 +89,7 @@ export default function PriorityPreferences() {
       <label className="priority-check">Keyboard preset <select value={preset} onChange={event => {
         setPreset(event.target.value); setShortcutPreset(event.target.value);
       }}><option value="mtgo">MTGO numbers</option><option value="classic">Classic hand numbers / Alt + number for yields</option></select></label>
-      <p className="priority-help">Hold Ctrl while starting a spell or ability to retain priority after it reaches the stack. You can also arm the next-action checkbox above. H opens your numbered hand; . toggles your hand. While your hand is open, number keys select cards in either preset. Close it to use MTGO priority numbers.</p>
+      <p className="priority-help">Hold Ctrl while starting a spell or ability to retain priority after it reaches the stack. You can also arm the next-action checkbox above. H and . both open or close your numbered hand. Arrow keys stay within the hand while it is open. While your hand is open, number keys select cards in either preset. Close it to use MTGO priority numbers.</p>
       {status.rules.length > 0 && <p>{status.rules.length} saved ability preference{status.rules.length === 1 ? '' : 's'} for this game.</p>}
     </>}
     </div>

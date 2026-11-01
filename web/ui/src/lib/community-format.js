@@ -17,7 +17,7 @@ export function normalizeCommunityFormat(value) {
     name: String(value.name || '').trim().slice(0, 80),
     includedSets: sets(value.includedSets), excludedSets: sets(value.excludedSets),
     includedCards: names(value.includedCards), excludedCards: names(value.excludedCards),
-    customSets: (value.customSets || []).map(set => ({ name: String(set.name || '').trim(), cards: structuredClone(set.cards || []) })),
+    customSets: (value.customSets || []).map(set => ({ name: String(set.name || '').trim(), cards: structuredClone(set.cards || []), ...(set.customMechanics ? { customMechanics: structuredClone(set.customMechanics) } : {}) })),
     customCards: structuredClone(value.customCards || []),
   };
   if (!result.name) throw new Error('Give your community format a name');

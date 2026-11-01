@@ -1,3 +1,5 @@
+import HandPriorityAction from '@/components/decisions/HandPriorityAction';
+import useHandPriorityAction from '@/hooks/useHandPriorityAction';
 import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import usePrioritySettings from "@/hooks/usePrioritySettings";
 import { priorityStepKey } from '@/lib/priority-stops';
@@ -176,6 +178,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     ? `${playerDisplayName(players, decisionPlayer)} · ${decision.reason || decision.kind}`
     : t("action.noPending"));
 
+  const handAction = useHandPriorityAction(state);
   const isPriorityDecision = decision?.kind === "priority";
   const passAction = isPriorityDecision
     ? (decision.actions || []).find((action) => action.kind === "pass_priority")
@@ -426,7 +429,9 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             <div className="pb-1">
               <div className="relative">
                 <PeerWaitPopover peerWait={peerWait}>
-                  {postActionPriorityWindow && canAct && !peerWaiting ? (
+                  {handAction.active && !peerWaiting ? (
+                    <HandPriorityAction action={handAction} disabled={peerWaitLocked || !canAct} style={decisionButtonStyle} className="min-h-10 w-full px-3 py-1.5 text-[15px] uppercase" />
+                  ) : postActionPriorityWindow && canAct && !peerWaiting ? (
                     <PriorityHoldButton className="h-auto min-h-10 w-full px-3 py-1.5 text-[15px] font-bold uppercase" disabled={peerWaitLocked} />
                   ) : (
                   <Button
@@ -456,7 +461,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                   </Button>                  )}
 
                 </PeerWaitPopover>
-                {!peerWaiting && (
+                {!peerWaiting && !handAction.active && (
                   <PhaseHelpPopover
                     state={state}
                     decision={decision}

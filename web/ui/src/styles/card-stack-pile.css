@@ -44,6 +44,12 @@
 .card-stack-cards {
   position: absolute;
   inset: 0;
+  transform-origin: left bottom;
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.card-stack-pile[data-expanded="true"] .card-stack-cards {
+  transform: translateY(var(--card-stack-hover-offset)) scale(var(--card-stack-hover-scale));
 }
 
 .card-stack-motion {
@@ -87,7 +93,7 @@
 .game-card.stack-card--frame:hover {
   --card-scale: 1;
   --card-translate-y: 0;
-  transform: translateY(-6px) scale(1.035);
+  transform: none;
   box-shadow: none;
 }
 
@@ -283,6 +289,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .card-stack-cards { transition: none; }
   .card-stack-slot { transition: none; }
   .card-stack-float { animation: none; }
   .card-stack-slot[data-viewed="true"] .card-stack-glow,

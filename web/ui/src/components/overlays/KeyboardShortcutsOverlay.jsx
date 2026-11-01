@@ -9,12 +9,11 @@ import "./keyboard-shortcuts.css";
 
 const SHORTCUTS = [
   { keys: ["Space", "Enter"], action: "Pass priority, or confirm the highlighted main action" },
-  { keys: ["←", "→"], action: "Move between cards in your hand. With the hand open, → starts at the first card and ← at the last" },
+  { keys: ["←", "→", "↑", "↓"], action: "While your hand is open, move only between its cards. Right/down moves forward; left/up moves backward" },
   { keys: ["Enter"], scope: "on a hand card", action: "Play or cast that card. If there are several ways to play it, a numbered menu opens" },
   { keys: ["1–9"], scope: "in the play menu", action: "Choose that way to play the card" },
-  { keys: ["."], action: "Open or close your hand" },
+  { keys: [".", "H"], action: "Open or close your numbered hand" },
   { keys: ["Ctrl"], action: "Hold while starting a spell or ability to retain priority after it reaches the stack" },
-  { keys: ["H"], action: "Raise your hand. Press . to close it" },
   { keys: ["1"], action: "Pass priority or confirm the main action" },
   { keys: ["2"], action: "Pass until a response is needed this turn" },
   { keys: ["3", "4"], action: "Yes / No at a Boolean choice" },

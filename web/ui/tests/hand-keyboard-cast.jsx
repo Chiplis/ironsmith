@@ -1,4 +1,7 @@
-import { useEffect } from "react";
+import HandPriorityAction from '../src/components/decisions/HandPriorityAction';
+import useHandPriorityAction from '../src/hooks/useHandPriorityAction';
+import { installMainDecisionShortcut } from '../src/lib/main-decision-shortcut';
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
@@ -10,7 +13,7 @@ import { HAND_KEYBOARD_CAST_EVENT } from "../src/lib/hand-cast-keyboard";
 import { installHandToggleShortcut, useHandOpen } from "../src/lib/hand-open";
 import "../src/index.css";
 
-const { state } = window.__handKeyboardFixture;
+const { state: initialState, mainAction } = window.__handKeyboardFixture;
 
 window.__keyboardCasts = [];
 window.addEventListener(HAND_KEYBOARD_CAST_EVENT, (event) => {
@@ -46,7 +49,17 @@ export function DragProbe() {
   return null;
 }
 
+function HandActionDock({ state }) {
+  const action = useHandPriorityAction(state);
+  return <div style={{ position: 'fixed', top: 20, left: 20, zIndex: 100 }}>
+    {action.active ? <HandPriorityAction action={action} /> : <button className="decision-main-button" onClick={() => { window.__passed = true; }}>Pass priority</button>}
+  </div>;
+}
+
 export function Fixture() {
+  const [state, setState] = useState(initialState);
+  window.__setHandFixtureState = setState;
+  useEffect(() => mainAction ? installMainDecisionShortcut(document) : undefined, []);
   const handOpen = useHandOpen();
   useEffect(() => installHandToggleShortcut(document), []);
   return (
@@ -54,6 +67,7 @@ export function Fixture() {
       <GameContext.Provider value={{ state, multiplayer: null }}>
         <HoverProvider>
           <DragProvider>
+            {mainAction && <HandActionDock state={state} />}
             <DragProbe />
             <DragOverlay />
             {/* The hand sits at the foot of the viewport, as it does on the

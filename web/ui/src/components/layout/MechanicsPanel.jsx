@@ -145,9 +145,13 @@ function TemplatePicker({ selected, keyword, onPick }) {
   </section>;
 }
 
-function MechanicForm({ saved, onSaved }) {
+export function MechanicForm({ saved, onSaved, initial, onSave }) {
   const ui = useUiText();
-  const [draft, setDraft] = useState(emptyDraft);
+  const [draft, setDraft] = useState(() => initial ? {
+    ...emptyDraft(), ...initial.forms,
+    keyword: initial.keyword + (initial.template ? ` ${initial.template}` : ''),
+    reminder: initial.reminder, variants: initial.forms?.variants?.join(', ') || '',
+  } : emptyDraft());
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [template, setTemplate] = useState(null);
@@ -159,41 +163,46 @@ function MechanicForm({ saved, onSaved }) {
     try {
       const def = validateMechanic({ ...draftDefinition(draft), sourceCard: 'the Mechanics tab' });
       const existing = saved.find(mechanic => mechanic.keyword === def.keyword);
-      if (existing) return { problem: ui('"{0}" is already saved (from {1}). Delete it first to redefine it.', { 0: def.keyword, 1: existing.sourceCard }) };
+      if (existing && existing.keyword !== initial?.keyword) return { problem: ui('"{0}" is already saved (from {1}). Delete it first to redefine it.', { 0: def.keyword, 1: existing.sourceCard }) };
       const clash = mechanicFormClash(saved, def);
       return clash ? { problem: clash.message } : { definition: def };
     } catch (failure) { return { problem: String(failure?.message || failure) }; }
-  }, [draft, saved, ui]);
+  }, [draft, saved, ui, initial]);
   const check = useMechanicCompileCheck(definition && draftDefinition(draft));
   const blocked = check.status === 'checking' || check.status === 'error';
   const save = async () => {
     if (!definition || busy || blocked) return;
     setBusy(true);
-    try { const def = await saveCustomMechanic(draftDefinition(draft), { compile: check.compile }); setDraft(emptyDraft()); setTemplate(null); onSaved?.(def); }
+    try { const def = onSave ? await onSave(definition, check.compile) : await saveCustomMechanic(draftDefinition(draft), { compile: check.compile }); setDraft(emptyDraft()); setTemplate(null); onSaved?.(def); }
     catch (failure) { setSaveError(String(failure?.message || failure)); }
     finally { setBusy(false); }
   };
   const forms = definition ? customMechanicEntry(definition).forms : null;
   return <form className="space-y-5" data-testid="mechanic-form" onSubmit={event => { event.preventDefault(); void save(); }}>
     <header className="space-y-1">
-      <h3 className="text-xl font-semibold">{ui('New custom mechanic')}</h3>
+      <h3 className="text-xl font-semibold">{ui(initial ? 'Edit set mechanic' : 'New custom mechanic')}</h3>
       <p className="text-sm text-muted-foreground">{ui('Custom mechanics compile from their reminder text and keep their own identity: a custom keyword never counts as an official one.')}</p>
     </header>
     <label className="card-forge-field"><span className="card-forge-section-label">{ui('Keyword')}</span>
-      <input className="card-forge-input" value={draft.keyword} onChange={set('keyword')} placeholder={ui("Blink")} maxLength={96} autoComplete="off" />
+      <input aria-label={ui('Keyword')} className="card-forge-input" value={draft.keyword} readOnly={Boolean(initial)} onChange={set('keyword')} placeholder={ui("Blink")} maxLength={96} autoComplete="off" />
       <span className="text-xs text-muted-foreground">{ui('To fix how cards write its parameters, follow the name with their layout, such as "Forge {Number} {Cost}" or "Herald a {Type}". Without a layout, a card may give them in any order, separated by a dash or a space.')}</span>
     </label>
+    <details open={onSave ? undefined : true}>
+      <summary className="cursor-pointer text-sm font-semibold">{ui('Mechanic templates')}</summary>
     <TemplatePicker selected={template} keyword={draft.keyword} onPick={picked => {
       setSaveError(''); setTemplate(picked.kind);
       setDraft(current => ({ ...current, keyword: current.keyword.trim() ? current.keyword : picked.keyword, reminder: picked.reminder }));
     }} />
+    </details>
     <label className="card-forge-field"><span className="card-forge-section-label">{ui('Reminder text')}</span>
-      <textarea className="card-forge-input min-h-24" value={draft.reminder} onChange={set('reminder')}
+      <textarea aria-label={ui('Reminder text')} className="card-forge-input min-h-24" value={draft.reminder} onChange={set('reminder')}
         placeholder={ui("{Cost}: Exile this creature, then return it to the battlefield under its owner's control.")} />
       <span className="text-xs text-muted-foreground">{ui('Write the full meaning without parentheses, as it would appear in the reminder.')}</span>
       <CompileCheck check={check} />
     </label>
-    <fieldset className="space-y-4">
+    <details open={onSave ? undefined : true}>
+      <summary className="cursor-pointer text-sm font-semibold">{ui('Keyword forms and references')}</summary>
+    <fieldset className="space-y-4 pt-3">
       <legend className="card-forge-section-label mb-2">{ui('Forms')}</legend>
       <p className="text-sm text-muted-foreground">{ui('Leave a form blank to use the one derived from the name. Forms let other rules text refer to the mechanic.')}</p>
       {FORM_FIELDS.map(spec => {
@@ -216,9 +225,10 @@ function MechanicForm({ saved, onSaved }) {
         </div>;
       })}
     </fieldset>
-    {forms && <section className="space-y-2"><div className="card-forge-section-label">{ui('Saved forms')}</div><FormRows forms={forms} /></section>}
+    </details>
+    {forms && !onSave && <section className="space-y-2"><div className="card-forge-section-label">{ui('Saved forms')}</div><FormRows forms={forms} /></section>}
     {(problem || saveError) && draft.keyword.trim() && <p role="alert" className="text-sm text-red-300">{saveError || problem}</p>}
-    <Button type="submit" disabled={!definition || busy || blocked}>{ui(busy ? 'Saving…' : 'Save mechanic')}</Button>
+    <Button type="submit" disabled={!definition || busy || blocked}>{ui(busy ? 'Saving…' : initial ? 'Update mechanic' : 'Save mechanic')}</Button>
   </form>;
 }
 

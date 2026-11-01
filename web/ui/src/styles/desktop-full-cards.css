@@ -458,7 +458,7 @@
     pointer-events: none !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region .action-strip-main-text-stack :is(*, .action-strip-main-title-row, .action-strip-main-title-text) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region .action-strip-main-text-stack :is(*, .action-strip-main-title-row, .action-strip-main-title-text):not(.priority-shortcut-hint) {
     justify-content: center !important;
     color: var(--fc-dock-ink) !important;
     -webkit-text-fill-color: var(--fc-dock-ink) !important;
@@ -964,7 +964,7 @@
     }
 
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-title-text,
-    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-title-text * {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-title-text *:not(.priority-shortcut-hint) {
       font-size: var(--action-strip-main-title-size, 14px) !important;
       white-space: normal !important;
       overflow-wrap: normal !important;

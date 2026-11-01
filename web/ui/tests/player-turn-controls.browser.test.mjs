@@ -18,20 +18,20 @@ test('per-player tracks, full control, public choices and double-click hand play
     });
     const url = `http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html`;
     await page.goto(`${url}?singleOpponent&decisionDock&hand=7&playableHand&chosenValues&otherPriority`);
-    const stop = (player, phase) => page.locator(`.phase-track--shared [data-stop-player="${player}"][data-stop-phase="${phase}"]`);
+    const stop = (player, phase) => page.locator(`.phase-track-group--duel .phase-track [data-stop-player="${player}"][data-stop-phase="${phase}"]`);
     await stop(0, 'Main').waitFor();
-    assert.equal(await page.locator('.phase-track--shared:not(.phase-track--combat) .phase-track-step-label').count(), 8, 'duels share one set of phase labels');
+    assert.equal(await page.locator('.phase-track-group--duel .phase-track:not(.phase-track--combat) .phase-track-step-label').count(), 16, 'each player has a complete turn sequence');
     for (const player of [0, 1]) {
       for (const phase of ['Main', 'Main2']) assert.equal(await stop(player, phase).getAttribute('data-stop'), 'always', 'main phases stop every time by default');
     }
-    assert.equal(await stop(0, 'Main').locator('..').getAttribute('data-active-turn'), 'true');
-    assert.equal(await stop(1, 'Main').locator('..').getAttribute('data-has-priority'), 'true');
+    assert.equal(await page.locator('.phase-track-player[data-phase-player="0"]').getAttribute('data-active-turn'), 'true');
+    assert.equal(await page.locator('.phase-track-player[data-phase-player="0"]').getAttribute('data-has-priority'), 'true', 'priority follows the decision player');
     assert.equal(await stop(1, 'Main').getAttribute('data-opponent-stop'), 'true');
     assert.equal(await stop(1, 'Main').locator('svg').evaluate(node => getComputedStyle(node).transform), 'matrix(-1, 0, 0, -1, 0, 0)');
     await stop(0, 'Main').click();
     assert.equal(await stop(0, 'Main').getAttribute('data-stop'), 'off');
     assert.equal(await stop(1, 'Main').getAttribute('data-stop'), 'always');
-    for (const mode of ['always', 'off', 'can_act']) {
+    for (const mode of ['can_act', 'always', 'off']) {
       await stop(1, 'Upkeep').click();
       assert.equal(await stop(1, 'Upkeep').getAttribute('data-stop'), mode);
     }
@@ -97,10 +97,10 @@ test('per-player tracks, full control, public choices and double-click hand play
       }
     }
     await page.goto(`${url}?singleOpponent&perspective=1&utilities`);
-    await page.locator('.phase-track--shared').first().waitFor();
-    assert.equal(await page.locator('.phase-track--shared [data-stop-player]').first().getAttribute('data-stop-player'), '1', 'your hand icon comes first from either seat');
+    await page.locator('.phase-track-group--duel .phase-track').first().waitFor();
+    assert.equal(await page.locator('.phase-track-group--duel .phase-track [data-stop-player]').first().getAttribute('data-stop-player'), '1', 'your hand icon comes first from either seat');
     const duelAlignment = await page.locator('.table-phase-divider').evaluate(divider => {
-      const icon = divider.querySelector('.phase-track-player-stop:first-child .phase-track-stop-icon');
+      const icon = divider.querySelector('.phase-track-player--self .phase-track-stop-icon');
       const label = icon.closest('.phase-track-cell').querySelector('.phase-track-step-label');
       const center = node => { const rect = node.getBoundingClientRect(); return rect.top + rect.height / 2; };
       return { icon: center(icon), logo: center(divider.querySelector('.topbar-brand-menu-trigger')),
@@ -108,21 +108,12 @@ test('per-player tracks, full control, public choices and double-click hand play
     });
     assert.ok(Math.abs(duelAlignment.icon - duelAlignment.logo) < 1, 'duel logo follows your raised icons');
     assert.ok(Math.abs(duelAlignment.label - duelAlignment.links) < 1, 'duel site icons follow phase names');
-    const duelSpacing = await page.locator('.phase-track-group--duel').evaluate(group => {
-      const untap = group.querySelector('[data-phase-name="Untap"]');
-      const upkeep = group.querySelector('[data-phase-name="Upkeep"]');
-      const legend = untap.querySelector('.phase-track-duel-legend');
-      return { left: group.getBoundingClientRect().left, untap: untap.getBoundingClientRect().width,
-        upkeep: upkeep.getBoundingClientRect().width, underline: getComputedStyle(untap).borderBottomWidth,
-        stops: untap.querySelectorAll('.phase-track-stop-button').length,
-        fits: [...legend.querySelectorAll('.phase-track-player-heading, .phase-track-player-name')]
-          .every(node => node.scrollWidth <= node.clientWidth + 1) };
-    });
-    assert.ok(duelSpacing.left <= 24, 'duel tracker starts at the left side of the table');
-    assert.ok(duelSpacing.untap > duelSpacing.upkeep, 'Untap reserves extra space for both player indicators');
-    assert.equal(duelSpacing.underline, '0px');
-    assert.equal(duelSpacing.stops, 0, 'Untap has no underlined disabled stop controls');
-    assert.ok(duelSpacing.fits, 'player names and Turn/Priority labels fit in Untap');
+    const phaseOrder = await page.locator('.phase-track-group--duel nav:not(.phase-track--combat) [data-stop-player]').evaluateAll(nodes => nodes.map(node => [node.dataset.stopPlayer, node.dataset.stopPhase]));
+    const phases = ['Untap', 'Upkeep', 'Draw', 'Main', 'Combat', 'Main2', 'End', 'Cleanup'];
+    assert.deepEqual(phaseOrder, [1, 0].flatMap(player => phases.map(phase => [String(player), phase])));
+    const groups = await page.locator('.phase-track-group--duel .phase-track-player').evaluateAll(nodes => nodes.map(node => ({ x: node.getBoundingClientRect().x, right: node.getBoundingClientRect().right })));
+    assert.ok(groups[0].right <= groups[1].x, 'complete turns appear side by side');
+    await page.screenshot({ path: '/Users/chiplis/ironsmith/reports/priority-system/05-player-turns.png' });
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await vite.close(); }
 });

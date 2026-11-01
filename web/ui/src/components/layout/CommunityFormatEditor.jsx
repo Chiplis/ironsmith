@@ -1,3 +1,5 @@
+import { MechanicForm } from './MechanicsPanel';
+import { setMechanics, updateSetMechanic } from '@/lib/set-workspace';
 import { loadCommunityLibrary, saveCommunityItem } from '@/lib/community-library';
 import { COMMUNITY_FILE_MAX_BYTES, encodeCommunityShare, decodeCommunityShare, communityFilename } from '@/lib/community-sharing';
 import { useEffect, useRef, useState } from 'react';
@@ -35,9 +37,11 @@ export function CommunityFormatSummary({ format, onRemove }) {
   </section>;
 }
 
-export default function CommunityFormatEditor({ value, onChange, kind = 'format', active = true }) {
+export default function CommunityFormatEditor({ value, onChange, kind = 'format', active = true, onEditCard, initialView = 'cards', initialMechanic = null, onBackToCard }) {
   const ui = useUiText();
   const isSet = kind === 'set';
+  const [setView, setSetView] = useState(initialView);
+  const [editingMechanic, setEditingMechanic] = useState(() => isSet && initialMechanic ? setMechanics(value).find(def => def.keyword === initialMechanic) || null : null);
   const [library, setLibrary] = useState({ formats: [], sets: [] });
   const [libraryReady, setLibraryReady] = useState(false);
   const [source, setSource] = useState('includedSets');
@@ -58,8 +62,8 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
     try { await action(); } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
-  const entry = () => isSet ? { name: value.name.trim(), cards: structuredClone(value.customCards) } : normalizeCommunityFormat(value);
-  const load = item => onChange(isSet ? { ...emptyCommunityFormat(), name: item.name, customCards: structuredClone(item.cards) } : structuredClone(item));
+  const entry = () => isSet ? { name: value.name.trim(), cards: structuredClone(value.customCards), customMechanics: setMechanics(value) } : normalizeCommunityFormat(value);
+  const load = item => { setEditingMechanic(null); setSetView('cards'); onChange(isSet ? { ...emptyCommunityFormat(), name: item.name, customCards: structuredClone(item.cards), customMechanics: structuredClone(item.customMechanics || []) } : structuredClone(item)); };
   const savedItems = isSet ? library.sets : library.formats;
   const save = () => run(async () => {
     await saveCommunityItem(kind, entry());
@@ -92,22 +96,50 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
   return <div className="community-format-editor mx-auto grid w-full max-w-7xl content-start gap-5 p-4 md:p-6">
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-2xl"><h2 className="text-xl font-semibold">{ui(isSet ? 'Custom sets' : 'Custom formats')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{ui(isSet ? 'Collect your custom cards into reusable sets. Save a set, then include it in any custom format.' : 'Define the card pool for your next game. Combine official cards and custom sets, then save a format to use in Play.')}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{ui(isSet ? 'Create cards and tune mechanics right here. Every design belongs to this set, ready to use in a custom format.' : 'Define the card pool for your next game. Combine official cards and custom sets, then save a format to use in Play.')}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={button} disabled={busy} onClick={() => { onChange(emptyCommunityFormat()); setNotice(''); setError(''); }}>{ui(isSet ? 'New set' : 'New format')}</button>
-        <button type="button" className={button} disabled={busy || !libraryReady} onClick={() => importInput.current?.click()}>{ui('Import set or format')}</button>
-        <button type="button" className={button} disabled={busy || !value.name.trim() || (isSet && !value.customCards.length)} onClick={download}>{ui(isSet ? 'Export custom set' : 'Export format')}</button>
+        {onBackToCard && <button type="button" className={`${button} ui-primary-action`} disabled={busy} onClick={onBackToCard}>{ui('Back to card')}</button>}
+        <button type="button" className={button} disabled={busy || Boolean(onBackToCard)} onClick={() => { onChange(emptyCommunityFormat()); setEditingMechanic(null); setSetView('cards'); setNotice(''); setError(''); }}>{ui(isSet ? 'New set' : 'New format')}</button>
+        <button type="button" className={button} disabled={busy || !libraryReady || Boolean(onBackToCard)} onClick={() => importInput.current?.click()}>{ui('Import set or format')}</button>
+        <button type="button" className={button} disabled={busy || !value.name.trim()} onClick={download}>{ui(isSet ? 'Export custom set' : 'Export format')}</button>
         <input ref={importInput} type="file" accept=".json,application/json" className="sr-only" aria-label={ui('Import Community file')} disabled={busy || !libraryReady} onChange={event => {
           const file = event.target.files?.[0]; event.target.value = ''; if (file) void importFile(file);
         }} />
       </div>
     </header>
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]">
+    {isSet && <div className="flex flex-wrap items-center gap-3 border-b border-white/15 pb-3">
+      <button disabled={busy || Boolean(onBackToCard)} className={`${button} ${setView === 'cards' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'cards'} onClick={() => setSetView('cards')}>{ui('Set cards')} · {value.customCards.length}</button>
+      <button disabled={busy} className={`${button} ${setView === 'mechanics' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'mechanics'} onClick={() => setSetView('mechanics')}>{ui('Set mechanics')} · {setMechanics(value).length}</button>
+      <span className="text-xs text-muted-foreground">{ui('One workspace for your cards and keywords.')}</span>
+    </div>}
+    {isSet && setView === 'mechanics' ? <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <section className="fantasy-sheet-section space-y-3 p-4">
+        <h3 className="font-semibold">{value.name || ui('Untitled set')}</h3>
+        <p className="text-sm text-muted-foreground">{ui('Updating a mechanic recompiles every card in this set. Other sets and your personal library keep their own definitions.')}</p>
+        <button className={button} disabled={busy} onClick={() => setEditingMechanic(null)}>{ui('New custom mechanic')}</button>
+        {setMechanics(value).map(def => <button key={def.keyword} disabled={busy} className={`${button} block w-full text-left capitalize`} onClick={() => setEditingMechanic(def)}>{def.keyword}</button>)}
+        <button className={`${button} ui-primary-action w-full`} disabled={busy || !libraryReady || !value.name.trim()} onClick={save}>{ui('Save set')}</button>
+        {notice && <p role="status" className="text-sm">{ui(notice)}</p>}
+        {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
+      </section>
+      <section className="fantasy-sheet-section p-5">
+        <MechanicForm key={editingMechanic?.keyword || 'new'} initial={editingMechanic} saved={setMechanics(value)} onSave={async (definition, compile) => {
+          if (!compile) throw new Error('The card compiler must be ready to update set mechanics.');
+          setBusy(true);
+          try {
+            const next = await updateSetMechanic(value, definition, compile);
+            onChange(next);
+            setNotice('Mechanic applied to all set cards. Save set to keep your changes.');
+            return definition;
+          } finally { setBusy(false); }
+        }} onSaved={() => setEditingMechanic(null)} />
+      </section>
+    </div> : <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]">
       <div className="grid min-w-0 gap-4">
         <section className="fantasy-sheet-section grid gap-4 p-4 sm:grid-cols-2">
           <label className="grid gap-2 text-sm">{ui(isSet ? 'Custom set name' : 'Community format name')}<input className={field} maxLength={80} placeholder={ui(isSet ? 'Name your set' : 'Name your format')} value={value.name} disabled={busy} onChange={event => onChange({ ...value, name: event.target.value })} /></label>
-          <label className="grid gap-2 text-sm">{ui(isSet ? 'Saved sets' : 'Saved formats')}<select className={field} value="" disabled={busy || !libraryReady} onChange={event => load(savedItems[Number(event.target.value)])}>
+          <label className="grid gap-2 text-sm">{ui(isSet ? 'Saved sets' : 'Saved formats')}<select aria-label={ui(isSet ? 'Saved sets' : 'Saved formats')} className={field} value="" disabled={busy || !libraryReady || Boolean(onBackToCard)} onChange={event => load(savedItems[Number(event.target.value)])}>
             <option value="">{ui('Load a saved item…')}</option>{savedItems.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}
           </select></label>
         </section>
@@ -129,14 +161,21 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
           {libraryReady && !library.sets.length && <p className="text-xs text-muted-foreground">{ui('Create your first custom set in the Sets tab.')}</p>}
         </section>}
         <section className="fantasy-sheet-section grid gap-3 overflow-hidden p-4">
-          <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">{ui(isSet ? 'Add cards to this set' : 'Add individual cards')}</h3><span className="text-sm text-muted-foreground">{value.customCards.length + (isSet ? 0 : value.includedCards.length)} {ui('selected')}</span></div>
+          <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">{ui(isSet ? 'Create in this set' : 'Add individual cards')}</h3><span className="text-sm text-muted-foreground">{value.customCards.length + (isSet ? 0 : value.includedCards.length)} {ui('selected')}</span></div>
+          {isSet && onEditCard && <div className="grid gap-3 border-b border-white/10 pb-4">
+            <p className="text-sm text-muted-foreground">{ui('Start a new design with this set’s mechanics already available, or edit any card in the list.')}</p>
+            <button type="button" className={`${button} ui-primary-action justify-self-start`} disabled={busy || !value.name.trim()} onClick={() => onEditCard(null)}>{ui('Create card in set')}</button>
+            {!value.name.trim() && <p className="text-xs text-muted-foreground">{ui('Name your set to start creating.')}</p>}
+          </div>}
           {active && <BuildCardSearch defaultIncludeCustom disabled={busy} onSelect={option => run(async () => {
             if (!isSet && !option.card) {
               onChange({ ...value, includedCards: [...new Set([...value.includedCards, option.name])] });
               return;
             }
             const card = option.card || { id: `catalog:${option.name}`, draft: await fetchCardBuildDraft(option.name) };
-            onChange({ ...value, customCards: [...value.customCards.filter(entry => entry.id !== card.id), structuredClone(card)] });
+            const next = { ...value, customCards: [...value.customCards.filter(entry => entry.id !== card.id), structuredClone(card)] };
+            if (isSet) setMechanics(next);
+            onChange(next);
           })} />}
           <p className="text-xs text-muted-foreground">{ui('Search for a card and select a result to add it. Enable custom cards to include your saved designs.')}</p>
         </section>
@@ -144,14 +183,14 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
       <aside className="grid min-w-0 gap-4 lg:sticky lg:top-0">
         {isSet ? <section className="fantasy-sheet-section grid gap-3 p-4"><h3 className="font-semibold">{value.name || ui('Untitled set')}</h3>
           <p className="text-sm text-muted-foreground">{ui('Selected cards are saved with their custom mechanic definitions.')}</p>
-          {!value.customCards.length && <p className="text-sm">{ui('Select cards to start this set.')}</p>}
-          <ul className="grid max-h-96 gap-2 overflow-auto">{value.customCards.map((card, index) => <li key={index} className="flex items-center justify-between gap-2 text-sm"><span>{cardName(card)}</span><button type="button" className={button} disabled={busy} aria-label={`${ui('Remove')} ${cardName(card)}`} onClick={() => onChange({ ...value, customCards: value.customCards.filter((_, i) => i !== index) })}>{ui('Remove')}</button></li>)}</ul>
+          {!value.customCards.length && <p className="text-sm">{ui('Your first card starts here. Create a card or add an existing design.')}</p>}
+          <ul className="grid max-h-96 gap-2 overflow-auto">{value.customCards.map((card, index) => <li key={index} className="flex items-center justify-between gap-2 text-sm"><span>{cardName(card)}</span>{onEditCard && <button className={button} disabled={busy || !value.name.trim()} aria-label={`${ui('Edit')} ${cardName(card)}`} onClick={() => onEditCard(index)}>{ui('Edit')}</button>}<button type="button" className={button} disabled={busy} aria-label={`${ui('Remove')} ${cardName(card)}`} onClick={() => onChange({ ...value, customCards: value.customCards.filter((_, i) => i !== index) })}>{ui('Remove')}</button></li>)}</ul>
         </section> : <CommunityFormatSummary format={value} onRemove={busy ? undefined : (key, index) => onChange({ ...value, [key]: value[key].filter((_, i) => i !== index) })} />}
-        <button type="button" className={`${button} ui-primary-action`} disabled={busy || !libraryReady || !value.name.trim() || (isSet && !value.customCards.length)} onClick={save}>{ui(isSet ? 'Save set' : 'Save format')}</button>
+        <button type="button" className={`${button} ui-primary-action`} disabled={busy || !libraryReady || !value.name.trim()} onClick={save}>{ui(isSet ? 'Save set' : 'Save format')}</button>
         <p className="text-xs text-muted-foreground">{ui('Saved in this browser. Export a file to share or keep a backup. Saving an existing name replaces that item.')}</p>
         {notice && <p role="status" className="text-sm">{ui(notice)}</p>}
         {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
       </aside>
-    </div>
+    </div>}
   </div>;
 }

@@ -100,3 +100,23 @@ test('empty live abilities suppress printed rules after ability removal', async(
   assert.deepEqual(inspectorRulesLines([printed],[],printed),[printed]);
   assert.deepEqual(inspectorRulesLines(['Mana ability: {T}: Add {R}.'],[],printed),['{T}: Add {R}.']);
 });
+
+test('Equip keyword rows stay actionable alongside static equipment text and in Spanish', () => {
+  const canonical = 'Equipped creature gets +1/+1.\nEquip {1}';
+  const action = { kind: 'activate_ability', index: 7, label: 'Activate Test Equipment: Equip {1}' };
+  assert.deepEqual(activatedAbilityLineIndices(canonical.split('\n')), [1]);
+  for (const displayed of [canonical, 'La criatura equipada obtiene +1/+1.\nEquipar {1}']) {
+    const view = interactiveRulesView(canonical, displayed, [action]);
+    assert.equal(view.lines.join('\n'), displayed);
+    assert.equal(view.actions.get(1)[0], action);
+    assert.equal(view.actions.has(0), false);
+  }
+});
+
+test('a discounted Equip action cannot highlight the static Equipped creature line', () => {
+  const text = 'Equipped creature gets +1/+1.\nEquip {1}';
+  const action = { kind: 'activate_ability', label: 'Activate Equipment: Equip {0}' };
+  const view = interactiveRulesView(text, text, [action]);
+  assert.equal(view.actions.has(0), false);
+  assert.equal(view.actions.get(1)[0], action);
+});

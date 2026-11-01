@@ -44,9 +44,11 @@
   min-width: 0 !important;
 }
 .mana-payment-secondary-controls { display:flex; align-items:center; gap:6px; min-width:0; }
+.mana-plan-actions.mana-payment-editor-footer { background: transparent; }
 .mana-payment-editor-footer .mana-payment-pay-pass {
   align-self: flex-end;
-  min-height: 34px;
+  min-height: 36px;
+  border-radius: 7px;
   padding: 0 12px;
   flex: none;
 }

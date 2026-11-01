@@ -1688,6 +1688,10 @@ pub(super) fn gemstone_caverns_moves_to_battlefield_and_prompts_for_exile() {
 pub(super) fn custom_card_preview_supports_split_faces_and_fuse() {
     let wasm = WasmGame::new();
     let draft = CustomCardInput {
+        enforce_filter_claims: true,
+        enforce_line_claims: true,
+        token: false,
+        custom_token_faces: Vec::new(),
         layout: CustomCardLayoutInput::Split,
         has_fuse: true,
         faces: vec![
@@ -2013,6 +2017,10 @@ pub(super) fn custom_meld_builder_compiles_registers_and_splits_two_physical_car
     use ironsmith::effects::{EffectExecutor, ExecutionContext, MeldEffect};
     let mut wasm = WasmGame::new();
     let mut draft = CustomCardInput {
+        enforce_filter_claims: true,
+        enforce_line_claims: true,
+        token: false,
+        custom_token_faces: Vec::new(),
         layout: CustomCardLayoutInput::Meld,
         has_fuse: false,
         faces: vec![

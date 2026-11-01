@@ -1,6 +1,8 @@
+import { prepareSetCard, setMechanics } from '@/lib/set-workspace';
+import { saveCommunityItem } from '@/lib/community-library';
 import CardLayoutIcon from './CardLayoutIcon';
 import CommunityFormatEditor from './CommunityFormatEditor';
-import { emptyCommunityFormat } from '@/lib/community-format';
+import { emptyCommunityFormat, normalizeCommunityFormat } from '@/lib/community-format';
 import { normalizeDraftForApi } from "@/lib/custom-card-draft";
 import SandboxPanel from "./SandboxPanel";
 import MechanicsPanel from "./MechanicsPanel";
@@ -249,6 +251,8 @@ function counterShowcaseDraft(preset) {
 
 function cloneDraft(draft) {
   return {
+    enforceFilterClaims: draft?.enforceFilterClaims !== false,
+    enforceLineClaims: draft?.enforceLineClaims !== false,
     customMechanics: structuredClone(draft?.customMechanics || []),
     ...(draft?.customTokens?.length ? { customTokens: structuredClone(draft.customTokens) } : {}),
     ...(draft?.token === true ? { token: true } : {}),
@@ -362,7 +366,7 @@ function ColorToggleGroup({ values, onToggle }) {
   );
 }
 
-function CompilePanel({ face, previewError, busy }) {
+function CompilePanel({ face, previewError, busy, onOpenMechanic }) {
   const ui = useUiText();
   if (previewError) {
     return (
@@ -389,7 +393,7 @@ function CompilePanel({ face, previewError, busy }) {
       </div>
       {(face?.customMechanics || []).map(mechanic => (
         <div key={mechanic.keyword} className="card-forge-codeblock" role="note">
-          <strong>{mechanic.keyword}</strong>: {mechanic.reminder}
+          {onOpenMechanic ? <button type="button" className="font-bold underline decoration-dotted underline-offset-4" aria-label={ui('Edit set mechanic {0}', { 0: mechanic.keyword })} onClick={() => onOpenMechanic(mechanic.keyword)}>{mechanic.keyword}</button> : <strong>{mechanic.keyword}</strong>}: {mechanic.reminder}
           <div className="text-xs opacity-70">Compiled meaning: {mechanic.expansion}</div>
         </div>
       ))}
@@ -590,6 +594,11 @@ export default function CreateCardForgeSheet({
   const { game, state, refresh, runWasmInteraction, setStatus, semanticThreshold, setSemanticThreshold, cardsMeetingThreshold } = useGame();
   const [open, setOpen] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState("card");
+  const [setMechanicsOpen, setSetMechanicsOpen] = useState(false);
+  const [setViewRequest, setSetViewRequest] = useState({ id: 0, view: 'cards', keyword: null });
+  const [setCardEditing, setSetCardEditing] = useState(false);
+  const [setCardIndex, setSetCardIndex] = useState(null);
+  const personalDraft = useRef(null);
   const [customSetDraft, setCustomSetDraft] = useState(emptyCommunityFormat);
   const [customFormatDraft, setCustomFormatDraft] = useState(emptyCommunityFormat);
   const [sandboxBusy, setSandboxBusy] = useState(false);
@@ -649,6 +658,7 @@ export default function CreateCardForgeSheet({
   // Appearance edits do not change compiler input. Keep the debounce tied to
   // the rules snapshot so printing controls never queue another WASM compile.
   const previewInput = JSON.stringify(normalizeDraftForApi(draft));
+  const setDefinitions = JSON.stringify(setCardEditing ? setMechanics(customSetDraft) : []);
   useEffect(() => {
     if (!open || !game) return undefined;
 
@@ -656,7 +666,10 @@ export default function CreateCardForgeSheet({
     const timeoutId = window.setTimeout(async () => {
       setPreviewLoading(true);
       try {
-        const { preview: nextPreview } = await previewCustomDraft(JSON.parse(previewInput), input => game.previewCustomCard(input));
+        const compile = input => game.previewCustomCard(input);
+        const { preview: nextPreview } = setCardEditing
+          ? await prepareSetCard(JSON.parse(previewInput), JSON.parse(setDefinitions), compile)
+          : await previewCustomDraft(JSON.parse(previewInput), compile);
         if (!active) return;
         setPreview(nextPreview);
         setPreviewError("");
@@ -670,7 +683,7 @@ export default function CreateCardForgeSheet({
     }, 180);
 
     return () => { active = false; window.clearTimeout(timeoutId); };
-  }, [previewInput, game, open]);
+  }, [previewInput, game, open, setCardEditing, setDefinitions]);
 
   const loadSeed = useCallback(async ({ reroll = false } = {}) => {
     setSeedLoading(true);
@@ -845,6 +858,34 @@ export default function CreateCardForgeSheet({
     setActiveFace("face-0");
   }, [seedDraft, cancelSelection]);
 
+  const openSetCard = index => {
+    cancelSelection();
+    personalDraft.current = { draft, seedDraft, catalogCard, printingName };
+    setSetCardIndex(index);
+    setSetMechanicsOpen(false);
+    setSetCardEditing(true);
+    const next = index === null ? blankDraft() : cloneDraft(customSetDraft.customCards[index].draft);
+    setDraft(next); setSeedDraft(null); setCatalogCard(null); setPrintingName(null);
+    setActiveFace('face-0'); setPreview(null); setPreviewError(''); setSaveMessage('');
+  };
+  const closeSetCard = () => {
+    cancelSelection();
+    setSetMechanicsOpen(false);
+    setSetViewRequest(current => ({ id: current.id + 1, view: 'cards', keyword: null }));
+    const previous = personalDraft.current;
+    if (previous) {
+      setDraft(previous.draft); setSeedDraft(previous.seedDraft);
+      setCatalogCard(previous.catalogCard); setPrintingName(previous.printingName);
+    }
+    setSetCardEditing(false); setActiveFace('face-0'); setPreview(null); setPreviewError(''); setSaveMessage('');
+  };
+
+  const openSetMechanics = (keyword = null) => {
+    setSetViewRequest(current => ({ id: current.id + 1, view: 'mechanics', keyword }));
+    setSetMechanicsOpen(setCardEditing);
+    setWorkspaceTab('sets');
+  };
+
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaveMessage("");
@@ -858,6 +899,19 @@ export default function CreateCardForgeSheet({
       // Validate this exact snapshot, even if the debounced preview is stale.
       // Printing choices are saved with the card but never sent to the engine.
       savedDraft.presentation = draft.presentation;
+      if (setCardEditing) {
+        const prepared = await prepareSetCard(savedDraft, setMechanics(customSetDraft), input => game.previewCustomCard(input));
+        const card = { id: setCardIndex === null ? `set:${crypto.randomUUID()}` : customSetDraft.customCards[setCardIndex].id, draft: prepared.draft };
+        const cards = [...customSetDraft.customCards];
+        const index = setCardIndex === null ? cards.length : setCardIndex;
+        cards[index] = card;
+        const next = { ...customSetDraft, customCards: cards };
+        normalizeCommunityFormat(next);
+        await saveCommunityItem('set', { name: next.name.trim(), cards, customMechanics: setMechanics(next) });
+        setCustomSetDraft(next); setSetCardIndex(index);
+        setSaveMessage(`Saved ${savedDraft.faces[0].name} to ${next.name}.`);
+        return;
+      }
       if (savedDraft.token) {
         const token = await saveCustomToken(savedDraft, { compile: input => game.previewCustomCard(input) });
         setCustomCardArtUrls([{ name: token.name, artUrl: draft.faces[0].artUrl }]);
@@ -871,7 +925,7 @@ export default function CreateCardForgeSheet({
     } finally {
       setSaving(false);
     }
-  }, [draft, game]);
+  }, [draft, game, setCardEditing, setCardIndex, customSetDraft]);
 
   const handleCompile = useCallback(async () => {
     return runWasmInteraction(async () => {
@@ -892,7 +946,9 @@ export default function CreateCardForgeSheet({
           await refresh(`Added ${catalogCard.name}`);
           return;
         }
-        const prepared = await prepareCustomDraftForCreation(normalizeDraftForApi(draft), input => game.previewCustomCard(input));
+        const prepared = setCardEditing
+          ? await prepareSetCard(normalizeDraftForApi(draft), setMechanics(customSetDraft), input => game.previewCustomCard(input))
+          : await prepareCustomDraftForCreation(normalizeDraftForApi(draft), input => game.previewCustomCard(input));
         const objectId = await game.createCustomCard({
           draft: prepared.input,
           playerIndex: selectedPlayer,
@@ -919,7 +975,7 @@ export default function CreateCardForgeSheet({
         setSubmitting(false);
       }
     });
-  }, [draft, game, isToken, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone, unchangedCatalogCard, catalogCard, state]);
+  }, [draft, game, isToken, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone, unchangedCatalogCard, catalogCard, state, setCardEditing, customSetDraft]);
 
   const handleCounterShowcase = useCallback(async () => {
     const result = await runWasmInteraction(async () => {
@@ -1111,17 +1167,17 @@ export default function CreateCardForgeSheet({
             <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Create cards and mechanics, collect cards into sets, and design custom formats for your games.")}</SheetDescription>
           </SheetHeader>
 
-          <Tabs value={workspaceTab} onValueChange={setWorkspaceTab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <TabsList variant="line" className="shrink-0 max-w-full justify-start overflow-x-auto px-4">
+          <Tabs value={workspaceTab} onValueChange={tab => { if (saving) return; if (tab === 'mechanics' && (setCardEditing || workspaceTab === 'sets')) { openSetMechanics(); return; } if (setCardEditing && tab !== 'sets') closeSetCard(); setWorkspaceTab(tab); }} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <TabsList variant="line" className="w-full shrink-0 flex-wrap justify-start overflow-visible px-4 pb-2 group-data-[orientation=horizontal]/tabs:h-auto [&>[role=tab]]:h-auto [&>[role=tab]]:flex-none">
               <TabsTrigger value="card" disabled={sandboxBusy}>{ui("Card")}</TabsTrigger>
               <TabsTrigger value="mechanics" disabled={sandboxBusy}>{ui("Mechanics")}</TabsTrigger>
               <TabsTrigger value="sets" disabled={sandboxBusy}>{ui("Sets")}</TabsTrigger>
               <TabsTrigger value="formats" disabled={sandboxBusy}>{ui("Formats")}</TabsTrigger>
               <TabsTrigger value="sandbox" disabled={submitting}>{ui("Sandbox")}</TabsTrigger>
             </TabsList>
-            <TabsContent forceMount value="sets" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
-              <CommunityFormatEditor kind="set" active={open && workspaceTab === 'sets'} value={customSetDraft} onChange={setCustomSetDraft} />
-            </TabsContent>
+            {(!setCardEditing || setMechanicsOpen) && <TabsContent forceMount value="sets" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
+              <CommunityFormatEditor key={setViewRequest.id} initialView={setViewRequest.view} initialMechanic={setViewRequest.keyword} onBackToCard={setMechanicsOpen ? () => setSetMechanicsOpen(false) : undefined} kind="set" active={open && workspaceTab === 'sets'} value={customSetDraft} onChange={setCustomSetDraft} onEditCard={setMechanicsOpen ? undefined : openSetCard} />
+            </TabsContent>}
             <TabsContent forceMount value="formats" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <CommunityFormatEditor active={open && workspaceTab === 'formats'} value={customFormatDraft} onChange={setCustomFormatDraft} />
             </TabsContent>
@@ -1131,8 +1187,13 @@ export default function CreateCardForgeSheet({
             <TabsContent forceMount value="sandbox" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <SandboxPanel currentDraft={draft} onBusyChange={setSandboxBusy} onStarted={() => setOpen(false)} />
             </TabsContent>
-            <TabsContent value="card" className="min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
+            <TabsContent value={setCardEditing ? (setMechanicsOpen ? "set-card-editor" : "sets") : "card"} className="min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {setCardEditing && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/20 bg-amber-200/5 px-5 py-3">
+            <div><p className="text-xs uppercase tracking-widest text-amber-200">{ui('Set workspace')} / {customSetDraft.name}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{ui('Cards save directly to this set. Its mechanics are available in your rules text.')}</p></div>
+            <Button variant="secondary" size="sm" disabled={saving} onClick={closeSetCard}>{ui('Back to set')}</Button>
+          </div>}
           <BuildCardSearch
             actions={<div className="build-card-toolbar-actions">
               <Button
@@ -1144,7 +1205,7 @@ export default function CreateCardForgeSheet({
               >{ui("Cancel")}</Button>
               <Button type="button" variant="secondary" size="sm" className="stone-pill"
                 disabled={disabled || saving || submitting || seedLoading || !game || draft.faces.some(face => !face.name.trim())}
-                onClick={() => void handleSave()}>{saving ? ui("Saving...") : ui("Save")}</Button>
+                onClick={() => void handleSave()}>{saving ? ui("Saving...") : ui(setCardEditing ? "Save to set" : "Save")}</Button>
               <Button
                 type="button"
                 size="sm"
@@ -1233,6 +1294,7 @@ export default function CreateCardForgeSheet({
                   ...face, artUrl: face.artUrl || customCardImageUrl(face.name, "art_crop"),
                 }));
               }
+              if (setCardEditing) setSetCardIndex(null);
               setDraft(next);
               setSeedDraft(next);
               setCatalogCard(option.card ? null : { name: option.name, snapshot: rulesSnapshot(next) });
@@ -1257,7 +1319,7 @@ export default function CreateCardForgeSheet({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={submitting} onClick={() => { cancelSelection(); setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setPrintingName(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
+              <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={submitting} onClick={() => { if (setCardEditing) setSetCardIndex(null); cancelSelection(); setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setPrintingName(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
               <CustomCardsButton className="stone-pill px-3 py-2" label={ui("Load custom cards")} />
               <Button
                 type="button"
@@ -1370,13 +1432,27 @@ export default function CreateCardForgeSheet({
               </label>
               <section className="card-forge-compilation" aria-label={ui("Compilation")}>
                 <div className="card-forge-panel-title">{ui("Compilation")}</div>
+                <div className="flex flex-wrap gap-3 py-2">
+                  {[
+                    ["enforceFilterClaims", "Enforce filter coverage"],
+                    ["enforceLineClaims", "Enforce whole-line coverage"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={draft[key] !== false}
+                        onCheckedChange={(checked) => setDraft(current => ({ ...current, [key]: checked === true }))}
+                      />
+                      <span>{ui(label)}</span>
+                    </label>
+                  ))}
+                </div>
                 <Tabs defaultValue="text">
                   <TabsList variant="line" className="w-full justify-start">
                     <TabsTrigger value="text">{ui("Compiled Text")}</TabsTrigger>
                     <TabsTrigger value="abilities">{ui("Compiled Abilities")}</TabsTrigger>
                   </TabsList>
                   <TabsContent value="text">
-                    <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
+                    <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} onOpenMechanic={setCardEditing ? openSetMechanics : undefined} />
                   </TabsContent>
                   <TabsContent value="abilities">
                     <CompiledAbilitiesPanel face={previewFace} faces={preview?.faces} previewError={previewError} busy={previewLoading} />

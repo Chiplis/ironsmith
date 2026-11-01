@@ -40,24 +40,21 @@ async function submitState(page) {
   };
 }
 
-test("the only legal target is placed for the player, who still submits", { timeout: 120000 }, async () => {
+test("the only legal opponent is placed and submitted automatically", { timeout: 120000 }, async () => {
   await withFixture("forced-opponent", async (page) => {
     await page.waitForSelector('.decision-option-row[aria-pressed="true"]', { timeout: 10000 });
     assert.deepEqual(await placedTargets(page), ["Bob"], "the lone opponent is placed");
     assert.deepEqual(await submitState(page), { label: "Submit Targets (1)", enabled: true },
       "the count advances and the button turns on, exactly as after a click");
 
-    // It stops there. Nothing is submitted until the player says so.
-    await page.waitForTimeout(800);
-    assert.equal(await page.evaluate(() => window.__dispatched), null,
-      "placing a forced target must not submit the decision");
-    assert.equal(await page.evaluate(() => window.__cancelled), 0, "and must not cancel it");
-
-    await submitButton(page).click();
+    await page.waitForFunction(() => window.__dispatches.length === 1);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.__dispatches.length), 1, "submits exactly once");
+    assert.equal(await page.evaluate(() => window.__cancelled), 0);
     assert.deepEqual(await page.evaluate(() => window.__dispatched), {
       type: "select_targets",
       targets: [{ kind: "player", player: 1 }],
-    }, "the player's submit sends the placed target");
+    }, "auto-submit sends the forced opponent");
   });
 });
 
@@ -93,8 +90,10 @@ test("a lone legal creature on the battlefield is placed too", { timeout: 120000
   await withFixture("forced-creature", async (page) => {
     await page.waitForSelector('.decision-option-row[aria-pressed="true"]', { timeout: 10000 });
     assert.deepEqual(await placedTargets(page), ["Goblin Piker"]);
-    assert.equal(await page.evaluate(() => window.__dispatched), null,
-      "placing a forced target must not submit the decision");
+    await page.waitForFunction(() => window.__dispatches.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.__dispatched), {
+      type: "select_targets", targets: [{ kind: "object", object: 20 }],
+    });
   });
 });
 
@@ -227,4 +226,50 @@ test("clicking a stack tile leaves the hovered card frame exactly as it was", { 
     assert.deepEqual(after, before, "clicking a stack tile changes nothing");
     assert.equal(before.visible, "true");
   }, "&resolving=1");
+});
+
+for (const layout of ["panel", "strip"]) {
+  test(`optional last-target Submit selects and submits atomically (${layout})`, { timeout: 120000 }, async () => {
+    await withFixture("optional-one", async (page) => {
+      const bob = page.locator('.decision-option-row[aria-pressed]').filter({ hasText: "Bob" });
+      await bob.hover();
+      assert.equal(await page.evaluate(() => window.__dispatched), null);
+      assert.deepEqual(await placedTargets(page), []);
+      await page.getByRole("button", { name: "Select Bob and submit targets", exact: true }).click();
+      assert.deepEqual(await page.evaluate(() => window.__dispatched), {
+        type: "select_targets", targets: [{ kind: "player", player: 1 }],
+      });
+      assert.equal(await page.evaluate(() => window.__dispatches.length), 1, "one gesture dispatches once");
+    }, `&layout=${layout}`);
+    await withFixture("optional-two", async (page) => {
+      const bob = page.locator('.decision-option-row[aria-pressed]').filter({ hasText: "Bob" });
+      await bob.hover();
+      assert.equal(await page.locator(".decision-target-quick-submit").count(), 0);
+      await bob.click();
+      assert.equal(await page.evaluate(() => window.__dispatched), null);
+      assert.deepEqual(await placedTargets(page), ["Bob"]);
+      await page.locator('.decision-option-row[aria-pressed]').filter({ hasText: "Carol" }).hover();
+      await page.getByRole("button", { name: "Select Carol and submit targets", exact: true }).click();
+      assert.deepEqual(await page.evaluate(() => window.__dispatched), {
+        type: "select_targets", targets: [{ kind: "player", player: 1 }, { kind: "player", player: 2 }],
+      });
+      assert.equal(await page.evaluate(() => window.__dispatches.length), 1, "one gesture dispatches once");
+    }, `&layout=${layout}`);
+  });
+}
+
+test("a forced target does not submit an accompanying optional choice", { timeout: 120000 }, async () => {
+  await withFixture("forced-and-optional", async (page) => {
+    await page.waitForSelector('.decision-option-row[aria-pressed="true"]');
+    await page.waitForTimeout(400);
+    assert.deepEqual(await placedTargets(page), ["Bob"]);
+    assert.equal(await page.evaluate(() => window.__dispatched), null);
+  });
+});
+
+test("a spectator does not auto-submit forced targets", { timeout: 120000 }, async () => {
+  await withFixture("forced-opponent", async (page) => {
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => window.__dispatched), null);
+  }, "&canAct=0");
 });

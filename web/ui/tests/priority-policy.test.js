@@ -22,7 +22,7 @@ test('response yield pauses for opposition and cancels on a game action', () => 
  const { policy } = setup(); policy.start('responses', base()); assert.ok(policy.evaluate(base())); assert.equal(policy.evaluate(stack()), null);
  policy.beforeCommand({ type: 'priority_action', action_ref: { kind: 'cast_spell' } }, stack()); assert.equal(policy.status(base()).yield, null);
 });
-for (const mode of ['turn','responses','until','no_play']) test(`${mode} never chooses combat, targets, discards or payment`, () => {
+for (const mode of ['turn','responses','until','no_play']) test(`${mode} never guesses incomplete combat data, targets, discards or payment`, () => {
  const { policy } = setup(); policy.start(mode, base(), { key: 'phase:End', player: 0 });
  for (const kind of ['attackers','blockers','select_objects','targets','mana_payment','select_options']) assert.equal(policy.evaluate(base({ decision: { kind, player: 0 } })), null);
 });
@@ -177,4 +177,90 @@ test('countdown arms a single window, and hold/full control/ability overrides ca
  policy.setRule(entry(),'source',{yield:false},state);assert.equal(policy.evaluate(state),null);
  assert.equal(stops.getSnapshot().window,null);
  policy.setRule(entry(),'source',{yield:true},state);assert.ok(policy.evaluate(state));
+});
+
+test('End turn declares no attackers but pauses for mandatory attacks and required choices', () => {
+ const { policy } = setup();
+ const combat = (extra = {}) => base({ phase: 'Combat', step: 'DeclareAttackers',
+   decision: { kind: 'attackers', player: 0, attacker_options: [{ creature: 10, must_attack: false }], ...extra } });
+ assert.equal(policy.evaluate(combat()), null);
+ policy.start('turn', base());
+ assert.deepEqual(policy.evaluate(combat()), { type: 'declare_attackers', declarations: [] });
+ assert.equal(policy.evaluate(combat({ attacker_options: [{ creature: 10, must_attack: true }] })), null);
+ assert.equal(policy.evaluate(combat({ kind: 'blockers' })), null);
+ for (const kind of ['targets', 'select_objects', 'select_options', 'mana_payment']) {
+   assert.equal(policy.evaluate(combat({ kind })), null);
+ }
+ policy.setFullControl(true, base());
+ assert.equal(policy.evaluate(combat()), null);
+ policy.setFullControl(false, base());
+ assert.equal(policy.evaluate(combat({ player: 1 })), null);
+ assert.equal(policy.evaluate({ ...combat(), active_player: 1 }), null);
+ policy.clear(base());
+ assert.equal(policy.evaluate(combat()), null);
+ policy.start('turn', base());
+ assert.deepEqual(policy.evaluate(combat()), { type: 'declare_attackers', declarations: [] });
+ assert.equal(policy.evaluate({ ...combat(), turn_number: 2 }), null);
+ policy.start('responses', base());
+ assert.equal(policy.evaluate(combat()), null);
+});
+
+const attackDecision = (options = [{ creature: 10, valid_targets: [{ kind: 'player', player: 1 }], must_attack: false }]) => base({
+ phase: 'Combat', step: 'DeclareAttackers', decision: { kind: 'attackers', player: 0, attacker_options: options },
+});
+test('enabled attack protection stops legal attacks even during turn yield; off skips with no combat stops', () => {
+ const { policy } = setup(); const state = attackDecision();
+ assert.equal(policy.evaluate(state), null);
+ policy.start('turn', state);
+ assert.equal(policy.evaluate(state), null);
+ policy.setCombatParticipationStop('attackers', false, state);
+ assert.deepEqual(policy.evaluate(state), { type: 'declare_attackers', declarations: [] });
+ policy.clear(state);
+ assert.deepEqual(policy.evaluate(state), { type: 'declare_attackers', declarations: [] });
+ policy.setCombatParticipationStop('attackers', true, state);
+ assert.equal(policy.evaluate(state), null);
+});
+test('every configured combat stop preserves attack declaration, including conditional and scoped stops', () => {
+ for (const key of ['phase:Combat', 'step:BeginCombat', 'step:DeclareAttackers', 'step:DeclareBlockers', 'step:FirstStrikeDamage', 'step:CombatDamage', 'step:EndCombat']) {
+  for (const mode of ['always', 'can_act']) {
+   const { policy, stops } = setup(); const state = attackDecision();
+   policy.setCombatParticipationStop('attackers', false, state);
+   stops.setStop(key, mode, state, 0);
+   assert.equal(policy.evaluate(state), null, `${key}: ${mode}`);
+   stops.setStop(key, 'off', state, 0);
+   stops.setStop(key, mode, state, 1);
+   assert.ok(policy.evaluate(state), 'another player’s combat stop does not apply');
+  }
+ }
+});
+test('combat protection uses legal options, preserves required attacks and unknown data', () => {
+ const { policy } = setup();
+ assert.ok(policy.evaluate(attackDecision([])));
+ assert.ok(policy.evaluate(attackDecision([{ creature: 10, valid_targets: [] }])));
+ policy.setCombatParticipationStop('attackers', false, base());
+ assert.equal(policy.evaluate(attackDecision([{ creature: 10, valid_targets: [{ player: 1 }], must_attack: true }])), null);
+ assert.equal(policy.evaluate(attackDecision([{ creature: 10 }])), null);
+ policy.setFullControl(true, base());
+ assert.equal(policy.evaluate(attackDecision()), null);
+});
+test('empty fields no longer override phase stops or full control', () => {
+ const { policy, stops } = setup();
+ const state = base({ phase: 'Combat', step: 'BeginCombat', players: [{ id: 0, battlefield: [] }] });
+ stops.setStop('phase:Combat', 'always', state, 0);
+ assert.equal(policy.evaluate(state), null);
+ stops.setStop('phase:Combat', 'off', state, 0);
+ assert.ok(policy.evaluate(state));
+ policy.setFullControl(true, state);
+ assert.equal(policy.evaluate(state), null);
+});
+test('blocker protection holds legal blocks; disabling retains normal blocker decisions', () => {
+ const { policy } = setup();
+ const state = base({ phase: 'Combat', step: 'DeclareBlockers', active_player: 1,
+  decision: { kind: 'blockers', player: 0, blocker_options: [{ valid_blockers: [10] }] } });
+ policy.start('turn', state);
+ assert.equal(policy.evaluate(state), null);
+ policy.setCombatParticipationStop('blockers', false, state);
+ assert.equal(policy.evaluate(state), null);
+ assert.equal(policy.status(state).stopWithAttackers, true);
+ assert.equal(policy.status(state).stopWithBlockers, false);
 });

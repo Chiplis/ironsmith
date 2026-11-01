@@ -1,3 +1,4 @@
+import ChoiceWithSubmit from "./ChoiceWithSubmit";
 import { groupDecisionCards, nextGroupedCardChoice } from '@/lib/decision-card-groups';
 import DecisionObjectLabel from "./DecisionObjectLabel";
 import { isObjectSelectionValid } from "@/lib/object-selection-validation";
@@ -201,6 +202,18 @@ export default function SelectObjectsDecision({
               const selectedMembers = members.filter(member => isObjectChosen(selected, member.id));
               const isSelected = selectedMembers.length > 0;
               const chooseGroup = () => chooseObject(nextGroupedCardChoice(members, selected, max));
+              const nextId = nextGroupedCardChoice(members, selected, max);
+              const nextSelection = [...selectedIds, nextId];
+              const canQuickSubmit = canAct && selected.length === max - 1
+                && nextId != null && !isObjectChosen(selected, nextId)
+                && isObjectSelectionValid(decision, nextSelection);
+              const submitGroup = () => {
+                if (!canQuickSubmit) return;
+                clearHover();
+                clearHoverLinkedObjects();
+                dispatch({ type: "select_objects", object_ids: nextSelection }, `Selected ${nextSelection.length} object(s)`);
+                clearChoices?.();
+              };
               const isUnavailable = !isSelected && selected.length >= max;
               const isDisabled = !canAct || !c.legal || isUnavailable;
               const controllerId = c?.object_controller != null
@@ -214,6 +227,10 @@ export default function SelectObjectsDecision({
               );
               return (
                 <div key={c.id} className="decision-card-group">
+                <ChoiceWithSubmit onSubmit={canQuickSubmit ? submitGroup : null} label={localizeCardName(c.name)}
+                  highlighted={members.some(member => String(member.id) === String(hoveredObjectId))}
+                  onMouseEnter={() => { hoverCard(c.id); setHoverLinkedObjects([c.id]); }}
+                  onMouseLeave={clearHover}>
                 <Button
                   data-decision-option-object={String(c.id)}
                   aria-pressed={isSelected}
@@ -241,11 +258,6 @@ export default function SelectObjectsDecision({
                     if (isDisabled || event.detail !== 0) return;
                     chooseGroup();
                   }}
-                  onMouseEnter={() => {
-                    hoverCard(c.id);
-                    setHoverLinkedObjects([c.id]);
-                  }}
-                  onMouseLeave={clearHover}
                   onFocus={() => {
                     hoverCard(c.id);
                     setHoverLinkedObjects([c.id]);
@@ -260,6 +272,7 @@ export default function SelectObjectsDecision({
                   />
                   </DecisionObjectLabel>
                 </Button>
+                </ChoiceWithSubmit>
                 {members.length > 1 && selectedMembers.length > 0 && <Button type="button" variant="ghost" size="sm"
                   className="decision-card-group-remove" disabled={!canAct}
                   aria-label={`Remove one selected ${localizeCardName(c.name)}`}

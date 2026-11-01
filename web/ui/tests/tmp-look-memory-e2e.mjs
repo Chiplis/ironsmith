@@ -96,7 +96,7 @@ try {
   const stoppedPeek = await drive("peek");
   await page.screenshot({ path: `${out}/peek-during.png` });
   if (stoppedPeek) {
-    // A look prompt: acknowledge it like the Done Looking button.
+    // Inspect the cards exposed by the look effect.
     const s = await S();
     console.log("peek view", JSON.stringify(s.viewed_cards?.cards?.map(c => [c.name, c.zone])));
   }
@@ -122,10 +122,8 @@ try {
     await page.screenshot({ path: `${out}/hover-known.png` });
   }
   await page.mouse.move(800, 450);
-  const done = page.getByRole("button", { name: /done looking/i }).first();
-  if (await done.count()) { await done.click({ force: true }); await settle(); }
   s = await S();
-  console.log("after done: viewed", JSON.stringify(s.viewed_cards?.cards?.map(c => c.name)), "bob looks", JSON.stringify(s.players[1].persistent_look_cards?.map(c => c.name)), "known fan", await known.count());
+  console.log("after inspecting: viewed", JSON.stringify(s.viewed_cards?.cards?.map(c => c.name)), "bob looks", JSON.stringify(s.players[1].persistent_look_cards?.map(c => c.name)), "known fan", await known.count());
   await cast("Opt");
   const stoppedOpt = await drive("opt");
   s = await S();

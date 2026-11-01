@@ -30,8 +30,8 @@ const state = {
   },
 };
 
-async function harness(fixtureState = state) {
-  const vite = await createServer({ server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });
+async function harness(fixtureState = state, mainAction = false) {
+  const vite = await createServer({ server: { host: "127.0.0.1", port: 0, hmr: false }, logLevel: "silent" });
   await vite.listen();
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1200, height: 700 }, reducedMotion: "reduce" });
@@ -39,8 +39,8 @@ async function harness(fixtureState = state) {
   page.on("pageerror", (error) => errors.push(String(error?.message || error)));
   await page.route("**/api.scryfall.com/**", (route) => route.abort());
   await page.route("**/cards.scryfall.io/**", (route) => route.abort());
-  await page.addInitScript((fixture) => { window.__handKeyboardFixture = fixture; localStorage.setItem('ironsmith.priorityShortcutPreset','classic'); }, { state: fixtureState });
-  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/hand-keyboard-cast.html`);
+  await page.addInitScript((fixture) => { window.__handKeyboardFixture = fixture; localStorage.setItem('ironsmith.priorityShortcutPreset','classic'); }, { state: fixtureState, mainAction });
+  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/hand-keyboard-cast.html`, { waitUntil: "domcontentloaded" });
   await page.locator('[data-hand-case] .game-card.hand-card').first().waitFor();
   return {
     page,
@@ -112,7 +112,7 @@ test("small hands select single digits immediately", { timeout: 120000 }, async 
   } finally { await close(); }
 });
 
-test("H raises the numbered hand until period closes it", { timeout: 120000 }, async () => {
+test("H and period interchangeably toggle the numbered hand", { timeout: 120000 }, async () => {
   const large = structuredClone(state);
   large.players[0].hand_cards = Array.from({ length: 12 }, (_, i) => ({ ...bears, id: 100 + i }));
   const { page, casts, errors, close } = await harness(large);
@@ -125,9 +125,22 @@ test("H raises the numbered hand until period closes it", { timeout: 120000 }, a
     await page.keyboard.press('1');
     await page.keyboard.press('1');
     assert.equal(await page.evaluate(() => document.activeElement.getAttribute('data-object-id')), '110');
+    assert.equal(await page.locator('.hand-card[data-object-id="110"] .hand-card-number').count(), 0, 'selected card name stays unobstructed');
+    assert.equal(await page.locator('.hand-card[data-object-id="100"] .hand-card-number').textContent(), '1');
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.locator('.hand-card[data-object-id="109"] .hand-card-number').count(), 0);
+    assert.equal(await page.locator('.hand-card[data-object-id="110"] .hand-card-number').textContent(), '11', 'previous card regains its position badge');
     await page.keyboard.press('.');
     assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'false');
     assert.equal(await page.locator('.hand-card-number').count(), 0);
+    for (const key of ['.', '.', 'h', 'h', '.', 'h', 'h', '.']) {
+      const wasOpen = await page.locator('[data-hand-case]').getAttribute('data-hand-open') === 'true';
+      await page.keyboard.press(key);
+      assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), String(!wasOpen));
+      assert.equal(await page.locator('.hand-card-number').count(), wasOpen ? 0 : 12);
+    }
+    await page.keyboard.press('Control+h');
+    assert.equal(await page.locator('[data-hand-case]').getAttribute('data-hand-open'), 'false', 'modified browser shortcuts do not toggle the hand');
     await page.evaluate(() => {
       const input = document.createElement('input');
       document.body.append(input);
@@ -317,6 +330,106 @@ test("MTGO numbers select the open hand and resume priority shortcuts when close
     assert.equal(await selected(), '101');
     assert.deepEqual(await page.evaluate(() => window.__priorityKeys), ['turn']);
     assert.deepEqual(await casts(), []);
+    assert.deepEqual(errors, []);
+  } finally { await close(); }
+});
+
+
+test("open hand captures all arrows from other zones and wraps within its own cards", { timeout: 60000 }, async () => {
+  const { page, casts, errors, close } = await harness();
+  const selected = () => page.evaluate(() => document.activeElement?.getAttribute('data-object-id'));
+  try {
+    await page.evaluate(() => {
+      window.__fieldArrows = 0;
+      const field = document.createElement('button');
+      field.id = 'field-card'; field.className = 'game-card field-card';
+      field.setAttribute('role', 'button'); field.setAttribute('data-object-id', 'field');
+      field.textContent = 'Field card';
+      field.onkeydown = event => { if (event.key.startsWith('Arrow')) window.__fieldArrows++; };
+      document.body.append(field); field.focus();
+    });
+    await page.keyboard.press('.');
+    for (const [key, expected] of [['ArrowRight', '7'], ['ArrowDown', '8'], ['ArrowUp', '7'], ['ArrowLeft', '9'], ['ArrowRight', '7']]) {
+      await page.keyboard.press(key);
+      assert.equal(await selected(), expected);
+    }
+    // Even if focus returns to a card in another zone, open-hand navigation wins.
+    await page.locator('#field-card').focus();
+    await page.keyboard.press('ArrowUp');
+    assert.equal(await selected(), '9');
+    assert.equal(await page.evaluate(() => window.__fieldArrows), 0);
+    await page.evaluate(() => {
+      const input = document.createElement('input'); input.id = 'arrow-input';
+      input.value = 'abc'; document.body.append(input); input.focus(); input.setSelectionRange(1, 1);
+    });
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.locator('#arrow-input').evaluate(input => input.selectionStart), 2);
+    await page.evaluate(() => {
+      const dialog = document.createElement('dialog'); dialog.id = 'arrow-dialog';
+      const button = document.createElement('button'); button.textContent = 'Dialog control';
+      dialog.append(button); document.body.append(dialog); dialog.showModal(); button.focus();
+    });
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.evaluate(() => document.activeElement.closest('dialog')?.id), 'arrow-dialog');
+    await page.evaluate(() => document.querySelector('#arrow-dialog').remove());
+    await page.locator('.hand-card[data-object-id="9"]').focus();
+    await page.keyboard.press('h');
+    assert.equal(await selected(), null, 'closing clears hand focus');
+    await page.locator('#field-card').focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.evaluate(() => window.__fieldArrows), 1, 'closed hand releases navigation');
+    assert.deepEqual(await casts(), []);
+    assert.deepEqual(errors, []);
+  } finally { await close(); }
+});
+
+
+test("Space uses the hand action and its label follows payment analysis", { timeout: 60000 }, async () => {
+  const fixture = structuredClone(state);
+  fixture.decision.analysis_complete = false;
+  fixture.decision.actions = [
+    { kind: 'pass_priority', index: 0, label: 'Pass priority' },
+    action({ index: 1, object_id: 7, label: 'Cast Lightning Bolt', payment_proven: false }),
+    { kind: 'activate_ability', index: 2, object_id: 7, label: 'Activate hand ability', payment_proven: false,
+      action_ref: { kind: 'activate_ability', source_id: 7, ability_index: 0 } },
+  ];
+  const { page, casts, errors, close } = await harness(fixture, true);
+  const update = async (play, activate, complete = true) => {
+    await page.evaluate(({ play, activate, complete }) => window.__setHandFixtureState(previous => ({
+      ...previous, decision: { ...previous.decision, analysis_complete: complete,
+        actions: previous.decision.actions.map(action => ({ ...action,
+          ...(action.kind === 'cast_spell' ? { payment_proven: play }
+            : action.kind === 'activate_ability' ? { payment_proven: activate } : {}) })) },
+    })), { play, activate, complete });
+  };
+  try {
+    await page.keyboard.press('h');
+    await page.keyboard.press('Space');
+    assert.equal(await page.evaluate(() => Boolean(window.__passed)), false, 'no selection must not pass');
+    await page.keyboard.press('ArrowRight');
+    const both = page.getByRole('button', { name: 'Play/Activate', exact: true });
+    await both.waitFor();
+    assert.equal(await both.locator('kbd').textContent(), 'Space');
+    assert.equal(await page.getByRole('button', { name: 'Pass priority', exact: true }).count(), 0);
+    await update(true, false);
+    await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
+    await update(false, true);
+    await page.getByRole('button', { name: 'Activate', exact: true }).waitFor();
+    await page.keyboard.press('Space');
+    await page.waitForFunction(() => window.__keyboardCasts.length === 1);
+    assert.deepEqual((await casts())[0].actions, ['Activate hand ability']);
+    assert.equal(await page.evaluate(() => Boolean(window.__passed)), false);
+    await page.getByRole('button', { name: 'Pass priority', exact: true }).waitFor();
+    await page.keyboard.press('.');
+    await page.keyboard.press('ArrowRight');
+    await update(false, false);
+    assert.equal(await page.getByRole('button', { name: 'No available action', exact: true }).isDisabled(), true);
+    await page.keyboard.press('Space');
+    assert.equal((await casts()).length, 1);
+    await update(false, false, false);
+    await page.getByRole('button', { name: 'Play/Activate', exact: true }).click();
+    await page.waitForFunction(() => window.__keyboardCasts.length === 2, null, { timeout: 5000 });
+    assert.deepEqual((await casts())[1].actions, ['Cast Lightning Bolt', 'Activate hand ability']);
     assert.deepEqual(errors, []);
   } finally { await close(); }
 });

@@ -4656,24 +4656,6 @@ html[data-hand-pointer-suspended="true"] * {
 }
 .lobby-chat [role="alert"] { padding: 4px 6px; color: #ffb4a9; }
 
-/* Completion uses the main decision button shape with a blue fill. */
-.decision-done-looking-button.decision-done-looking-button,
-.decision-done-looking-button.decision-done-looking-button:hover,
-.decision-done-looking-button.decision-done-looking-button > * {
-  color: #000 !important;
-  -webkit-text-fill-color: #000 !important;
-  text-shadow: none !important;
-}
-.decision-done-looking-button.decision-done-looking-button,
-.decision-done-looking-button.decision-done-looking-button:hover {
-  border-color: #69b8ff !important;
-  background: #69b8ff !important;
-  box-shadow: 0 0 0 1px rgba(105, 184, 255, 0.72),
-    0 0 16px rgba(105, 184, 255, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.52),
-    inset 0 -2px 0 rgba(14, 80, 116, 0.22) !important;
-}
-
 /* Desktop battlefield HUD: leave the center lane for cards and game effects. */
 @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] {
@@ -8103,3 +8085,43 @@ html[data-hand-pointer-suspended="true"] * {
   border: 1px solid var(--ui-border-strong); background: var(--ui-surface-control);
   color: var(--ui-text-primary); font-size: 12px; pointer-events: auto;
 }
+
+/* Keep selection and explicit submission separate, with no nested buttons. */
+.decision-target-option {
+  flex: 0 0 auto;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+.decision-target-option.has-quick-submit > .decision-option-row,
+.battlefield-human-decision-panel .decision-target-option.has-quick-submit > .decision-option-row {
+  padding-right: 84px !important;
+}
+.decision-target-quick-submit {
+  position: absolute;
+  right: 4px;
+  /* Center without a transform: shared button hover styles reset transforms. */
+  top: 0;
+  bottom: 0;
+  margin-block: auto;
+  transform: none;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0;
+  pointer-events: none;
+}
+.decision-target-option:hover > .decision-target-quick-submit,
+.decision-target-option:focus-within > .decision-target-quick-submit,
+.decision-target-option.is-hovered > .decision-target-quick-submit {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .decision-target-quick-submit { opacity: 1; pointer-events: auto; }
+}
+
+.decision-card-group > .decision-choice-with-submit { flex: 1; width: 0; }
+.decision-choice-with-submit > .decision-option-row { width: 100%; max-width: none; }

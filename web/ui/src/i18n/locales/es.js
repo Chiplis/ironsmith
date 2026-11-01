@@ -83,6 +83,7 @@ export const messages = {
   "Adding...": "Añadiendo...",
   "Review the preview, then add your card to the selected player and zone.": "Revisa la vista previa y añade la carta al jugador y la zona seleccionados.",
 
+  "Yield through this turn without attacking; required choices stay manual": "Ceder el turno sin atacar; las decisiones obligatorias siguen siendo manuales",
   "End turn": "Terminar turno",
   "End the turn, ignoring phase pauses": "Terminar el turno, ignorando las pausas de fase",
   "action.skippingPhase": "Saltando {phase}",
@@ -971,7 +972,6 @@ export const ui = {
   "Disputes": "Disputas",
   "Distribute {0} total": "Distribuye {0} en total",
   "Distribution submitted": "Se envió la distribución",
-  "Done Looking": "Terminar de mirar",
   "Done": "Listo",
   "double strike": "daña dos veces",
   "Double Strike": "Daña dos veces",
@@ -2192,6 +2192,8 @@ export const ui = {
   "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.": "Escribe {Number} donde va una cantidad. Cada carta indica la cantidad y su precio después de la palabra clave, como Suspender: \"Prever 3—{1}{U}\". Sirve cualquier nombre de contador, y \"o cada vez que …\" añade más formas de quitar uno.",
   "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".": "Escribe {Number} donde va una cantidad y {Type} donde va un tipo de carta; la carta los indica entonces después de la palabra clave, como en \"Suspender 3—{1}{U}\" o \"Contemplar un Trasgo\".",
   "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.": "Para fijar cómo escriben las cartas sus parámetros, pon su disposición después del nombre, como \"Forjar {Number} {Cost}\" o \"Heraldo un {Type}\". Sin disposición, una carta puede darlos en cualquier orden, separados por un guion o un espacio.",
+  "Enforce filter coverage": "Exigir cobertura de filtros",
+  "Enforce whole-line coverage": "Exigir cobertura de líneas completas",
 };
 
 export { rules } from './es.rules.js';

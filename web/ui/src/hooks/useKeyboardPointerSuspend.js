@@ -27,6 +27,9 @@ export default function useKeyboardPointerSuspend(onResume) {
       }
     };
     const block = (event) => {
+      // The hand's primary button deliberately acts on the keyboard selection;
+      // it must remain clickable without first resuming card hover.
+      if (event.target?.closest?.('[data-hand-primary-action]')) return;
       // Preserve keyboard-generated clicks and touch input.
       if (!suspended.current || event.pointerType === "touch"
         || (event.type === "click" && event.detail === 0)) return;

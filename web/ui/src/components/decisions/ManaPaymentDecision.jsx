@@ -208,7 +208,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
     <div className="mana-plan-actions mana-payment-editor-footer">
       {busyLabel && <span className="mana-payment-editor-busy" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
       {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
-        <Button type="button" variant="ghost" size="sm" className="decision-neon-button mana-payment-pay-pass" disabled={payDisabled} title="Pay and pass priority through this stack" onClick={() => { requestResolveAfterPayment?.(sourceId); editor.confirm(); }}>Pay &amp; pass</Button>
+      <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-pass decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" data-space-primary-action aria-keyshortcuts="Space" disabled={payDisabled} title="Pay and pass priority through this stack (Space)" onClick={() => { requestResolveAfterPayment?.(sourceId); editor.confirm(); }}>Pay &amp; pass<kbd className="priority-shortcut-hint" aria-hidden="true">Space</kbd></Button>
       <div className="mana-payment-submit-row">
       <div className="mana-payment-secondary-controls">
         <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" title={`${ui('Cancel')} (ESC)`} disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>

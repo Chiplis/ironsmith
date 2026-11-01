@@ -652,11 +652,10 @@ export default function MobileBattleScene({
     if (typeof setMobileViewMode !== "function") return;
     setMobileViewMode((current) => (current === "hand" ? "battlefield" : "hand"));
   }, [setMobileViewMode]);
-  // Ctrl always opens the full-screen hand; "." toggles it.
+  // H and period share the same open/closed hand state.
   useEffect(() => {
     const onHandShortcut = event => {
-      if (event.detail?.showNumbers) setMobileViewMode?.("hand");
-      else handleToggleView();
+      setMobileViewMode?.(event.detail?.open ? "hand" : "battlefield");
     };
     window.addEventListener(TOGGLE_HAND_EVENT, onHandShortcut);
     return () => window.removeEventListener(TOGGLE_HAND_EVENT, onHandShortcut);

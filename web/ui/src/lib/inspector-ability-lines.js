@@ -31,6 +31,9 @@ export function lineAbilityMatchScore(lineText, needleText) {
   const line = normalizeAbilityMatchText(lineText);
   const needle = normalizeAbilityMatchText(needleText);
   if (!line || !needle) return 0;
+  // A discounted Equip action must not bind to "Equipped creature ..." just
+  // because both strings contain "equip". The printed cost can differ.
+  if (/^equip(?: |$)/.test(line) !== /^equip(?: |$)/.test(needle)) return 0;
   if (line === needle) return 4;
   if (line.includes(needle) || needle.includes(line)) return 3;
 
@@ -92,9 +95,15 @@ export function matchInteractiveActionsToRulesLines(lines = [], actions = []) {
   return matches;
 }
 
+// Equip is an activated ability even though its keyword form has no colon.
+function isActivatedAbilityLine(line) {
+  const text = String(line).replace(/\([^)]*\)|（[^）]*）/gu, "");
+  return /[:：]/u.test(text) || /^\s*(?:equip|equipar)\b/i.test(text);
+}
+
 export function activatedAbilityLineIndices(lines = []) {
   return lines
-    .map((line, index) => (/[:：]/u.test(String(line).replace(/\([^)]*\)|（[^）]*）/gu, "")) ? index : null))
+    .map((line, index) => (isActivatedAbilityLine(line) ? index : null))
     .filter((index) => index != null);
 }
 

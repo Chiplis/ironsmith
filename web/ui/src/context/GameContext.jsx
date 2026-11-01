@@ -61,7 +61,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
-import { createPregameFollower, isAutomatedSeat, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
+import { createPregameFollower, emptyPregameCommand, isAutomatedSeat, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
 
 import { GameContext } from "./GameContext.shared";
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
@@ -1107,7 +1107,8 @@ export function GameProvider({ children }) {
         if (canAct == null && priorityPolicy.needsAnalysis(view) && currentGame.getPriorityCanAct) {
           canAct = await currentGame.getPriorityCanAct();
         }
-        command = autoPassEnabled ? priorityPolicy.evaluate(view, canAct) : null;
+        command = emptyPregameCommand(view)
+          ?? (autoPassEnabled ? priorityPolicy.evaluate(view, canAct) : null);
         if (!command) {
           // Required choices and responses belong to the human seat making them.
           const follow = pregameFollowerRef.current(st)
@@ -1579,7 +1580,8 @@ export function GameProvider({ children }) {
 
     const currentState = state;
     const forcedObjects = false;
-    const result = { command: autoPassEnabled ? priorityPolicy.evaluate(currentState) : null };
+    const result = { command: emptyPregameCommand(currentState)
+      ?? (autoPassEnabled ? priorityPolicy.evaluate(currentState) : null) };
 
     if (!result.command) {
       multiplayerAutomationAttemptRef.current = "";
@@ -1710,7 +1712,8 @@ export function GameProvider({ children }) {
       }
       const actorView = { ...state, perspective: state.decision.player };
       if (!isAutomatedSeat(automatedSeatsRef.current, state.decision.player)
-        && (!autoPassEnabled || !priorityPolicy.evaluate(actorView))) return;
+        && !emptyPregameCommand(actorView)
+        && !(autoPassEnabled ? priorityPolicy.evaluate(actorView) : null)) return;
       void wasmInteractionGateRef.current.runAutomatic(async () => {
         try { await finalizeState(game, stateRef.current); }
         catch (err) { setStatus(`Automatic action failed: ${err}`, true); }

@@ -1,3 +1,4 @@
+import ChoiceWithSubmit from "./ChoiceWithSubmit";
 import TriggerMatchingControl from './TriggerMatchingControl';
 import PriorityShortcutHint from "./PriorityShortcutHint";
 import DecisionObjectLabel from "./DecisionObjectLabel";
@@ -363,6 +364,7 @@ function OptionButton({
   content = null,
   canAct,
   onClick,
+  onSubmit,
   isHighlighted,
   isSelected,
   onMouseEnter,
@@ -375,6 +377,8 @@ function OptionButton({
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
 
   return (
+    <ChoiceWithSubmit onSubmit={!disabled ? onSubmit : null} label={opt.description} highlighted={isHighlighted}
+      onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
     <Button
       type="button"
       variant="ghost"
@@ -408,13 +412,12 @@ function OptionButton({
         if (disabled || !shouldHandleClick(e)) return;
         onClick?.();
       }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
     >
       <DecisionObjectLabel objectId={opt.object_id} object={opt}>
         {content || <SymbolText text={normalizeDecisionText(opt.description)} />}
       </DecisionObjectLabel>
     </Button>
+    </ChoiceWithSubmit>
   );
 }
 
@@ -959,6 +962,11 @@ function SingleSelectDecision({
                   )}
                   onMouseEnter={() => objId && hoverCard(objId)}
                   onMouseLeave={() => objId && clearHover()}
+                  onSubmit={() => {
+                    if (!canAct || opt.legal === false) return;
+                    clearHover();
+                    dispatch({ type: "select_options", option_indices: [opt.index] }, opt.description);
+                  }}
                   onClick={() => {
                     const selectedOption = opt.grouped_options?.find(
                       (candidate) => candidate.legal !== false,
@@ -1225,6 +1233,11 @@ function MultiSelectDecision({
                   )}
                   onMouseEnter={() => objId && hoverCard(objId)}
                   onMouseLeave={() => objId && clearHover()}
+                  onSubmit={canAct && opt.legal !== false && !isSelected && selected.size === max - 1 && max >= min
+                    ? () => {
+                      clearHover();
+                      dispatch({ type: "select_options", option_indices: [...selectedIndices, opt.index] }, `Selected ${max} option(s)`);
+                    } : null}
                   onClick={() => opt.legal !== false && toggle(opt.index)}
                 />
               );

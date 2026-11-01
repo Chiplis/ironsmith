@@ -2,7 +2,7 @@ import { playPreferenceStorage, readPlayPreference, writePlayPreference } from '
 import { createResolveGroup, observeResolveGroup, rememberGroupChoice, replayGroupChoice } from './resolve-group.js';
 import { priorityCommandForAction } from './sync-commands.js';
 import { normalizePhaseStep } from './constants.js';
-import { priorityStepKey } from './priority-stops.js';
+import { COMBAT_STEPS, priorityStopMode, priorityStepKey } from './priority-stops.js';
 
 export const STACK_PRIORITY_MODES = ['hold', 'countdown', 'pass'];
 export const STACK_PRIORITY_LABELS = {hold: 'Hold', countdown: 'Countdown', pass: 'Pass'};
@@ -38,6 +38,8 @@ export function booleanChoice(decision, yes) {
 
 export function createPriorityPolicy({ stops, storage = playPreferenceStorage() } = {}) {
   const modesKey = 'ironsmith.stackPriorityModes';
+  const combatKey = 'ironsmith.combatParticipationStops';
+  const savedCombat = readPlayPreference(combatKey, storage) || {};
   const saved = readPlayPreference(modesKey, storage);
   const savedModes = new Map(saved && typeof saved === 'object' && !Array.isArray(saved)
     ? Object.entries(saved).filter(([, mode]) => STACK_PRIORITY_MODES.includes(mode)) : []);
@@ -49,6 +51,7 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
   const seat = player => {
     const key = id(player);
     if (!seats.has(key)) seats.set(key, { yield: null, fullControl: false, held: null,
+      stopWithAttackers: savedCombat[key]?.attackers !== false, stopWithBlockers: savedCombat[key]?.blockers !== false,
       stackMode: savedModes.get(key) || 'hold', maintain: false, holdNextAction: false, rules: [], groupTriggers: false, resolveGroup: null });
     return seats.get(key);
   };
@@ -97,6 +100,26 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
     if (current.resolveGroup && decision.kind !== 'priority') return replayGroupChoice(current.resolveGroup, state);
     if (!current.resolveGroup && state.viewed_cards && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return null;
     if (decision.kind !== 'priority') {
+      if (decision.kind === 'attackers' && same(state.active_player, state.perspective)
+        && Array.isArray(decision.attacker_options)) {
+        const options = decision.attacker_options;
+        // The engine supplies legal attack targets: creature presence alone
+        // cannot account for summoning sickness, defender or attack restrictions.
+        const hasAttackers = options.some(option => option.valid_targets?.length > 0);
+        if (current.stopWithAttackers && hasAttackers) return null;
+        if (options.some(option => option.must_attack)) return null;
+        const configured = stops?.getSnapshot().stops;
+        const hasCombatStop = !configured || ['phase:Combat', ...COMBAT_STEPS.map(step => `step:${step}`)]
+          .some(key => priorityStopMode(configured, key, state.active_player));
+        const complete = options.every(option => Array.isArray(option.valid_targets));
+        if (current.yield?.mode === 'turn' || (complete && !hasCombatStop
+          && (!current.stopWithAttackers || !hasAttackers))) {
+          return { type: 'declare_attackers', declarations: [] };
+        }
+      }
+      if (decision.kind === 'blockers' && !same(state.active_player, state.perspective)
+        && current.stopWithBlockers
+        && decision.blocker_options?.some(option => option.valid_blockers?.length > 0)) return null;
       // Only an explicitly saved Boolean preference can answer a resolution.
       const resolving = state.resolving_stack_object;
       if (resolving && same(decision.source_id, resolving.inspect_object_id)) {
@@ -144,6 +167,14 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
     status(state) { observe(state); return seat(state?.perspective); },
     observe,
     evaluate,
+    setCombatParticipationStop(kind, enabled, state) {
+      if (!['attackers', 'blockers'].includes(kind)) return;
+      const current = seat(state?.perspective);
+      current[kind === 'attackers' ? 'stopWithAttackers' : 'stopWithBlockers'] = Boolean(enabled);
+      savedCombat[id(state?.perspective)] = { attackers: current.stopWithAttackers, blockers: current.stopWithBlockers };
+      writePlayPreference(combatKey, savedCombat, storage);
+      publish();
+    },
     needsAnalysis(state) { return seat(state?.perspective).yield?.mode === 'no_play' || stops?.awaitsCanAct(state); },
     startGroup(state) {
       const group = createResolveGroup(state);

@@ -73,6 +73,7 @@ test('smith keeps a steady cadence while each impact shapes the letter from prog
   try {
     const page = await browser.newPage();
     const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
+    await page.clock.install();
     await page.goto(`${origin}/tests/loading-smith.html`);
     await page.waitForFunction(() => document.querySelector('object')?.contentDocument?.getAnimations().length > 0);
     const snapshot = () => page.locator('object').evaluate(el => {
@@ -87,7 +88,6 @@ test('smith keeps a steady cadence while each impact shapes the letter from prog
         strikeIterations: animations.filter(a => a.animationName.startsWith('visor-impact-') || a.animationName.startsWith('traveling-spark-')).map(a => String(a.effect.getTiming().iterations)),
       };
     });
-    await page.clock.install();
     await page.evaluate(() => window.setSmithInput({ progress: 0.1, ready: false }));
     await page.clock.runFor(4000);
     const slow = await snapshot();
@@ -104,16 +104,26 @@ test('smith keeps a steady cadence while each impact shapes the letter from prog
     assert.ok(fast.letter > stalled.letter && fast.letter < 1);
     assert.notEqual(fast.path, stalled.path, 'the rendered glyph changes before loading finishes');
     await page.evaluate(() => window.setSmithInput({ progress: 1, ready: true }));
-    // Sample through the remaining impacts to verify continuous intermediate
+    // Sample through the final impact to verify continuous intermediate
     // shapes, rather than a discrete swap at the last hit.
     const shapes = new Set();
-    for (let i = 0; i < 60; i++) {
-      await page.clock.runFor(100);
+    for (let i = 0; i < 240; i++) {
+      await page.clock.runFor(25);
       shapes.add((await snapshot()).path);
     }
     assert.ok(shapes.size > 6, 'impacts smoothly interpolate the glyph');
     assert.equal((await snapshot()).letter, 1);
     assert.equal(await page.evaluate(() => !!window.smithComplete), true);
+    await page.clock.resume();
+    // A cached load needs only one final strike, followed by the mask outro.
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('object')?.contentDocument?.getAnimations().length > 0);
+    await page.evaluate(() => window.setSmithInput({ progress: 1, ready: true }));
+    await page.clock.runFor(2100);
+    assert.equal((await snapshot()).letter, 1, 'the first strike finishes the H');
+    assert.equal(await page.evaluate(() => !!window.smithComplete), false, 'wait for the mask outro');
+    await page.clock.runFor(1600);
+    assert.equal(await page.evaluate(() => !!window.smithComplete), true, 'enter after one cycle and the outro');
     await page.clock.resume();
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.reload();

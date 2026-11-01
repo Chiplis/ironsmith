@@ -16,6 +16,24 @@ export function installMainDecisionShortcut(document) {
     if (!cancel && target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"]')) return;
     if (event.key === 'Enter' && target?.closest?.('button, a')) return;
     if ([...document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')].some(visible)) return;
+    // Payment can expose both Pay and Pay & Pass. An explicit Space action
+    // takes precedence and consumes the key even while payment is unavailable.
+    const spaceActions = [...document.querySelectorAll('button[data-space-primary-action]')]
+      .filter(button => !button.closest('[inert], [aria-hidden="true"]') && visible(button));
+    if (event.key === ' ' && spaceActions.length > 0) {
+      event.preventDefault();
+      if (spaceActions.length === 1 && !event.repeat && !spaceActions[0].disabled
+          && spaceActions[0].getAttribute('aria-disabled') !== 'true') spaceActions[0].click();
+      return;
+    }
+    // An open hand replaces passing with its selected card's action. Even
+    // a disabled hand action consumes Space rather than falling through.
+    const handActions = [...document.querySelectorAll('button[data-hand-primary-action]')].filter(visible);
+    if (event.key === ' ' && handActions.length === 1) {
+      event.preventDefault();
+      if (!event.repeat && !handActions[0].disabled && handActions[0].getAttribute('aria-disabled') !== 'true') handActions[0].click();
+      return;
+    }
     // Use the same cancellation path as the visible control, including payment
     // cleanup. Escape also works while a casting choice or its input has focus.
     const selector = cancel ? 'button.decision-cancel-button' : 'button.decision-main-button';
