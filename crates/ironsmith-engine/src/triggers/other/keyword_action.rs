@@ -217,6 +217,11 @@ impl TriggerMatcher for KeywordActionTrigger {
         }
 
         if let Some(source_filter) = &self.source_filter {
+            // The final required status is the transition; earlier entries qualify the subject.
+            if self.action == KeywordActionKind::CustomStatusGained
+                && source_filter.custom_statuses.last() != e.custom_status.as_ref() {
+                return false;
+            }
             let matches = if let Some(snapshot) = e.snapshot.as_ref() {
                 source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
             } else if let Some(source_object) = ctx.game.object(e.source) {
@@ -263,6 +268,12 @@ impl TriggerMatcher for KeywordActionTrigger {
     }
 
     fn display(&self) -> String {
+        if self.action == KeywordActionKind::CustomStatusGained
+            && let Some(filter) = &self.source_filter
+            && let Some(name) = filter.custom_statuses.last() {
+            let mut subject = filter.clone(); subject.custom_statuses.pop();
+            return format!("Whenever {} gains the {name} status", ensure_singular_noun_phrase_article(subject.description()));
+        }
         if self.source_must_match && self.action == KeywordActionKind::CumulativeUpkeepPaid {
             return "Whenever you pay this permanent's cumulative upkeep".into();
         }

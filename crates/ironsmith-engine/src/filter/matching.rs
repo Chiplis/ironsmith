@@ -16,6 +16,14 @@ pub(super) fn matches_subject(
     {
         return false;
     }
+    if filter.excluded_custom_statuses.iter().any(|name| match subject {
+        ObjectSubject::Live(object) => game.has_custom_status(object.id, name),
+        ObjectSubject::Snapshot(snapshot) => snapshot.custom_statuses.contains(name),
+    }) { return false; }
+    if !filter.custom_statuses.iter().all(|name| match subject {
+        ObjectSubject::Live(object) => game.has_custom_status(object.id, name),
+        ObjectSubject::Snapshot(snapshot) => snapshot.custom_statuses.contains(name),
+    }) { return false; }
     if filter.renowned && !game.is_renowned(subject.object_id()) {
         return false;
     }

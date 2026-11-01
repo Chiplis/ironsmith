@@ -2139,6 +2139,13 @@ fn parse_object_filter_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens) {
+        let mut filter = parse_object_filter(&base, other)?;
+        if negative {
+            filter.excluded_custom_statuses.push(name);
+        } else { filter.custom_statuses.push(name); }
+        return Ok(filter);
+    }
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
     if let Some(base) = strip_resolution_time_suffix(tokens) {
         let filter = parse_object_filter(base, other)?;
@@ -2729,6 +2736,13 @@ fn parse_object_filter_lexed_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens) {
+        let mut filter = parse_object_filter_lexed(&base, other)?;
+        if negative {
+            filter.excluded_custom_statuses.push(name);
+        } else { filter.custom_statuses.push(name); }
+        return Ok(filter);
+    }
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
     if let Some(base) = strip_resolution_time_suffix(tokens) {
         let filter = parse_object_filter_lexed(base, other)?;

@@ -10200,7 +10200,10 @@
         };
     }
     if let Some(designation) = effect.downcast_ref::<crate::effects::SetPermanentDesignationEffect>() {
-        return match designation.designation { ironsmith_core::PermanentDesignation::Harnessed => format!("If {} isn't harnessed, it becomes harnessed", describe_choose_spec(&designation.target)) };
+        return match &designation.designation {
+            ironsmith_core::PermanentDesignation::Harnessed => format!("If {} isn't harnessed, it becomes harnessed", describe_choose_spec(&designation.target)),
+            ironsmith_core::PermanentDesignation::CustomStatus { name, until_end_of_turn } => format!("Give {} the {name} status{}", describe_choose_spec(&designation.target), if *until_end_of_turn { " until end of turn" } else { "" }),
+        };
     }
     if let Some(keyword) = effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>() {
         if keyword.action == crate::events::KeywordActionKind::Harness && keyword.amount == 1 {

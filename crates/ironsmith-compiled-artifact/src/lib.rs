@@ -448,6 +448,36 @@ mod tests {
     }
 
     #[test]
+    fn pre_custom_status_artifacts_keep_their_filter_checksum() {
+        let mut artifact = fixture();
+        artifact.payload.definition.aura_attach_filter = Some(
+            ironsmith_core::AuraAttachmentFilter::Object(ironsmith_core::ObjectFilter::creature()));
+        artifact.payload_checksum.clear();
+        // Recreate the exact preceding wire shape and sign those original bytes,
+        // rather than refreshing the checksum after decoding into the new model.
+        let legacy_unsigned = serde_json::to_string(&artifact).unwrap()
+            .replace(",\"custom_statuses\":[]", "")
+            .replace(",\"excluded_custom_statuses\":[]", "");
+        let checksum = sha256_hex(legacy_unsigned.as_bytes());
+        let legacy = legacy_unsigned.replace("\"payloadChecksum\":\"\"", &format!("\"payloadChecksum\":\"{checksum}\""));
+        CompiledCardArtifact::from_json(legacy.as_bytes())
+            .expect("adding empty custom status filters must preserve existing artifact checksums");
+    }
+
+    #[test]
+    fn custom_status_artifacts_retain_nonempty_filter_predicates() {
+        let mut artifact = fixture();
+        let mut filter = ironsmith_core::ObjectFilter::creature();
+        filter.custom_statuses.push("bribed".into());
+        filter.excluded_custom_statuses.push("moon blessed".into());
+        artifact.payload.definition.aura_attach_filter = Some(
+            ironsmith_core::AuraAttachmentFilter::Object(filter));
+        artifact.refresh_checksum();
+        let decoded = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
+        assert_eq!(decoded.payload.definition.aura_attach_filter, artifact.payload.definition.aura_attach_filter);
+    }
+
+    #[test]
     fn current_golden_matches_the_integrated_source() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v19-relative-boundaries.json");
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();

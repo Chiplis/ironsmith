@@ -16,6 +16,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
     name: String,
 ) -> ObjectSnapshot {
     ObjectSnapshot {
+        custom_statuses: Vec::new(),
         stack_kind: None,
         ability_origins: None,
         chosen_subtype: None,

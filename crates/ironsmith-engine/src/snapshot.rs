@@ -630,6 +630,8 @@ pub struct ObjectSnapshot {
     /// Missing evidence in older/public snapshots is not an unsuspicious result.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub suspected: Option<bool>,
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub custom_statuses: Vec<String>,
     /// Exact incarnation's saddle designation. Missing historical/public
     /// evidence is unknown, never an unsaddled receipt.
     #[cfg_attr(feature = "serialization", serde(default))]
@@ -838,6 +840,7 @@ impl ObjectSnapshot {
             blocking_alone: false,
             goaded: None,
             suspected: None,
+            custom_statuses: Vec::new(),
             ring_bearer: None,
             flipped: false,
             face_down: false,
@@ -1031,6 +1034,7 @@ impl ObjectSnapshot {
             ),
             goaded: None,
             suspected: Some(obj.zone == Zone::Battlefield && game.is_suspected(obj.id)),
+            custom_statuses: game.custom_status_names(obj.id),
             ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
@@ -1478,6 +1482,7 @@ impl ObjectSnapshot {
             blocking_alone: false,
             goaded: Some(false),
             suspected: Some(false),
+            custom_statuses: Vec::new(),
             ring_bearer: Some(false),
             flipped: false,
             face_down: false,

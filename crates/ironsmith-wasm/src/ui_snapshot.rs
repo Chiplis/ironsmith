@@ -3864,19 +3864,29 @@ pub(super) fn build_object_details_snapshot(
     };
     let oracle_text = compiled_text.join("\n");
 
-    // Use the same structural trigger identity as stack entries, so a rule
-    // chosen on the permanent applies when that ability later triggers.
+    // Use the same identities as stack entries, including the retained activated
+    // definition so preferences survive payment, modal selection and copying.
     let live_abilities = current.as_ref().map(|chars| chars.abilities.to_vec())
         .unwrap_or_else(|| obj.abilities_vec());
-    let ability_preferences = live_abilities.iter().filter_map(|ability| {
-        let ironsmith::ability::AbilityKind::Triggered(triggered) = &ability.kind else { return None; };
-        let identity = ironsmith::triggers::compute_trigger_identity(triggered);
+    let ability_preferences = live_abilities.iter().enumerate().filter_map(|(index, ability)| {
+        use ironsmith::ability::{AbilityKind, ActivatedAbilityRuntimeExt};
+        let (kind, identity) = match &ability.kind {
+            AbilityKind::Triggered(triggered) => ("Triggered", format!("trigger:{}",
+                ironsmith::triggers::compute_trigger_identity(triggered).0)),
+            AbilityKind::Activated(activated)
+                if !activated.is_runtime_mana_ability(game, obj.id, current_controller) => {
+                ("Activated", super::stack_snapshots::activated_automation_identity(
+                    activated, index,
+                ))
+            }
+            _ => return None,
+        };
         Some(serde_json::json!({
             "name": current_name,
             "controller": current_controller.0,
             "source_stable_id": obj.stable_id.0.0,
-            "ability_kind": "Triggered",
-            "automation_identity": format!("trigger:{}", identity.0),
+            "ability_kind": kind,
+            "automation_identity": identity,
             "source_ability_text": ironsmith::runtime_display::ability_surface_text(ability),
         }))
     }).collect();

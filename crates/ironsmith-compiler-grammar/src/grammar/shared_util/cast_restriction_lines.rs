@@ -87,7 +87,7 @@ fn control_quantity_restriction(words: &[&str]) -> Option<(Restriction, String)>
     ))
 }
 
-fn fixed_restriction(words: &[&str]) -> Option<(Restriction, &'static str)> {
+pub(crate) fn fixed_restriction(words: &[&str]) -> Option<(Restriction, &'static str)> {
     use ironsmith_core::ThisSpellCastTiming as Timing;
     let typed = match words {
         ["during", "the", "declare", "blockers", "step"] | ["during", "declare", "blockers", "step"] =>

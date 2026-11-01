@@ -131,3 +131,11 @@ path = "tests/wymi_complete.rs"
 [[test]]
 name = "wymi_regressions"
 path = "tests/wymi_regressions.rs"
+
+[[test]]
+name = "custom_statuses"
+path = "tests/custom_statuses.rs"
+
+[[test]]
+name = "custom_mechanic_word_coverage"
+path = "tests/custom_mechanic_word_coverage.rs"

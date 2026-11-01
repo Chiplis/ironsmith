@@ -401,6 +401,23 @@ pub(super) fn try_parse_source_with_filtered_attack_count_trigger_lexed(
 pub(super) fn parse_trigger_clause_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
+    if let Some((subject, name)) = crate::custom_status::gained_trigger(tokens) {
+        let mut filter = parse_object_filter_lexed(&subject, false)?;
+        filter.custom_statuses.push(name);
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::CustomStatusGained,
+            player: PlayerFilter::Any, source_filter: Some(filter), during_your_turn: false,
+        });
+    }
+    if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens)
+        && crate::lexer::token_word_refs(&base).last() == Some(&"attacks") {
+        let mut filter = parse_object_filter_lexed(&base[..base.len()-1], false)?;
+        if negative {
+            filter.excluded_custom_statuses.push(name);
+        } else { filter.custom_statuses.push(name); }
+        crate::word_claims::claim_tokens(&base[base.len()-1..]);
+        return Ok(TriggerSpec::Attacks(filter));
+    }
     if let Some(trigger) = combat_declaration_shapes::parse(tokens)? { return Ok(trigger); }
     {
         let words = crate::lexer::token_word_refs(tokens);

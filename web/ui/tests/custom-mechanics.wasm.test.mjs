@@ -138,12 +138,15 @@ test('a standalone mechanic compiles its reminder on a test card and reports com
 test('every Mechanics-tab template compiles to its kind of rules text', {timeout: 120000}, async () => {
   const { game } = await initWasmGame({ pkg: 'demo' });
   const expected = {
+    'Temporary status': raw => /CustomStatus/.test(raw),
     'Static ability': raw => (raw.match(/kind: Static\(/g) || []).length > 1,
     'Activated ability': raw => /kind: Activated\(/.test(raw),
     'Triggered ability': raw => /kind: Triggered\(/.test(raw),
     'Replacement effect': raw => /EventReplacementWithEffects/.test(raw),
     'Additional cost': raw => /optional_costs: \[\s*\S/.test(raw),
     'Alternative cost': raw => /alternative_casts: \[\s*\S/.test(raw),
+    'Combat casting': raw => /generic_cost_reductions/.test(raw) && /enters_attacking: true/.test(raw),
+    'Timed exile': raw => /timed_exile/.test(raw),
     'Spell instruction': raw => /spell_effect: Some/.test(raw),
   };
   try {

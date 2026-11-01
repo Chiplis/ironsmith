@@ -26,6 +26,7 @@
 //! public `ironsmith-compiler` package remains the document/lowering facade.
 
 pub mod card_document;
+mod custom_status;
 
 pub mod model {
     pub use crate::card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};

@@ -199,6 +199,9 @@ pub(crate) fn parse_inline_loyalty_symbol_clause(tokens: &[OwnedLexToken]) -> Op
 pub(super) fn parse_effect_clause_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    if let Some(effect) = crate::custom_status::source_effect(tokens) {
+        return Ok(effect);
+    }
     if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
         return Ok(EffectAst::Sequence { effects });
     }

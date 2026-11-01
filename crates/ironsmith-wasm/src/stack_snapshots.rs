@@ -1,5 +1,38 @@
 use super::*;
 
+fn stamped_activation_identity(definition: [u8; 32]) -> String {
+    let hex = definition.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    format!("activated:definition:{hex}")
+}
+
+pub(super) fn activated_automation_identity(
+    ability: &ironsmith::ability::ActivatedAbility,
+    index: usize,
+) -> String {
+    if let Some(definition) = ability.effects.activation_definition {
+        return stamped_activation_identity(definition.0);
+    }
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    // Include costs, timing and choices, not just the effects they resolve.
+    format!("{ability:?}").hash(&mut hash);
+    format!("activated:{index}:{}", hash.finish())
+}
+
+fn stack_activation_automation_identity(entry: &StackEntry, source: Option<&ironsmith::object::Object>) -> Option<String> {
+    if let Some(definition) = entry.activation_definition.or_else(|| entry.ability_effects.as_ref()
+        .and_then(|effects| effects.activation_definition)) {
+        return Some(stamped_activation_identity(definition.0));
+    }
+    let index = entry.ability_index?;
+    // Payment may sacrifice the source or modal selection may narrow its
+    // effects. Match the complete definition captured at activation instead.
+    let ability = entry.source_snapshot.as_ref().and_then(|snapshot| snapshot.abilities.get(index))
+        .or_else(|| source.and_then(|source| source.abilities.get(index)))?;
+    let ironsmith::ability::AbilityKind::Activated(activated) = &ability.kind else { return None; };
+    Some(activated_automation_identity(activated, index))
+}
+
 const DETERMINISTIC_MATCH_SEED_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const DETERMINISTIC_MATCH_SEED_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -305,12 +338,7 @@ pub(super) fn build_stack_object_snapshot(
             effect_text: None,
             ability_kind: Some(ability_kind.to_string()),
             automation_identity: entry.trigger_identity.map(|identity| format!("trigger:{}", identity.0))
-                .or_else(|| entry.ability_index.map(|index| {
-                    use std::hash::{Hash, Hasher};
-                    let mut hash = std::collections::hash_map::DefaultHasher::new();
-                    format!("{:?}", entry.ability_effects).hash(&mut hash);
-                    format!("activated:{index}:{}", hash.finish())
-                })),
+                .or_else(|| stack_activation_automation_identity(entry, source_obj.or(obj))),
             source_ability_text,
             ability_text,
             targets,
@@ -398,6 +426,19 @@ mod source_ability_tests {
     use ironsmith_registry_test::compile_to_runtime_definition;
 
     #[test]
+    fn inspector_automation_excludes_mana_and_static_abilities() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = compile_to_runtime_definition("Automation Fixture",
+            "Type: Artifact\n{T}: Add {G}.\n{2}: Draw a card.\nYou have no maximum hand size.", false).unwrap();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let preferences = crate::ui_snapshot::build_object_details_snapshot(&game, source, None)
+            .unwrap().ability_preferences;
+        assert_eq!(preferences.len(), 1);
+        assert_eq!(preferences[0]["ability_kind"], "Activated");
+    }
+
+    #[test]
     fn synthetic_trigger_sources_are_safe_for_javascript_snapshots() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
@@ -447,20 +488,38 @@ mod source_ability_tests {
             &game.object(source).unwrap().to_card_definition(),
         );
         assert_eq!(expected.len(), 3);
-        let first = StackEntry::ability(source, alice, Vec::new())
+        let ironsmith::ability::AbilityKind::Activated(first_ability) = &captured.abilities[0].kind else { panic!("activated"); };
+        let ironsmith::ability::AbilityKind::Activated(second_ability) = &captured.abilities[1].kind else { panic!("activated"); };
+        assert_ne!(activated_automation_identity(first_ability, 0),
+            activated_automation_identity(second_ability, 0), "costs distinguish otherwise identical abilities");
+        let first = StackEntry::ability(source, alice, first_ability.effects.clone())
+            .with_activation_definition(first_ability.effects.activation_definition)
+            .with_source_stable_id(captured.stable_id)
             .with_ability_index(0)
             .with_source_snapshot(captured.clone());
-        let second = StackEntry::ability(source, alice, Vec::new())
+        let second = StackEntry::ability(source, alice, second_ability.effects.clone())
+            .with_activation_definition(second_ability.effects.activation_definition)
+            .with_source_stable_id(captured.stable_id)
             .with_ability_index(1)
             .with_source_snapshot(captured.clone());
         let preferences = crate::ui_snapshot::build_object_details_snapshot(&game, source, None)
             .unwrap().ability_preferences;
-        assert_eq!(preferences.len(), 1);
+        assert_eq!(preferences.len(), 3);
         // The source no longer has the abilities that were activated.
         game.object_mut(source).unwrap().abilities = Default::default();
         let first_view = build_stack_object_snapshot(&game, alice, None, &first);
         let second_view = build_stack_object_snapshot(&game, alice, None, &second);
-        assert!(first_view.automation_identity.is_some());
+        assert_eq!(preferences[0]["automation_identity"], first_view.automation_identity.clone().unwrap());
+        assert_eq!(preferences[1]["automation_identity"], second_view.automation_identity.clone().unwrap());
+        assert_eq!(preferences[0]["source_stable_id"], first_view.source_stable_id.unwrap());
+        // Resolution choices can narrow effects and the source can lose its
+        // abilities; neither changes the retained definition used by automation.
+        {
+            let mut narrowed = first.clone();
+            narrowed.ability_effects = Some(vec![Effect::draw(7)].into());
+            assert_eq!(first_view.automation_identity,
+                build_stack_object_snapshot(&game, alice, None, &narrowed).automation_identity);
+        }
         assert_ne!(first_view.automation_identity, second_view.automation_identity);
         assert_eq!(first_view.automation_identity,
             build_stack_object_snapshot(&game, alice, None, &first).automation_identity);
@@ -482,8 +541,8 @@ mod source_ability_tests {
             .with_source_snapshot(captured);
         let trigger_view = build_stack_object_snapshot(&game, alice, None, &trigger);
         assert!(trigger_view.automation_identity.as_ref().unwrap().starts_with("trigger:"));
-        assert_eq!(preferences[0]["automation_identity"], trigger_view.automation_identity.clone().unwrap());
-        assert_eq!(preferences[0]["source_stable_id"], trigger_view.source_stable_id.unwrap());
+        assert_eq!(preferences[2]["automation_identity"], trigger_view.automation_identity.clone().unwrap());
+        assert_eq!(preferences[2]["source_stable_id"], trigger_view.source_stable_id.unwrap());
         assert!(crate::ui_snapshot::build_object_details_snapshot(&game, source, None)
             .unwrap().ability_preferences.is_empty(), "ability loss removes inspector preferences");
         assert_eq!(

@@ -43,10 +43,24 @@ pub enum ExilePreparation {
     FaceUpSorcery { price: ManaCost },
 }
 
+fn is_false(value: &bool) -> bool { !*value }
+
 /// Instructions belonging to a casting permission, independent of its name.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Default, Clone, PartialEq, TagKeyWalk)]
 pub struct ZoneCastInstructions {
+    /// Restrict this alternative price to the window, independently of flash timing.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub casting_window: Option<crate::ThisSpellCastTiming>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub instant_timing: bool,
+    /// Reductions on the selected price; filters use the usual object vocabulary.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub generic_cost_reductions: Vec<(u32, crate::ObjectFilter)>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub enters_tapped: bool,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub enters_attacking: bool,
     /// Resolved against the source definition during lowering.
     pub add_printed_mana_cost: bool,
     /// Use the source's linked back face while casting.
@@ -317,6 +331,7 @@ where
     pub fn grants_instant_timing(&self) -> bool {
         matches!(self, Self::Composed { name, .. }
             if name.eq_ignore_ascii_case(FREE_CAST_AS_THOUGH_FLASH_METHOD))
+            || matches!(self, Self::FromZone { instructions, .. } if instructions.instant_timing)
     }
 
     pub fn casts_transformed(&self) -> bool {

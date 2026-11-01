@@ -1,6 +1,5 @@
-import PriorityShortcutHint from "@/components/decisions/PriorityShortcutHint";
 import { useLayoutEffect, useRef } from 'react';
-import { Hand } from 'lucide-react';
+import { Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/context/GameContext';
 import useUiText from '@/i18n/useUiText';
@@ -27,17 +26,19 @@ export default function PriorityHoldButton({ className = '', disabled = false })
       if (!text) return;
       const style = getComputedStyle(button);
       const available = button.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 23;
-      const baseSize = parseFloat(style.fontSize);
+      const baseSize = parseFloat(style.fontSize) * 0.9;
+      text.style.fontSize = `${baseSize}px`;
       const ratio = Math.min(1, Math.max(0.55, available / Math.max(1, text.scrollWidth)));
+      text.style.removeProperty('font-size');
       button.style.setProperty('--hold-label-size', `${baseSize * ratio}px`);
     };
     fitLabel();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fitLabel);
     observer?.observe(button);
     return () => observer?.disconnect();
-  }, [window]);
+  }, [window, ui]);
   if (!window) return null;
-  const label = <><Hand size={16} aria-hidden="true" /><span>{ui('Hold Priority')}</span></>;
+  const label = <><Timer size={16} aria-hidden="true" /><span>{ui('Countdown Priority')}</span></>;
   return (
     <Button
       ref={buttonRef}
@@ -45,7 +46,7 @@ export default function PriorityHoldButton({ className = '', disabled = false })
       type="button"
       className={`decision-main-button priority-hold-window ${className}`}
       disabled={disabled}
-      aria-label={ui('Hold Priority')}
+      aria-label={ui('Countdown Priority')}
       title={ui('Keep priority instead of passing automatically')}
       {...hoverPause}
       onClick={holdPostActionPriority}
@@ -53,7 +54,6 @@ export default function PriorityHoldButton({ className = '', disabled = false })
     >
       <span className="priority-hold-window-label">{label}</span>
       <span className="priority-hold-window-fill" aria-hidden="true">{label}</span>
-      <PriorityShortcutHint number="1" />
     </Button>
   );
 }

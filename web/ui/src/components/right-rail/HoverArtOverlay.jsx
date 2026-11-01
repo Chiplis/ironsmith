@@ -2380,7 +2380,7 @@ export default function HoverArtOverlay({
       onClick={event => {
         event.stopPropagation();
         window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', {detail: {abilities: details.ability_preferences}}));
-      }}>Ability priority</button>
+      }}>⋯</button>
   ) : null;
 
   const openAbilityPreferences = event => {
@@ -2425,7 +2425,7 @@ export default function HoverArtOverlay({
     return (
       <div
         className={cn(
-          "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden pointer-events-auto",
+          "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-visible pointer-events-auto",
           inspectorShaderReveal && "hover-art-stage--shader-reveal",
           inspectorShaderReveal && inspectorShaderRevealScope === "inspector" && "hover-art-stage--shader-reveal-inspector"
         )}
@@ -2545,7 +2545,7 @@ export default function HoverArtOverlay({
   return (
     <div
       className={cn(
-        "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden",
+        "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-visible",
         (compact || hasTransitionNavigator) ? "pointer-events-auto" : "pointer-events-none",
         lowProfileInspector && "hover-art-stage--low-profile",
         !compactTopbarLayout && !compact && "hover-art-stage--left-art",

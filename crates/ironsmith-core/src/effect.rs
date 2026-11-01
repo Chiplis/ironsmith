@@ -7870,8 +7870,12 @@ pub struct RippleEffect {
 
 /// A noncopiable permanent designation, independent of a keyword action.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
-pub enum PermanentDesignation { Harnessed }
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub enum PermanentDesignation {
+    Harnessed,
+    /// Named, noncopiable state on this battlefield incarnation.
+    CustomStatus { name: String, until_end_of_turn: bool },
+}
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]

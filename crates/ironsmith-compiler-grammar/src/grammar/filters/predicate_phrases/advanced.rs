@@ -6842,6 +6842,7 @@ pub(super) fn parse_counter_placement_result_count(tokens: &[OwnedLexToken]) -> 
 }
 
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    if let Some(condition) = crate::custom_status::source_condition(tokens) { return Ok(condition); }
     let clean = crate::util::trim_edge_punctuation_tokens(tokens);
     let control_words = crate::lexer::token_word_refs(clean);
     let comparison_words = control_words.strip_prefix(&["if"]).unwrap_or(&control_words);

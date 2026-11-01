@@ -676,13 +676,13 @@ export default function RightRail({
       style={containerStyle}
       aria-hidden={!shouldShowRail}
     >
-      <div className={cn("relative h-full min-h-0", inline ? "overflow-visible" : "overflow-hidden")}>
+      <div className="relative h-full min-h-0 overflow-visible">
         <div
           ref={expandedInspectorRef}
           data-card-inspector="true"
           data-zone-transition-token={renderedTransitionToken}
           className={cn(
-            "ironsmith-inspector-shell overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)] shadow-[0_18px_42px_rgba(0,0,0,0.28)]",
+            "ironsmith-inspector-shell overflow-visible border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)] shadow-[0_18px_42px_rgba(0,0,0,0.28)]",
             inline
               ? "hand-inspector-inline-shell ironsmith-inspector-shell--expanded absolute rounded-none"
               : "h-full rounded-none",
@@ -706,8 +706,8 @@ export default function RightRail({
             ...inspectorBorderStyle(inspectorAccent),
           }}
         >
-          <div className="flex h-full min-h-0 flex-col overflow-hidden">
-            <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="flex h-full min-h-0 flex-col overflow-visible">
+            <div className="min-h-0 flex-1 overflow-visible">
               <HoverArtOverlay
                 objectId={shouldShowRail ? renderedInspectorObjectId : null}
                 selectedStackEntry={String(pinnedObjectId) === String(renderedInspectorObjectId)

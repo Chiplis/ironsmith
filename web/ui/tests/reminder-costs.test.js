@@ -54,7 +54,7 @@ test('declared variable expressions bind independently of keyword names', async 
 
 test('named prices substitute complete payment actions without a redundant pay verb', () => {
   for (const keyword of ['squad', 'assemble']) {
-    assert.equal(bindReminderCost(`You may pay its ${keyword} cost any number of times.`, keyword, 'Exile four cards from your graveyard'), 'You may Exile four cards from your graveyard any number of times.');
+    assert.equal(bindReminderCost(`You may pay its ${keyword} cost any number of times.`, keyword, 'Exile four cards from your graveyard'), 'You may exile four cards from your graveyard any number of times.');
     assert.equal(bindReminderCost(`Pay its ${keyword} cost.`, keyword, '{2}'), 'Pay {2}.');
     assert.equal(bindReminderCost(`Pay its ${keyword} cost.`, keyword, 'Pay 3 life'), 'Pay 3 life.');
     assert.equal(bindReminderCost(`It gains "Pay its ${keyword} cost."`, keyword, 'Discard a card'), `It gains "Pay its ${keyword} cost."`);
@@ -226,4 +226,11 @@ test('published casting shorthand expands by definition while retaining custom c
   const expanded = expandKnownReminderDefinition("You may cast this spell with different mana cost, color, and size. It keeps its abilities and types.", 'Miniature {2}{R}—3/2');
   assert.match(expanded, /mana cost \{2\}\{R\}, color determined by that mana cost, and base power and toughness 3\/2/);
   assert.equal(expandKnownReminderDefinition('Draw a card.'), 'Draw a card.');
+});
+
+
+test('price predicates retain their reference while payment slots bind', () => {
+  assert.equal(bindReminderCost('You may pay {Cost}. This cost is reduced by {1} for each artifact you control.', 'arrival', '{3}{U}'),
+    'You may pay {3}{U}. This cost is reduced by {1} for each artifact you control.');
+  assert.equal(bindReminderCost('Pay this cost.', 'arrival', '{3}{U}'), 'Pay {3}{U}.');
 });

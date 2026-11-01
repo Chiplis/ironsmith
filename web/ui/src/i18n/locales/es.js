@@ -2052,6 +2052,7 @@ export const ui = {
   "Hidden-card disclosure": "Revelación de cartas ocultas",
   "Hide my IP address (relay only, slower)": "Ocultar mi dirección IP (solo relé, más lento)",
   "Hide my IP address in WebSocket and tournament lobbies (relay only, slower)": "Ocultar mi dirección IP en salas WebSocket y de torneo (solo relé, más lento)",
+  "Countdown Priority": "Cuenta atrás de prioridad",
   "Hold Priority": "Mantener prioridad",
   "Include custom cards": "Incluir cartas personalizadas",
   "Invite code": "Código de invitación",
@@ -2087,7 +2088,7 @@ export const ui = {
   "Saving...": "Guardando...",
   "Send message": "Enviar mensaje",
   "Send": "Enviar",
-  "Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Hold Priority. Turn off to pause until you act.": "Continuar automáticamente tras las pausas de fase y paso en el turno de un oponente después de dos segundos, salvo que pulses Mantener prioridad. Desactívalo para pausar hasta que actúes.",
+  "Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Countdown Priority. Turn off to pause until you act.": "Continuar automáticamente tras las pausas de fase y paso en el turno de un oponente después de dos segundos, salvo que pulses Cuenta atrás de prioridad. Desactívalo para pausar hasta que actúes.",
   "Small artwork tiles": "Mosaicos de ilustración pequeños",
   "Tapped": "Girada",
   "The tournament's signing key stays in this browser. Issue one invite per player; whoever redeems a code first owns that seat.": "La clave de firma del torneo se queda en este navegador. Emite una invitación por jugador; quien canjee primero un código se queda con ese asiento.",
@@ -2188,12 +2189,15 @@ export const ui = {
   "Phrasal forms that mean the same thing, separated by commas.": "Formas compuestas que significan lo mismo, separadas por comas.",
   "Compiled meaning:": "Significado compilado:",
   "Blink": "Destello",
+  "Combat casting": "Lanzamiento en combate",
   "Timed exile": "Exilio temporizado",
   "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.": "Escribe {Number} donde va una cantidad. Cada carta indica la cantidad y su precio después de la palabra clave, como Suspender: \"Prever 3—{1}{U}\". Sirve cualquier nombre de contador, y \"o cada vez que …\" añade más formas de quitar uno.",
   "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".": "Escribe {Number} donde va una cantidad y {Type} donde va un tipo de carta; la carta los indica entonces después de la palabra clave, como en \"Suspender 3—{1}{U}\" o \"Contemplar un Trasgo\".",
   "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.": "Para fijar cómo escriben las cartas sus parámetros, pon su disposición después del nombre, como \"Forjar {Number} {Cost}\" o \"Heraldo un {Type}\". Sin disposición, una carta puede darlos en cualquier orden, separados por un guion o un espacio.",
   "Enforce filter coverage": "Exigir cobertura de filtros",
   "Enforce whole-line coverage": "Exigir cobertura de líneas completas",
+  "Temporary status": "Estado temporal",
+  "Marks the creature until end of turn. Other abilities can check whether it is bribed or trigger when it becomes bribed. Reapplying an active status does not trigger becoming it again.": "Marca a la criatura hasta el final del turno. Otras habilidades pueden comprobar si est\u00e1 sobornada o dispararse cuando queda sobornada. Volver a aplicar un estado activo no vuelve a disparar ese evento.",
 };
 
 export { rules } from './es.rules.js';

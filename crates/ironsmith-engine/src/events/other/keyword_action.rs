@@ -21,6 +21,7 @@ pub use ironsmith_core::KeywordActionKind;
 pub struct KeywordActionEvent {
     /// Which keyword action was performed.
     pub action: KeywordActionKind,
+    pub custom_status: Option<String>,
     /// Player who performed the action.
     pub player: PlayerId,
     /// Source object that instructed/performed it.
@@ -61,6 +62,7 @@ impl KeywordActionEvent {
     pub fn new(action: KeywordActionKind, player: PlayerId, source: ObjectId, amount: u32) -> Self {
         Self {
             action,
+            custom_status: None,
             player,
             source,
             amount,

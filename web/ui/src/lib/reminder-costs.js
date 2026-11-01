@@ -39,6 +39,9 @@ export function bindReminderCost(reminder, keyword, declaredCost, forms) {
   const pattern = new RegExp(`(?:\\bpay\\s+)?${reference(keyword, forms).source}`, 'gi');
   return String(reminder).replace(pattern, (match, offset) => {
     if (!outsideQuotation(reminder, offset)) return match;
+    // A subject referring back to a price is not another payment slot.
+    // Keep its predicate for the compiler's cost-modifier reader.
+    if (/^this\s+cost$/i.test(match) && /^\s+(?:is|was)\b/i.test(reminder.slice(offset + match.length))) return match;
     const hadPay = /^pay\s+/i.test(match);
     const actionPrice = /^(?:pay|exile|discard|sacrifice|return|tap|remove)\b/i.test(cost);
     // An action price written as its own line ("Blink—Sacrifice a creature.")

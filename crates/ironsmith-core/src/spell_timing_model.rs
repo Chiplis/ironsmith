@@ -36,3 +36,31 @@ pub enum ThisSpellCastTiming {
     /// one (CR 500.1, 500.7 extra turns count as turns taken).
     NotDuringYourFirstTurns(u32),
 }
+
+impl ThisSpellCastTiming {
+    pub fn to_oracle(self) -> String {
+        match self {
+            Self::DuringDeclareAttackersStep => "during the declare attackers step".into(),
+            Self::DuringCombat => "during combat".into(),
+            Self::DuringCombatBeforeBlockersAreDeclared => "during combat before blockers are declared".into(),
+            Self::DuringCombatAfterBlockersAreDeclared => "during combat after blockers are declared".into(),
+            Self::DuringCombatOnYourTurnBeforeBlockersAreDeclared => "during combat on your turn before blockers are declared".into(),
+            Self::DuringCombatOnOpponentsTurn => "during combat on an opponent’s turn".into(),
+            Self::BeforeAttackersAreDeclared => "before attackers are declared".into(),
+            Self::BeforeCombatDamageStep => "before the combat damage step".into(),
+            Self::DuringOpponentsUpkeep => "during an opponent’s upkeep".into(),
+            Self::DuringOpponentsTurnAfterUpkeep => "during an opponent’s turn after their upkeep step".into(),
+            Self::DuringYourEndStep => "during your end step".into(),
+            Self::AfterCombat => "after combat".into(),
+            Self::DuringDeclareBlockersStep => "during the declare blockers step".into(),
+            Self::DuringCombatOnYourTurn => "during combat on your turn".into(),
+            Self::DuringYourTurn => "during your turn".into(),
+            Self::DuringOpponentsTurn => "during an opponent’s turn".into(),
+            Self::BeforeBlockersAreDeclared => "before blockers are declared".into(),
+            Self::DuringYourDeclareAttackersStep => "during your declare attackers step".into(),
+            Self::DuringDeclareBlockersStepOnOpponentsTurn => "during the declare blockers step on an opponent’s turn".into(),
+            Self::DuringOpponentsTurnBeforeAttackersAreDeclared => "during an opponent’s turn before attackers are declared".into(),
+            Self::NotDuringYourFirstTurns(count) => format!("not during your first {count} turns"),
+        }
+    }
+}

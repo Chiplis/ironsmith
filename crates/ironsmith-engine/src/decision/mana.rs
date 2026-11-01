@@ -4295,6 +4295,11 @@ pub(crate) fn can_cast_spell_with_context(
         return false;
     }
 
+    if let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method)
+        && let Some(window) = method.battlefield_instructions().casting_window
+        && !this_spell_cast_timing_allows(game, player, window)
+    { return false; }
+
     if let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method) && let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
             game,
@@ -4779,6 +4784,11 @@ pub(crate) fn can_cast_with_cost_with_context(
     } else { cast_view };
     let cast_view = without_combined_split_characteristics(cast_view, spell, casting_method);
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
+
+    if let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method)
+        && let Some(window) = method.battlefield_instructions().casting_window
+        && !this_spell_cast_timing_allows(game, player, window)
+    { return false; }
 
     if let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method) && let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
@@ -5341,6 +5351,9 @@ pub(crate) fn can_cast_with_alternative_with_context(
         && !game.miracle_cast_is_authorized(spell.id) { return false; }
     if method.discard_exile_cast_cost().is_some()
         && spell.zone != Zone::Stack && !game.madness_cast_is_authorized(spell.id, player) { return false; }
+    if let Some(window) = method.battlefield_instructions().casting_window
+        && !this_spell_cast_timing_allows(game, player, window)
+    { return false; }
     let free_plot_cost = crate::mana::ManaCost::new();
     if let Some(condition) = method.cast_condition()
         && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
@@ -6013,6 +6026,14 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
         casting_method,
         cast_from_zone,
     );
+    if let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method) {
+        let ctx = game.filter_context_for(player, Some(spell.id));
+        for (amount, filter) in &method.battlefield_instructions().generic_cost_reductions {
+            let count = game.objects_in_deterministic_order().into_iter()
+                .filter(|object| filter.matches(object, &ctx, game)).count() as u32;
+            totals.add_generic_reduction(amount.saturating_mul(count));
+        }
+    }
     totals.add_generic_reduction(affinity_for_artifacts_reduction_with_view(
         game, player, spell, view,
     ));

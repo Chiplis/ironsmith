@@ -1993,6 +1993,8 @@ fn resolve_stack_entry_full_inner(
                     None
                 }
             });
+            let enters_attacking = battlefield_method.as_ref().is_some_and(|method|
+                method.battlefield_instructions().enters_attacking);
             let current_turn = game.turn.turn_number;
             if let Some(method) = battlefield_method.as_ref()
                 && let Some(spell) = game.object_mut(entry.object_id)
@@ -2021,7 +2023,7 @@ fn resolve_stack_entry_full_inner(
             }
             let mut options = crate::effects::zones::BattlefieldEntryOptions::specific(
                 obj.initial_controller,
-                cast_with_sneak,
+                cast_with_sneak || battlefield_method.as_ref().is_some_and(|method| method.battlefield_instructions().enters_tapped),
             );
             if let Some(method) = &battlefield_method {
                 options = options.with_initial_counters(method.entry_counters().to_vec());
@@ -2075,6 +2077,11 @@ fn resolve_stack_entry_full_inner(
                 completion_receipts.push((entry.object_id, receipt));
             }
             if let Some(new_id) = new_id {
+                if enters_attacking {
+                    let target = crate::effects::combat::choose_enters_attacking_target(game, &mut ctx, new_id);
+                    if ctx.decision_maker.awaiting_choice() { return Ok(root_outputs); }
+                    if let Some(target) = target { game.add_entering_attacker(new_id, target); }
+                }
                 inherit_resolving_spell_delayed_triggers(game, entry.object_id, new_id);
                 // Cards the spell exiled while it was cast (an escape or other
                 // exile cost) stay "exiled with" the permanent it becomes

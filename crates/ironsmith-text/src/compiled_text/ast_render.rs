@@ -38075,6 +38075,25 @@ pub(super) fn describe_alternative_cast_line(
     idx: usize,
 ) -> String {
     match method {
+        AlternativeCastingMethod::FromZone { name, zone, total_cost, instructions, .. }
+            if name.as_ref() == "Composed zone price" => {
+            let mut text = String::new();
+            if let Some(window) = instructions.casting_window {
+                text.push_str(&window.to_oracle()); text.push_str(", ");
+            }
+            if instructions.instant_timing { text.push_str("any time you could cast an instant, "); }
+            text.push_str(&format!("you may cast this spell from your {} for {} rather than pay its mana cost", format!("{zone:?}").to_ascii_lowercase(), describe_total_cost(total_cost)));
+            for (amount, filter) in &instructions.generic_cost_reductions {
+                text.push_str(&format!(". This cost is reduced by {{{amount}}} for each {}", describe_for_each_filter(filter)));
+            }
+            if instructions.enters_tapped || instructions.enters_attacking {
+                let entry = match (instructions.enters_tapped, instructions.enters_attacking) {
+                    (true, true) => "tapped and attacking", (true, false) => "tapped", _ => "attacking",
+                };
+                text.push_str(&format!(". If you cast this spell this way, it enters {entry}"));
+            }
+            capitalize_first(&text)
+        }
         AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.sacrifice_reduces_generic_by_mana_value => {
             format!("You may cast this spell from your hand by paying {} rather than its mana cost. Reduce the generic mana in that price by the sacrificed permanent's mana value", describe_total_cost(total_cost))
         }

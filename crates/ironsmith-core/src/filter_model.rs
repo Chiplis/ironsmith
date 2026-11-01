@@ -2631,6 +2631,11 @@ pub struct ObjectFilter {
     /// Require the current permanent to have the renowned designation.
     #[cfg_attr(feature = "serde", serde(default))]
     pub renowned: bool,
+    /// Require each named custom status on the exact permanent incarnation.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub custom_statuses: Vec<String>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub excluded_custom_statuses: Vec<String>,
     pub controller: Option<PlayerFilter>,
     pub cast_by: Option<PlayerFilter>,
     /// A stack spell must not have been cast from this zone.
@@ -3223,6 +3228,8 @@ impl std::fmt::Debug for ObjectFilter {
             match_current_state,
             use_face_up_characteristics,
             renowned,
+            custom_statuses,
+            excluded_custom_statuses,
             controller,
             cast_by,
             excluded_cast_origin_zone,
@@ -3446,6 +3453,8 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("match_current_state", match_current_state);
         out.field("use_face_up_characteristics", use_face_up_characteristics);
         out.field("renowned", renowned);
+        out.field("custom_statuses", custom_statuses);
+        out.field("excluded_custom_statuses", excluded_custom_statuses);
         out.field("controller", controller);
         out.field("cast_by", cast_by);
         out.field("excluded_cast_origin_zone", excluded_cast_origin_zone);
@@ -5785,6 +5794,10 @@ impl ObjectFilter {
 
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
+        for name in &self.excluded_custom_statuses { post_noun_qualifiers.push(format!("without the {name} status")); }
+        for name in &self.custom_statuses {
+            post_noun_qualifiers.push(format!("with the {name} status"));
+        }
         if self.renowned {
             parts.push("renowned".to_string());
         }
