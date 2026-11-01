@@ -1040,7 +1040,7 @@ impl<'a> DerivedGameView<'a> {
         reason: crate::costs::PaymentReason,
     ) -> bool {
         self.ensure_memo_context();
-        let mana_spend_policy = self.game.mana_spend_policy(player, source);
+        let mana_spend_policy = self.game.mana_spend_policy_with_reason(player, source, reason);
         let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
             && self.player_can_pay_black_with_life_for_reason(player, reason);
         crate::decision::can_pay_mana_cost_with_available_sources(

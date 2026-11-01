@@ -15,16 +15,103 @@ pub(crate) fn source_spending_rule(
     } else {
         body.strip_suffix(&["to", "cast", "this", "spell"])?
     };
-    let filter = match producer {
-        ["basic", "lands"] => ManaProducerFilter::All(vec![
-            ManaProducerFilter::CardType(ironsmith_core::CardType::Land),
-            ManaProducerFilter::Supertype(ironsmith_core::Supertype::Basic),
-        ]),
-        ["creatures"] => ManaProducerFilter::CardType(ironsmith_core::CardType::Creature),
-        ["treasures"] => ManaProducerFilter::Subtype(ironsmith_core::Subtype::Treasure),
+    Some(ManaSpendingRestriction::ProducedBy(mana_producer_filter(producer)?))
+}
+
+/// The producer a "mana produced by <producers>" rule names: optional
+/// supertypes ("basic", "snow", "legendary") then one plural card type or
+/// subtype ("lands", "creatures", "Treasures", "Forests"). The rule judges
+/// the producer's characteristics as the mana was produced.
+fn mana_producer_filter(words: &[&str]) -> Option<ManaProducerFilter> {
+    let (noun, modifiers) = words.split_last()?;
+    let mut parts = Vec::new();
+    if let Some(card_type) = crate::util::parse_card_type(noun) {
+        parts.push(ManaProducerFilter::CardType(card_type));
+    } else if let Some(subtype) = crate::util::parse_subtype_flexible(noun) {
+        parts.push(ManaProducerFilter::Subtype(subtype));
+    } else {
+        return None;
+    }
+    for modifier in modifiers {
+        if let Some(supertype) = crate::util::parse_supertype_word(modifier) {
+            parts.push(ManaProducerFilter::Supertype(supertype));
+        } else if let Some(card_type) = crate::util::parse_card_type(modifier) {
+            parts.push(ManaProducerFilter::CardType(card_type));
+        } else if let Some(subtype) = crate::util::parse_subtype_flexible(modifier) {
+            parts.push(ManaProducerFilter::Subtype(subtype));
+        } else {
+            return None;
+        }
+    }
+    Some(if parts.len() == 1 {
+        parts.remove(0)
+    } else {
+        ManaProducerFilter::All(parts)
+    })
+}
+
+/// The mana a per-unit spending rule admits: "mana of the chosen color",
+/// "black and/or red mana", "colored mana", "colorless mana", "snow mana",
+/// "mana produced by <producers>".
+fn unit_spending_requirement(words: &[&str]) -> Option<ManaSpendingRestriction> {
+    use ironsmith_core::color::{Color, ColorSet};
+    Some(match words {
+        ["mana", "of", "the", "chosen", "color"] | ["mana", "of", "chosen", "color"] => {
+            ManaSpendingRestriction::SourceChosenColor
+        }
+        ["colored", "mana"] => {
+            ManaSpendingRestriction::Colors(Color::ALL.into_iter().map(ColorSet::from_color).fold(ColorSet::new(), ColorSet::union))
+        }
+        ["colorless", "mana"] => ManaSpendingRestriction::Colorless,
+        ["snow", "mana"] => ManaSpendingRestriction::Snow,
+        ["mana", "produced", "by", producer @ ..] => {
+            ManaSpendingRestriction::ProducedBy(mana_producer_filter(producer)?)
+        }
+        [colors @ .., "mana"] if !colors.is_empty() => {
+            // "black and/or red" lexes its connective as "and or"; a list is
+            // colors separated by one or more connective words.
+            let mut set = ColorSet::new();
+            let mut expect_color = true;
+            for word in colors.iter() {
+                if matches!(*word, "and" | "or" | "and/or") {
+                    if set.is_empty() {
+                        return None;
+                    }
+                    expect_color = true;
+                } else if expect_color {
+                    set = set.with(Color::from_name(word)?);
+                    expect_color = false;
+                } else {
+                    return None;
+                }
+            }
+            if expect_color {
+                return None;
+            }
+            ManaSpendingRestriction::Colors(set)
+        }
         _ => return None,
-    };
-    Some(ManaSpendingRestriction::ProducedBy(filter))
+    })
+}
+
+/// "Spend only mana of the chosen color to activate this ability." (Throne
+/// of Eldraine), "Spend only black mana to activate this ability.": a
+/// consumer-side rule every mana unit paid for this ability's cost obeys.
+pub(crate) fn activation_spending_rule(tokens: &[OwnedLexToken]) -> Option<ManaSpendingRestriction> {
+    crate::word_claims::speculative_keep_if(
+        || {
+            let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+            let words = TokenWordView::new(clean).word_refs();
+            let body = words
+                .strip_prefix(&["spend", "only"])?
+                .strip_suffix(&["to", "activate", "this", "ability"])?;
+            let rule = unit_spending_requirement(body)?;
+            // A complete sentence match: every word was read.
+            crate::word_claims::claim_words(&words);
+            Some(rule)
+        },
+        Option::is_some,
+    )
 }
 
 pub(crate) fn spell_source_spending_ability(

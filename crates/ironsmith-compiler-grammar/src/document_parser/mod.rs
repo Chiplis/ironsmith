@@ -1650,6 +1650,11 @@ fn replace_named_source_alias_tokens(
         {
             last.push_str("'s");
         }
+        // The name now reads as the source reference, exactly as a name the
+        // line preprocessing replaced: the typed subject's word pieces carry
+        // no span of their own, so credit the authored name (whole-line check
+        // only).
+        crate::word_claims::claim_for_line(&tokens[first_token..=last_token]);
         out.extend(
             words
                 .into_iter()
@@ -3126,6 +3131,85 @@ fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
 }
 
 fn try_parse_labeled_line_dispatch(
+    preprocessed: &PreprocessedDocument,
+    idx: usize,
+    line: &PreprocessedLine,
+    allow_unsupported: bool,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let dispatch =
+        try_parse_labeled_line_dispatch_inner(preprocessed, idx, line, allow_unsupported)?;
+    if dispatch.is_some() {
+        claim_presentation_only_label(preprocessed, idx, line);
+    }
+    Ok(dispatch)
+}
+
+/// Labels the compiler gives meaning to: their own readers route and read
+/// them, so they are never presentation-only.
+fn is_meaningful_line_label(label: &str, label_tokens: &[OwnedLexToken]) -> bool {
+    let lower = label.to_ascii_lowercase();
+    document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some()
+        || is_named_ability_label(&lower)
+        || is_case_ability_label(label_tokens)
+        || crate::keyword_forms::official(&lower).is_some()
+        || matches!(
+            lower.as_str(),
+            "max speed"
+                | "eminence"
+                | "valiant"
+                | "secret council"
+                | "council's dilemma"
+                | "councils dilemma"
+                | "tempting offer"
+                | "will of the council"
+                | "join forces"
+                | "companion"
+                | "visit"
+                | "prize"
+                | "forecast"
+                | "boast"
+                | "exhaust"
+                | "renew"
+                | "channel"
+                | "cohort"
+                | "∞"
+        )
+}
+
+/// "Healing Tears — At the beginning of your end step, ..." (CR 207.2c): a
+/// leading flavor/ability-word label of one to five words, capitalized, has
+/// no rules meaning. Once its body committed as a complete line (the caller
+/// only calls this after the labeled dispatch recognized the line), the
+/// label is read as that line's presentation.
+fn claim_presentation_only_label(
+    preprocessed: &PreprocessedDocument,
+    idx: usize,
+    line: &PreprocessedLine,
+) {
+    let Some((label, label_tokens, body_tokens)) =
+        split_label_prefix_lexed(&line.info.source_tokens)
+    else {
+        return;
+    };
+    let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx)
+        && labeled_choice_block_has_named_option_header(&preprocessed.items, idx);
+    if body_tokens.is_empty()
+        || !looks_like_ability_word_label(label_tokens, preserve_as_choice_label)
+        || label_tokens
+            .first()
+            .is_some_and(|token| token.kind == TokenKind::Bullet)
+        || !label_tokens
+            .iter()
+            .find(|token| token.as_word().is_some())
+            .is_some_and(|token| token.slice.chars().next().is_some_and(char::is_uppercase))
+        || is_meaningful_line_label(&label, label_tokens)
+    {
+        return;
+    }
+    crate::word_claims::claim_tokens(label_tokens);
+}
+
+fn try_parse_labeled_line_dispatch_inner(
     preprocessed: &PreprocessedDocument,
     idx: usize,
     line: &PreprocessedLine,
@@ -9682,8 +9766,9 @@ mod tests {
         match recognized.lines.as_slice() {
             [super::RecognizedLine::Modal(modal)] => {
                 assert_eq!(modal.modes.len(), 2);
-                assert_eq!(modal.modes[0].text, "Draw a card.");
-                assert_eq!(modal.modes[1].text, "Gain 3 life.");
+                // Flavor mode labels are kept as the mode's presentation.
+                assert_eq!(modal.modes[0].text, "Meteor Strikes — Draw a card.");
+                assert_eq!(modal.modes[1].text, "Final Heaven — Gain 3 life.");
                 assert!(!modal.modes[0].effects_ast.is_empty());
                 assert!(!modal.modes[1].effects_ast.is_empty());
             }

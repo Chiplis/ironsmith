@@ -1360,8 +1360,13 @@ pub fn parse_player_has_quantity_object_condition(
     let (comparison, used) = crate::grammar::primitives::probe_shape(
         parse_quantity_comparison_prefix(shape.amount_tokens, false, false, context),
     )?;
-    (used == shape.amount_tokens.len())
-        .then_some(PlayerHasQuantityObjectConditionAst { player, comparison })
+    if used != shape.amount_tokens.len() {
+        return None;
+    }
+    // "[target player has] exactly 10 life": the quantity and the counted
+    // object phrase this condition compares.
+    crate::word_claims::claim_tokens(relation.tail_clause.tokens());
+    Some(PlayerHasQuantityObjectConditionAst { player, comparison })
 }
 
 /// A life relation whose subject is "that player or that planeswalker's

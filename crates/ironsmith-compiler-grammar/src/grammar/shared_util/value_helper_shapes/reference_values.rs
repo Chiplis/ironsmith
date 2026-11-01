@@ -63,6 +63,26 @@ pub fn parse_commander_cast_count_player(words: &[&str]) -> Option<PlayerFilter>
 /// whoever owns the commander (Jeska, Font of Magic).
 pub fn parse_commander_cast_count_value(words: &[&str]) -> Option<crate::effect::Value> {
     let player = parse_commander_cast_count_player(words)?;
+    // The complete history clause ("[each] time you've cast your commander
+    // from the command zone this game") is read word for word.
+    let clause = words
+        .iter()
+        .position(|word| matches!(*word, "youve" | "you've"))
+        .map(|start| (&words[..start], &words[start..]));
+    if let Some((prefix, rest)) = clause
+        && matches!(
+            prefix,
+            [] | ["time"] | ["times"] | ["each", "time"] | ["for", "each", "time"]
+                | ["the", "number", "of", "times"]
+        )
+        && matches!(
+            rest,
+            ["youve" | "you've", "cast", "your" | "a", "commander" | "commanders", "from", "the",
+             "command", "zone", "this", "game"]
+        )
+    {
+        crate::word_claims::claim_words(words);
+    }
     Some(
         if permission_shapes::find_words(words, &["a", "commander"]).is_some() {
             crate::effect::Value::CommandersCastFromCommandZoneBy(player)

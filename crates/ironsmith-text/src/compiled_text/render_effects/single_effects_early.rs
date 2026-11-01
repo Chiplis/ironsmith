@@ -6908,6 +6908,7 @@ pub(crate) fn describe_effect(effect: &Effect) -> String {
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         note_damage_recipient(&damage.target);
     }
+    note_declared_target(effect);
     // This tag records the selected card's original identity before a
     // characteristic-changing move. Render the authored name instruction,
     // rather than its synthetic target-only implementation.

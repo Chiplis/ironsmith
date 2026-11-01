@@ -2401,7 +2401,10 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
     // ability is put on the stack, but the game picks it at random among the
     // legal choices (CR 115.7 contrasted with player choice; CR 601.2c).
     if let Some(head_end) = chosen_at_random_target_suffix(tokens) {
-        let inner = parse_target_phrase(&trim_edge_punctuation_tokens(tokens)[..head_end])?;
+        let trimmed = trim_edge_punctuation_tokens(tokens);
+        let inner = parse_target_phrase(&trimmed[..head_end])?;
+        // "chosen at random [from among your opponents]": the random choice.
+        crate::word_claims::claim_tokens(&trimmed[head_end..]);
         return Ok(match inner {
             TargetAst::WithCount(inner, count) => TargetAst::WithCount(inner, count.at_random()),
             other => TargetAst::WithCount(Box::new(other), ChoiceCount::exactly(1).at_random()),

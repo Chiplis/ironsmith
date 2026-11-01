@@ -351,6 +351,8 @@ fn player_negated_restriction_from_tail(
                 PlayerRestrictionTailKind::SearchLibraries => Restriction::search_libraries(player),
                 PlayerRestrictionTailKind::LoseGame => {
                     if words.ends_with(&["for", "having", "0", "or", "less", "life"]) {
+                        // The state-based reason the restriction names.
+                        crate::word_claims::claim_words(&words[words.len() - 6..]);
                         Restriction::LoseGameForZeroLife(player)
                     } else {
                         Restriction::lose_game(player)
@@ -1876,6 +1878,9 @@ pub fn parse_negated_object_restriction_clause(
                             .map(|(idx, _)| idx)
                             .last()
                             .unwrap_or(blocker_tokens.len());
+                        // "with greater power": the blocker-versus-attacker
+                        // power comparison this restriction builds.
+                        crate::word_claims::claim_tokens(&blocker_tokens[keep..]);
                         blocker_tokens = blocker_tokens[..keep].to_vec();
                         greater_power_than_attacker = Some(attacker_power);
                     }

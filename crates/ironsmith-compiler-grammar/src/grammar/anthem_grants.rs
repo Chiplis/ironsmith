@@ -1270,6 +1270,16 @@ pub fn parse_permanent_card_count_facts(
             Some(&("opponent" | "opponents")) => Some(PermanentCardOwner::Opponent),
             _ => None,
         };
+        // "permanent cards in [your|an opponent's] graveyard": the location
+        // phrase between the counted noun and the zone.
+        if let Some(between) = words.get(2..index)
+            && matches!(
+                between,
+                ["in"] | ["in", "your"] | ["in", "an" | "each", "opponent" | "opponents"]
+            )
+        {
+            crate::word_claims::claim_words(between);
+        }
         return Some(PermanentCardCountFacts { zone, owner });
     }
     None

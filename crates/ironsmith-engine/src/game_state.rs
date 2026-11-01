@@ -4266,10 +4266,22 @@ impl ManaSpendEffectTracker {
 
 impl ActiveManaSpendPermission {
     pub fn allows(&self, game: &GameState, payer: PlayerId, source: Option<ObjectId>) -> bool {
+        self.allows_for_reason(game, payer, source, None)
+    }
+
+    /// [`Self::allows`] for a payment whose reason is known, so ability-kind
+    /// scopes can match the activated ability being paid for.
+    pub fn allows_for_reason(
+        &self,
+        game: &GameState,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        reason: Option<crate::costs::PaymentReason>,
+    ) -> bool {
         if self.permission.mana_source_filter.is_some() {
             return false;
         }
-        self.allows_scope(game, payer, source)
+        self.allows_scope(game, payer, source, reason)
     }
 
     pub fn allows_for_mana_source(
@@ -4279,7 +4291,7 @@ impl ActiveManaSpendPermission {
         payment_source: Option<ObjectId>,
         mana_source: ObjectId,
     ) -> bool {
-        if !self.allows_scope(game, payer, payment_source) {
+        if !self.allows_scope(game, payer, payment_source, None) {
             return false;
         }
 
@@ -4300,10 +4312,16 @@ impl ActiveManaSpendPermission {
         payment_source: Option<ObjectId>,
     ) -> bool {
         self.permission.mana_source_filter.is_some()
-            && self.allows_scope(game, payer, payment_source)
+            && self.allows_scope(game, payer, payment_source, None)
     }
 
-    fn allows_scope(&self, game: &GameState, payer: PlayerId, source: Option<ObjectId>) -> bool {
+    fn allows_scope(
+        &self,
+        game: &GameState,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        reason: Option<crate::costs::PaymentReason>,
+    ) -> bool {
         if matches!(
             self.source,
             ManaSpendPermissionSource::Effect {
@@ -4330,6 +4348,35 @@ impl ActiveManaSpendPermission {
         match &self.permission.scope {
             crate::effect::ManaSpendScope::AllCosts => true,
             crate::effect::ManaSpendScope::ActivationCostsOf(filter) => {
+                let Some(source_id) = source else {
+                    return false;
+                };
+                let Some(source_obj) = game.object(source_id) else {
+                    return false;
+                };
+                let filter_ctx = game.filter_context_for(self.controller, Some(source_id));
+                filter.matches(source_obj, &filter_ctx, game)
+            }
+            // The paid ability's kind is known only from the payment reason;
+            // payments without one (spells, effects, special actions) never
+            // match an ability-kind scope.
+            crate::effect::ManaSpendScope::ActivationCostsOfAbilityKind { filter, kind } => {
+                let kind_matches = match (kind, reason) {
+                    (
+                        ironsmith_core::ActivatedAbilityKindSelector::Keyword(expected),
+                        Some(crate::costs::PaymentReason::ActivateAbilityWithKeyword {
+                            keyword, ..
+                        }),
+                    ) => *expected == keyword,
+                    (
+                        ironsmith_core::ActivatedAbilityKindSelector::Loyalty,
+                        Some(crate::costs::PaymentReason::ActivateLoyaltyAbility),
+                    ) => true,
+                    _ => false,
+                };
+                if !kind_matches {
+                    return false;
+                }
                 let Some(source_id) = source else {
                     return false;
                 };

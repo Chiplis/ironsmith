@@ -94,7 +94,11 @@ pub trait ActivatedAbilityRuntimeExt {
 
 impl ActivatedAbilityRuntimeExt for ActivatedAbility {
     fn payment_reason(&self, game: &crate::game_state::GameState, source: ObjectId, controller: PlayerId) -> crate::costs::PaymentReason {
-        crate::costs::PaymentReason::activation(self.keyword, self.is_runtime_mana_ability(game, source, controller))
+        crate::costs::PaymentReason::activation_of_kind(
+            self.keyword,
+            self.is_runtime_mana_ability(game, source, controller),
+            self.is_loyalty_ability(),
+        )
     }
 
     fn could_add_mana(

@@ -297,7 +297,7 @@ pub use types::{CardType, Subtype, SubtypeFamily, Supertype};
 pub use value_model::{
     AttachmentConditionHost, Condition, CombatParticipantCondition, ConditionConjunction, DeathHistoryControllerSurface,
     DistinctCharacteristic,
-    EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
+    ActivatedAbilityKindSelector, EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
     ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
     PriorEffectMetricQuery, ColorChoiceReference, ObjectRule, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
     TurnHistoryCondition, TurnHistoryCount, Value, ValueSurfaceHint,

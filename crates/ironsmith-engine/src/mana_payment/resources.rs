@@ -100,6 +100,9 @@ impl ManaCredit {
                         Some(&request.cost),
                     )
             })
+            .filter(|symbol| {
+                unit_satisfies_cost(game, &request.cost, Some(request.source), *symbol, snow)
+            })
             .map(|symbol| PaymentManaUnit { symbol, snow })
             .collect()
     }
@@ -194,7 +197,37 @@ pub(crate) fn production_satisfies_cost(
                 snapshot.zone == crate::zone::Zone::Battlefield && matches(filter, snapshot)
             })
         }
+        // Per-unit color and snow requirements are judged on each unit by
+        // `unit_satisfies_cost`, not on the producer alone.
+        ironsmith_core::mana::ManaSpendingRestriction::SourceChosenColor
+        | ironsmith_core::mana::ManaSpendingRestriction::Colors(_)
+        | ironsmith_core::mana::ManaSpendingRestriction::Colorless
+        | ironsmith_core::mana::ManaSpendingRestriction::Snow => true,
     })
+}
+
+/// Whether one unit may be spent on `cost` under its per-unit spending
+/// restrictions ("spend only mana of the chosen color", "only snow mana").
+/// The chosen color is the paying object's (`payment_source`).
+pub(crate) fn unit_satisfies_cost(
+    game: &GameState,
+    cost: &crate::mana::ManaCost,
+    payment_source: Option<crate::ids::ObjectId>,
+    symbol: ManaSymbol,
+    from_snow_source: bool,
+) -> bool {
+    let restrictions = cost.spending_restrictions();
+    if restrictions.is_empty() {
+        return true;
+    }
+    let chosen_color = restrictions
+        .iter()
+        .any(|rule| matches!(rule, ironsmith_core::mana::ManaSpendingRestriction::SourceChosenColor))
+        .then(|| payment_source.and_then(|source| game.chosen_color(source)))
+        .flatten();
+    restrictions
+        .iter()
+        .all(|rule| rule.admits_unit(symbol, chosen_color, from_snow_source))
 }
 
 /// A transaction-qualified unit. Full source/snapshot/restriction/retention

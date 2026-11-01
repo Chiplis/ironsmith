@@ -86,6 +86,33 @@ pub enum ManaSpendingRestriction {
     /// Necropolis): no actual mana unit may be spent on this cost, so every
     /// pip is paid by non-mana means such as convoke or delve (CR 601.2h).
     NoMana,
+    /// "Spend only mana of the chosen color to activate this ability."
+    /// (Throne of Eldraine): every unit spent must be the color chosen for
+    /// the object whose cost is being paid. With no chosen color, no mana
+    /// unit qualifies.
+    SourceChosenColor,
+    /// "Spend only black and/or red mana to activate this ability": every
+    /// unit spent must be one of these colors (all five for "colored").
+    Colors(ColorSet),
+    /// "Spend only colorless mana ...": every unit spent must be colorless.
+    Colorless,
+    /// "Spend only snow mana ...": every unit spent must come from a snow
+    /// source (CR 107.4h).
+    Snow,
+}
+
+impl ManaSymbol {
+    /// The color of one unit of mana of this type, if it is colored.
+    pub fn unit_color(self) -> Option<Color> {
+        match self {
+            ManaSymbol::White => Some(Color::White),
+            ManaSymbol::Blue => Some(Color::Blue),
+            ManaSymbol::Black => Some(Color::Black),
+            ManaSymbol::Red => Some(Color::Red),
+            ManaSymbol::Green => Some(Color::Green),
+            _ => None,
+        }
+    }
 }
 
 impl ManaProducerFilter {
@@ -119,6 +146,64 @@ impl ManaSpendingRestriction {
                 text
             },
             Self::NoMana => format!("You can't spend mana to cast {scope}"),
+            _ => format!("Spend only {} to cast {scope}", self.unit_requirement_description()),
+        }
+    }
+
+    /// The rider an activated ability's restricted cost carries:
+    /// "Spend only mana of the chosen color to activate this ability".
+    pub fn activation_description(&self) -> String {
+        match self {
+            Self::OnX { .. } => self.cast_description(false),
+            Self::NoMana => "You can't spend mana to activate this ability".to_string(),
+            _ => format!(
+                "Spend only {} to activate this ability",
+                self.unit_requirement_description()
+            ),
+        }
+    }
+
+    /// The mana a per-unit restriction admits ("mana of the chosen color",
+    /// "black and/or red mana", "mana produced by creatures").
+    fn unit_requirement_description(&self) -> String {
+        match self {
+            Self::ProducedBy(filter) => format!("mana produced by {}", filter.description()),
+            Self::SourceChosenColor => "mana of the chosen color".to_string(),
+            Self::Colors(colors) if colors.count() == 5 => "colored mana".to_string(),
+            Self::Colors(colors) => format!(
+                "{} mana",
+                Color::ALL
+                    .into_iter()
+                    .filter(|color| colors.contains(*color))
+                    .map(Color::name)
+                    .collect::<Vec<_>>()
+                    .join(" and/or ")
+            ),
+            Self::Colorless => "colorless mana".to_string(),
+            Self::Snow => "snow mana".to_string(),
+            Self::OnX { .. } | Self::NoMana => "mana".to_string(),
+        }
+    }
+
+    /// Whether one unit of `symbol` may be spent under this restriction,
+    /// judged on the unit itself. `chosen_color` is the paying object's
+    /// chosen color; `from_snow_source` is the unit's production provenance.
+    /// Producer-type and X-allocation restrictions are judged elsewhere.
+    pub fn admits_unit(
+        &self,
+        symbol: ManaSymbol,
+        chosen_color: Option<Color>,
+        from_snow_source: bool,
+    ) -> bool {
+        match self {
+            Self::SourceChosenColor => {
+                chosen_color.is_some_and(|color| symbol.unit_color() == Some(color))
+            }
+            Self::Colors(colors) => symbol.unit_color().is_some_and(|color| colors.contains(color)),
+            Self::Colorless => symbol == ManaSymbol::Colorless,
+            Self::Snow => from_snow_source,
+            Self::NoMana => false,
+            Self::ProducedBy(_) | Self::OnX { .. } => true,
         }
     }
 }
@@ -211,6 +296,15 @@ impl ManaCost {
         }
         result.reprice_waterbend_from(self);
         result
+    }
+
+    /// Drop every per-unit spending rule (color, snow, producer, no-mana),
+    /// keeping X-allocation rules. Renderers use it to print the rule once
+    /// as the ability's rider instead of inside the price.
+    pub fn without_unit_spending_restrictions(mut self) -> Self {
+        self.spending_restrictions
+            .retain(|rule| matches!(rule, ManaSpendingRestriction::OnX { .. }));
+        self
     }
 
     pub fn inherit_spending_restrictions(mut self, other: &Self) -> Self {

@@ -27,44 +27,63 @@ pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
         && let Ok(filter) = crate::object_filters::parse_object_filter_lexed(filter_tokens, false)
         && filter != ObjectFilter::default()
     {
+        crate::word_claims::claim_tokens(&input.predicate_tokens[..start]);
         return Some(PredicateAst::ItMatches(filter));
     }
-    let words: Vec<String> = crate::lexer::token_word_refs(input.predicate_tokens)
-        .into_iter()
-        .map(|word| word.replace(['\'', '’'], ""))
+    // The shapes match apostrophe-free words ("its", "youve"). Rewrite the
+    // apostrophe words on copies of the authored tokens: a one-word rewrite
+    // keeps the authored span, so the words below stay registered and each
+    // reading can claim what it reads.
+    let words_tokens: Vec<OwnedLexToken> = input
+        .predicate_tokens
+        .iter()
+        .map(|token| {
+            let mut token = token.clone();
+            if let Some(stripped) = token
+                .as_word()
+                .filter(|word| word.contains(['\'', '’']))
+                .map(|word| word.replace(['\'', '’'], ""))
+            {
+                token.replace_word(stripped);
+            }
+            token
+        })
         .collect();
-    let words: Vec<&str> = words.iter().map(String::as_str).collect();
-    // A whole-clause comparison the word copies can't claim themselves.
-    if let Some(predicate) = more_cards_in_hand_than_each_opponent(&words) {
-        crate::word_claims::claim_tokens(input.predicate_tokens);
-        return Some(predicate);
-    }
-    // "it escaped" / "this creature escaped": an exact whole-clause shape.
-    if let Some(predicate) = source_escaped(&words) {
-        crate::word_claims::claim_tokens(input.predicate_tokens);
-        return Some(predicate);
-    }
+    let words = crate::lexer::token_word_refs(&words_tokens);
     read_words(&words)
+}
+
+/// One reading attempt: a reading that declines leaves no claims behind.
+fn attempt(read: impl FnOnce() -> Option<PredicateAst>) -> Option<PredicateAst> {
+    crate::word_claims::speculative_keep_if(read, Option::is_some)
+}
+
+/// A rewriting reading (negation, possessive or definite-description
+/// respelling) reads every input word into the respelled predicate.
+fn whole(words: &[&str], predicate: Option<PredicateAst>) -> Option<PredicateAst> {
+    let predicate = predicate?;
+    crate::word_claims::claim_words(words);
+    Some(predicate)
 }
 
 fn read_words(words: &[&str]) -> Option<PredicateAst> {
     for shape in SHAPES {
-        if let Some(predicate) = shape(words) {
+        if let Some(predicate) = attempt(|| shape(words)) {
             return Some(predicate);
         }
     }
     // Negation scopes over the whole copula predicate ("it isn't A or B"),
     // so it is read before the disjunction split below.
-    if let Some(predicate) = negated_copula(words) {
+    if let Some(predicate) = attempt(|| whole(words, negated_copula(words))) {
         return Some(predicate);
     }
-    if let Some(predicate) = possessive_characteristic(words) {
+    if let Some(predicate) = attempt(|| whole(words, possessive_characteristic(words))) {
         return Some(predicate);
     }
-    if let Some(predicate) = definite_referent_had(words) {
+    if let Some(predicate) = attempt(|| whole(words, definite_referent_had(words))) {
         return Some(predicate);
     }
-    if let Some(predicate) = exploited_referent_had(words) {
+    if let Some(predicate) = attempt(|| whole(words, exploited_referent_had(words))) {
         return Some(predicate);
     }
     // "an oil counter was removed from a permanent you controlled this turn
@@ -74,12 +93,14 @@ fn read_words(words: &[&str]) -> Option<PredicateAst> {
         if *word != "or" || index == 0 || index + 1 >= words.len() {
             continue;
         }
-        let (Some(left), Some(right)) = (
-            read_side(&words[..index]),
-            read_side(&words[index + 1..]),
+        let Some((left, right)) = crate::word_claims::speculative_keep_if(
+            || Some((read_side(&words[..index])?, read_side(&words[index + 1..])?)),
+            Option::is_some,
         ) else {
             continue;
         };
+        // The connective joins the two independently read sides.
+        crate::word_claims::claim_words(&words[index..=index]);
         return Some(PredicateAst::Or(Box::new(left), Box::new(right)));
     }
     None
@@ -89,12 +110,14 @@ fn read_words(words: &[&str]) -> Option<PredicateAst> {
 /// predicate grammar.
 fn read_side(words: &[&str]) -> Option<PredicateAst> {
     for shape in SHAPES {
-        if let Some(predicate) = shape(words) {
+        if let Some(predicate) = attempt(|| shape(words)) {
             return Some(predicate);
         }
     }
+    // The shared grammar reads respelled synthetic tokens, which carry no
+    // authored spans; a complete reading reads every side word.
     let tokens = crate::lexer::synthetic_word_tokens(words.iter().copied());
-    parse_predicate(&tokens).ok()
+    whole(words, parse_predicate(&tokens).ok())
 }
 
 /// Negated copulas (and "doesn't have") and the positive verb each denies.
@@ -230,7 +253,23 @@ fn negated_copula(words: &[&str]) -> Option<PredicateAst> {
 
 type Shape = fn(&[&str]) -> Option<PredicateAst>;
 
-const SHAPES: &[Shape] = &[
+/// Every shape below is an exact whole-clause pattern (each word is matched
+/// or read into a nested filter/value), so each entry claims its whole input
+/// on its own success.
+macro_rules! whole_clause_shapes {
+    ($($shape:ident),* $(,)?) => {
+        &[$({
+            fn claimed(words: &[&str]) -> Option<PredicateAst> {
+                let predicate = $shape(words)?;
+                crate::word_claims::claim_words(words);
+                Some(predicate)
+            }
+            claimed as Shape
+        }),*]
+    };
+}
+
+const SHAPES: &[Shape] = whole_clause_shapes![
     player_hasnt_played_that_card,
     source_state,
     creature_blocking_source,
@@ -1474,6 +1513,8 @@ fn energy_paid_threshold(tokens: &[crate::lexer::OwnedLexToken]) -> Option<Predi
         _ => return None,
     };
     let count = i32::try_from(crate::util::parse_number_word_u32(count)?).ok()?;
+    // The whole clause, energy symbol included, is this reading.
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::ValueComparison {
         left: Value::PendingPriorEffectMetric(
             ironsmith_core::PriorEffectMetricQuery::new(
@@ -1612,6 +1653,8 @@ fn negated_mana_spent(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let mut positive = tokens.to_vec();
     positive[negation] = OwnedLexToken::synthetic_word("was");
     let predicate = parse_predicate(&positive).ok()?;
+    // The authored negation is read as the Not around the positive reading.
+    crate::word_claims::claim_tokens(&tokens[negation..=negation]);
     Some(PredicateAst::Not(Box::new(predicate)))
 }
 

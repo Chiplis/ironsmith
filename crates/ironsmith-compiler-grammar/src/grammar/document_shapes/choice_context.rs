@@ -16,7 +16,11 @@ pub fn parse_case_label_tokens(tokens: &[OwnedLexToken]) -> Option<CaseLabelKind
 }
 
 pub fn parse_chosen_option_context_tokens(tokens: &[OwnedLexToken]) -> Option<ChosenOptionContext> {
-    crate::grammar::primitives::probe_all(tokens, chosen_option_context, "chosen-option-label")
+    let context =
+        crate::grammar::primitives::probe_all(tokens, chosen_option_context, "chosen-option-label")?;
+    // "• Dragons —": the label names the chosen option that gates the line.
+    crate::word_claims::claim_tokens(tokens);
+    Some(context)
 }
 
 fn case_label(input: &mut LexStream<'_>) -> WResult<CaseLabelKind> {

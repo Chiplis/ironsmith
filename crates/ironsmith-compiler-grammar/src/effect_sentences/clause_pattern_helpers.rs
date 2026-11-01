@@ -506,6 +506,15 @@ pub fn parse_copy_spell_clause(
                     &words,
                 )
         {
+            // "each time you've cast your commander from the command zone
+            // this game": the whole count clause is this history value.
+            if matches!(
+                words.as_slice(),
+                ["time", "youve" | "you've", "cast", "your" | "a", "commander" | "commanders",
+                 "from", "the", "command", "zone", "this", "game"]
+            ) {
+                crate::word_claims::claim_tokens(tokens);
+            }
             Ok(value)
         } else {
             Ok(Value::Count(parse_object_filter(tokens, false)?))

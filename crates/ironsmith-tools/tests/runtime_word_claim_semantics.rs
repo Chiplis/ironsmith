@@ -1671,3 +1671,130 @@ fn untap_up_to_one_creature_and_up_to_one_land() {
     assert!(!g.is_tapped(land));
     assert!(g.is_tapped(other), "only the targets untap");
 }
+
+const THRONE_OF_ELDRAINE: &str = "Mana cost: {5}\nType: Legendary Artifact\nAs Throne of Eldraine enters, choose a color.\n{T}: Add four mana of the chosen color. Spend this mana only to cast monocolored spells of that color.\n{3}, {T}: Draw two cards. Spend only mana of the chosen color to activate this ability.";
+
+const BLACK_RED_DRAWER: &str = "Mana cost: {2}\nType: Artifact\n{2}, {T}: Draw a card. Spend only black and/or red mana to activate this ability.";
+
+fn basic_land(name: &str, subtype: &str, symbol: &str) -> CardDefinition {
+    compile(name, &format!("Type: Basic Land — {subtype}\n({{T}}: Add {{{symbol}}}.)"))
+}
+
+/// Where the mana for a restricted activation comes from: floating in the
+/// pool, or basic lands tapped while paying.
+enum ManaSource {
+    Pool(Vec<(ManaSymbol, u32)>),
+    Lands(Vec<(&'static str, &'static str, &'static str)>),
+}
+
+/// Put `def` (with an optional chosen color) on Alice's battlefield, supply
+/// mana, and return whether its restricted ability is offered. When offered,
+/// activate and resolve it and return the number of cards drawn.
+fn restricted_activation(
+    def: &CardDefinition,
+    chosen: Option<ironsmith::color::Color>,
+    mana: ManaSource,
+) -> Option<usize> {
+    let mut g = game(2);
+    stock_library(&mut g, ALICE, 4);
+    let source = put(&mut g, def, ALICE, Zone::Battlefield);
+    if let Some(color) = chosen {
+        g.set_chosen_color(source, color);
+    }
+    let mut lands = Vec::new();
+    match mana {
+        ManaSource::Pool(symbols) => {
+            for (symbol, amount) in symbols {
+                add_mana(&mut g, ALICE, symbol, amount);
+            }
+        }
+        ManaSource::Lands(specs) => {
+            for (name, subtype, symbol) in specs {
+                lands.push(put(&mut g, &basic_land(name, subtype, symbol), ALICE, Zone::Battlefield));
+            }
+        }
+    }
+    g.refresh_continuous_state().unwrap();
+    let index = activated_index(def, Zone::Battlefield);
+    if !activation_indices(&mut g, ALICE, source).contains(&index) {
+        return None;
+    }
+    let library_before = g.player(ALICE).unwrap().library.len();
+    let mut dm = Script::default();
+    let mut queue = perform(&mut g, source, ALICE, Some(index), &mut dm)
+        .unwrap_or_else(|e| panic!("{}: offered but not payable: {e}", def.name()));
+    settle(&mut g, &mut queue, &mut dm);
+    assert!(g.is_tapped(source));
+    for land in lands {
+        assert!(g.is_tapped(land), "the land paid for the ability");
+    }
+    Some(library_before - g.player(ALICE).unwrap().library.len())
+}
+
+/// Throne of Eldraine with blue chosen: its draw ability is paid with blue
+/// mana from the pool or from Islands, never with red pool mana or Mountains.
+#[test]
+fn throne_of_eldraine_activation_spends_only_the_chosen_color() {
+    use ironsmith::color::Color;
+    let throne = compile("Throne of Eldraine", THRONE_OF_ELDRAINE);
+    let island = ("Island", "Island", "U");
+    let mountain = ("Mountain", "Mountain", "R");
+    assert_eq!(
+        restricted_activation(&throne, Some(Color::Blue), ManaSource::Pool(vec![(ManaSymbol::Blue, 3)])),
+        Some(2),
+        "blue pool mana pays and the ability draws two"
+    );
+    assert_eq!(
+        restricted_activation(&throne, Some(Color::Blue), ManaSource::Pool(vec![(ManaSymbol::Red, 3)])),
+        None,
+        "red pool mana can't pay"
+    );
+    assert_eq!(
+        restricted_activation(&throne, Some(Color::Blue), ManaSource::Lands(vec![island; 3])),
+        Some(2),
+        "Islands tapped during payment pay"
+    );
+    assert_eq!(
+        restricted_activation(&throne, Some(Color::Blue), ManaSource::Lands(vec![mountain; 3])),
+        None,
+        "Mountains can't pay"
+    );
+}
+
+/// "Spend only black and/or red mana": one black plus one red pays, from the
+/// pool or from a Swamp and a Mountain; green doesn't, from either source.
+#[test]
+fn black_and_or_red_activation_rejects_other_colors() {
+    let drawer = compile("Black Red Drawer", BLACK_RED_DRAWER);
+    assert_eq!(
+        restricted_activation(
+            &drawer,
+            None,
+            ManaSource::Pool(vec![(ManaSymbol::Black, 1), (ManaSymbol::Red, 1)])
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        restricted_activation(&drawer, None, ManaSource::Pool(vec![(ManaSymbol::Green, 2)])),
+        None,
+        "green pool mana can't pay"
+    );
+    assert_eq!(
+        restricted_activation(
+            &drawer,
+            None,
+            ManaSource::Lands(vec![("Swamp", "Swamp", "B"), ("Mountain", "Mountain", "R")])
+        ),
+        Some(1),
+        "a Swamp and a Mountain pay"
+    );
+    assert_eq!(
+        restricted_activation(
+            &drawer,
+            None,
+            ManaSource::Lands(vec![("Forest", "Forest", "G"), ("Forest", "Forest", "G")])
+        ),
+        None,
+        "Forests can't pay"
+    );
+}

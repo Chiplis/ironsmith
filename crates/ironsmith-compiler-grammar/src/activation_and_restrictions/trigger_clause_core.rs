@@ -1829,6 +1829,7 @@ fn parse_passive_damage_source_filter(
     }
 
     let mut branches = Vec::new();
+    let mut connector_tokens = Vec::new();
     let mut branch_word_start = 0;
     for connector_word in repeated_by_connectors
         .iter()
@@ -1855,9 +1856,18 @@ fn parse_passive_damage_source_filter(
                 ))
             })?,
         );
+        if connector_word < source_words.len() {
+            let after = trigger_word_token_start(source_tokens, connector_word + 2)
+                .unwrap_or(source_tokens.len());
+            connector_tokens.push(branch_token_end..after);
+        }
         branch_word_start = connector_word.saturating_add(2);
     }
 
+    // The repeated "or by" connectors join the source branches read above.
+    for range in connector_tokens {
+        crate::word_claims::claim_tokens(&source_tokens[range]);
+    }
     let mut source = ObjectFilter::default();
     source.any_of = branches;
     source.set_union_connective(crate::filter::ObjectFilterUnionConnective::Or);
@@ -2497,9 +2507,8 @@ fn try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(
     // "Whenever you cycle this card or cycle another card while this
     // enchantment is on the battlefield" (Astral Drift): a cycling event
     // trigger, not a state trigger.
-    let words = crate::lexer::token_word_refs(trim_edge_punctuation_tokens(
-        strip_leading_trigger_intro(tokens),
-    ));
+    let trimmed = trim_edge_punctuation_tokens(strip_leading_trigger_intro(tokens));
+    let words = crate::lexer::token_word_refs(trimmed);
     if let [
         "you",
         "cycle",
@@ -2518,6 +2527,8 @@ fn try_parse_cycle_this_or_another_on_battlefield_trigger_lexed(
         "battlefield",
     ] = words.as_slice()
     {
+        // The whole fixed clause is this reading.
+        crate::word_claims::claim_tokens(trimmed);
         return Some(TriggerSpec::Either(
             Box::new(TriggerSpec::KeywordActionFromSource {
                 action: crate::events::KeywordActionKind::Cycle,

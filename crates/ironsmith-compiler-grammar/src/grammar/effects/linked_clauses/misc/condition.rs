@@ -88,6 +88,14 @@ pub fn parse_graveyard_cast_permission_shape(
     };
     let additional_mana_cost =
         crate::grammar::primitives::probe_shape(additional_cast_mana_cost(cast))?;
+    // "without paying its mana cost": the free-cast permission this shape
+    // carries. The locator above reads nothing; read the phrase where found.
+    {
+        let mut input = LexStream::new(cast);
+        if seek_sequence_phrase(&mut input, WITHOUT_MANA).is_ok() {
+            let _ = sequence_any_phrase(WITHOUT_MANA).parse_next(&mut input);
+        }
+    }
     Some(GraveyardCastReplacementShape {
         until_end_of_turn,
         replacement_to_your_graveyard: false,

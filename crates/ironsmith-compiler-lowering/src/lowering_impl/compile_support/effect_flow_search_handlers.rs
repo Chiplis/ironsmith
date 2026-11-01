@@ -1102,6 +1102,24 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let runtime_cost =
                 crate::lowering::cost_materialization::materialize_compiler_core_payment_cost(cost)?;
             let payer_relative_cost = normalize_unless_cost_for_payer(runtime_cost);
+            // With no object antecedent before the instruction, an authored
+            // `it` in the payment names the target that instruction itself
+            // declared and tagged, even when a wrapper (ExecuteWithSource)
+            // restored the ambient frame after producing the tag ("target
+            // enchantment deals damage ... unless that player sacrifices
+            // it", Enchanter's Bane). An antecedent captured before the
+            // instruction still wins, so a sacrifice/destroy consequence
+            // cannot replace it with its own result tag.
+            let mut cost_reference_env = cost_reference_env;
+            if !matches!(
+                cost_reference_env.last_object_tag,
+                crate::model::reference_state::RefState::Known(_)
+            ) && let Some((tag, _)) =
+                super::prepared_effects::last_tagged_default_target(&inner_effects)
+            {
+                cost_reference_env.last_object_tag =
+                    crate::model::reference_state::RefState::Known(tag);
+            }
             // A possessive "it" in a payment for one announced object target
             // reads that target's characteristic at payment time. Do not
             // infer a target when multiple distinct object targets exist.

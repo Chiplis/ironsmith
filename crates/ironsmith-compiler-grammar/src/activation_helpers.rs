@@ -543,6 +543,16 @@ pub fn parse_add_mana(
         let amount = parse_devotion_value_from_add_clause(tokens)?
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
             .unwrap_or(Value::Fixed(1));
+        // "add an amount of mana of that color equal to ...": the lead-in
+        // names the chosen-color output this reading builds.
+        let body = tokens
+            .first()
+            .filter(|token| token.is_word("add"))
+            .map_or(tokens, |_| &tokens[1..]);
+        let _ = crate::grammar::primitives::match_word_prefix(
+            body,
+            &["an", "amount", "of", "mana", "of", "that", "color"],
+        );
         return Ok(EffectAst::subject_verb_add_mana_chosen_color(
             player, amount, None,
         ));
@@ -786,6 +796,13 @@ pub fn parse_add_mana(
             ));
         }
         if let Some(amount) = parse_devotion_value_from_add_clause(tokens)? {
+            // "add an amount of {G} equal to your devotion to green": the
+            // lead-in names the scaled amount this reading builds.
+            let body = tokens
+                .first()
+                .filter(|token| token.is_word("add"))
+                .map_or(tokens, |_| &tokens[1..]);
+            let _ = crate::grammar::primitives::match_word_prefix(body, &["an", "amount", "of"]);
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,
             ));

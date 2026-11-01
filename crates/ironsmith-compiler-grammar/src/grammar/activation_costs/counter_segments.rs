@@ -134,7 +134,15 @@ pub fn parse_remove_counter_segment_tokens_with_source(
     // unknown subtype or an invitation to choose another permanent.
     let source_target = !target_among && (
         primitives::parse_all(target, parse_remove_counter_source_lexed, "remove-counter-source").is_ok()
-            || is_contextual_source(&crate::lexer::parser_token_word_refs(filter_tokens))
+            || {
+                // "Remove five +1/+1 counters from Ramos": the card's own
+                // (short) name read as the source.
+                let named = is_contextual_source(&crate::lexer::parser_token_word_refs(filter_tokens));
+                if named {
+                    crate::word_claims::claim_tokens(filter_tokens);
+                }
+                named
+            }
     );
     let granting_target = crate::lexer::parser_token_word_refs(filter_tokens).as_slice() == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS;
     let filter = if source_target { crate::target::ObjectFilter::source() }

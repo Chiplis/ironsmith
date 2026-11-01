@@ -1353,8 +1353,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let Some((subject, actions)) =
         crate::grammar::trigger_clauses::parse_shared_keyword_action_list(tokens)
         && let Some(player) =
-            parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[subject]))
+            parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[subject.clone()]))
     {
+        // The verb list and its separators are this union's arms.
+        crate::word_claims::claim_tokens(&tokens[subject.end..]);
         let mut triggers = actions.into_iter().map(|action| TriggerSpec::KeywordAction {
             action,
             player: player.clone(),
@@ -1439,9 +1441,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let Some(alternatives) =
         crate::grammar::trigger_clauses::parse_shared_keyword_action_alternatives(tokens)
         && let Some(player) = parse_trigger_subject_player_filter(
-            &crate::lexer::token_word_refs(&tokens[alternatives.subject]),
+            &crate::lexer::token_word_refs(&tokens[alternatives.subject.clone()]),
         )
     {
+        // "scry or surveil": both verbs and their "or" are this union.
+        crate::word_claims::claim_tokens(&tokens[alternatives.subject.end..]);
         let action_trigger = |action| TriggerSpec::KeywordAction {
             action,
             player: player.clone(),
@@ -3241,6 +3245,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter.nontoken = true;
                 filter.set_explicit_card_noun(true);
             }
+            // "is/are put into exile [from <origins>] [during your turn]":
+            // the event verb, origin list and turn qualifier are read here.
+            crate::word_claims::claim_words(&words[subject_word_len..]);
             return Ok(TriggerSpec::PutIntoExileFromZones {
                 filter,
                 from: from_zones,
@@ -4342,6 +4349,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 None if is_source_reference_words(subject_words) => ObjectFilter::source(),
                 None => return Err(CardTextError::ParseError("unknown participant in ability-source targeting event".into())),
             };
+            // "an ability of <source>": the stack-object kind and its source link.
+            crate::word_claims::claim_words(&words[becomes_idx + 4..becomes_idx + 7]);
             return Ok(TriggerSpec::BecomesTargetedByAbilitySource { target, source });
         }
         let subject_is_source =
@@ -4486,6 +4495,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let recipient_words =
             ActivationRestrictionCompatWords::new(recipient_tokens).to_word_refs();
         if let Some(player) = parse_trigger_subject_player_filter(&recipient_words) {
+            // "is/are dealt damage by": the passive event head.
+            crate::word_claims::claim_tokens(&tokens[recipient_end_token..source_start_token]);
             return Ok(TriggerSpec::DealsDamageToPlayer {
                 source,
                 player,
@@ -4499,6 +4510,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 words.join(" ")
             ))
         })?;
+        crate::word_claims::claim_tokens(&tokens[recipient_end_token..source_start_token]);
         return Ok(TriggerSpec::DealsDamageTo {
             source,
             target,
@@ -5441,6 +5453,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let [subject @ .., "collect" | "collects", "evidence"] = words.as_slice()
         && let Some(player) = parse_trigger_subject_player_filter(subject)
     {
+        crate::word_claims::claim_words(&words[subject.len()..]);
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::CollectEvidence,
             player,
@@ -5706,12 +5719,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             ))
         })?;
 
-        let counter_number = words[..counter_word_idx]
+        let ordinal_word_idx = words[..counter_word_idx]
             .iter()
-            .find_map(|word| ironsmith_core::parse_ordinal_word(word));
+            .position(|word| ironsmith_core::parse_ordinal_word(word).is_some());
+        let counter_number = ordinal_word_idx
+            .and_then(|idx| ironsmith_core::parse_ordinal_word(words[idx]));
         if !include_players
             && let (Some(counter_number), Some(counter_type)) = (counter_number, counter_type)
         {
+            // "the <ordinal> <kind> counter": the ordinal is the event's
+            // crossing counter number.
+            if let Some(idx) = ordinal_word_idx {
+                crate::word_claims::claim_words(&words[idx..=idx]);
+            }
             return Ok(TriggerSpec::NthCounterPutOn {
                 filter,
                 counter_type,
@@ -6046,6 +6066,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 && subject_words.last() == Some(&"player")
                 && let Some(attacker) = trigger_subject_player_selector_lexed(subject_tokens)
             {
+                // "attacks one of your opponents" is read whole here.
+                crate::word_claims::claim_tokens(&tokens[attacks_token_idx..]);
                 return Ok(TriggerSpec::PlayerAttacksTargetWithOneOrMore {
                     attacker,
                     target: ironsmith_core::AttackTargetRestriction::Player(PlayerFilter::Opponent),
@@ -6842,13 +6864,16 @@ pub(super) fn parse_possessive_ability_trigger_tail_lexed(
     let Some(tail) = trigger_grammar::parse_possessive_ability_tail(tail_tokens) else {
         return Ok(None);
     };
-    let owner_subject_tokens = &tail_tokens[tail.owner];
+    let owner_subject_tokens = &tail_tokens[tail.owner.clone()];
     let owner_filter = parse_object_filter_lexed(owner_subject_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported activated-ability trigger source filter (clause: '{}')",
             tail_words.join(" ")
         ))
     })?;
+    // "<owner>'s [<marker>] ability": the marker and ability noun are read
+    // into the owner filter's ability marker.
+    crate::word_claims::claim_tokens(&tail_tokens[tail.owner.end..]);
 
     Ok(Some((owner_filter, tail.marker)))
 }

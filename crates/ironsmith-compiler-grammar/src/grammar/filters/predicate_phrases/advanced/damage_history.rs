@@ -40,6 +40,14 @@ fn guard_reference(spec: &ChooseSpec, predicate: PredicateAst) -> PredicateAst {
 }
 
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let predicate = parse_complete(tokens)?;
+    // Every reading below matches the whole predicate (source, verb, amount,
+    // damage kind, recipient and "this turn" window) into the query.
+    crate::word_claims::claim_tokens(tokens);
+    Some(predicate)
+}
+
+fn parse_complete(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
     // "you were dealt damage this turn by a red instant or sorcery spell"
     // (Suffocation): an existential source class, read from the source's

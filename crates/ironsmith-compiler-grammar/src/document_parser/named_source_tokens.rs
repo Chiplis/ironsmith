@@ -92,6 +92,14 @@ fn subject_tokens(subject: &str, span: TextSpan) -> Vec<OwnedLexToken> {
         .collect()
 }
 
+/// [`span_over`] for the card's own name normalized to the source subject:
+/// the name reads as the source reference, as a name line preprocessing
+/// replaced, so it is credited to the whole-line check.
+fn name_span(name_tokens: &[OwnedLexToken]) -> TextSpan {
+    crate::word_claims::claim_for_line(name_tokens);
+    span_over(name_tokens)
+}
+
 fn span_over(tokens: &[OwnedLexToken]) -> TextSpan {
     match (tokens.first(), tokens.last()) {
         (Some(first), Some(last)) => TextSpan {
@@ -254,7 +262,7 @@ fn normalize_named_source_sentence_tokens_cased(
         if matches!(first_word(remainder), Some("power" | "toughness")) {
             return None;
         }
-        let span = span_over(&tokens[..tokens.len() - remainder.len()]);
+        let span = name_span(&tokens[..tokens.len() - remainder.len()]);
         let mut rewritten = subject_tokens(subject, span);
         rewritten.extend_from_slice(remainder);
         return Some(rewritten);
@@ -302,7 +310,7 @@ fn normalize_named_source_sentence_tokens_cased(
         let Some(rest) = enters_tail(tail) else {
             continue;
         };
-        let span = span_over(&tokens[..tokens.len() - tail.len()]);
+        let span = name_span(&tokens[..tokens.len() - tail.len()]);
         let mut rewritten = subject_tokens(subject, span);
         let enters_span = grammar::find_prefix(tail, || grammar::kw("enters"))
             .map_or(span, |(_, token, _)| token.span);
@@ -374,7 +382,7 @@ fn normalize_comma_bearing_leading_trigger(
     let mut rewritten = vec![intro.clone()];
     rewritten.extend(subject_tokens(
         named_source_subject_for_builder(card),
-        span_over(name_tokens),
+        name_span(name_tokens),
     ));
     rewritten.extend_from_slice(&after_intro[last_token + 1..]);
     Some(rewritten)
@@ -422,7 +430,7 @@ fn normalize_comma_bearing_trigger_head_name(
         let mut rewritten = tokens[..start].to_vec();
         rewritten.extend(subject_tokens(
             named_source_subject_for_builder(card),
-            span_over(name_tokens),
+            name_span(name_tokens),
         ));
         rewritten.extend_from_slice(&candidate[last_token + 1..]);
         return Some(rewritten);
@@ -441,7 +449,7 @@ fn normalize_trigger_head(
     if let Some(full) = full_name_alias(card, aliases)
         && let Some(remainder) = strip_alias_prefix(tokens, full)
     {
-        let span = span_over(&tokens[..tokens.len() - remainder.len()]);
+        let span = name_span(&tokens[..tokens.len() - remainder.len()]);
         let mut rewritten = subject_tokens(subject, span);
         rewritten.extend_from_slice(remainder);
         return Some(rewritten);

@@ -233,8 +233,12 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
     let mut filter = ObjectFilter::default();
     let mut colors: Option<crate::color::ColorSet> = None;
     let mut saw_chosen = false;
+    // Each descriptor word this reading interprets is read; an
+    // unrecognized word stays unread.
+    let read = |token: &OwnedLexToken| crate::word_claims::claim_tokens(std::slice::from_ref(token));
     for token in descriptor {
         if is_filter_connector(token) {
+            read(token);
             continue;
         }
         let Some(word) = token.as_word() else {
@@ -242,25 +246,30 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
         };
         if matches!(word, "spell" | "spells") {
             filter.zone = Some(crate::zone::Zone::Stack);
+            read(token);
             continue;
         }
         if word.eq_ignore_ascii_case("chosen") {
             saw_chosen = true;
+            read(token);
             continue;
         }
         if saw_chosen && word.eq_ignore_ascii_case("type") {
             filter.chosen_creature_type = true;
             saw_chosen = false;
+            read(token);
             continue;
         }
         // "a source of your choice of the chosen color" (Story Circle).
         if saw_chosen && word.eq_ignore_ascii_case("color") {
             filter.chosen_color = true;
             saw_chosen = false;
+            read(token);
             continue;
         }
         if let Some(color) = parse_color(word) {
             colors = Some(colors.unwrap_or_default().union(color));
+            read(token);
             continue;
         }
         if let Some(card_type) = parse_card_type(word) {
@@ -271,10 +280,12 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
             {
                 filter.card_types.push(card_type);
             }
+            read(token);
             continue;
         }
         if is_shadow_word(token) {
             filter = filter.with_static_ability(StaticAbilityId::Shadow);
+            read(token);
             continue;
         }
         // "an unblocked creature of your choice" (Forcefield): combat status
@@ -285,8 +296,9 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
             "blocking" => filter.blocking = true,
             "tapped" => filter.tapped = true,
             "untapped" => filter.untapped = true,
-            _ => {}
+            _ => continue,
         }
+        read(token);
     }
     filter.colors = colors;
     filter

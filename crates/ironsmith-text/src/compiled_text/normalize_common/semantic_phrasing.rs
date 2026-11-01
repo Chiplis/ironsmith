@@ -4945,6 +4945,8 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_normalized == "red and green spells you cast cost {1} less to cast"
         || lower_normalized == "red and green spells you cast costs {1} less to cast"
         || lower_normalized == "red and green spells you cast cost {1} less to cast."
+        || lower_normalized == "red or green spells you cast cost {1} less to cast"
+        || lower_normalized == "red or green spells you cast cost {1} less to cast."
     {
         return "Each spell you cast that's red or green costs {1} less to cast".to_string();
     }

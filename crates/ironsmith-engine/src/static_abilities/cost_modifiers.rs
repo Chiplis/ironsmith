@@ -200,7 +200,9 @@ fn describe_colors(colors: ColorSet) -> String {
     if colors.contains(Color::Green) {
         words.push("green".to_string());
     }
-    join_with_and(&words)
+    // `colors` matches a spell of any listed color: "red or green creature
+    // spells" (World War Hulk), never a spell that is both.
+    join_with_or(&words)
 }
 
 fn describe_player_filter_for_spell_target(filter: &PlayerFilter) -> String {

@@ -37,9 +37,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
             return Ok(None);
         }
         let end = trigger_word_token_start(tokens, prefix.len()).unwrap_or(tokens.len());
-        return Ok(Some(TriggerSpec::AttacksPlayerAlone(subject(
-            &tokens[..end],
-        )?)));
+        let participant = subject(&tokens[..end])?;
+        // "attacks a player alone" is read whole here.
+        crate::word_claims::claim_tokens(&tokens[end..]);
+        return Ok(Some(TriggerSpec::AttacksPlayerAlone(participant)));
     }
     if words.starts_with(&["one", "or", "more"]) {
         let (prefix, fight) =
@@ -56,6 +57,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
         let start = trigger_word_token_start(tokens, 3).unwrap_or(tokens.len());
         let end = trigger_word_token_start(tokens, prefix.len()).unwrap_or(tokens.len());
         let filter = subject(&tokens[start..end])?;
+        // "one or more ... [fight or] become blocked" heads are read here.
+        crate::word_claims::claim_tokens(&tokens[..start]);
+        crate::word_claims::claim_tokens(&tokens[end..]);
         let blocked = TriggerSpec::BecomesBlockedOneOrMore(filter.clone());
         return Ok(Some(if fight {
             TriggerSpec::Either(
@@ -89,6 +93,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
             return Ok(None);
         }
         let blocked = parse_object_filter_lexed(&tokens[start..], false)?;
+        // "[a creature] blocks [this creature]": the block verb relating the
+        // pair this trigger matches.
+        crate::word_claims::claim_tokens(&tokens[end..start]);
         return Ok(Some(TriggerSpec::BlocksObject { blocker, blocked }));
     }
     Ok(None)

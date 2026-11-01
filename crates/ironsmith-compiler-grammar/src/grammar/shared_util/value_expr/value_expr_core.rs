@@ -1393,11 +1393,15 @@ pub(super) fn rounded_half(base: Value, rounding: Rounding) -> Value {
     }
 }
 
+/// The length of the exact quantity phrase `words` opens with. Every caller
+/// returns that quantity's value when this matches, so the phrase is read.
 pub(super) fn prefix_len(words: &[&str], alternatives: &[&[&str]]) -> Option<usize> {
-    alternatives
+    let used = alternatives
         .iter()
         .find(|expected| permission_shapes::prefix_words(words, expected))
-        .map(|expected| expected.len())
+        .map(|expected| expected.len())?;
+    crate::word_claims::claim_words(&words[..used]);
+    Some(used)
 }
 
 pub(super) fn exact_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {

@@ -746,6 +746,24 @@ impl ActivatedAbilityKeyword {
             Self::Fortify => "fortify",
         })
     }
+
+    /// The identity whose official keyword is `word` (the inverse of
+    /// [`Self::official_keyword`]).
+    pub fn from_official_keyword(word: &str) -> Option<Self> {
+        [
+            Self::Equip,
+            Self::PowerUp,
+            Self::Cycling,
+            Self::Ninjutsu,
+            Self::Boast,
+            Self::Exhaust,
+            Self::Craft,
+            Self::Encore,
+            Self::Fortify,
+        ]
+        .into_iter()
+        .find(|keyword| keyword.official_keyword() == Some(word))
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -1175,12 +1175,11 @@ fn describe_ability_in_zone(
                 ironsmith_core::TotalCostKind::All(costs) => {
                     for cost in costs {
                         if let Some(mana) = cost.mana_cost_ref() {
+                            // X-allocation and per-unit rules ("spend only
+                            // mana of the chosen color") are printed once as
+                            // the ability's rider.
                             for rule in mana.spending_restrictions() {
-                                if matches!(
-                                    rule,
-                                    ironsmith_core::mana::ManaSpendingRestriction::OnX { .. }
-                                ) && !output.contains(rule)
-                                {
+                                if !output.contains(rule) {
                                     output.push(rule.clone());
                                 }
                             }
@@ -1201,7 +1200,9 @@ fn describe_ability_in_zone(
                         Ok::<_, std::convert::Infallible>(
                             if let Some(mana) = cost.mana_cost_ref() {
                                 crate::costs::Cost::mana(
-                                    mana.clone().without_x_spending_restrictions(),
+                                    mana.clone()
+                                        .without_x_spending_restrictions()
+                                        .without_unit_spending_restrictions(),
                                 )
                             } else {
                                 cost
@@ -1214,7 +1215,7 @@ fn describe_ability_in_zone(
             // Modal descriptions can preserve the authored rider on every
             // bullet; otherwise render the shared typed cost rider once.
             for rule in spending {
-                let rider = rule.cast_description(false);
+                let rider = rule.activation_description();
                 if !lines.iter().any(|line| {
                     line.to_ascii_lowercase()
                         .contains(&rider.to_ascii_lowercase())

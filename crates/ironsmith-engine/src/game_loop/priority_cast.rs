@@ -5215,7 +5215,8 @@ pub(super) fn activation_mana_payment_request(
             pending.x_value.unwrap_or(0),
             &pending.hybrid_choices,
         ));
-    let spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
+    let spend_policy =
+        game.mana_spend_policy_with_reason(pending.activator, Some(pending.source), pending.payment_reason);
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         pending.activator,
         pending.source,

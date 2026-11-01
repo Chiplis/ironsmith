@@ -413,6 +413,12 @@ pub struct ActivationCostAbility {
 }
 
 impl ActivationCostAbility {
+    /// The payment reason these facts announce (keyword, mana, or loyalty
+    /// activation), matching `ActivatedAbility::payment_reason`.
+    pub fn payment_reason(&self) -> crate::costs::PaymentReason {
+        crate::costs::PaymentReason::activation_of_kind(self.keyword, self.mana_ability, self.loyalty_ability)
+    }
+
     /// Facts for the activated ability at `ability_index` of `source`, if
     /// there is one.
     pub fn at(
@@ -1140,10 +1146,9 @@ fn maximum_x_for_activation_cost_in_query(
     };
     if !mana.has_x() { return Ok(None); }
     let x_pips = mana.pips().iter().filter(|pip| pip.contains(&crate::mana::ManaSymbol::X)).count() as u32;
-    let policy = game.mana_spend_policy(activator, Some(source));
+    let policy = game.mana_spend_policy_with_reason(activator, Some(source), facts.payment_reason());
     let allow_black_life = mana_cost_has_black_symbol(mana)
-        && game.player_can_pay_black_with_life_for_reason(activator, Some(source),
-            crate::costs::PaymentReason::activation(facts.keyword, facts.mana_ability));
+        && game.player_can_pay_black_with_life_for_reason(activator, Some(source), facts.payment_reason());
     let potential = if components.iter().any(|cost| cost.requires_tap()) {
         // A tapped resource cannot finance the activation that reserves its tap.
         let mut funding = game.clone();

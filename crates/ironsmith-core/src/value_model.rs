@@ -2032,6 +2032,18 @@ impl ManaSpendPermission {
         }
     }
 
+    /// "... to pay the activation costs of [<objects>'] <kind> abilities".
+    pub fn any_color_for_ability_kind_activation(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        kind: ActivatedAbilityKindSelector,
+    ) -> Self {
+        Self {
+            scope: ManaSpendScope::ActivationCostsOfAbilityKind { filter, kind },
+            ..Self::any_color_for_activation(player, ObjectFilter::source())
+        }
+    }
+
     pub fn any_color_for_activation(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self {
             player,
@@ -2144,6 +2156,24 @@ pub enum ManaSpendScope {
     /// controller's spell casts and is used up by the first spell that player
     /// finishes casting. Appended for wire stability.
     OneSpellCast,
+    /// "to pay the activation costs of equip abilities" / "of loyalty
+    /// abilities [of <objects>]": activations of that kind of ability whose
+    /// source matches `filter`. Appended for wire stability.
+    ActivationCostsOfAbilityKind {
+        filter: ObjectFilter,
+        kind: ActivatedAbilityKindSelector,
+    },
+}
+
+/// The kind of activated ability a [`ManaSpendScope::ActivationCostsOfAbilityKind`]
+/// permission covers.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ActivatedAbilityKindSelector {
+    /// A keyword ability ("equip abilities", "boast abilities").
+    Keyword(crate::ActivatedAbilityKeyword),
+    /// A planeswalker's loyalty abilities (CR 606).
+    Loyalty,
 }
 
 impl Restriction {

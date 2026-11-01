@@ -5699,6 +5699,61 @@ thread_local! {
         const { std::cell::Cell::new(false) };
 }
 
+thread_local! {
+    /// The object noun each tagged target declaration announced while the
+    /// current card renders ("Choose target artifact." tags `damage_source_0`
+    /// as an artifact), so a later back-reference to that tag reads "that
+    /// artifact" rather than a hardcoded "that creature".
+    static DECLARED_TARGET_NOUNS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// The singular object noun a target spec announces: its single card type,
+/// "creature" when that is among them, or "permanent" for a battlefield
+/// object of no named type.
+fn declared_target_noun_for_spec(spec: &crate::target::ChooseSpec) -> Option<String> {
+    let crate::target::ChooseSpec::Object(filter) = spec.inner().unhinted() else {
+        return None;
+    };
+    if filter.card_types.contains(&crate::types::CardType::Creature) {
+        return Some("creature".to_string());
+    }
+    match filter.card_types.as_slice() {
+        [card_type] => Some(card_type.name().to_string()),
+        [] if matches!(filter.zone, None | Some(crate::zone::Zone::Battlefield)) => {
+            Some("permanent".to_string())
+        }
+        _ => None,
+    }
+}
+
+/// Note what a tagged target declaration (`TaggedEffect` around a
+/// `TargetOnlyEffect`) announced.
+pub(crate) fn note_declared_target(effect: &crate::effect::Effect) {
+    let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return;
+    };
+    let Some(target_only) = tagged.effect.downcast_ref::<crate::effects::TargetOnlyEffect>() else {
+        return;
+    };
+    if let Some(noun) = declared_target_noun_for_spec(&target_only.target) {
+        DECLARED_TARGET_NOUNS.with(|nouns| {
+            nouns.borrow_mut().insert(tagged.tag.as_str().to_string(), noun);
+        });
+    }
+}
+
+/// Forget every recorded declaration. Called where each card's render
+/// begins, so a back-reference never reads a previous card's declaration.
+pub(crate) fn reset_declared_target_nouns() {
+    DECLARED_TARGET_NOUNS.with(|nouns| nouns.borrow_mut().clear());
+}
+
+/// The object noun the declaration tagged `tag` announced, if one rendered.
+pub(crate) fn declared_target_noun(tag: &str) -> Option<String> {
+    DECLARED_TARGET_NOUNS.with(|nouns| nouns.borrow().get(tag).cloned())
+}
+
 /// Records the recipient kind of a rendered damage instruction for later
 /// "excess damage dealt ... this way" references.
 pub(crate) fn note_damage_recipient(target: &crate::target::ChooseSpec) {

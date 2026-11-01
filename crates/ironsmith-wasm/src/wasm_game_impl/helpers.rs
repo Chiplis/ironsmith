@@ -393,7 +393,11 @@ fn activation_mana_payment_available(
         *source,
         &cost,
         activated.activation_x_minimum(),
-        ironsmith::costs::PaymentReason::activation(activated.keyword, matches!(action, LegalAction::ActivateManaAbility { .. })),
+        ironsmith::costs::PaymentReason::activation_of_kind(
+            activated.keyword,
+            matches!(action, LegalAction::ActivateManaAbility { .. }),
+            activated.is_loyalty_ability(),
+        ),
         planner,
     );
     if available != Some(false) {

@@ -2348,6 +2348,9 @@ pub(super) fn pre_rule_ability_resolution_ordinal_reflexive(
             "resolution-count reflexive trigger has no effect".into(),
         ));
     }
+    // The authored head was read into the synthetic resolution-count
+    // predicate above, whose tokens carry no authored spans.
+    crate::word_claims::claim_tokens(&tokens[..comma]);
     state.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate,
         if_true: Vec::new(),

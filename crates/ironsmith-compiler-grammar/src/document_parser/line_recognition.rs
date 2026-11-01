@@ -951,8 +951,26 @@ pub(super) fn recognize_modal_mode(
     } else {
         strip_non_keyword_label_prefix_lexed(strip_modal_bullet_prefix_tokens(&line.tokens))
     };
-    let surface_tokens = if tiered_prefix.is_some() {
-        strip_modal_bullet_prefix_tokens(&line.tokens)
+    let bullet_body = strip_modal_bullet_prefix_tokens(&line.tokens);
+    // "• Attack — Create a 2/2 white Knight creature token." (Battle Menu):
+    // a mode's flavor label has no rules meaning (like an ability word) and
+    // is kept as the mode's presentation text, so the compiled mode prints
+    // it. Chosen-option labels never reach a modal mode; they gate their
+    // own labeled lines.
+    // A pawprint cost prefix ("{P}{P} —", Season of the Burrow) is the mode's
+    // point cost, not a flavor label.
+    let flavor_label = spree_prefix.is_none()
+        && tiered_prefix.is_none()
+        && point_cost.is_none()
+        && parse_tokens.len() < bullet_body.len()
+        && bullet_body[..bullet_body.len() - parse_tokens.len()]
+            .iter()
+            .any(|token| token.as_word().is_some());
+    if flavor_label {
+        crate::word_claims::claim_tokens(&bullet_body[..bullet_body.len() - parse_tokens.len()]);
+    }
+    let surface_tokens = if tiered_prefix.is_some() || flavor_label {
+        bullet_body
     } else {
         parse_tokens
     };

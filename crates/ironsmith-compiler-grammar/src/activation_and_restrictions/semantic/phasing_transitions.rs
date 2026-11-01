@@ -26,6 +26,11 @@ pub(super) fn parse_phasing_transition_trigger(
                 CardTextError::ParseError("phasing transition requires an object subject".into())
             })?,
     };
+    // "phase(s) in/out" and a leading "one or more": the transition read.
+    crate::word_claims::claim_words(&words[words.len() - 2..]);
+    if one_or_more {
+        crate::word_claims::claim_words(&words[..3]);
+    }
     Ok(Some(TriggerSpec::PhasingChanged {
         filter,
         phased_in: *direction == "in",

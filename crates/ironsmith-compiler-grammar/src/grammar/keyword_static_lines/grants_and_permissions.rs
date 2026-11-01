@@ -78,6 +78,9 @@ pub enum ManaSpendPermissionShape<'a> {
         /// "as though it were mana of any type": colorless mana is also
         /// convertible (CR 609.4b).
         any_type: bool,
+        /// "to pay the activation costs of [its] equip/loyalty abilities":
+        /// only activations of that kind of ability qualify.
+        ability_kind: Option<ironsmith_core::ActivatedAbilityKindSelector>,
     },
     /// "You may spend mana as though it were mana of any color to cast
     /// planeswalker spells." (Oath of Nissa).
@@ -486,6 +489,7 @@ fn parse_any_color_mana_spend_lexed<'a>(
             activation_filter_tokens: None,
             source_activation_only: false,
             any_type,
+            ability_kind: None,
         });
     }
     // "to activate those/these/its abilities" (Drana and Linvala, after a
@@ -498,6 +502,7 @@ fn parse_any_color_mana_spend_lexed<'a>(
             activation_filter_tokens: None,
             source_activation_only: true,
             any_type,
+            ability_kind: None,
         });
     }
     if peek(primitives::phrase(&["to", "pay"]))
@@ -508,22 +513,76 @@ fn parse_any_color_mana_spend_lexed<'a>(
         opt(primitives::kw("the")).parse_next(input)?;
         primitives::phrase(&["activation", "costs", "of"]).parse_next(input)?;
         let ability_tokens = take_nonempty_sentence_body(input)?;
-        if primitives::find_prefix(ability_tokens, || {
-            alt((primitives::kw("ability"), primitives::kw("abilities"))).void()
-        })
-        .is_none()
-        {
-            return Err(primitives::backtrack_err(
-                "mana spend permission",
-                "activation ability subject",
-            ));
+        let ability_words = crate::lexer::parser_token_word_refs(ability_tokens);
+        // "[<source>'s / its] <kind> abilities [of <objects>]": only
+        // activations of that kind of ability (a keyword ability such as
+        // equip, or a loyalty ability) qualify.
+        let abilities_at = ability_words
+            .iter()
+            .position(|word| matches!(*word, "abilities" | "ability"));
+        let ability_kind = abilities_at
+            .and_then(|index| index.checked_sub(1))
+            .and_then(|index| activated_ability_kind_word(ability_words[index]));
+        let holder_words = match (abilities_at, ability_kind) {
+            (Some(index), Some(_)) => &ability_words[..index - 1],
+            (Some(index), None) => &ability_words[..index],
+            (None, _) => &ability_words[..0],
+        };
+        if let Some(abilities_at) = abilities_at {
+            let tail_words = &ability_words[abilities_at + 1..];
+            // "this artifact's abilities" / "its abilities": the source's own
+            // activated abilities.
+            let source_holder = matches!(holder_words, ["its"])
+                || (!holder_words.is_empty()
+                    && crate::util::source_reference_surface_for_possessive_words(holder_words)
+                        .is_some());
+            if source_holder && tail_words.is_empty() {
+                crate::word_claims::claim_tokens(ability_tokens);
+                return Ok(ManaSpendPermissionShape::AnyColor {
+                    player,
+                    activation_filter_tokens: None,
+                    source_activation_only: true,
+                    any_type,
+                    ability_kind,
+                });
+            }
+            // "[<kind>] abilities of <objects>": the activation costs of
+            // those objects' abilities.
+            if holder_words.is_empty() && matches!(tail_words, ["of", _, ..]) {
+                let abilities_token = ability_tokens
+                    .iter()
+                    .position(|token| matches!(token.parser_text(), "abilities" | "ability"))
+                    .unwrap_or(0);
+                let filter_start = ability_tokens[abilities_token..]
+                    .iter()
+                    .position(|token| token.parser_text() == "of")
+                    .map_or(ability_tokens.len(), |index| abilities_token + index + 1);
+                crate::word_claims::claim_tokens(&ability_tokens[..filter_start]);
+                return Ok(ManaSpendPermissionShape::AnyColor {
+                    player,
+                    activation_filter_tokens: Some(trim_lexed_commas(&ability_tokens[filter_start..])),
+                    source_activation_only: false,
+                    any_type,
+                    ability_kind,
+                });
+            }
+            // "<kind> abilities" with no holder: that kind of ability of
+            // any object.
+            if holder_words.is_empty() && tail_words.is_empty() && ability_kind.is_some() {
+                crate::word_claims::claim_tokens(ability_tokens);
+                return Ok(ManaSpendPermissionShape::AnyColor {
+                    player,
+                    activation_filter_tokens: None,
+                    source_activation_only: false,
+                    any_type,
+                    ability_kind,
+                });
+            }
         }
-        return Ok(ManaSpendPermissionShape::AnyColor {
-            player,
-            activation_filter_tokens: None,
-            source_activation_only: true,
-            any_type,
-        });
+        return Err(primitives::backtrack_err(
+            "mana spend permission",
+            "activation ability subject",
+        ));
     }
     if peek(primitives::phrase(&["to", "cast"])).parse_next(input).is_ok() {
         primitives::phrase(&["to", "cast"]).parse_next(input)?;
@@ -545,7 +604,18 @@ fn parse_any_color_mana_spend_lexed<'a>(
         activation_filter_tokens: Some(trim_lexed_commas(filter_tokens)),
         source_activation_only: false,
         any_type,
+        ability_kind: None,
     })
+}
+
+/// The kind word before "abilities" in a spend scope: "loyalty", or the
+/// name of an activated keyword ability ("equip", "boast", ...).
+fn activated_ability_kind_word(word: &str) -> Option<ironsmith_core::ActivatedAbilityKindSelector> {
+    if word == "loyalty" {
+        return Some(ironsmith_core::ActivatedAbilityKindSelector::Loyalty);
+    }
+    ironsmith_core::ActivatedAbilityKeyword::from_official_keyword(word)
+        .map(ironsmith_core::ActivatedAbilityKindSelector::Keyword)
 }
 
 /// "to activate those/these/its/their abilities" or "to activate the copied
@@ -618,7 +688,6 @@ mod tests {
     fn parses_mana_spend_shapes() {
         for line in [
             "You may spend mana as though it were mana of any color to activate abilities of artifacts you control.",
-            "You may spend mana as though it were mana of any color to pay the activation costs of Manascape Refractor's abilities.",
         ] {
             let tokens = lex_line(line, 0).unwrap();
             assert!(
@@ -626,6 +695,25 @@ mod tests {
                 "expected typed mana-spend shape for {line}"
             );
         }
+
+        // Manascape Refractor: the document parser rewrites the card's own
+        // name to "this artifact" before this reader runs, so the reader sees
+        // a source possessive (an unrelated possessive is not the source).
+        let tokens = lex_line(
+            "You may spend mana as though it were mana of any color to pay the activation costs of this artifact's abilities.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_mana_spend_permission_tokens(&tokens),
+            Some(ManaSpendPermissionShape::AnyColor {
+                player: ManaSpendPlayerKind::You,
+                activation_filter_tokens: None,
+                source_activation_only: true,
+                any_type: false,
+                ability_kind: None,
+            })
+        );
 
         let tokens = lex_line(
             "You may spend white mana as though it were mana of any color. You may spend other mana only as though it were colorless mana.",

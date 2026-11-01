@@ -6580,8 +6580,22 @@ pub(super) fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String 
     }
     if matches!(sacrifice.count, Value::Fixed(value) if *value == 1) {
         let description = sacrifice.filter.description();
+        // A sacrificed object is a permanent its sacrificer controls, so a
+        // battlefield zone and that controller add nothing to "it" ("...
+        // unless that player sacrifices it", Enchanter's Bane: the payment is
+        // normalized to the payer).
+        let implicit_sacrifice_bounds_stripped = {
+            let mut bare = sacrifice.filter.clone();
+            if matches!(bare.zone, Some(Zone::Battlefield)) {
+                bare.zone = None;
+            }
+            if bare.controller.as_ref() == Some(sacrifice.player) {
+                bare.controller = None;
+            }
+            bare
+        };
         if matches!(sacrifice.player, PlayerFilter::You)
-            && filter_is_exactly_one_tagged_object(sacrifice.filter)
+            && filter_is_exactly_one_tagged_object(&implicit_sacrifice_bounds_stripped)
         {
             return "Sacrifice it".to_string();
         }

@@ -1337,6 +1337,19 @@ pub fn split_if_clause_lexed(
             } else {
                 without_instead
             };
+            // "If X is 10 or more, also create ..." (Finale of Glory): the
+            // consequence happens in addition to the rest of the spell, which
+            // is what a conditional consequence already does.
+            let without_instead = if without_instead.len() > 1
+                && without_instead
+                    .first()
+                    .is_some_and(|token| structure_token_is(token, "also"))
+            {
+                crate::word_claims::claim_tokens(&without_instead[..1]);
+                &without_instead[1..]
+            } else {
+                without_instead
+            };
             parse_effects(without_instead)
         };
 

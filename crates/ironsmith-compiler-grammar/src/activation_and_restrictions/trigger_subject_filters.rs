@@ -1306,6 +1306,9 @@ pub fn parse_spell_activity_trigger(
             filter.cast_by = Some(PlayerFilter::IteratedPlayer);
         }
         claim_caster_and_verb(cast);
+        if min_spells_this_turn.is_some() && exact_spells_this_turn.is_none() {
+            claim_other_than_first_cast_tail(tokens, repeated_counted_spell_domain);
+        }
         // The event-time qualifiers are read into the cast event above (the
         // word matcher claims the phrase it finds).
         if during_turn.is_some()
@@ -2524,6 +2527,52 @@ mod typed_trigger_subject_migration_tests {
 /// The words of a spell trigger's cast-count qualifier: a leading possessive
 /// and ordinal ("your second"), a count ("two or more"), and a trailing "each
 /// turn" / "this turn" / "last turn".
+/// "other than the first [<domain>] spell [<caster> cast(s)] [each|this|that
+/// turn]": the spell envelope stops before this tail, which the SpellCast
+/// event carries as `min_spells_this_turn` (plus the repeated counted domain
+/// when its noun phrase restates the trigger's spell filter). Claimed only
+/// when the whole tail has that shape; a different domain stays unread.
+fn claim_other_than_first_cast_tail(tokens: &[OwnedLexToken], repeated_domain: bool) {
+    let is = |token: &OwnedLexToken, words: &[&str]| {
+        token.as_word().is_some_and(|word| words.contains(&word))
+    };
+    let Some(other) = tokens.windows(4).position(|window| {
+        is(&window[0], &["other"])
+            && is(&window[1], &["than"])
+            && is(&window[2], &["the", "your"])
+            && is(&window[3], &["first"])
+    }) else {
+        return;
+    };
+    let mut end = other + 4;
+    let Some(noun) = tokens[end..].iter().position(|token| is(token, &["spell", "spells"])) else {
+        return;
+    };
+    if noun > 0 && !repeated_domain {
+        return;
+    }
+    end += noun + 1;
+    end += match &tokens[end..] {
+        [that, player, cast, ..]
+            if is(that, &["that"])
+                && is(player, &["player", "players"])
+                && is(cast, &["cast", "casts"]) =>
+        {
+            3
+        }
+        [pronoun, cast, ..] if is(pronoun, &["they", "you"]) && is(cast, &["cast", "casts"]) => 2,
+        _ => 0,
+    };
+    end += match &tokens[end..] {
+        [when, turn, ..] if is(when, &["each", "this", "that"]) && is(turn, &["turn"]) => 2,
+        _ => 0,
+    };
+    if tokens[end..].iter().any(|token| token.as_word().is_some()) {
+        return;
+    }
+    crate::word_claims::claim_tokens(&tokens[other..end]);
+}
+
 fn cast_count_qualifier_tokens<'a>(
     tokens: &'a [OwnedLexToken],
     ordinal_word: Option<&str>,

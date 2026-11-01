@@ -7397,6 +7397,8 @@ pub fn parse_no_maximum_hand_size_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if let Some(player) = crate::grammar::abilities::no_maximum_hand_size_player(tokens) {
+        // The exact "<players> have no maximum hand size" rule, read whole.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(if player == PlayerFilter::You {
             StaticAbility::no_maximum_hand_size()
         } else {
@@ -8928,6 +8930,7 @@ fn copy_activated_spend_tail_split(
         Some(keyword_static_lines::ManaSpendPermissionShape::AnyColor {
             source_activation_only: true,
             activation_filter_tokens: None,
+            ability_kind: None,
             ..
         })
     ) {
@@ -8962,6 +8965,7 @@ pub fn parse_copy_activated_abilities_with_spend_permission_line(
         source_activation_only: true,
         activation_filter_tokens: None,
         any_type,
+        ability_kind: None,
     }) = keyword_static_lines::parse_mana_spend_permission_tokens(tail)
     else {
         return Ok(None);
@@ -9359,12 +9363,31 @@ pub fn parse_mana_spend_permission_clause(
             activation_filter_tokens,
             source_activation_only,
             any_type,
+            ability_kind,
         } => {
             let player = match player {
                 keyword_static_lines::ManaSpendPlayerKind::You => PlayerFilter::You,
                 keyword_static_lines::ManaSpendPlayerKind::Any => PlayerFilter::Any,
             };
-            let permission = if source_activation_only {
+            let permission = if let Some(kind) = ability_kind {
+                // "... to pay the activation costs of [its] equip/loyalty
+                // abilities [of <objects>]".
+                let filter = if source_activation_only {
+                    ObjectFilter::source()
+                } else if let Some(filter_tokens) = activation_filter_tokens {
+                    match parse_object_filter(filter_tokens, false) {
+                        Ok(filter) => filter,
+                        Err(_) => return Ok(None),
+                    }
+                } else {
+                    ObjectFilter::default()
+                };
+                crate::effect::ManaSpendPermission::any_color_for_ability_kind_activation(
+                    player.clone(),
+                    filter,
+                    kind,
+                )
+            } else if source_activation_only {
                 crate::effect::ManaSpendPermission::any_color_for_activation(
                     player.clone(),
                     ObjectFilter::source(),

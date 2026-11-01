@@ -760,6 +760,26 @@ pub(super) fn mana_spend_scope(scope: &ironsmith_core::ManaSpendScope) -> String
         }
         Scope::CastingSpellsWithStableIds(ids) => format!(" to cast {}", sr(ids)),
         Scope::OneSpellCast => " to pay the mana cost of one spell this turn".to_string(),
+        Scope::ActivationCostsOfAbilityKind { filter, kind } => {
+            let kind = match kind {
+                ironsmith_core::ActivatedAbilityKindSelector::Keyword(keyword) => keyword
+                    .official_keyword()
+                    .unwrap_or("keyword")
+                    .to_string(),
+                ironsmith_core::ActivatedAbilityKindSelector::Loyalty => "loyalty".to_string(),
+            };
+            if filter.source {
+                format!(" to pay the activation costs of this object's {kind} abilities")
+            } else if *filter == ironsmith_core::ObjectFilter::default() {
+                format!(" to pay the activation costs of {kind} abilities")
+            } else {
+                let (holder, _, _) = set_subject(filter);
+                format!(
+                    " to pay the activation costs of {kind} abilities of {}",
+                    lowercase_first(&holder)
+                )
+            }
+        }
     }
 }
 

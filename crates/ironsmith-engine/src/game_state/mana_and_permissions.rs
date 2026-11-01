@@ -686,6 +686,29 @@ impl GameState {
         exact: bool,
         selection: Option<&crate::grant_registry::GrantPermissionIdentity>,
     ) -> crate::player::ManaSpendPolicy {
+        self.mana_spend_policy_for_selection_and_reason(payer, source, exact, selection, None)
+    }
+
+    /// The spend policy for a payment whose reason is known: ability-kind
+    /// permissions ("to pay the activation costs of equip abilities") apply
+    /// only when the reason names that kind of activation.
+    pub(crate) fn mana_spend_policy_with_reason(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+    ) -> crate::player::ManaSpendPolicy {
+        self.mana_spend_policy_for_selection_and_reason(payer, source, false, None, Some(reason))
+    }
+
+    fn mana_spend_policy_for_selection_and_reason(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        exact: bool,
+        selection: Option<&crate::grant_registry::GrantPermissionIdentity>,
+        reason: Option<crate::costs::PaymentReason>,
+    ) -> crate::player::ManaSpendPolicy {
         let mut policy = crate::player::ManaSpendPolicy::default();
         for permission in &self.effect_store.mana_spend_effects.permissions {
             if exact
@@ -698,7 +721,7 @@ impl GameState {
             {
                 continue;
             }
-            if !permission.allows(self, payer, source) {
+            if !permission.allows_for_reason(self, payer, source, reason) {
                 continue;
             }
             if let Some((symbol, as_symbol)) = permission.permission.mana_symbol_as {
@@ -809,7 +832,7 @@ impl GameState {
         if reason == crate::costs::PaymentReason::CastSpell {
             self.try_mana_spend_policy_for_cast(payer, source)
         } else {
-            Ok(self.mana_spend_policy(payer, source))
+            Ok(self.mana_spend_policy_with_reason(payer, source, reason))
         }
     }
 
@@ -822,7 +845,7 @@ impl GameState {
         if reason == crate::costs::PaymentReason::CastSpell {
             self.mana_spend_policy_for_cast(payer, source)
         } else {
-            self.mana_spend_policy(payer, source)
+            self.mana_spend_policy_with_reason(payer, source, reason)
         }
     }
 
@@ -2209,12 +2232,22 @@ impl GameState {
             ) {
                 continue;
             }
+            let from_snow_source = self.mana_provenance_is_from_snow_source(provenance);
+            if !crate::mana_payment::resources::unit_satisfies_cost(
+                self,
+                cost,
+                payment_source,
+                provenance.symbol,
+                from_snow_source,
+            ) {
+                continue;
+            }
             units.push(PayableManaUnit {
                 symbol: provenance.symbol,
                 source: Some(provenance.source),
                 provenance_index: Some(provenance_index),
                 restricted_index,
-                from_snow_source: self.mana_provenance_is_from_snow_source(provenance),
+                from_snow_source,
             });
         }
 
@@ -2223,6 +2256,15 @@ impl GameState {
                 continue;
             }
             if required_pool_symbol.is_some_and(|required| required != symbol) {
+                continue;
+            }
+            if !crate::mana_payment::resources::unit_satisfies_cost(
+                self,
+                cost,
+                payment_source,
+                symbol,
+                false,
+            ) {
                 continue;
             }
             let untracked = player

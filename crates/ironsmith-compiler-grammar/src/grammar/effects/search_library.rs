@@ -819,6 +819,8 @@ pub fn strip_search_library_different_names_clause_lexed(
                     DIFFERENT_NAMES_CLAUSES,
                 )
             {
+                // The distinct-names constraint on the searched set.
+                crate::word_claims::claim_tokens(&tokens[cursor..cursor + pattern_len]);
                 let mut stripped = Vec::with_capacity(tokens.len() - pattern_len);
                 stripped.extend_from_slice(&tokens[..cursor]);
                 stripped.extend_from_slice(&tokens[cursor + pattern_len..]);
@@ -1231,6 +1233,32 @@ pub fn derive_search_library_effect_routing_lexed(
         && search_library_words_contain_all(&words_all, BATTLEFIELD_HAND_ONE_MARKER_WORDS)
         && (search_library_words_have_word(&words_all, "other")
             || search_library_words_have_word(&words_all, "rest"));
+    // "put one onto the battlefield [tapped] and the other|rest into your
+    // hand": the split names one card for the battlefield and the remainder
+    // for the hand.
+    if split_battlefield_and_hand && let Some(words) = put_clause_words.as_ref() {
+        if let Some(one) = words.iter().position(|word| *word == "one")
+            && let Some(battlefield) = words.iter().position(|word| *word == "battlefield")
+            && battlefield > one
+        {
+            crate::word_claims::claim_words(&words[one..=one]);
+            let start = match words[..battlefield] {
+                [.., "onto", "the"] => battlefield - 2,
+                _ => battlefield,
+            };
+            let end = match words.get(battlefield + 1) {
+                Some(&"tapped") => battlefield + 1,
+                _ => battlefield,
+            };
+            crate::word_claims::claim_words(&words[start..=end]);
+        }
+        if let Some(other) = words
+            .windows(2)
+            .position(|pair| matches!(pair, ["the", "other" | "rest"]))
+        {
+            crate::word_claims::claim_words(&words[other..other + 2]);
+        }
+    }
     let has_tapped_modifier = search_library_words_have_word(&words_all, "tapped");
     // "put it onto the battlefield tapped": the entry status of the put card.
     if has_tapped_modifier

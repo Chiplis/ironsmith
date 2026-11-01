@@ -1074,6 +1074,86 @@ fn targeting_cause_prevention_from_tokens(tokens: &[OwnedLexToken]) -> Option<Ef
     )
 }
 
+/// "If <subject> would leave the battlefield, exile it instead [of putting it
+/// anywhere else | into <a/your/its owner's> graveyard]": a battlefield-leave
+/// replacement for exactly the subject. A pronoun or demonstrative ("it",
+/// "that creature") is the referenced object; a source reference ("this
+/// creature") is the source; anything else is an object filter whose matching
+/// permanents are replaced while the effect lasts. `None` for any other tail.
+fn leave_battlefield_exile_replacement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let body = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(body);
+    let leave = words
+        .windows(4)
+        .position(|window| window == WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)?;
+    if leave < 2 || words.first() != Some(&"if") {
+        return None;
+    }
+    let to_zone = match &words[leave + 4..] {
+        ["exile", "it" | "them", "instead"]
+        | ["exile", "it" | "them", "instead", "of", "putting", "it" | "them", "anywhere", "else"] => {
+            None
+        }
+        ["exile", "it" | "them", "instead", "of", "putting", "it" | "them", "into", rest @ ..]
+            if matches!(
+                rest,
+                ["a", "graveyard"]
+                    | ["your", "graveyard"]
+                    | ["its", "owners", "graveyard"]
+                    | ["its", "owner's", "graveyard"]
+                    | ["their", "owners", "graveyard"]
+                    | ["their", "owners'", "graveyard"]
+            ) =>
+        {
+            Some(Zone::Graveyard)
+        }
+        _ => return None,
+    };
+    let view = crate::lexer::TokenWordView::new(body);
+    let subject_start = view.token_index_after_words(1)?;
+    let subject_end = view.map_word_to_token_start(leave)?;
+    let subject_tokens = crate::lexer::trim_lexed_commas(&body[subject_start..subject_end]);
+    let subject_words = &words[1..leave];
+    let effect = if matches!(
+        subject_words,
+        ["it"] | ["they"] | ["that" | "the", _] | ["those" | "the", _, ..]
+    ) && !crate::util::source_reference_surface_for_words(subject_words).is_some()
+    {
+        crate::word_claims::claim_tokens(subject_tokens);
+        EffectAst::subject_verb_register_zone_replacement(
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+            Some(Zone::Battlefield),
+            to_zone,
+            Zone::Exile,
+            ZoneReplacementDurationAst::Persistent,
+        )
+    } else if crate::util::source_reference_surface_for_words(subject_words).is_some() {
+        crate::word_claims::claim_tokens(subject_tokens);
+        EffectAst::subject_verb_register_zone_replacement(
+            TargetAst::Source(span_from_tokens(subject_tokens)),
+            Some(Zone::Battlefield),
+            to_zone,
+            Zone::Exile,
+            ZoneReplacementDurationAst::Persistent,
+        )
+    } else {
+        let filter = crate::object_filters::parse_object_filter(subject_tokens, false).ok()?;
+        EffectAst::subject_verb_register_future_zone_replacement(
+            filter,
+            Some(Zone::Battlefield),
+            to_zone,
+            Zone::Exile,
+            ZoneReplacementDurationAst::Persistent,
+            crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+            false,
+        )
+    };
+    // "if", "would leave the battlefield", and the replacement tail.
+    crate::word_claims::claim_tokens(&body[..subject_start]);
+    crate::word_claims::claim_tokens(&body[subject_end..]);
+    Some(effect)
+}
+
 pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     if let Some(effect) = targeting_cause_prevention_from_tokens(tokens) {
         return Some(effect);
@@ -1176,16 +1256,9 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
     }
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
-        && sentence_contains(tokens, EXILE_PHRASE)
-        && sentence_contains(tokens, INSTEAD_PHRASE)
+        && let Some(effect) = leave_battlefield_exile_replacement(tokens)
     {
-        return Some(EffectAst::subject_verb_register_zone_replacement(
-            target(),
-            Some(Zone::Battlefield),
-            None,
-            Zone::Exile,
-            ZoneReplacementDurationAst::Persistent,
-        ));
+        return Some(effect);
     }
 
     if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)

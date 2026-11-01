@@ -62,7 +62,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
     ] {
         if words.starts_with(prefix) {
             let start = trigger_word_token_start(tokens, prefix.len()).unwrap_or(tokens.len());
-            return recipient(&tokens[start..], combat, None, false).map(Some);
+            let spec = recipient(&tokens[start..], combat, None, false)?;
+            // The receipt head ("[non]combat damage is dealt to") is read here.
+            crate::word_claims::claim_tokens(&tokens[..start]);
+            return Ok(Some(spec));
         }
     }
     let Some(index) = words
@@ -115,7 +118,11 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
     }
     // Keep excess and explicitly qualified damaging-source grammars with
     // their existing owners; this complete head has no implicit source.
-    recipient(&tokens[..end], combat, minimum, single_source).map(Some)
+    let spec = recipient(&tokens[..end], combat, minimum, single_source)?;
+    // "is dealt [N or more] [non]combat damage [by a single source]": every
+    // tail word was consumed into minimum / combat / single_source above.
+    crate::word_claims::claim_tokens(&tokens[end..]);
+    Ok(Some(spec))
 }
 
 #[cfg(test)]

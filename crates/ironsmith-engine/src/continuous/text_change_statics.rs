@@ -516,7 +516,8 @@ pub(crate) fn rewrite_static_model_words(
             optional_filter(&mut permission.mana_source_filter, change)?;
             match &mut permission.scope {
                 ironsmith_core::ManaSpendScope::ActivationCostsOf(filter)
-                | ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter) => {
+                | ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter)
+                | ironsmith_core::ManaSpendScope::ActivationCostsOfAbilityKind { filter, .. } => {
                     *filter = rewrite_filter_words(filter, change)?;
                 }
                 ironsmith_core::ManaSpendScope::AllCosts
@@ -592,7 +593,12 @@ pub(crate) fn rewrite_static_model_words(
             ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) => mana_producer_words(filter, change),
             // The color set conflates an authored list with the word "colored".
             ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => return Err(hold(model)),
-            ironsmith_core::mana::ManaSpendingRestriction::NoMana => {}
+            ironsmith_core::mana::ManaSpendingRestriction::NoMana
+            | ironsmith_core::mana::ManaSpendingRestriction::SourceChosenColor
+            | ironsmith_core::mana::ManaSpendingRestriction::Colorless
+            | ironsmith_core::mana::ManaSpendingRestriction::Snow => {}
+            // Color words would need text-change rewriting (CR 612.2).
+            ironsmith_core::mana::ManaSpendingRestriction::Colors(_) => return Err(hold(model)),
         },
         P::ManaProductionRewrite { rule, .. } => {
             // Symbol input lacks symbol-versus-word provenance. Basic-land

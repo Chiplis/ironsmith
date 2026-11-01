@@ -812,6 +812,8 @@ pub fn parse_you_and_player_each_gain_or_lose_life_sentence(
     {
         return Ok(None);
     }
+    // The resource noun after the amount: "... gain that much life".
+    crate::word_claims::claim_tokens(&amount_clause.tokens()[used..used + 1]);
     let action = |amount: Value| {
         if shape.gains {
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })

@@ -20,6 +20,7 @@ pub(super) fn parse_referenced_characteristic_state(
     if let Some(reference) = demonstrative_reference_prefix(clause)
         && words.get(reference.word_len..) == Some(&["was", "blocked", "this", "turn"][..])
     {
+        crate::word_claims::claim_words(&words[..]);
         let mut filter = ObjectFilter {
             was_blocked_this_turn: true,
             ..Default::default()

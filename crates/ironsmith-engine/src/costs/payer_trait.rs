@@ -55,6 +55,9 @@ pub enum PaymentReason {
     TurnFaceUpWithMethod(ironsmith_core::ManaTurnFaceUpMethod),
     /// Frozen at announcement; source changes do not change the paid ability.
     ActivateAbilityWithKeyword { keyword: ironsmith_core::ActivatedAbilityKeyword, mana_ability: bool },
+    /// Activating a (non-keyword, non-mana) loyalty ability. Behaves as
+    /// `ActivateAbility` everywhere except loyalty-scoped spend permissions.
+    ActivateLoyaltyAbility,
 }
 
 impl PaymentReason {
@@ -65,25 +68,45 @@ impl PaymentReason {
             None => Self::ActivateAbility,
         }
     }
+    /// Like `activation`, but a non-keyword, non-mana loyalty ability is
+    /// announced as `ActivateLoyaltyAbility` so loyalty-scoped spend
+    /// permissions can see it.
+    pub fn activation_of_kind(
+        keyword: Option<ironsmith_core::ActivatedAbilityKeyword>,
+        mana_ability: bool,
+        loyalty_ability: bool,
+    ) -> Self {
+        match Self::activation(keyword, mana_ability) {
+            Self::ActivateAbility if loyalty_ability => Self::ActivateLoyaltyAbility,
+            reason => reason,
+        }
+    }
     pub fn is_mana_ability(self) -> bool {
         matches!(self, Self::ActivateManaAbility | Self::ActivateAbilityWithKeyword { mana_ability: true, .. })
     }
     pub fn is_non_mana_ability(self) -> bool {
-        matches!(self, Self::ActivateAbility | Self::ActivateAbilityWithKeyword { mana_ability: false, .. })
+        matches!(
+            self,
+            Self::ActivateAbility | Self::ActivateLoyaltyAbility | Self::ActivateAbilityWithKeyword { mana_ability: false, .. }
+        )
     }
     pub fn is_ability(self) -> bool { self.is_mana_ability() || self.is_non_mana_ability() }
 
     pub fn is_cast_or_ability_payment(self) -> bool {
         matches!(
             self,
-            Self::CastSpell | Self::ActivateAbility | Self::ActivateManaAbility | Self::ActivateAbilityWithKeyword { .. }
+            Self::CastSpell
+                | Self::ActivateAbility
+                | Self::ActivateLoyaltyAbility
+                | Self::ActivateManaAbility
+                | Self::ActivateAbilityWithKeyword { .. }
         )
     }
 
     pub fn mana_payment_purpose(self) -> crate::ability::ManaPaymentPurpose {
         match self {
             Self::CastSpell => crate::ability::ManaPaymentPurpose::CastSpell,
-            Self::ActivateAbility => crate::ability::ManaPaymentPurpose::ActivateAbility,
+            Self::ActivateAbility | Self::ActivateLoyaltyAbility => crate::ability::ManaPaymentPurpose::ActivateAbility,
             Self::ActivateManaAbility => crate::ability::ManaPaymentPurpose::ActivateManaAbility,
             Self::ActivateAbilityWithKeyword { mana_ability: true, .. } => crate::ability::ManaPaymentPurpose::ActivateManaAbility,
             Self::ActivateAbilityWithKeyword { mana_ability: false, .. } => crate::ability::ManaPaymentPurpose::ActivateAbility,

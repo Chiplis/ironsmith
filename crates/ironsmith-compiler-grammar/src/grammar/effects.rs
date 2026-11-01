@@ -320,6 +320,14 @@ const LABELED_ABILITY_FIRST_WORDS: &[&str] = &[
     "undergrowth",
     "void",
     "ward",
+    // CR 207.2c ability words: flavor labels with no rules meaning
+    // (eminence and valiant keep their dedicated label readers).
+    "grandeur",
+    "kinship",
+    "paradox",
+    "rally",
+    "survival",
+    "vivid",
 ];
 
 fn token_is_any_word(token: &OwnedLexToken, words: &[&str]) -> bool {

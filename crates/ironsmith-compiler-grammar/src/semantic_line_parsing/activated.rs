@@ -329,6 +329,13 @@ fn finalize_rewrite_activated_effect_sentences(
             if !x_spending_rules.contains(&rule) {
                 x_spending_rules.push(rule);
             }
+        } else if let Some(rule) = crate::consumer_mana::activation_spending_rule(&tokens) {
+            // "Spend only mana of the chosen color to activate this ability."
+            // (Throne of Eldraine): a typed per-unit rule on the activation
+            // cost's mana, enforced by payment.
+            if !x_spending_rules.contains(&rule) {
+                x_spending_rules.push(rule);
+            }
         } else if restriction_kind == Some(ActivatedRestrictionSentenceKind::ManaSource) {
             restrictions
                 .activation

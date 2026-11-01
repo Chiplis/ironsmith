@@ -90,7 +90,7 @@ pub(crate) fn pay_mana_cost_with_choices_and_outputs(
     if !game.can_pay_mana_cost_with_reason(payer, source, cost, x_value, reason) {
         return Err(CostPaymentError::InsufficientMana);
     }
-    let policy = game.mana_spend_policy(payer, source);
+    let policy = game.mana_spend_policy_with_reason(payer, source, reason);
     let allow_black_life = game.player_can_pay_black_with_life_for_reason(payer, source, reason);
     // Expand optional black-mana substitutions once. After a player chooses
     // mana for a pip, the solver must not substitute life for that choice.
@@ -220,7 +220,7 @@ impl CostPayer for ManaPaymentCost {
                 self.cost.clone(),
             )
             .with_x(x_value)
-            .with_spend_policy(game.mana_spend_policy(ctx.payer, Some(ctx.source)));
+            .with_spend_policy(game.mana_spend_policy_with_reason(ctx.payer, Some(ctx.source), ctx.reason));
             request.allow_mana_abilities = false;
             request.reserved_tap_sources = ctx.reserved_tap_sources.clone();
             request
@@ -297,7 +297,7 @@ impl CostPayer for ManaPaymentCost {
                 self.cost.clone(),
             )
             .with_x(x_value)
-            .with_spend_policy(game.mana_spend_policy(ctx.payer, Some(ctx.source)));
+            .with_spend_policy(game.mana_spend_policy_with_reason(ctx.payer, Some(ctx.source), ctx.reason));
             request.reserved_tap_sources = ctx.reserved_tap_sources.clone();
             request
                 .activation_excluded_sources

@@ -20103,6 +20103,11 @@ fn describe_coordinated_restriction_list(effects: &[Effect]) -> Option<String> {
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    // Declarations announce their objects before any combined rendering of
+    // the list refers back to them.
+    for effect in effects {
+        note_declared_target(effect);
+    }
     if let Some(rendered) = describe_coordinated_restriction_list(effects) {
         return rendered;
     }

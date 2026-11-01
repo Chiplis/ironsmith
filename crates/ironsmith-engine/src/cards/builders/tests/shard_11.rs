@@ -2005,7 +2005,7 @@ pub(super) fn parse_spells_cost_modifier_merges_second_color_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("red and green creature spells cost {1} more to cast"),
+        joined.contains("red or green creature spells cost {1} more to cast"),
         "expected both spell-color qualifiers in rendered text, got {joined}"
     );
 }

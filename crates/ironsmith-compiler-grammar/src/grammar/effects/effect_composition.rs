@@ -260,7 +260,7 @@ pub struct OutsideGameWishShape {
 pub fn parse_outside_game_wish_shape(tokens: &[OwnedLexToken]) -> Option<OutsideGameWishShape> {
     let tokens = trim_lexed_commas(tokens);
     let words = parser_token_word_refs(tokens);
-    if !has_atom(&words, "outside") || !has_atom(&words, "game") {
+    if !has_sequence(&words, &["outside", "the", "game"]) {
         return None;
     }
     let reveal_word = atom_offset(&words, "reveal")?;
@@ -331,6 +331,8 @@ pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideG
         _ => return None,
     };
     let filter_tokens = token_slice_for_words(tokens, put_word + 1..own_word)?.to_vec();
+    crate::word_claims::claim_words(&words[..=put_word]);
+    crate::word_claims::claim_words(&words[own_word + 6..]);
     Some(OutsideGamePutShape {
         optional,
         filter_tokens,
@@ -358,6 +360,8 @@ pub fn parse_outside_game_shuffle_shape(tokens: &[OwnedLexToken]) -> Option<Outs
         return None;
     }
     let filter_tokens = token_slice_for_words(tokens, 4..own_word)?.to_vec();
+    crate::word_claims::claim_words(&words[..4]);
+    crate::word_claims::claim_words(&words[own_word + 6..]);
     Some(OutsideGameShuffleShape {
         maximum,
         filter_tokens,

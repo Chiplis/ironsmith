@@ -2125,6 +2125,16 @@ pub fn parse_create(
                     }
                     let source = parse_target_phrase(&source_clause.source_tokens)?;
                     claim_token_copy_head(&tail_tokens);
+                    // "[two] tokens that are copies of ...": the token noun
+                    // closing the count head names what the copy creates.
+                    if let Some(first_tail) = head.tail_tokens.first()
+                        && let Some(marker) = head.body_tokens.iter().rev().find(|token| {
+                            token.span.end <= first_tail.span.start
+                                && token.is_any_word(&["token", "tokens"])
+                        })
+                    {
+                        crate::word_claims::claim_tokens(std::slice::from_ref(marker));
+                    }
                     let references_iterated_object = target_references_it(&source);
                     let create = EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,

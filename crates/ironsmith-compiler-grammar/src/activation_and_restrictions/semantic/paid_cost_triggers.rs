@@ -7,11 +7,14 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
         .strip_suffix(&["pay", "life"])
         .or_else(|| words.strip_suffix(&["pays", "life"]))
     {
-        return parse_trigger_subject_player_filter(prefix).map(TriggerSpec::PlayerPaysLife);
+        let player = parse_trigger_subject_player_filter(prefix)?;
+        crate::word_claims::claim_tokens(tokens);
+        return Some(TriggerSpec::PlayerPaysLife(player));
     }
     if let Some(source) = words.strip_suffix(&["cumulative", "upkeep", "is", "paid"]) {
         let source = crate::util::possessive_normalized_word_refs(source);
         crate::util::source_reference_surface_for_possessive_words(&source)?;
+        crate::word_claims::claim_tokens(tokens);
         return Some(TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::CumulativeUpkeepPaid,
             player: PlayerFilter::Any,
@@ -20,6 +23,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     if let Some(source) = words.strip_suffix(&["echo", "cost", "is", "paid"]) {
         let source = crate::util::possessive_normalized_word_refs(source);
         crate::util::source_reference_surface_for_possessive_words(&source)?;
+        crate::word_claims::claim_tokens(tokens);
         return Some(TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::EchoCostPaid,
             player: PlayerFilter::Any,
@@ -41,5 +45,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     let player = parse_trigger_subject_player_filter(&prefix[..pay])?;
     let source = crate::util::possessive_normalized_word_refs(&prefix[pay + 1..]);
     crate::util::source_reference_surface_for_possessive_words(&source)?;
+    // Payer, verb, this-source possessive and keyword cost are all read here.
+    crate::word_claims::claim_tokens(tokens);
     Some(TriggerSpec::KeywordActionFromSource { action, player })
 }

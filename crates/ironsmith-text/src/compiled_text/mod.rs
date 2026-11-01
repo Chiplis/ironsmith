@@ -113,6 +113,7 @@ pub(super) const SOURCE_CARD_NAME_SURFACE: &str = "__compiled_source_card_name__
 
 fn debug_compiled_surface_lines(def: &CardDefinition) -> Vec<String> {
     normalize_common::EXCESS_DAMAGE_CREATURE_RECIPIENT.with(|cell| cell.set(false));
+    normalize_common::reset_declared_target_nouns();
     debug_safe::normalize_debug_safe_surface(ast_compiled_lines(def))
         .into_iter()
         .map(debug_safe::DebugSafeLine::into_string)

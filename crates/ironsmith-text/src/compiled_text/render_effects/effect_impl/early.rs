@@ -5478,7 +5478,14 @@ if filter.zone == Some(Zone::Hand)
             if subject == "this source" {
                 subject = "this creature".to_string();
             } else if subject == "it" && !has_explicit_source_surface {
-                subject = "that creature".to_string();
+                // The demonstrative names what the source's declaration
+                // announced ("Choose target artifact. That artifact deals
+                // ..."), defaulting to a creature.
+                let noun = match with_source.source.base() {
+                    ChooseSpec::Tagged(tag) => declared_target_noun(tag.as_str()),
+                    _ => None,
+                };
+                subject = format!("that {}", noun.as_deref().unwrap_or("creature"));
             } else if (subject.starts_with("target ") && subject.split_whitespace().any(|word| word == "creature"))
                 || (with_source.source.is_target() && matches!(with_source.source.base(), ChooseSpec::Object(filter) if filter.card_types == [CardType::Creature]))
             {

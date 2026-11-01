@@ -767,7 +767,8 @@ pub(super) fn prompt_pending_mana_ability_payment(
     subject: String,
 ) -> Result<GameProgress, GameLoopError> {
     let refining_existing_plan = pending.pending_mana_payment.is_some();
-    let spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
+    let spend_policy =
+        game.mana_spend_policy_with_reason(pending.activator, Some(pending.source), pending.payment_reason);
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         pending.activator,
         pending.source,

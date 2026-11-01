@@ -179,17 +179,16 @@ fn semantic_phrase<'a>(
     }
 }
 
-fn any_semantic_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    any.verify(|token: &&OwnedLexToken| token.as_word().is_some())
-        .void()
-        .parse_next(input)
-}
-
 fn same_name_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::kw("with").parse_next(input)?;
     winnow::combinator::opt(primitives::kw("the")).parse_next(input)?;
     primitives::phrase(&["same", "name", "as", "that"]).parse_next(input)?;
-    any_semantic_word.parse_next(input)
+    // "that permanent": the referenced object's noun, read with the phrase.
+    let noun = any
+        .verify(|token: &&OwnedLexToken| token.as_word().is_some())
+        .parse_next(input)?;
+    crate::word_claims::claim_tokens(std::slice::from_ref(noun));
+    Ok(())
 }
 
 fn incomplete_same_name_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {

@@ -7055,6 +7055,16 @@ pub fn parse_choose_named_options_as_enters_line(
         };
         crate::slice_primitives::push_unique(&mut card_type_options, card_type);
     }
+    // The named options (and "at random") are this choice's own words.
+    crate::word_claims::claim_words(&tail_words[choice_offset..]);
+    // Option names keep their authored capitalization ("Khans", "Dragons"),
+    // whose word views are not the registered lowercase pieces; claim their
+    // tokens too.
+    if let Some(choice_token) =
+        crate::lexer::TokenWordView::new(tail_tokens).map_word_to_token_start(choice_offset)
+    {
+        crate::word_claims::claim_tokens(&tail_tokens[choice_token..]);
+    }
     if card_type_options.len() >= 2 {
         return Ok(Some(StaticAbility::choose_named_option_as_enters(
             card_type_options
@@ -7104,6 +7114,8 @@ pub fn parse_choose_named_options_as_enters_line(
     if options.len() < 2 {
         return Ok(None);
     }
+    // The named options (and "at random") are this choice's own words.
+    crate::word_claims::claim_words(&tail_words[choice_offset..]);
     if at_random {
         let display_options = match options.as_slice() {
             [first, second] => format!("{first} or {second}"),
@@ -7130,6 +7142,8 @@ pub fn parse_choose_named_options_as_enters_line(
         .collect::<Vec<_>>()
         .join(" or ");
 
+    // The named options (and "at random") are this choice's own words.
+    crate::word_claims::claim_words(&tail_words[choice_offset..]);
     Ok(Some(StaticAbility::choose_named_option_as_enters(
         options,
         format!("As {display_subject} enters, choose {display_options}."),
@@ -9105,6 +9119,21 @@ fn claim_characteristic_pt_subject_and_copula(tokens: &[OwnedLexToken]) {
     }
 }
 
+/// "Maro's power and toughness are each equal to ...", "Anax's power is
+/// equal to ...": the authored proper-name possessive subject the reading
+/// takes as the source (`ValueSurfaceHint::SourceNameSubject`). Read only
+/// when that named-subject surface holds.
+fn claim_characteristic_pt_named_subject(tokens: &[OwnedLexToken]) {
+    if !characteristic_pt_uses_named_subject_surface(tokens) {
+        return;
+    }
+    let sentence_tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&sentence_tokens);
+    if let Some(axis) = words.iter().position(|word| is_characteristic_axis_word(word)) {
+        crate::word_claims::claim_words(&words[..axis]);
+    }
+}
+
 pub fn parse_characteristic_defining_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -9169,6 +9198,7 @@ pub fn parse_characteristic_defining_pt_line(
         })?;
         let value = preserve_subject(value);
         claim_characteristic_pt_subject_and_copula(&sentence_tokens);
+        claim_characteristic_pt_named_subject(&sentence_tokens);
         return Ok(Some(StaticAbility::characteristic_defining_pt(
             value.clone(),
             value,
@@ -9255,6 +9285,7 @@ pub fn parse_characteristic_defining_pt_line(
     if parsed_power.is_none() && parsed_toughness.is_none() {
         return Ok(None);
     }
+    claim_characteristic_pt_named_subject(tokens);
 
     Ok(Some(StaticAbility::characteristic_defining_pt(
         preserve_subject(parsed_power.unwrap_or(Value::SourcePower)),
