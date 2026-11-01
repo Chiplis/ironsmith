@@ -7,6 +7,7 @@ import { normalizeDraftForApi } from "@/lib/custom-card-draft";
 import SandboxPanel from "./SandboxPanel";
 import MechanicsPanel from "./MechanicsPanel";
 import SubtypesPanel from "./SubtypesPanel";
+import { CUSTOM_SUBTYPES_CHANGED } from "@/lib/custom-subtypes";
 import CustomCardArtEditor from "./CustomCardArtEditor";
 import BuildCardSearch from "./BuildCardSearch";
 import CardPrintingStage from "./CardPrintingStage";
@@ -659,6 +660,12 @@ export default function CreateCardForgeSheet({
 
   // Appearance edits do not change compiler input. Keep the debounce tied to
   // the rules snapshot so printing controls never queue another WASM compile.
+  const [subtypeRevision, setSubtypeRevision] = useState(0);
+  useEffect(() => {
+    const changed = () => setSubtypeRevision(value => value + 1);
+    globalThis.addEventListener?.(CUSTOM_SUBTYPES_CHANGED, changed);
+    return () => globalThis.removeEventListener?.(CUSTOM_SUBTYPES_CHANGED, changed);
+  }, []);
   const previewInput = JSON.stringify(normalizeDraftForApi(draft));
   const setDefinitions = JSON.stringify(setCardEditing ? setMechanics(customSetDraft) : []);
   useEffect(() => {
@@ -685,7 +692,7 @@ export default function CreateCardForgeSheet({
     }, 180);
 
     return () => { active = false; window.clearTimeout(timeoutId); };
-  }, [previewInput, game, open, setCardEditing, setDefinitions]);
+  }, [previewInput, game, open, setCardEditing, setDefinitions, subtypeRevision]);
 
   const loadSeed = useCallback(async ({ reroll = false } = {}) => {
     setSeedLoading(true);
@@ -756,7 +763,7 @@ export default function CreateCardForgeSheet({
 
   const loadSavedToken = useCallback((token) => {
     cancelSelection();
-    const next = cloneDraft({ layout: "single", token: true, faces: [token.face] });
+    const next = cloneDraft({ layout: "single", token: true, faces: [token.face], customSubtypes: token.customSubtypes || [] });
     setDraft(next);
     setSeedDraft(next);
     setCatalogCard(null);

@@ -50,7 +50,7 @@ fn build_unless_payment_total_cost(
     crate::cost::TotalCost::from_costs(components)
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ironsmith_core::tag::TagKeyWalk)]
 pub struct EmblemDescription {
     pub name: String,
     pub text: String,
@@ -72,7 +72,7 @@ impl EmblemDescription {
     }
 }
 
-pub trait EffectPayload: Any + Debug + Send + Sync + erased_serde::Serialize {
+pub trait EffectPayload: Any + Debug + Send + Sync + erased_serde::Serialize + ironsmith_core::tag::TagKeyWalk {
     fn clone_box(&self) -> Box<dyn EffectPayload>;
     fn as_any(&self) -> &dyn Any;
     fn type_name(&self) -> &'static str;
@@ -84,7 +84,7 @@ pub trait EffectPayload: Any + Debug + Send + Sync + erased_serde::Serialize {
 
 impl<T> EffectPayload for T
 where
-    T: Any + Debug + Clone + Send + Sync + serde::Serialize,
+    T: Any + Debug + Clone + Send + Sync + serde::Serialize + ironsmith_core::tag::TagKeyWalk,
 {
     fn clone_box(&self) -> Box<dyn EffectPayload> {
         Box::new(self.clone())
@@ -109,6 +109,19 @@ where
 
 #[derive(Debug)]
 pub struct Effect(pub Arc<dyn EffectPayload>);
+
+// Preserve structural visitors across the compiler's erased effect boundary.
+impl ironsmith_core::tag::TagKeyWalk for Effect {
+    fn for_each_tag_key(&self, f: &mut dyn FnMut(&ironsmith_core::tag::TagKey)) { self.0.for_each_tag_key(f); }
+    fn for_each_object_ref(&self, f: &mut dyn FnMut(&ironsmith_core::filter_model::ObjectRef)) { self.0.for_each_object_ref(f); }
+    fn for_each_subtype(&self, f: &mut dyn FnMut(&ironsmith_core::Subtype)) { self.0.for_each_subtype(f); }
+    fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut ironsmith_core::tag::TagKey)) {
+        let mut payload = self.0.clone_box(); payload.map_tag_keys(f); self.0 = Arc::from(payload);
+    }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn Any) -> bool) {
+        let mut payload = self.0.clone_box(); payload.map_player_refs(f); self.0 = Arc::from(payload);
+    }
+}
 
 struct SerializablePayload<'a>(&'a dyn EffectPayload);
 

@@ -535,7 +535,6 @@ function otherDeclarations(draft, definitions) {
 
 export async function prepareCustomCard(draft, compile, { known = [], reserve = async () => {}, knownTokens = [], knownSubtypes } = {}) {
   if (!knownSubtypes) { try { knownSubtypes = listCustomSubtypes(); } catch { knownSubtypes = []; } }
-  draft = withDraftSubtypes(draft, knownSubtypes);
   let definitions = draftMechanics(draft, known);
   // Custom tokens the card names travel with it, like its mechanics.
   const tokens = draftTokens(draft, knownTokens);
