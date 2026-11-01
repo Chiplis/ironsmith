@@ -97,4 +97,4 @@ impl ParseCardText for CardDefinitionBuilder {
     }
 }
 
-pub use ironsmith_grammar_common::custom_subtypes::with_custom_subtypes;
+pub use ironsmith_compiler_grammar::with_custom_subtypes;

@@ -46,3 +46,14 @@ test('library changes persist and do not mutate definitions already carried by a
   assert.deepEqual(listCustomSubtypes(storage), []);
   assert.deepEqual(carried, [sky]);
 });
+
+test('mechanic-expanded subtype dependencies survive export and recompilation', async () => {
+  const draft = { customSubtypes: [sky], customMechanics: [{ keyword: 'summonkin', reminder: 'Create a 1/1 white Skychild creature token.' }],
+    faces: [{ name: 'Caller', oracleText: 'Summonkin.' }] };
+  const prepared = await prepareCustomCard(draft, async input => {
+    assert.deepEqual(input.customSubtypes, [sky]);
+    assert.match(input.faces[0].oracleText, /Skychild/);
+    return { canCreate: true };
+  }, { knownSubtypes: [] });
+  assert.deepEqual(prepared.draft.customSubtypes, [sky]);
+});

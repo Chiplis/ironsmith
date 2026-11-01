@@ -171,7 +171,7 @@ pub type ApplyContinuousEffect = ironsmith_core::ApplyContinuousEffect<
 pub type GrantNextSpellAbilityEffect =
     ironsmith_core::GrantNextSpellAbilityEffect<crate::ability::Ability>;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ironsmith_core::tag::TagKeyWalk)]
 pub struct ScaleXValueEffect {
     pub target: crate::target::ChooseSpec,
     pub multiplier: u32,
@@ -184,7 +184,7 @@ impl ScaleXValueEffect {
 }
 
 pub mod cards {
-    #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, ironsmith_core::tag::TagKeyWalk)]
     pub struct ImprintFromHandEffect {
         pub filter: crate::target::ObjectFilter,
     }
@@ -197,7 +197,7 @@ pub mod cards {
 }
 
 pub mod continuous {
-    #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, ironsmith_core::tag::TagKeyWalk)]
     pub enum RuntimeModification {
         ModifyPowerToughness {
             power: crate::effect::Value,

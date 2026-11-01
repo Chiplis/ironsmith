@@ -98,7 +98,7 @@ pub struct Card {
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
     /// Referenced custom vocabulary, including rules text and token definitions.
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub custom_subtypes: Vec<Subtype>,
     /// Colors contributed by rules text, computed before source text is stripped
     /// from the runtime card definition.

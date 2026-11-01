@@ -23,21 +23,30 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
     }
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     let player_ref = has_type_flag(&input.attrs, "player_ref");
-    let (visit_body, map_body, object_body, player_body) = match &input.data {
+    let (visit_body, map_body, object_body, player_body, subtype_body) = match &input.data {
         Data::Struct(data) => {
             let (visit, map, object) = fields_walk(&data.fields, quote!(self), true);
             let player = fields_player_walk(&data.fields);
-            (visit, map, object, player)
+            (
+                visit,
+                map,
+                object,
+                player,
+                fields_subtype_walk(&data.fields),
+            )
         }
         Data::Enum(data) => {
             let mut visit_arms = Vec::new();
             let mut map_arms = Vec::new();
             let mut object_arms = Vec::new();
             let mut player_arms = Vec::new();
+            let mut subtype_arms = Vec::new();
             for variant in &data.variants {
                 let variant_name = &variant.ident;
                 let (pattern, visit, map, object) = variant_walk(&variant.fields);
                 let player = variant_player_walk(&variant.fields);
+                let subtype = variant_subtype_walk(&variant.fields);
+                subtype_arms.push(quote!(Self::#variant_name #pattern => { #subtype }));
                 visit_arms.push(quote!(Self::#variant_name #pattern => { #visit }));
                 map_arms.push(quote!(Self::#variant_name #pattern => { #map }));
                 object_arms.push(quote!(Self::#variant_name #pattern => { #object }));
@@ -63,7 +72,12 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
             } else {
                 quote!(match self { #(#player_arms)* })
             };
-            (visit, map, object, player)
+            let subtype = if subtype_arms.is_empty() {
+                quote!(match *self {})
+            } else {
+                quote!(match self { #(#subtype_arms)* })
+            };
+            (visit, map, object, player, subtype)
         }
         Data::Union(_) => {
             return syn::Error::new_spanned(name, "TagKeyWalk cannot be derived for unions")
@@ -80,6 +94,11 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
     } else {
         quote!()
     };
+    let subtype_hook = if has_type_flag(&input.attrs, "subtype") {
+        quote!(f(self);)
+    } else {
+        quote!()
+    };
     quote! {
         impl #impl_generics ::ironsmith_core::tag::TagKeyWalk for #name #type_generics #where_clause {
             fn for_each_tag_key(&self, f: &mut dyn FnMut(&::ironsmith_core::tag::TagKey)) {
@@ -89,6 +108,11 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
             fn for_each_object_ref(&self, f: &mut dyn FnMut(&::ironsmith_core::filter_model::ObjectRef)) {
                 let _ = &f;
                 #object_body
+            }
+            fn for_each_subtype(&self, f: &mut dyn FnMut(&::ironsmith_core::Subtype)) {
+                let _ = &f;
+                #subtype_hook
+                #subtype_body
             }
             fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut ::ironsmith_core::tag::TagKey)) {
                 let _ = &f;
@@ -125,7 +149,11 @@ fn fields_walk(
     fields: &Fields,
     receiver: proc_macro2::TokenStream,
     _is_struct: bool,
-) -> (proc_macro2::TokenStream, proc_macro2::TokenStream, proc_macro2::TokenStream) {
+) -> (
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+) {
     let mut visit = Vec::new();
     let mut map = Vec::new();
     let mut object = Vec::new();
@@ -180,11 +208,18 @@ fn variant_walk(
                 }
                 bindings.push(quote!(#ident));
                 visit.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_tag_key(#ident, f);));
-                object.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(#ident, f);));
+                object.push(
+                    quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(#ident, f);),
+                );
                 map.push(quote!(::ironsmith_core::tag::TagKeyWalk::map_tag_keys(#ident, f);));
             }
             let pattern = quote!({ #(#bindings,)* .. });
-            (pattern, quote!(#(#visit)*), quote!(#(#map)*), quote!(#(#object)*))
+            (
+                pattern,
+                quote!(#(#visit)*),
+                quote!(#(#map)*),
+                quote!(#(#object)*),
+            )
         }
         Fields::Unnamed(unnamed) => {
             let mut pattern_parts = Vec::new();
@@ -196,11 +231,18 @@ fn variant_walk(
                 let ident = format_ident!("f{position}");
                 pattern_parts.push(quote!(#ident));
                 visit.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_tag_key(#ident, f);));
-                object.push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(#ident, f);));
+                object.push(
+                    quote!(::ironsmith_core::tag::TagKeyWalk::for_each_object_ref(#ident, f);),
+                );
                 map.push(quote!(::ironsmith_core::tag::TagKeyWalk::map_tag_keys(#ident, f);));
             }
             let pattern = quote!(( #(#pattern_parts),* ));
-            (pattern, quote!(#(#visit)*), quote!(#(#map)*), quote!(#(#object)*))
+            (
+                pattern,
+                quote!(#(#visit)*),
+                quote!(#(#map)*),
+                quote!(#(#object)*),
+            )
         }
         Fields::Unit => (quote!(), quote!(), quote!(), quote!()),
     }
@@ -271,6 +313,67 @@ fn variant_player_walk(fields: &Fields) -> proc_macro2::TokenStream {
                 }
                 let ident = format_ident!("f{position}");
                 player.push(quote!(::ironsmith_core::tag::TagKeyWalk::map_player_refs(#ident, f);));
+            }
+        }
+        Fields::Unit => {}
+    }
+    quote!(#(#player)*)
+}
+
+// Structural subtype dependencies, without inspecting text or parser probes.
+fn fields_subtype_walk(fields: &Fields) -> proc_macro2::TokenStream {
+    let mut player = Vec::new();
+    match fields {
+        Fields::Named(named) => {
+            for field in &named.named {
+                if is_skipped(field) {
+                    continue;
+                }
+                let ident = field.ident.as_ref().unwrap();
+                player.push(
+                    quote!(::ironsmith_core::tag::TagKeyWalk::for_each_subtype(&self.#ident, f);),
+                );
+            }
+        }
+        Fields::Unnamed(unnamed) => {
+            for (position, field) in unnamed.unnamed.iter().enumerate() {
+                if is_skipped(field) {
+                    continue;
+                }
+                let index = Index::from(position);
+                player.push(
+                    quote!(::ironsmith_core::tag::TagKeyWalk::for_each_subtype(&self.#index, f);),
+                );
+            }
+        }
+        Fields::Unit => {}
+    }
+    quote!(#(#player)*)
+}
+
+/// The subtype walk over one enum variant's bindings, matching the
+/// names `variant_walk` binds.
+fn variant_subtype_walk(fields: &Fields) -> proc_macro2::TokenStream {
+    let mut player = Vec::new();
+    match fields {
+        Fields::Named(named) => {
+            for field in &named.named {
+                if is_skipped(field) {
+                    continue;
+                }
+                let ident = field.ident.as_ref().unwrap();
+                player
+                    .push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_subtype(#ident, f);));
+            }
+        }
+        Fields::Unnamed(unnamed) => {
+            for (position, field) in unnamed.unnamed.iter().enumerate() {
+                if is_skipped(field) {
+                    continue;
+                }
+                let ident = format_ident!("f{position}");
+                player
+                    .push(quote!(::ironsmith_core::tag::TagKeyWalk::for_each_subtype(#ident, f);));
             }
         }
         Fields::Unit => {}

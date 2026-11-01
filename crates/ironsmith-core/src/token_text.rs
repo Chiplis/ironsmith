@@ -51,10 +51,11 @@ impl TokenTextRoles {
 /// Canonical rules-word spellings used to construct a name under CR 111.4.
 /// These literals are semantic vocabulary, independent of Debug, serde enum
 /// names, UI rendering, and source-card or token-name comparisons.
-pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
+pub fn token_subtype_rules_word(subtype: Subtype) -> Option<std::borrow::Cow<'static, str>> {
+    if let Subtype::Custom(value) = subtype { return Some(std::borrow::Cow::Owned(value.display_name())); }
     macro_rules! vocabulary {
         ($($kind:ident => $word:literal),* $(,)?) => {
-            match subtype { $(Subtype::$kind => Some($word),)* _ => None }
+            match subtype { $(Subtype::$kind => Some(std::borrow::Cow::Borrowed($word)),)* _ => None }
         };
     }
     vocabulary! {
@@ -141,7 +142,7 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
 pub fn subtype_derived_token_name(subtypes: &[Subtype]) -> Option<String> {
     let mut words = Vec::new();
     for subtype in subtypes { words.push(token_subtype_rules_word(*subtype)?); }
-    words.push("Token");
+    words.push(std::borrow::Cow::Borrowed("Token"));
     Some(words.join(" "))
 }
 

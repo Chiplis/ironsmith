@@ -773,6 +773,19 @@ pub fn parse_type_line_with(
             continue;
         }
         if let Some(subtype) = parse_subtype(right_words[index]) {
+            if let Subtype::Custom(value) = subtype {
+                use ironsmith_core::SubtypeFamily as Family;
+                let compatible = match value.family {
+                    Family::Creature => card_types.contains(&CardType::Creature) || card_types.contains(&CardType::Kindred),
+                    Family::Land => card_types.contains(&CardType::Land),
+                    Family::Artifact => card_types.contains(&CardType::Artifact),
+                    Family::Enchantment => card_types.contains(&CardType::Enchantment),
+                    Family::Spell => card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery),
+                    Family::Planeswalker => card_types.contains(&CardType::Planeswalker),
+                    Family::Battle => card_types.contains(&CardType::Battle),
+                };
+                if !compatible { return Err(CardTextError::ParseError(format!("{subtype} is a {}", value.family.type_phrase()))); }
+            }
             subtypes.push(subtype);
         } else {
             return Err(CardTextError::ParseError(format!("unrecognized subtype in type line: {}", right_words[index])));

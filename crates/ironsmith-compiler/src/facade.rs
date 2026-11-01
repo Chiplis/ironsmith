@@ -336,8 +336,7 @@ impl CompilerFacade {
         text: impl Into<String>,
         policy: CompilePolicy,
     ) -> Result<CompiledCardText<crate::cards::CardDefinition>, CardTextError> {
-        let mut compiled =
-            crate::compile_card_text_with_policy(builder, text, policy.allow_unsupported)?;
+        let mut compiled = crate::compile_card_text_with_policy(builder, text, policy.allow_unsupported)?;
         if let Err(error) = reject_compiled_parser_fallbacks(&compiled.definition) {
             if crate::parse_trace::is_enabled() {
                 crate::parse_trace::event(format!(
@@ -347,7 +346,11 @@ impl CompilerFacade {
             }
             return Err(error);
         }
-        compiled.definition.card.custom_subtypes = ironsmith_core::custom_subtypes::used_subtypes();
+        let mut custom_subtypes = Vec::new();
+        ironsmith_core::tag::TagKeyWalk::for_each_subtype(&compiled.definition, &mut |subtype| {
+            if subtype.is_custom_vocabulary() && !custom_subtypes.contains(subtype) { custom_subtypes.push(*subtype); }
+        });
+        compiled.definition.card.custom_subtypes = custom_subtypes;
         Ok(CompiledCardText {
             definition: compiled.definition,
             annotations: compiled.annotations,

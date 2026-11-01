@@ -191,6 +191,7 @@ impl SubtypeFamily {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+#[tag_walk(subtype)]
 pub enum Subtype {
     // Basic land types
     Plains,

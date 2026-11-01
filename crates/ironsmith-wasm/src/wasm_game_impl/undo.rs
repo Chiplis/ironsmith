@@ -1272,7 +1272,12 @@ impl WasmGame {
             draft.enforce_line_claims,
             || ironsmith_dynamic_compile::with_custom_subtypes(&draft.custom_subtypes, || {
                 let mut faces = self.compile_custom_card_faces_inner(draft)?;
-                let used = ironsmith_core::custom_subtypes::used_subtypes();
+                let mut used = Vec::new();
+                for face in &faces {
+                    for subtype in &face.card.custom_subtypes {
+                        if !used.contains(subtype) { used.push(*subtype); }
+                    }
+                }
                 for face in &mut faces { face.card.custom_subtypes = used.clone(); }
                 Ok(faces)
             })
