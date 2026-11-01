@@ -706,6 +706,20 @@ pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> Com
     authoritative_snapshot_from_attempt(payload, &attempt)
 }
 
+/// Inspect exactly the same parse attempt used by the authoritative DB sync.
+/// Keeping the audit next to the snapshot avoids recompiling a card just to
+/// explain its score. This function never opens or modifies the status DB.
+pub fn compile_authoritative_snapshot_with_audit(
+    payload: &CardPayload,
+) -> (CompilationSnapshot, Vec<String>, Option<CardDefinition>) {
+    let attempt = parse_card_payload_with_fallback(payload);
+    let audit = attempt.definition.as_ref()
+        .map(ironsmith::compiled_text::semantic_audit_lines)
+        .unwrap_or_default();
+    let snapshot = authoritative_snapshot_from_attempt(payload, &attempt);
+    (snapshot, audit, attempt.definition)
+}
+
 // Retry policy must not change the validation applied to a compiled result.
 fn authoritative_snapshot_from_attempt(
     payload: &CardPayload,

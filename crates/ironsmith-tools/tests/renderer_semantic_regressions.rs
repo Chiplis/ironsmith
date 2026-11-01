@@ -27,6 +27,112 @@ fn on_big_stack(test: impl FnOnce() + Send + 'static) {
         .unwrap();
 }
 
+#[test]
+fn status_db_revealed_partition_moves_matching_permanents_tapped() {
+    on_big_stack(|| {
+        let def = compile("Branching Timeline");
+        let audit = ironsmith::compiled_text::semantic_audit_lines(&def).join("\n");
+        assert!(audit.contains("permanent cards") && audit.contains("battlefield tapped"), "{audit}");
+        let p = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = game.create_object_from_definition(&def, p, Zone::Stack);
+        for name in ["First land", "Second land", "Third land"] {
+            game.create_object_from_definition(&witness(name, vec![T::Land]), p, Zone::Battlefield);
+        }
+        for (name, kind) in [("Revealed land", T::Land), ("Revealed creature", T::Creature), ("Remainder instant", T::Instant)] {
+            game.create_object_from_definition(&witness(name, vec![kind]), p, Zone::Library);
+        }
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let mut ctx = ironsmith::effects::EffectContext::new(source, p, &mut dm);
+        for effect in def.spell_effect.as_ref().unwrap().all_effects() {
+            ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        let player = game.player(p).unwrap();
+        assert_eq!(player.library.len(), 1, "only the nonpermanent remains in the library");
+        assert_eq!(game.object(player.library[0]).unwrap().name, "Remainder instant");
+        for name in ["Revealed land", "Revealed creature"] {
+            let object = game.battlefield.iter().filter_map(|id| game.object(*id)).find(|o| o.name == name).expect("matching permanent moved to the battlefield");
+            assert!(game.is_tapped(object.id), "{name} must enter tapped");
+        }
+    });
+}
+
+#[test]
+fn status_db_goad_target_limit_retains_attacked_opponent_count() {
+    on_big_stack(|| {
+        let def = compile("Galvanizing Tenor");
+        let audit = ironsmith::compiled_text::semantic_audit_lines(&def).join("\n");
+        assert!(audit.contains("where X is") && audit.contains("opponents you attacked"), "{audit}");
+        let triggered = def.abilities.iter().find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        }).unwrap();
+        assert_eq!(triggered.choices.len(), 1);
+        let choice = &triggered.choices[0];
+        assert_eq!(choice.count().min, 0);
+        let value = choice.count_value().expect("the target limit must be bound before targets are selected");
+        assert!(format!("{value:?}").contains("OpponentsAttacked"));
+    });
+}
+
+#[test]
+fn status_db_entry_counter_audit_keeps_distinct_type_count_and_exclusion() {
+    on_big_stack(|| {
+        let def = compile("Jean-Luc, Mon Capitaine");
+        let audit = ironsmith::compiled_text::semantic_audit_lines(&def).join("\n");
+        assert!(audit.contains("for each creature type among non-Borg creatures you control"), "{audit}");
+    });
+}
+
+#[test]
+fn status_db_entry_counters_apply_both_matching_conditional_arms() {
+    on_big_stack(|| {
+        let def = compile("Chief Montgomery Scott");
+        let audit = ironsmith::compiled_text::semantic_audit_lines(&def).join("\n");
+        assert!(audit.contains("X additional +1/+1 counters") && audit.contains("X additional charge counters") && audit.contains("where X is"), "{audit}");
+        for (types, subtypes, expected_plus, expected_charge) in [
+            (vec![T::Artifact, T::Creature], vec![ironsmith::Subtype::Spacecraft], 3, 3),
+            (vec![T::Creature], vec![], 3, 0),
+            (vec![T::Artifact], vec![ironsmith::Subtype::Spacecraft], 0, 3),
+        ] {
+        let p = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = game.create_object_from_definition(&def, p, Zone::Battlefield);
+        for name in ["First land", "Second land", "Third land"] {
+            game.create_object_from_definition(&witness(name, vec![T::Land]), p, Zone::Battlefield);
+        }
+        let hybrid = CardDefinitionBuilder::new(CardId::new(), "Hybrid witness")
+            .card_types(types)
+            .subtypes(subtypes)
+            .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_definition(&hybrid, p, Zone::Hand);
+        let activated = def.abilities.iter().find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        }).unwrap();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let mut ctx = ironsmith::effects::EffectContext::new(source, p, &mut dm);
+        for effect in activated.effects.all_effects() {
+            ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        let entered = game.battlefield.iter().filter_map(|id| game.object(*id)).find(|o| o.name == "Hybrid witness").expect("chosen card enters");
+        assert_eq!(entered.counters.get(&ironsmith::CounterType::PlusOnePlusOne).copied().unwrap_or(0), expected_plus);
+        assert_eq!(entered.counters.get(&ironsmith::CounterType::Charge).copied().unwrap_or(0), expected_charge);
+        }
+    });
+}
+
+#[test]
+fn status_db_mana_permission_audit_keeps_spell_scope_and_ownership() {
+    on_big_stack(|| {
+        let def = compile("Nathan Drake, Treasure Hunter");
+        let audit = ironsmith::compiled_text::semantic_audit_lines(&def).join("\n");
+        assert!(audit.contains("to cast spells you don't own"), "{audit}");
+        assert!(audit.contains("you control but don't own"), "{audit}");
+    });
+}
+
 fn compile(name: &str) -> CardDefinition {
     // The audit family tests compile many named cards. Scan the catalog once
     // for that shared set instead of reparsing it for every test case.

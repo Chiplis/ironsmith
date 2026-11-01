@@ -87,6 +87,7 @@ pub enum CopyExceptionShape<'a> {
         remainder_tokens: &'a [OwnedLexToken],
     },
     Abilities {
+        remove_legendary: bool,
         ability_tokens: &'a [OwnedLexToken],
         source_filter_tokens: Option<&'a [OwnedLexToken]>,
     },
@@ -575,6 +576,19 @@ fn parse_copy_name_exception_lexed<'a>(
 fn parse_copy_ability_exception_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<CopyExceptionShape<'a>> {
+    // A copy can both lose legendary and gain an ability. Keep both
+    // structured exceptions instead of rejecting or dropping either clause.
+    let remove_legendary = opt((
+        alt((
+            primitives::phrase(&["it", "isn't", "legendary"]),
+            primitives::phrase(&["it", "isnt", "legendary"]),
+            primitives::phrase(&["it", "is", "not", "legendary"]),
+        )),
+        opt(primitives::comma()),
+        primitives::kw("and"),
+    ))
+    .parse_next(input)?
+    .is_some();
     primitives::phrase(&["it", "has"]).parse_next(input)?;
     let ability_tokens = take_sentence_body(input)?;
     let (ability_tokens, source_filter_tokens) =
@@ -585,6 +599,7 @@ fn parse_copy_ability_exception_lexed<'a>(
             None => (ability_tokens, None),
         };
     Ok(CopyExceptionShape::Abilities {
+        remove_legendary,
         ability_tokens: trim_lexed_commas(ability_tokens),
         source_filter_tokens,
     })
@@ -605,7 +620,13 @@ fn parse_copy_characteristic_exception_lexed<'a>(
     }
     alt((
         (
-            primitives::kw("its"),
+            alt((
+                primitives::kw("its"),
+                primitives::kw("hes"),
+                primitives::kw("shes"),
+                primitives::kw("he's"),
+                primitives::kw("she's"),
+            )),
             opt(alt((primitives::kw("a"), primitives::kw("an")))),
         )
             .void(),

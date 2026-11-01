@@ -1,3 +1,4 @@
+import { findAbilityPreference } from '@/lib/ability-preferences';
 import { handManaCostPresentation } from "@/lib/hand-mana-cost";
 import { animateEffect as animate } from "@/lib/motion/native-effects";
 import { customCardAssets } from "@/lib/custom-card-assets";
@@ -2373,6 +2374,29 @@ export default function HoverArtOverlay({
     </div>
   ) : null;
 
+  const abilityPreferencesButton = details?.ability_preferences?.length ? (
+    <button type="button" className="inspector-priority-settings"
+      aria-label="Ability priority preferences" title="Choose Hold, Countdown or Pass for an ability"
+      onClick={event => {
+        event.stopPropagation();
+        window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', {detail: {abilities: details.ability_preferences}}));
+      }}>Ability priority</button>
+  ) : null;
+
+  const openAbilityPreferences = event => {
+    const target = event.target.closest?.('[data-keyword-helper], [data-ability-text], .inspector-ability-section');
+    if (!target) return;
+    const lineTarget = target.closest('[data-rules-line-index]');
+    const index = Number(lineTarget?.dataset.rulesLineIndex);
+    const texts = [target.dataset.keywordHelper, target.dataset.abilityText, target.textContent];
+    if (Number.isInteger(index)) texts.push(...(rulesView.sourceLines[index] || []));
+    const entry = findAbilityPreference(details?.ability_preferences || [], texts);
+    if (!entry) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.dispatchEvent(new CustomEvent('ironsmith:priority-menu', { detail: { entry } }));
+  };
+
   if (isCardFrameMode) {
     const liveCard = handManaCostPresentation({...hoveredStackObject, ...previewCard, ...cardSnapshot, ...details}, state);
     const faceIndex = cardFrameFaceIndex(liveCard, sourceImageUrl || imageUrl);
@@ -2387,12 +2411,13 @@ export default function HoverArtOverlay({
           power: liveCard.power ?? face.power, toughness: liveCard.toughness ?? face.toughness,
           loyalty: liveCard.loyalty ?? face.loyalty, defense: liveCard.defense ?? face.defense} : face);
     }
-    return <div className="absolute inset-0 z-30 pointer-events-auto" data-zone-transition-token={transientPreview?.token || undefined}>
+    return <div onContextMenu={openAbilityPreferences} className="absolute inset-0 z-30 pointer-events-auto" data-zone-transition-token={transientPreview?.token || undefined}>
       <CardFramePresentation card={frameCard} imageUrl={imageUrl} faceIndex={faceIndex} inspector
         rulesView={isMiniatureFrame ? null : frameRulesView} onActivate={onInteractiveAction}
         highlighted={highlightedRuleLineIndices} stats={displayStatsText} counters={displayCountersLine}
         zone={displayZoneLine} badges={displayTypeLineBadges} onReadyChange={onCardFrameReadyChange}/>
       {chosenValuesBadge}
+      {abilityPreferencesButton}
     </div>;
   }
 
@@ -2404,11 +2429,13 @@ export default function HoverArtOverlay({
           inspectorShaderReveal && "hover-art-stage--shader-reveal",
           inspectorShaderReveal && inspectorShaderRevealScope === "inspector" && "hover-art-stage--shader-reveal-inspector"
         )}
+        onContextMenu={openAbilityPreferences}
         data-zone-transition-token={transientPreview?.token || undefined}
         style={{ ...inspectorShaderRevealStyle, ...typography.style }}
       data-card-era={typography.era}
       >
       {chosenValuesBadge}
+      {abilityPreferencesButton}
       <div className="absolute inset-0 bg-[radial-gradient(92%_92%_at_50%_14%,rgba(188,150,92,0.28),rgba(8,13,20,0)_62%),linear-gradient(180deg,rgba(16,12,9,0.96),rgba(8,7,7,0.98))]" />
         <div className="absolute inset-[10px] overflow-hidden rounded-none border border-[rgba(177,145,98,0.38)] bg-[rgba(16,12,10,0.94)] shadow-[0_0_0_1px_rgba(196,164,112,0.12),0_0_28px_rgba(156,118,62,0.18),0_28px_52px_rgba(0,0,0,0.48)]">
           <div className="absolute inset-0 bg-[radial-gradient(78%_62%_at_50%_24%,rgba(210,178,112,0.12),rgba(6,10,16,0)_62%)]" />
@@ -2525,11 +2552,13 @@ export default function HoverArtOverlay({
         inspectorShaderReveal && "hover-art-stage--shader-reveal",
         inspectorShaderReveal && inspectorShaderRevealScope === "inspector" && "hover-art-stage--shader-reveal-inspector"
       )}
+      onContextMenu={openAbilityPreferences}
       data-zone-transition-token={transientPreview?.token || undefined}
       style={{ ...inspectorShaderRevealStyle, ...typography.style }}
       data-card-era={typography.era}
     >
       {chosenValuesBadge}
+      {abilityPreferencesButton}
       <div className="absolute inset-0 bg-[radial-gradient(120%_84%_at_50%_18%,rgba(188,150,92,0.16),rgba(6,11,18,0)_52%),linear-gradient(180deg,rgba(16,12,9,0.94),rgba(7,8,9,0.98))]" />
       {showImageBackdrop && (
         <div className={cn(
@@ -2885,6 +2914,7 @@ export default function HoverArtOverlay({
                               }
                             }}
                             className="block w-full inspector-ability-section"
+                            data-rules-line-index={lineIndex}
                             data-stack-highlighted={highlightedRuleLineIndices.has(lineIndex) ? "true" : undefined}
                           >
                             {rulesView.manaGroups.has(lineIndex) ? (

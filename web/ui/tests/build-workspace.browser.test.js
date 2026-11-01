@@ -17,6 +17,15 @@ test('Build searches into the editor and adds catalog cards or edited drafts', {
   await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/build-workspace.html`,{waitUntil:'domcontentloaded'});
   await page.getByRole('button',{name:'Build',exact:true}).click();
   const dialog=page.getByRole('dialog');
+  const layoutPicker=dialog.getByRole('combobox',{name:'Layout',exact:true});
+  await layoutPicker.click();
+  const layoutOptions=page.getByRole('option');
+  const labels=await layoutOptions.allTextContents();
+  assert.equal(labels.length,11);
+  assert.deepEqual(labels,[...labels].sort((a,b)=>a.localeCompare(b)));
+  assert.equal(await layoutOptions.locator('.size-6').count(),11,'every layout retains its icon');
+  await page.getByRole('option',{name:'Single',exact:true}).click();
+
   assert.equal(await dialog.getByText('Forge',{exact:true}).count(),0);
   assert.equal(await dialog.getByRole('tab',{name:'Search cards'}).count(),0);
   assert.equal(await dialog.getByText('Placement',{exact:true}).count(),0);

@@ -11,6 +11,7 @@ pub use ironsmith_compiler::cards::CardDefinition as CompilerCardDefinition;
 pub use ironsmith_compiler::with_custom_tokens;
 /// Strict compilation for authored cards: unread filter words fail the card.
 pub use ironsmith_compiler::word_claims::with_enforcement as with_word_claim_enforcement;
+pub use ironsmith_compiler::word_claims::with_enforcement_options;
 
 /// Compile a custom token's own rules text strictly. The compiler-level
 /// definition is what token-creation lowering substitutes for a reference

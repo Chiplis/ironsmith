@@ -71,28 +71,6 @@ const result = await build({
         }
         return code.replace(start,'').replace(raster,'    return await createImageBitmap(image);').replace(cleanup,'');
       }
-      // Upstream's land Saga plate currently overrides even explicit live
-      // frame colors. Keep the neutral plate only when the palette is empty.
-      if (id.endsWith('/presentation/modern-land-layers.ts')) {
-        // Component frames do not load the full-face plate's material masks.
-        const before = 'export function modernLandLayers(input: RenderedCardInput): readonly LandLayer[] {';
-        if (!code.includes(before)) throw new Error('card-glint land layers patch needs updating');
-        return code.replace(before, `${before}\n  if (input.frameColors?.length || input.colors?.length) return [];`);
-      }
-      if (id.endsWith('/presentation/frame-plates.ts')) {
-        // Full-face printing plates retain tan land stock. Colored lands use
-        // the component frames, which honor the live land palette throughout.
-        const before = 'export function framePlate(face: RenderedCardInput): FramePlate | null {';
-        if (!code.includes(before)) throw new Error('card-glint land plate patch needs updating');
-        return code.replace(before, `${before}\n  if (resolveCardProfile(face).land && resolveFrameColors(face).length) return null;`);
-      }
-      if (id.endsWith('/presentation/profile.ts')) {
-        // Land is a rules characteristic, not a forced tan material. Keep
-        // neutral lands neutral; colored land palettes also paint the stock.
-        const before = "const boxes = land\n    ? 'Land'\n    : artifact";
-        if (!code.includes(before)) throw new Error('card-glint land material patch needs updating');
-        return code.replace(before, "const boxes = land && !colors.length\n    ? 'Land'\n    : artifact && !(land && colors.length)");
-      }
       if (id.endsWith('/presentation/saga-frame.ts')) {
         return code.replace("if (/\\bLand\\b/.test(face.typeLine ?? '') || face.land)",
           "if (!colors.length && (/\\bLand\\b/.test(face.typeLine ?? '') || face.land))");

@@ -1,0 +1,769 @@
+[
+  {
+    "card": "Dathon, His Heart Open",
+    "audit_contains": [
+      "Choose a counter on target enchantment you control"
+    ],
+    "definition_contains": [
+      "PutCounterOfChosenKind"
+    ],
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Ichormoon Gauntlet",
+    "min_score": 1.0
+  },
+  {
+    "card": "Sarek, Federation Ambassador",
+    "audit_contains": [
+      "draw a card for every five creature types among non-Borg creatures you control",
+      "you draw three or more cards this way"
+    ],
+    "definition_contains": [
+      "DividedRoundedDown",
+      "CreatureTypesAmong",
+      "Borg"
+    ],
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Unification",
+    "audit_contains": [
+      "The owner of up to one target creature draws two cards, then shuffles that creature into their library"
+    ],
+    "definition_contains": [
+      "DrawCardsEffect",
+      "ShuffleObjectsIntoLibraryEffect"
+    ],
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "runtime": true,
+    "min_score": 0.99
+  },
+  {
+    "card": "Graywater's Fixer",
+    "audit_contains": [
+      "encore {X}, where X is its mana value"
+    ],
+    "presentation_independent": true
+  },
+  {
+    "card": "Sliver Gravemother",
+    "audit_contains": [
+      "encore {X}, where X is its mana value",
+      "Encore {5}"
+    ],
+    "presentation_independent": true
+  },
+  {
+    "card": "Rusted Relic",
+    "audit_contains": [
+      "5/5",
+      "Golem"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Awaken the Ancient",
+    "audit_contains": [
+      "7/7",
+      "haste"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Gideon Blackblade",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Grand Master of Flowers",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Kaito, Bane of Nightmares",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Tyrannical Pitlord",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Voidpouncer",
+    "audit_contains": [
+      "trample counter",
+      "+1/+1 counters"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Haldan, Avid Arcanist",
+    "audit_contains": [
+      "fetch counter"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Draugr Necromancer",
+    "audit_contains": [
+      "mana from snow sources as though it were mana of any color"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Nathan Drake, Treasure Hunter",
+    "audit_contains": [
+      "spells you don't own",
+      "permanents you control but don't own"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true
+  },
+  {
+    "card": "Fencer's Magemark",
+    "audit_contains": [
+      "and have first strike"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Bride's Gown",
+    "audit_contains": [
+      "and has first strike"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Groom's Finery",
+    "audit_contains": [
+      "and has deathtouch"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Noble Banneret",
+    "audit_contains": [
+      "this creature and those creatures get +1/+1 and have lifelink"
+    ],
+    "audit_excludes": [
+      "This source"
+    ],
+    "definition_contains": [],
+    "min_score": 0.827198,
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Thryx, the Sudden Storm",
+    "audit_contains": [
+      "less to cast and can't be countered"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "min_score": 0.988809
+  },
+  {
+    "card": "Cunning Nightbonder",
+    "audit_contains": [
+      "less to cast and can't be countered"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "min_score": 0.99999
+  },
+  {
+    "card": "Timber Paladin",
+    "audit_contains": [
+      "5/5",
+      "10/10",
+      "vigilance",
+      "trample"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "min_score": 0.882221
+  },
+  {
+    "card": "Living Conundrum",
+    "audit_contains": [
+      "base power and toughness 10/10",
+      "flying and vigilance"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "min_score": 0.950523
+  },
+  {
+    "card": "Archon of the Wild Rose",
+    "audit_contains": [
+      "4/4 and have flying"
+    ],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "min_score": 0.957325
+  },
+  {
+    "card": "Homicidal Seclusion",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Clout of the Dominus",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Shield of the Oversoul",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Favor of the Overbeing",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Runes of the Deus",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Fists of the Demigod",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Gift of the Deity",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Steel of the Godhead",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Scourge of the Nobilis",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Combat Research",
+    "audit_contains": [],
+    "audit_excludes": [],
+    "definition_contains": [],
+    "min_score": 0.99999,
+    "presentation_independent": true
+  },
+  {
+    "card": "Anje Falkenrath",
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "definition_contains": [
+      "Madness"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Anje Falkenrath // Anje Falkenrath",
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "definition_contains": [
+      "Madness"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "U.S.S. Prometheus, Prototype",
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Voq, Torchbearer",
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "definition_contains": [
+      "Klingon",
+      "Spy",
+      "Menace"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Colossal Clone Master",
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "definition_contains": [
+      "removed_supertypes: [",
+      "Legendary"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Ensign Harry Kim, Operations",
+    "definition_contains": [
+      "SourcePower",
+      "PutCountersEffect"
+    ],
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Kes, Evolving Telepath",
+    "runtime": true,
+    "definition_contains": [
+      "CountersOn",
+      "SacrificeTargetEffect"
+    ],
+    "audit_excludes": [
+      "Unsupported",
+      "Unimplemented"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Chief Montgomery Scott",
+    "audit_contains": [
+      "X additional +1/+1 counters",
+      "X additional charge counters",
+      "where X is"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Galvanizing Tenor",
+    "audit_contains": [
+      "where X is",
+      "opponents you attacked"
+    ],
+    "definition_contains": [
+      "OpponentsAttacked"
+    ],
+    "min_score": 0.99
+  },
+  {
+    "card": "Branching Timeline",
+    "audit_contains": [
+      "permanent cards",
+      "battlefield tapped"
+    ]
+  },
+  {
+    "card": "Jean-Luc, Mon Capitaine",
+    "audit_contains": [
+      "for each creature type among non-Borg creatures you control"
+    ]
+  },
+  {
+    "card": "Haunted One",
+    "min_score": 0.7263095,
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Food Fight",
+    "min_score": 0.9836055,
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Bludgeon Brawl",
+    "audit_contains": [
+      "this artifact's mana value"
+    ],
+    "audit_excludes": [
+      "this enchantment's mana value"
+    ],
+    "min_score": 0.8175392,
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Endless Whispers",
+    "audit_contains": [
+      "All creatures have"
+    ],
+    "min_score": 0.9886859,
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Academy Manufactor",
+    "audit_contains": [
+      "If you would create a Clue, Food, or Treasure token, instead create one of each"
+    ],
+    "audit_excludes": [
+      "[Clue, Food, Treasure]"
+    ],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Soul-Scar Mage",
+    "audit_contains": [
+      "source you control would deal noncombat damage",
+      "on that creature instead"
+    ],
+    "audit_excludes": [
+      "permanent you control would deal"
+    ],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Norn's Annex",
+    "audit_contains": [
+      "for each of those creatures"
+    ],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Way of the Pyromancer",
+    "audit_contains": [
+      "[+1]: Add {R}"
+    ],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Tlincalli Hunter // Retrieve Prey",
+    "audit_contains": [
+      "Once each turn",
+      "from exile"
+    ],
+    "presentation_independent": true
+  },
+  {
+    "card": "Darksteel Monolith",
+    "audit_contains": [
+      "Once each turn",
+      "from your hand"
+    ],
+    "presentation_independent": true,
+    "mutations_visible": true
+  },
+  {
+    "card": "Curse of the Nightly Hunt",
+    "audit_contains": [
+      "Creatures enchanted player controls attack each combat if able"
+    ],
+    "presentation_independent": true
+  },
+  {
+    "card": "Oath of Nissa",
+    "audit_contains": [
+      "planeswalker spells"
+    ],
+    "presentation_independent": true
+  },
+  {
+    "card": "Manascape Refractor",
+    "audit_contains": [
+      "to pay the activation costs"
+    ],
+    "presentation_independent": true
+  },
+  {
+    "card": "Tinybones, Bauble Burglar",
+    "audit_contains": [
+      "spells you don't own",
+      "stash counter",
+      "from exile"
+    ],
+    "audit_excludes": [
+      "non-you player's exile"
+    ],
+    "min_score": 0.9769077,
+    "presentation_independent": true
+  },
+  {
+    "card": "Elder Arthur Maxson",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Dismiss into Dream",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Donatello, the Brains",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Dream Halls",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Quina, Qu Gourmet",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Brightcap Badger // Fungus Frolic",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Queen Allenal of Ruadach",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Case of the Pilfered Proof",
+    "min_score": 0.9983767867088318,
+    "presentation_independent": true
+  },
+  {
+    "card": "Hunter Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Stridehangar Automaton",
+    "min_score": 0.9988393783569336,
+    "presentation_independent": true
+  },
+  {
+    "card": "Frenzy Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Virulent Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Basal Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Armor Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Barbed Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Spectral Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Fungus Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Nissa, Worldsoul Speaker",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Psionic Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Vampiric Sliver",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Rishkar, Peema Renegade",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Arcus Acolyte",
+    "min_score": 1.0,
+    "presentation_independent": true
+  },
+  {
+    "card": "Adrix and Nev, Twincasters",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead"
+    ]
+  },
+  {
+    "card": "Mondrak, Glory Dominus",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead"
+    ]
+  },
+  {
+    "card": "Exalted Sunborn",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead"
+    ]
+  },
+  {
+    "card": "Bard, King of Dale",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead"
+    ]
+  },
+  {
+    "card": "Primal Vigor",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If one or more tokens would be created, twice that many of those tokens are created instead"
+    ]
+  },
+  {
+    "card": "Tippy-Toe, Terrific Partner",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If one or more tokens would be created under your control, those tokens plus a Food token are created instead"
+    ],
+    "min_score": 0.9386804
+  },
+  {
+    "card": "Worldwalker Helm",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If one or more artifact tokens would be created under your control, those tokens plus a Map token are created instead"
+    ],
+    "min_score": 0.9448771
+  },
+  {
+    "card": "Parallel Lives",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead"
+    ],
+    "min_score": 1.0
+  },
+  {
+    "card": "Anointed Procession",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead"
+    ],
+    "min_score": 1.0
+  },
+  {
+    "card": "Doubling Season",
+    "presentation_independent": true,
+    "mutations_visible": true,
+    "audit_contains": [
+      "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead"
+    ],
+    "min_score": 1.0
+  }
+]

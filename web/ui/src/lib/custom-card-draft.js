@@ -1,5 +1,7 @@
 export function normalizeDraftForApi(draft) {
   return {
+    enforceFilterClaims: draft.enforceFilterClaims !== false,
+    enforceLineClaims: draft.enforceLineClaims !== false,
     customMechanics: structuredClone(draft.customMechanics || []),
     ...(draft.customTokens?.length ? { customTokens: structuredClone(draft.customTokens) } : {}),
     ...(draft.token === true ? { token: true } : {}),

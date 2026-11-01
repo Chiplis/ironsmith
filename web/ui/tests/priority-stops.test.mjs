@@ -289,3 +289,38 @@ test('version 2 saves keep deliberate every-time stops; the main phases keep the
   assert.equal(priorityStopMode(stops, 'step:DeclareBlockers', 0), 'always');
   assert.equal(priorityStopMode(stops, 'phase:End', 1), undefined);
 });
+
+test('pregame advances do not consume the first main phase stop', () => {
+  for (const kind of ['keep_opening_hand', 'continue_pregame', 'begin_game']) {
+    const stops = createPriorityStops({ phaseStopsEnabled: true });
+    const main = state({ phase: 'FirstMain', step: null, active_player: 0 });
+    const action = { index: 0, kind: 'pass_priority', action_ref: { kind } };
+    const pregame = { ...main, decision: { kind: 'priority', player: 0, actions: [action] } };
+    stops.beforeCommand({ type: 'priority_action', action_index: 0, action_ref: { kind } }, pregame);
+    assert.equal(stops.stopReason(main), 'stop at Main', kind);
+    stops.beforeCommand(pass, main);
+    assert.equal(stops.stopReason(main), null, 'a real pass still leaves Main I');
+  }
+});
+
+test('policy countdown pauses, defers, expires once and cancels on changed priority', () => {
+ let clock=0;
+ const stops=createPriorityStops({resolveMode:'manual',now:()=>clock});
+ const current=onStack();
+ stops.requestPriorityWindow(current);let pending=stops.getSnapshot().window;
+ assert.equal(stops.expire(pending.id,current),false);
+ stops.armWindow(pending.id);clock=1000;stops.pauseWindow(pending.id);clock=9000;
+ assert.equal(stops.expire(pending.id,current),false);
+ stops.resumeWindow(pending.id);clock=9999;assert.equal(stops.expire(pending.id,current),false);
+ clock=10001;assert.equal(stops.expire(pending.id,current),true);
+ assert.equal(stops.expire(pending.id,current),false);
+ stops.requestPriorityWindow(current);assert.equal(stops.getSnapshot().window,null);
+ stops.resume(current);stops.requestPriorityWindow(current);pending=stops.getSnapshot().window;
+ stops.armWindow(pending.id);clock+=500;stops.deferWindow(pending.id);clock+=5000;
+ assert.equal(stops.expire(pending.id,current),false);
+ stops.armWindow(pending.id);clock+=3000;
+ assert.equal(stops.expire(pending.id,onStack(11)),false);
+ stops.requestPriorityWindow(onStack(11));pending=stops.getSnapshot().window;
+ stops.armWindow(pending.id);clock+=3000;
+ assert.equal(stops.expire(pending.id,{...onStack(11),decision:{kind:'priority',player:1}}),false);
+});

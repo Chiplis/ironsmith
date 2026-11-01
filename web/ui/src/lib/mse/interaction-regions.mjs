@@ -21,7 +21,7 @@ export function mseInteractionRegions(result, rulesView) {
     }
     fields.push({layout, indexed, text:indexed.map(c=>c.letter).join(''),
       left:Number(context.property(name,'left',group)),top:Number(context.property(name,'top',group)),
-      height:Number(context.property(name,'height',group)),angle:Number(context.property(name,'angle',group))||0});
+      width:Number(context.property(name,'width',group)),height:Number(context.property(name,'height',group)),angle:Number(context.property(name,'angle',group))||0});
   }
   const regions=[];
   rulesView.lines.forEach((text,lineIndex)=>{
@@ -52,8 +52,12 @@ export function mseInteractionRegions(result, rulesView) {
       for(const line of field.layout.lines){
         const a=Math.max(start,line.start),b=Math.min(end,line.end);
         if(a>=b||line.top>=field.height||line.top+line.height<=0)continue;
-        const stretch=field.layout.stretch??1,x=line.positions[a-line.start]*stretch;
-        const width=(line.positions[b-line.start]-line.positions[a-line.start])*stretch;
+        const stretch=field.layout.stretch??1;
+        // Whole abilities own the row, including the blank space after Equip.
+        // Symbol choices and help links must retain their individual targets.
+        const fullRow=target.actions.length>0&&!target.option&&!target.helper&&field.width>0;
+        const x=fullRow?0:line.positions[a-line.start]*stretch;
+        const width=fullRow?field.width:(line.positions[b-line.start]-line.positions[a-line.start])*stretch;
         if(!(width>0&&line.height>0))continue;
         const rad=-field.angle*Math.PI/180;
         regions.push({lineIndex,option:target.option,actions:target.actions,helper:target.helper,

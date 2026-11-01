@@ -927,7 +927,16 @@ pub(super) fn run_station_threshold_line_family(
         return ParseOutcome::NoMatch;
     };
     let threshold = shape.threshold;
-    let mut body_tokens = shape.body_tokens.to_vec();
+    let body = if let Some(label) =
+        crate::grammar::preprocess::parse_labeled_ability_prefix_tokens(shape.body_tokens)
+    {
+        let start = shape.body_tokens.iter().position(|token| token.span.start == label.remainder_start)
+            .unwrap_or(0);
+        &shape.body_tokens[start..]
+    } else {
+        shape.body_tokens
+    };
+    let mut body_tokens = body.to_vec();
     if shape.needs_terminal_punctuation {
         body_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
     }

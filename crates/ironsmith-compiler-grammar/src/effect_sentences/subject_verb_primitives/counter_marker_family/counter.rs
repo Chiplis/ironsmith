@@ -76,7 +76,7 @@ pub fn parse_tagged_conditional_entry_counters_sentence(
         .map(|arm| {
             let put_counter = EffectAst::subject_verb_put_counters(
                 arm.descriptor.counter_type,
-                Value::Fixed(arm.descriptor.count as i32)
+                (if arm.x_count { Value::X } else { Value::Fixed(arm.descriptor.count as i32) })
                     .with_surface_hint(
                         ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
                     )
@@ -90,7 +90,7 @@ pub fn parse_tagged_conditional_entry_counters_sentence(
             );
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::ItMatches(
-                    ObjectFilter::default().with_type(arm.object_type),
+                    arm.object_filter,
                 ),
                 if_true: vec![put_counter],
                 if_false: Vec::new(),

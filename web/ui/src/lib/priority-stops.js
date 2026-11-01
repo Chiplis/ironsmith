@@ -1,3 +1,4 @@
+import { isPregameDecision } from './opening-hand-actions.js';
 import { normalizePhaseStep, normalizeStepKey, currentPriorityPhaseLabel, PHASE_TRACK } from './constants.js';
 
 export const PRIORITY_HOLD_WINDOW_MS = 2000;
@@ -288,7 +289,7 @@ export function createPriorityStops({
       if (isLocalTurnDecision(state)) {
         const pass = state.decision?.actions?.find(action => action.kind === 'pass_priority');
         if (command.type === 'declare_attackers' || command.type === 'declare_blockers'
-          || (command.type === 'priority_action' && (command.action_ref?.kind === 'pass_priority'
+          || (command.type === 'priority_action' && !isPregameDecision(state.decision) && (command.action_ref?.kind === 'pass_priority'
             || (pass && command.action_index === pass.index)))) releaseStops(state);
         heldKey = null;
         if (window) { window = null; publish(); }
@@ -313,6 +314,15 @@ export function createPriorityStops({
       observe(state);
       heldKey = null;
       if (window) { window = null; publish(); }
+    },
+    requestPriorityWindow(state) {
+      observe(state);
+      if (!isLocalPriority(state) || state.game_over || heldKey || window) return;
+      window = { id: ++sequence, kind: 'policy-resolve', key: priorityKey(state), startedAt: null, duration: PRIORITY_HOLD_WINDOW_MS };
+      publish();
+    },
+    cancelPriorityWindow() {
+      if (window?.kind === 'policy-resolve') { window = null; publish(); }
     },
     deferWindow(id) {
       if (!window || window.id !== id || window.startedAt === null) return;
@@ -341,7 +351,7 @@ export function createPriorityStops({
       observe(state);
       if (!window || window.id !== id || !isLocalPriority(state)
         || window.pausedAt != null || window.startedAt === null || now() < window.startedAt + window.duration) return false;
-      if (window.kind === 'stack-resolve' && state.viewed_cards
+      if (['stack-resolve', 'policy-resolve'].includes(window.kind) && state.viewed_cards
         && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return false;
       heldKey = window.key;
       window = null;

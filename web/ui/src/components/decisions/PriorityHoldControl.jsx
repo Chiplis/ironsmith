@@ -1,13 +1,20 @@
 import usePrioritySettings from "@/hooks/usePrioritySettings";
 import { Hand, Settings2, Pause, X } from 'lucide-react';
 import { useGame } from '@/context/GameContext';
-import { yieldDescription } from '@/lib/priority-policy.js';
+import { yieldDescription, STACK_PRIORITY_MODES, STACK_PRIORITY_LABELS } from '@/lib/priority-policy.js';
 export default function PriorityHoldControl({ compact = false, battlefield = false }) {
   const { state, priorityPolicy, clearPriorityYields } = useGame();
   const priorityStatus = usePrioritySettings();
   if (compact) return null;
   const status = priorityStatus || { fullControl: false };
+  const mode = status.stackMode || 'hold';
   return <>
+    <button type="button" className="priority-stack-mode" aria-label={`Stack priority: ${STACK_PRIORITY_LABELS[mode]}`}
+      title={`Stack priority: ${STACK_PRIORITY_LABELS[mode]}. H: Hold; C: Countdown (two seconds); P: Pass immediately. Click to change.`}
+      onClick={event => {
+        event.stopPropagation();
+        priorityPolicy?.setStackMode(STACK_PRIORITY_MODES[(STACK_PRIORITY_MODES.indexOf(mode) + 1) % 3], state);
+      }}><span aria-hidden="true">{STACK_PRIORITY_LABELS[mode][0]}</span></button>
     <button type="button" className="player-full-control" aria-pressed={status.fullControl}
       aria-label="Full control" title="Full control: confirm every priority and choice"
       onClick={event => { event.stopPropagation(); priorityPolicy?.setFullControl(!status.fullControl, state); }}>

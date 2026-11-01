@@ -24,10 +24,9 @@ export default function CardGlintInteractions({result,regions,rulesView,onActiva
     <AbilityTextInk result={result} regions={regions} states={states}/>
     {hitRegions.map((region,index)=>{
       const action=region.actions.find(item=>abilityActionState(item)==='available')||region.actions[0];
-      if(!action&&!highlighted?.has(region.lineIndex))return null;
       const status=abilityActionState(action);
       const key=`${region.lineIndex}:${region.option||''}`;
-      const props={className:'mse-card-hit-target',style:{left:`${region.left/488*100}%`,top:`${region.top/680*100}%`,
+      const props={'data-rules-line-index':region.lineIndex,'data-ability-text':rulesView.sourceLines?.[region.lineIndex]?.join(' ') || rulesView.lines[region.lineIndex],className:'mse-card-hit-target',style:{left:`${region.left/488*100}%`,top:`${region.top/680*100}%`,
         width:`${region.width/488*100}%`,height:`${region.height/680*100}%`,transform:`rotate(${region.angle}deg)`},
         'data-stack-highlighted':highlighted?.has(region.lineIndex)?'true':undefined};
       return action?<button key={index} {...props} type="button"
@@ -41,11 +40,11 @@ export default function CardGlintInteractions({result,regions,rulesView,onActiva
         aria-disabled={!onActivate||status==='unavailable'?'true':undefined}
         onPointerDown={event=>event.stopPropagation()}
         onClick={event=>{event.preventDefault();event.stopPropagation();if(onActivate&&status!=='unavailable'){if(status==='available')setChosen(action);onActivate(action);}}}/>
-        :<span key={index} {...props}/>;
+        :<span key={index} {...props} style={{...props.style,zIndex:0,cursor:"default"}}/>;
     })}
     {helpers.map((region,index)=>{
       const helper=region.helper,style=position(region);
-      if(helper.type==='keyword')return <KeywordHelperText key={`helper-${index}`} text={helper.text} context={helper.context} rule={helper.rule} respectContext
+      if(helper.type==='keyword')return <KeywordHelperText key={`helper-${index}`} text={helper.text} rulesLineIndex={region.lineIndex} context={helper.context} rule={helper.rule} respectContext
         className="mse-card-rule-helper" style={style}><span className="mse-helper-label">{helper.text}</span></KeywordHelperText>;
       return <GameSymbolHelper key={`helper-${index}`} sym={helper.symbol}>
         <button type="button" className="mse-card-rule-helper mse-card-symbol-helper" style={style} aria-label={`{${helper.symbol}}`}

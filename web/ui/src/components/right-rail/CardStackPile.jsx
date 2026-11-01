@@ -112,15 +112,6 @@ function usePileFrame(active) {
   return frame;
 }
 
-// The size FloatingCardPreview gives a hovered card (.floating-card-preview):
-// the pile shows each entry at that size, so no second frame is needed.
-function hoverFrameHeight() {
-  const natural = window.innerWidth <= 1180
-    ? 460
-    : Math.max(520, Math.min(680, window.innerWidth * 0.32));
-  return Math.min(natural, window.innerHeight - 16);
-}
-
 function pileGeometry(frame, count, fanned) {
   const { dock, table } = frame;
   let height;
@@ -129,7 +120,7 @@ function pileGeometry(frame, count, fanned) {
   if (dock) {
     // Reserve a fixed band for older cards and hover motion. Even a very
     // deep stack stays inside the local board, below the phase tracker.
-    height = Math.min(hoverFrameHeight(), Math.max(0, (dock.height - PAGER_HEIGHT - 32) / (1 + MAX_HEADROOM_SHARE)));
+    height = Math.min(CARD_FRAME_RENDER_HEIGHT * 0.8, Math.max(0, (dock.height - PAGER_HEIGHT - 32) / (1 + MAX_HEADROOM_SHARE)));
     // A gutter keeps the card off the window edge the dock starts at.
     left = Math.max(dock.left, 0) + 12;
     bottom = dock.bottom - PAGER_HEIGHT;
@@ -635,15 +626,26 @@ export default function CardStackPile({
   const place = liveCount > 1
     ? (viewedIndex === 0 ? "Top" : viewedIndex === liveCount - 1 ? "Bottom" : null)
     : null;
+  // Match 90% of the regular card composition, independent of viewport
+  // size and the space reserved for the resting stack.
+  const hoverHeight = CARD_FRAME_RENDER_HEIGHT * 0.9;
+  const hoverScale = geometry.height > 0 ? hoverHeight / geometry.height : 1;
+  // Grow upward from the resting footprint, keeping the front frame on screen.
+  const hoverOffset = Math.max(0, 8 - (geometry.top + geometry.height - hoverHeight));
 
   return createPortal(
     <section
       className={cn("card-stack-pile", pileFanned && "card-stack-pile--fanned")}
+      data-expanded={fanned ? "true" : undefined}
+      onMouseEnter={() => setFanned(true)}
+      onMouseLeave={() => setFanned(false)}
       style={{
         left: `${geometry.left}px`,
         top: `${geometry.top}px`,
         width: `${geometry.width}px`,
         height: `${geometry.height}px`,
+        "--card-stack-hover-scale": hoverScale,
+        "--card-stack-hover-offset": `${hoverOffset}px`,
       }}
       data-card-stack-pile="true"
       data-stack-preview-anchor="true"
@@ -653,8 +655,6 @@ export default function CardStackPile({
       <span className="sr-only">{countLabel}</span>
       <div
         className="card-stack-cards"
-        onMouseEnter={() => setFanned(true)}
-        onMouseLeave={() => setFanned(false)}
       >
         {entries.map((entry) => (
           <CardStackPileEntry

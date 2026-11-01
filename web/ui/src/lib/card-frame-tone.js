@@ -102,5 +102,17 @@ export function cardFrameTone(input) {
       : normalizeArtColors(identity)), ...intrinsic]);
   }
   const tone = frameToneForColors(colors, input?.typeLine);
-  return {tone, colors, style: cardFrameToneStyle(tone, colors)};
+  const style = cardFrameToneStyle(tone, colors);
+  if (/\bland\b/i.test(String(input?.typeLine || '')) && !cardFrameColors(input).length) {
+    // Colored pinlines sit on land stock; two-color lands have no gold bars.
+    const stock = paletteStyle(PALETTES.land);
+    for (const key of ['--card-frame-bar', '--card-frame-bar-light', '--card-frame-paper', '--card-frame-paper-deep']) {
+      style[key] = stock[key];
+    }
+    if (colors.length >= 3) {
+      style['--card-frame-bar'] = PALETTES.gold.bar;
+      style['--card-frame-bar-light'] = PALETTES.gold.barLight;
+    }
+  }
+  return {tone, colors, style};
 }

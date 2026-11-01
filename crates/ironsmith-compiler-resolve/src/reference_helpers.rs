@@ -3081,11 +3081,22 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
 }
 
 /// Resolve a payment's pronoun against the unique object target of the
-/// instruction it qualifies. Only the authored standalone "it" hint is
-/// rebound; explicit source references such as "this spell" keep their source.
+/// instruction it qualifies. An unresolved object placeholder or an authored
+/// standalone "it" hint can bind here; explicit source references such as
+/// "this spell" keep their source.
 fn bind_payment_it_to_target(value: &Value, target: Option<&ChooseSpec>) -> Value {
     fn bind_spec(spec: &ChooseSpec, target: Option<&ChooseSpec>) -> ChooseSpec {
         let Some(target) = target else { return spec.clone(); };
+        if matches!(spec.base(), ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        {
+            return match spec {
+                ChooseSpec::SurfaceHinted { hints, .. } => ChooseSpec::SurfaceHinted {
+                    spec: Box::new(target.clone()), hints: hints.clone(),
+                },
+                _ => target.clone(),
+            };
+        }
         let ChooseSpec::SurfaceHinted { spec: inner, hints } = spec else {
             return spec.clone();
         };

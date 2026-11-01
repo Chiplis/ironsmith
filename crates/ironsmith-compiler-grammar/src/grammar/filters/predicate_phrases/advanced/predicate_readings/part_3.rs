@@ -382,6 +382,9 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                // A cost-bearing keyword such as madness has a typed
+                // alternative-cast predicate, rather than just a marker.
+                && !input.read_by("turn-history-intervening-predicate")
         },
         read: |input| input.outcome(read_source_keyword_predicate(input)),
     },
@@ -397,6 +400,7 @@ pub(super) const READINGS: &[Reading] = &[
             }))
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("source-keyword-predicate")
+                && !input.read_by("turn-history-intervening-predicate")
         },
         read: |input| input.outcome(read_triggering_object_keyword_predicate(input)),
     },

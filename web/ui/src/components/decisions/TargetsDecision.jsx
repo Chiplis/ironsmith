@@ -234,6 +234,8 @@ function ActiveRequirementTargets({
   clearHover,
   inspectableObjectIds,
   onSelectTarget,
+  onSubmitTarget,
+  canSubmitLastTarget,
   onAimTarget,
   onSkipRequirement,
   showSkip,
@@ -349,51 +351,76 @@ function ActiveRequirementTargets({
         ? String(objectId)
         : null;
     const accent = targetAccent(state, objectControllerById, target, accentOverrides);
+    const showQuickSubmit = canSubmitLastTarget && !isSelected && !isUnavailable;
     return (
-      <Button
+      <div
         key={`${listKey}:${tIdx}`}
-        variant="ghost"
-        size="sm"
-        className={cn(
-          stripLayout
-            ? STRIP_ITEM_BASE_CLASS
-            : "decision-option-row h-7 w-full justify-start rounded-none border-0 bg-[linear-gradient(180deg,rgba(49,42,36,0.94),rgba(21,18,17,0.98))] px-2.5 text-[13px] text-[#d8cbb0] transition-all hover:bg-[linear-gradient(180deg,rgba(82,66,45,0.98),rgba(33,25,19,0.98))] hover:text-[#fff1cb]",
-          stripLayout && isSelected && STRIP_ITEM_ACTIVE_CLASS,
-          !stripLayout && isSelected && "bg-[linear-gradient(180deg,rgba(95,75,50,0.98),rgba(42,32,21,0.98))] text-[#fff0cf]",
-          stripLayout && !isSelected && isHoveredTarget && "is-highlighted",
-          !stripLayout && !isSelected && isHoveredTarget && "bg-[linear-gradient(180deg,rgba(84,68,47,0.98),rgba(34,27,20,0.98))] text-[#f5e7c7]",
-          isUnavailable
-            && (stripLayout
-              ? STRIP_ITEM_DISABLED_CLASS
-              : "bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] text-[#897b66] hover:bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] hover:text-[#897b66]")
-        )}
-        style={decisionOptionAccentVars(accent)}
-        disabled={!canAct || isUnavailable}
-        onPointerDown={(event) => {
-          if (!canAct || isUnavailable || !registerPointerDown(event)) return;
-          event.preventDefault();
-          onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true });
-        }}
-        onClick={(event) => {
-          if (!canAct || isUnavailable || !shouldHandleClick(event)) return;
-          onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true });
-        }}
-        aria-pressed={isSelected}
-        data-keyboard-target="true"
-        data-decision-option-object={hoverObjectId != null ? String(hoverObjectId) : undefined}
-        onFocus={(event) => onAimTarget(target, event.currentTarget)}
-        ref={(node) => {
-          if (node) {
-            targetButtonRefs.current.set(listKey, node);
-          } else {
-            targetButtonRefs.current.delete(listKey);
-          }
-        }}
+        className={cn("decision-target-option", showQuickSubmit && "has-quick-submit", isHoveredTarget && "is-hovered")}
         onMouseEnter={() => hoverObjectId && hoverCard?.(hoverObjectId)}
         onMouseLeave={() => hoverObjectId && clearHover?.()}
       >
-        <DecisionObjectLabel objectId={objectId} object={target} nameOnly>{ui(label)}</DecisionObjectLabel>
-      </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            stripLayout
+              ? STRIP_ITEM_BASE_CLASS
+              : "decision-option-row h-7 w-full justify-start rounded-none border-0 bg-[linear-gradient(180deg,rgba(49,42,36,0.94),rgba(21,18,17,0.98))] px-2.5 text-[13px] text-[#d8cbb0] transition-all hover:bg-[linear-gradient(180deg,rgba(82,66,45,0.98),rgba(33,25,19,0.98))] hover:text-[#fff1cb]",
+            stripLayout && isSelected && STRIP_ITEM_ACTIVE_CLASS,
+            !stripLayout && isSelected && "bg-[linear-gradient(180deg,rgba(95,75,50,0.98),rgba(42,32,21,0.98))] text-[#fff0cf]",
+            stripLayout && !isSelected && isHoveredTarget && "is-highlighted",
+            !stripLayout && !isSelected && isHoveredTarget && "bg-[linear-gradient(180deg,rgba(84,68,47,0.98),rgba(34,27,20,0.98))] text-[#f5e7c7]",
+            isUnavailable
+              && (stripLayout
+                ? STRIP_ITEM_DISABLED_CLASS
+                : "bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] text-[#897b66] hover:bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] hover:text-[#897b66]")
+          )}
+          style={decisionOptionAccentVars(accent)}
+          disabled={!canAct || isUnavailable}
+          onPointerDown={(event) => {
+            if (!canAct || isUnavailable || !registerPointerDown(event)) return;
+            event.preventDefault();
+            onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true });
+          }}
+          onClick={(event) => {
+            if (!canAct || isUnavailable || !shouldHandleClick(event)) return;
+            onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true });
+          }}
+          aria-pressed={isSelected}
+          data-keyboard-target="true"
+          data-decision-option-object={hoverObjectId != null ? String(hoverObjectId) : undefined}
+          onFocus={(event) => onAimTarget(target, event.currentTarget)}
+          ref={(node) => {
+            if (node) {
+              targetButtonRefs.current.set(listKey, node);
+            } else {
+              targetButtonRefs.current.delete(listKey);
+            }
+          }}
+        >
+          <DecisionObjectLabel objectId={objectId} object={target} nameOnly>{ui(label)}</DecisionObjectLabel>
+        </Button>
+        {showQuickSubmit && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="decision-neon-button decision-target-quick-submit"
+            aria-label={ui("Select {0} and submit targets", { 0: label })}
+            disabled={!canAct}
+            onPointerDown={(event) => {
+              if (!canAct || !registerPointerDown(event)) return;
+              event.preventDefault();
+              onSubmitTarget(target, reqIdx);
+            }}
+            onClick={(event) => {
+              if (!canAct || !shouldHandleClick(event)) return;
+              onSubmitTarget(target, reqIdx);
+            }}
+          >
+            {ui("Submit")}
+          </Button>
+        )}
+      </div>
     );
   });
 
@@ -599,7 +626,7 @@ export default function TargetsDecision({
   // A mandatory requirement whose legal targets only just cover its minimum is
   // not a choice: the lone opponent of a two-player game under "target
   // opponent", the only creature on the battlefield. Nothing is decided by
-  // asking, so those are placed for the player -- who still submits.
+  // asking, so those are placed for the player. Fully forced decisions also submit.
   //
   // Requirements that do leave a choice keep an empty slot, and an optional
   // requirement ("up to one target") is a choice even at one legal target.
@@ -637,6 +664,7 @@ export default function TargetsDecision({
     ));
   }, [requirements]);
   const autoPlacedRef = useRef(false);
+  const forcedSubmittedRef = useRef(false);
 
   // Flat list of all selections for dispatch
   const allSelections = useMemo(
@@ -958,10 +986,28 @@ export default function TargetsDecision({
     );
   }, [dispatch, allSelections, canAct, canSubmit, clearHover, clearAnchoredCardPreview]);
 
+  const handleSubmitTarget = (target, reqIdx) => {
+    if (!canAct) return;
+    const req = requirements[reqIdx];
+    const selected = selectionsByReq[reqIdx] || [];
+    const max = req?.max_targets ?? req?.legal_targets?.length ?? 1;
+    if (selected.length !== max - 1) return;
+    if (selected.some((entry) => targetsMatch(entry, target))) return;
+    if (!req.legal_targets?.some((entry) => targetsMatch(entry, target))) return;
+    const next = selectionsByReq.map((entries, idx) => idx === reqIdx ? [...entries, target] : entries);
+    if (!requirements.every((entry, idx) => next[idx].length >= (entry.min_targets ?? 1))) return;
+    clearTimeout(gestureSubmitTimerRef.current);
+    gestureSubmitTimerRef.current = null;
+    setAutoSubmitTarget(null);
+    clearHover();
+    clearAnchoredCardPreview();
+    dispatch({ type: "select_targets", targets: next.flat().map(toDispatchTarget) }, "Targets selected");
+  };
+
   // Placed through the very handler a click on the opponent runs, so a forced
   // target is indistinguishable from a manual pick: same selection state, same
   // requirement advance, same committed arrow, same "Submit Targets (1)".
-  // Nothing here submits -- the player still does that.
+  // The next effect submits once every requirement is forced and committed.
   //
   // The component is keyed per decision (see DecisionRouter), so this runs at
   // most once per targets decision; removing a placed target leaves it removed.
@@ -975,6 +1021,21 @@ export default function TargetsDecision({
       }
     });
   }, [allSelections.length, canAct, forcedTargetsByReq, handleSelectTarget]);
+
+  useEffect(() => {
+    if (!canAct || !canSubmit || !autoPlacedRef.current || forcedSubmittedRef.current
+        || !forcedTargetsByReq) return;
+    const fullyForced = forcedTargetsByReq.every((targets, reqIdx) => {
+      const selected = selectionsByReq[reqIdx] || [];
+      return targets.length > 0
+        && targets.length <= (requirements[reqIdx].max_targets ?? targets.length)
+        && selected.length === targets.length
+        && targets.every(target => selected.some(selection => targetsMatch(selection, target)));
+    });
+    if (!fullyForced) return;
+    forcedSubmittedRef.current = true;
+    handleSubmit();
+  }, [canAct, canSubmit, forcedTargetsByReq, selectionsByReq, requirements, handleSubmit]);
 
   // Dragging only requests auto-submit. Submit the committed selection through
   // the same handler as the menu, and cancel if selection or legality changes.
@@ -1137,6 +1198,11 @@ export default function TargetsDecision({
                     clearHover={clearHover}
                     inspectableObjectIds={inspectableObjectIds}
                     onSelectTarget={handleSelectTarget}
+                    onSubmitTarget={handleSubmitTarget}
+                    canSubmitLastTarget={canAct && isActive
+                      && reqSelections.length === reqMax - 1
+                      && requirements.every((other, idx) => idx === reqIdx
+                        || (selectionsByReq[idx] || []).length >= (other.min_targets ?? 1))}
                     onAimTarget={handleAimTarget}
                     onSkipRequirement={handleSkipRequirement}
                     showSkip={isActive && (isOptional || currentMet) && !allDone}

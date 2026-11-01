@@ -560,6 +560,10 @@ pub fn parse_chosen_counter_bundle_shape<'a>(
             "it",
         ],
     ) || exact_surface(second, &[
+        "put", "another", "counter", "of", "that", "kind", "on", "it",
+    ]) || exact_surface(second, &[
+        "put", "another", "counter", "of", "that", "kind", "on", "that", "permanent",
+    ]) || exact_surface(second, &[
         "give", "that", "permanent", "or", "player", "another", "counter", "of", "that", "kind",
     ]) {
         ChosenCounterAction::PutAdditional

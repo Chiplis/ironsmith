@@ -143,7 +143,20 @@ fn ability_model(ability: &AbilityModel) -> String {
             }
         }
         _ => {
-            let ability = crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(ability);
+            let mut ability = crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(ability);
+            // Mana-output activated abilities store their executable output
+            // outside the ordinary effect list. Materialize that typed output
+            // only in the rendering copy so loyalty mana grants retain it.
+            if let AbilityKind::Activated(activated) = &mut ability.kind
+                && activated.effects.is_empty()
+                && activated.mana_usage_restrictions.is_empty()
+                && let Some(mana) = &activated.mana_output
+            {
+                activated.effects = crate::resolution::ResolutionProgram::from_effects(
+                    vec![Effect::add_mana(mana.clone())],
+                );
+                activated.mana_output = None;
+            }
             let text = ability_surface_text(&ability);
             let text = text.trim().trim_end_matches('.');
             if merge_passes::is_keyword_phrase(text) {
@@ -152,6 +165,23 @@ fn ability_model(ability: &AbilityModel) -> String {
                 format!("\"{text}.\"")
             }
         }
+    }
+}
+
+/// Render a granted ability with its receiving object's proven type. This
+/// context ends at the ability boundary; the granting source keeps its type.
+fn ability_model_for_recipient(ability: &AbilityModel, recipient: &ObjectFilter) -> String {
+    let runtime = crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(ability);
+    let subject = super::render_effects::granted_ability_self_subject_for_filter(recipient);
+    let text = super::render_effects::describe_inline_ability_with_self_subject(&runtime, subject);
+    let text = super::render_effects::normalize_ability_self_reference_surface(&text, subject);
+    let text = text.trim().trim_end_matches('.');
+    if merge_passes::is_keyword_phrase(text) {
+        text.to_ascii_lowercase()
+    } else if matches!(&ability.kind, ironsmith_core::AbilityKind::Static(_)) {
+        lowercase_first(text)
+    } else {
+        format!("\"{text}.\"")
     }
 }
 
@@ -446,6 +476,53 @@ fn when_you_do<T>(trigger: &ironsmith_core::TriggeredAbility<T, Effect>) -> Stri
     )
 }
 
+/// Alternative price grants carry a separate cast-origin restriction and a
+/// shared use limit. Both must survive audit rendering.
+fn audit_alternative_price_grant(grant: &crate::grant::GrantSpec) -> Option<String> {
+    let ironsmith_core::Grantable::AlternativePrice { costs, origin } = &grant.grantable else {
+        return None;
+    };
+    // This compact price form describes an explicit casting origin and
+    // ordinary mana payment; other cost grammars keep their own reader.
+    if origin.is_none() || costs.iter().any(|cost| cost.mana_cost_ref().is_none()) {
+        return None;
+    }
+    if !grant.additional_zones.is_empty() || grant.max_plays.is_some()
+        || !grant.cast_this_way_grants.is_empty() || !grant.permanent_this_way_grants.is_empty()
+        || !grant.on_use_effects.is_empty() || grant.instant_timing || grant.land_play_companion
+        || grant.top_card_only || grant.may_look_at_top || grant.may_look_at_linked_exile
+        || grant.requires_linked_exile_pair || grant.linked_exile_pair.is_some()
+        || grant.linked_exile_class_level.is_some() || grant.cast_this_way_filter.is_some()
+        || grant.cast_mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+    {
+        return None;
+    }
+    let lead = match grant.usage_limit {
+        None => "",
+        Some(ironsmith_core::GrantUsageLimit::OnceEachTurn) => "Once each turn, ",
+        Some(ironsmith_core::GrantUsageLimit::OnceDuringEachOfYourTurns) => "Once during each of your turns, ",
+        Some(ironsmith_core::GrantUsageLimit::DuringYourTurns) => "During your turn, ",
+    };
+    let spell = super::normalize_common::describe_cast_spell_filter(
+        &grant.filter, super::normalize_common::CastSpellFilterContext::Standalone,
+    );
+    let who = player(&grant.beneficiary);
+    let subject = with_indefinite_article(&spell);
+    let origin = origin.map(|zone| match zone {
+        Zone::Exile => " from exile".to_string(),
+        Zone::Hand => format!(" from {} hand", possessive(&grant.beneficiary)),
+        Zone::Graveyard => format!(" from {} graveyard", possessive(&grant.beneficiary)),
+        other => format!(" from {}", zone_phrase(&other)),
+    }).unwrap_or_default();
+    let price = costs.iter().map(|cost| cost.display()).collect::<Vec<_>>().join(" and ");
+    let body = if costs.is_empty() {
+        format!("{who} may cast {subject}{origin} without paying its mana cost")
+    } else {
+        format!("{who} may pay {price} rather than pay the mana cost for {subject} {who} cast{origin}")
+    };
+    Some(capitalize_first(&format!("{lead}{body}")))
+}
+
 /// "Once during each of your turns, you may play lands and permanent spells
 /// with mana value 3 or less from your graveyard": a play permission read
 /// from its typed fields.
@@ -634,14 +711,70 @@ fn mana_symbol_name(symbol: &ironsmith_core::ManaSymbol) -> String {
 /// "You may spend mana as though it were mana of any color to cast
 /// planeswalker spells."
 pub(crate) fn mana_spend_permission(permission: &ironsmith_core::ManaSpendPermission) -> String {
-    use ironsmith_core::{value_model::ManaSpendMode as Mode, ManaSpendScope as Scope};
+    mana_spend_permission_for_scope(permission, &mana_spend_scope(&permission.scope))
+}
+
+/// Render a proven scope separately so equal typed permissions can share a
+/// sentence without consulting their retained display strings.
+pub(super) fn mana_spend_scope(scope: &ironsmith_core::ManaSpendScope) -> String {
+    use ironsmith_core::ManaSpendScope as Scope;
+    match scope {
+        Scope::AllCosts => String::new(),
+        Scope::ActivationCostsOf(filter) => {
+            let holder = objects(filter);
+            if holder.starts_with("this ") && holder.split(' ').count() == 2 {
+                format!(" to pay the activation costs of {holder}'s abilities")
+            } else {
+                let (holder, _, _) = set_subject(filter);
+                format!(" to activate abilities of {}", lowercase_first(&holder))
+            }
+        }
+        Scope::CastingSpellsMatching(filter) => {
+            // Exile ownership is an eligibility restriction, not a possessive
+            // zone name. Keep the entire card pool: projecting it to the stack
+            // used to discard its owner and nested branches' origin zones.
+            if filter.zone == Some(Zone::Exile)
+                && filter.any_of.iter().all(|branch| branch.zone.is_none())
+            {
+                // Exile is a shared zone. Project only its zone to the spell
+                // subject so ownership stays an eligibility qualifier.
+                let mut spells = filter.clone();
+                spells.zone = None;
+                let spell = super::normalize_common::describe_cast_spell_filter(
+                    &spells, super::normalize_common::CastSpellFilterContext::Standalone,
+                );
+                return format!(" to cast {} from exile", super::normalize_common::pluralize_cast_spell_description(&spell));
+            }
+            if filter.zone == Some(Zone::Exile)
+                || filter.any_of.iter().any(|branch| branch.zone == Some(Zone::Exile))
+            {
+                let cards = describe_revealed_selection_with_cards(&objects(filter));
+                let cards = pluralize_relative_object_phrase(strip_indefinite_article(&cards));
+                return format!(" to cast spells from among {cards}");
+            }
+            let spell = super::normalize_common::describe_cast_spell_filter(
+                filter,
+                super::normalize_common::CastSpellFilterContext::Standalone,
+            );
+            format!(" to cast {}", super::normalize_common::pluralize_cast_spell_description(&spell))
+        }
+        Scope::CastingSpellsWithStableIds(ids) => format!(" to cast {}", sr(ids)),
+        Scope::OneSpellCast => " to pay the mana cost of one spell this turn".to_string(),
+    }
+}
+
+pub(super) fn mana_spend_permission_for_scope(
+    permission: &ironsmith_core::ManaSpendPermission,
+    scope_text: &str,
+) -> String {
+    use ironsmith_core::value_model::ManaSpendMode as Mode;
     let subject = match &permission.player {
         PlayerFilter::You => "You may spend".to_string(),
         PlayerFilter::Any => "Players may spend".to_string(),
         other => format!("{} may spend", capitalize_first(&player(other))),
     };
-    let mana = if let Some((from, to)) = &permission.mana_symbol_as {
-        format!("{} mana as though it were {} mana", mana_symbol_name(from), mana_symbol_name(to))
+    let (spent, as_though) = if let Some((from, to)) = &permission.mana_symbol_as {
+        (format!("{} mana", mana_symbol_name(from)), format!(" as though it were {} mana", mana_symbol_name(to)))
     } else {
         let spent = match (&permission.any_color_mana_symbol, permission.mode) {
             (Some(symbol), _) => format!("{} mana", mana_symbol_name(symbol)),
@@ -654,33 +787,16 @@ pub(crate) fn mana_spend_permission(permission: &ironsmith_core::ManaSpendPermis
             Mode::Normal => " as though it were mana of any color",
             Mode::AnyColor | Mode::ColorlessAsAnyColor => " as though it were mana of any color",
         };
-        format!("{spent}{as_though}")
+        (spent, as_though.to_string())
     };
-    let mana = match &permission.mana_source_filter {
-        Some(filter) => format!("{mana} produced by {}", objects(filter)),
-        None => mana,
-    };
-    let scope = match &permission.scope {
-        Scope::AllCosts => String::new(),
-        // "to pay the activation costs of this artifact's abilities"
-        // (Manascape Refractor, Quicksilver Elemental): the source's own
-        // abilities read through its activation costs.
-        Scope::ActivationCostsOf(filter) => {
-            let holder = objects(filter);
-            if holder.starts_with("this ") && holder.split(' ').count() == 2 {
-                format!(" to pay the activation costs of {holder}'s abilities")
-            } else {
-                format!(" to activate abilities of {holder}")
-            }
+    let source = match &permission.mana_source_filter {
+        Some(filter) => {
+            let source = damage_source_objects(filter);
+            format!(" from {}", pluralize_relative_object_phrase(strip_indefinite_article(&source)))
         }
-        Scope::CastingSpellsMatching(filter) => format!(
-            " to cast {} spells",
-            strip_indefinite_article(&objects(filter))
-        ),
-        Scope::CastingSpellsWithStableIds(ids) => format!(" to cast {}", sr(ids)),
-        Scope::OneSpellCast => " to pay the mana cost of one spell this turn".to_string(),
+        None => String::new(),
     };
-    let mut text = format!("{subject} {mana}{scope}");
+    let mut text = format!("{subject} {spent}{source}{as_though}{scope_text}");
     if permission.other_mana_only_as_colorless {
         text.push_str(". You may spend other mana only as though it were colorless mana");
     }
@@ -1106,6 +1222,9 @@ pub(crate) fn audit_payload_reading(
         P::Grants(_) => crate::static_abilities::StaticAbility::from_model(model.clone())
             .grant_spec()
             .map(|grant| {
+                if let Some(price) = audit_alternative_price_grant(&grant) {
+                    return price;
+                }
                 let display = grant.display();
                 // A play permission with no prose reading reads from its
                 // typed origin, filter, beneficiary and use limit.
@@ -1117,6 +1236,47 @@ pub(crate) fn audit_payload_reading(
             })
             .unwrap_or_else(|| ironsmith_core::semantic_audit::unverified_marker(
                 "GrantSpec", model, &[])),
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty()
+                && matches!(&grant.ability.kind,
+                    ironsmith_core::AbilityKind::Activated(activated)
+                        if activated.is_loyalty_ability && activated.mana_output.is_some() && activated.effects.is_empty()
+                            && activated.mana_usage_restrictions.is_empty()) =>
+        {
+            let (subject, verb, _) = set_subject(&grant.filter);
+            format!("{subject} {} {}", if verb == "is" { "has" } else { "have" }, ability_model(&grant.ability))
+        }
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty()
+                && matches!(&grant.ability.kind,
+                    ironsmith_core::AbilityKind::Static(ability)
+                        if ability.id == Some(crate::static_abilities::StaticAbilityId::MustAttack)
+                            && matches!(ability.payload, ironsmith_core::StaticAbilityPayload::None)) =>
+        {
+            let (mut subject, verb, _) = set_subject(&grant.filter);
+            if verb == "are"
+                && let Some(controller @ PlayerFilter::TaggedPlayer(_)) = &grant.filter.controller
+            {
+                // A tagged player's controller clause is postpositive;
+                // pluralize the object head, not its trailing "controls".
+                let mut recipients = grant.filter.clone();
+                recipients.controller = None;
+                subject = format!("{} {} controls", set_subject(&recipients).0, player(controller));
+            }
+            format!("{subject} {} each combat if able", if verb == "is" { "attacks" } else { "attack" })
+        }
+        P::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, .. } => format!(
+            "Each {} is {} in addition to its other types and has {}",
+            strip_indefinite_article(&objects(filter)),
+            with_indefinite_article(
+                &subtypes.iter().map(|subtype| format!("{subtype:?}")).collect::<Vec<_>>().join(" ")
+            ),
+            abilities
+                .iter()
+                .map(|ability| ability_model_for_recipient(ability, filter))
+                .collect::<Vec<_>>()
+                .join(" and ")
+        ),
         P::None if model.id == Some(crate::static_abilities::StaticAbilityId::StaticEffectsContinueUntilEndOfTurnAfterLeaving) =>
             "If this permanent leaves the battlefield, its static effects continue until end of turn".to_string(),
         P::None if matches!(model.id, Some(
@@ -1227,8 +1387,8 @@ pub(crate) fn audit_payload_reading(
             when_you_do(linked_trigger)
         ),
         P::AttackCost { attackers, covers_planeswalkers, cost, planeswalkers_only, .. } => format!(
-            "{} can't attack {} unless {} {}",
-            if attackers.source { "This source".to_string() } else { capitalize_first(&objects(attackers)) },
+            "{} can't attack {} unless {} {}{}",
+            if attackers.source { "This source".to_string() } else { set_subject(attackers).0 },
             if *planeswalkers_only {
                 "planeswalkers you control"
             } else if *covers_planeswalkers {
@@ -1237,7 +1397,8 @@ pub(crate) fn audit_payload_reading(
                 "you"
             },
             if attackers.source { "you pay" } else { "their controller pays" },
-            cost.display()
+            cost.display(),
+            if attackers.source { "" } else { " for each of those creatures" }
         ),
         P::BlockCost {
             blockers, blocker_is_attached_to_source, attackers, cost, also_attack_cost, attack_only, ..
@@ -1841,9 +2002,8 @@ pub(crate) fn audit_payload_reading(
             capitalize_first(&player(player_filter)),
             describe_counter_type(*counter_type)
         ),
-        // Doubling Season, Parallel Lives and Anointed Procession print the
-        // active form; the newer passive form (Adrix and Nev) is the same
-        // replacement.
+        P::DoubleTokenCreationReplacement { controller: PlayerFilter::Any, .. } =>
+            "If one or more tokens would be created, twice that many of those tokens are created instead".to_string(),
         P::DoubleTokenCreationReplacement { controller, .. } => format!(
             "If an effect would create one or more tokens under {} control, it creates twice that many of those tokens instead",
             possessive(controller)
@@ -1944,10 +2104,17 @@ pub(crate) fn audit_payload_reading(
                 effects(replacement_effects)
             )
         }
-        P::CreateOneOfEachTokenReplacement { kinds, .. } => format!(
-            "If one or more tokens would be created, create one of each of {} instead",
-            sr(kinds)
-        ),
+        P::CreateOneOfEachTokenReplacement { kinds, .. } => {
+            // The executor matches exactly these token kinds under your
+            // control and adds the other kinds once per matched token.
+            let kinds = kinds.iter().map(|kind| match kind {
+                ironsmith_core::AdditionalTokenKind::Clue => "Clue".to_string(),
+                ironsmith_core::AdditionalTokenKind::Food => "Food".to_string(),
+                ironsmith_core::AdditionalTokenKind::Treasure => "Treasure".to_string(),
+                ironsmith_core::AdditionalTokenKind::Squirrel => "Squirrel".to_string(),
+            }).collect::<Vec<_>>();
+            format!("If you would create {} token, instead create one of each", with_indefinite_article(&or_list(&kinds)))
+        },
         // The drawer skips the draw and you draw a card instead.
         P::RedirectDrawReplacement { drawer, except_first_of_draw_step, .. } => format!(
             "If {} would draw a card{}, instead that player skips that draw and you draw a card",
@@ -2050,11 +2217,12 @@ pub(crate) fn audit_payload_reading(
             damage_source_objects(source_filter)
         ),
         P::ReplaceDamageWithCountersInstead { counter_type, source_filter, target_filter, combat_only, .. } => format!(
-            "If {} would deal {}damage to {}, put that many {} counters on it instead",
-            objects(source_filter),
+            "If {} would deal {}damage to {}, put that many {} counters on {} instead",
+            damage_source_objects(source_filter),
             match combat_only { Some(true) => "combat ", Some(false) => "noncombat ", None => "" },
             objects(target_filter),
-            describe_counter_type(*counter_type)
+            describe_counter_type(*counter_type),
+            if target_filter.card_types == [CardType::Creature] { "that creature" } else { "that permanent" }
         ),
         P::NativeAlternativeCastFromZone { zone, method } => {
             // The card is cast from its owner's zone: "from your graveyard
@@ -2296,18 +2464,6 @@ pub(crate) fn audit_payload_reading(
         P::DamageBetweenChosenPlayers { factor, .. } => format!(
             "If a source controlled by one of the chosen players would deal damage to the other chosen player or a permanent that player controls, that source deals {} to that player or permanent instead",
             match *factor { 2 => "double that damage".to_string(), 3 => "triple that damage".to_string(), n => format!("{} that much damage", multiple(n)) }
-        ),
-        P::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, .. } => format!(
-            "Each {} is {} in addition to its other types and has {}",
-            strip_indefinite_article(&objects(filter)),
-            with_indefinite_article(
-                &subtypes.iter().map(|subtype| format!("{subtype:?}")).collect::<Vec<_>>().join(" ")
-            ),
-            abilities
-                .iter()
-                .map(ability_model)
-                .collect::<Vec<_>>()
-                .join(" and ")
         ),
         P::Conditional { ability, condition, .. } => {
             let inner = audit_payload_reading(ability).unwrap_or_else(|| {

@@ -16,7 +16,8 @@ test('Adventure builder submits the main card and its Adventure spell', { timeou
     await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; }' });
     await page.getByRole('button', { name: 'Build', exact: true }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByRole('button', { name: 'Adventure', exact: true }).click();
+    await dialog.getByRole('combobox', { name: 'Layout', exact: true }).click();
+    await page.getByRole('option', { name: 'Adventure', exact: true }).click();
     await dialog.getByRole('textbox', { name: 'Card name', exact: true }).fill('Forge Traveler');
     await dialog.getByRole('tab', { name: /Adventure Spell/ }).click({ force: true });
     await dialog.getByRole('textbox', { name: 'Card name', exact: true }).fill('Forge Journey');

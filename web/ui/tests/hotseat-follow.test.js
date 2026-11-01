@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPregameFollower, emptyPregameAction, hotseatFollowTarget } from '../src/lib/hotseat-follow.js';
+import { createPregameFollower, emptyPregameAction, emptyPregameCommand, hotseatFollowTarget } from '../src/lib/hotseat-follow.js';
 
 const state = (perspective, player, action, active = 2) => ({
   perspective, active_player: active,
@@ -69,4 +69,32 @@ test('legacy action kinds support skipping empty steps', () => {
   const snapshot = state(2, 0, 'continue_pregame');
   snapshot.decision.actions = [{ kind: 'begin_game' }];
   assert.equal(emptyPregameAction(snapshot), snapshot.decision.actions[0]);
+});
+
+test('empty pregame commands advance only the deciding seat with the stable action reference', () => {
+  for (const kind of ['continue_pregame', 'begin_game']) {
+    const snapshot = state(0, 0, kind);
+    snapshot.decision.actions[0].index = 3;
+    assert.deepEqual(emptyPregameCommand(snapshot), {
+      type: 'priority_action', action_index: 3, action_ref: { kind },
+    });
+    assert.equal(emptyPregameCommand({ ...snapshot, perspective: 1 }), null);
+    assert.equal(emptyPregameCommand({ ...snapshot, game_over: true }), null);
+    assert.equal(emptyPregameCommand({ ...snapshot, loop_shortcut: {} }), null);
+    snapshot.decision.actions[0].legal = false;
+    assert.equal(emptyPregameCommand(snapshot), null);
+  }
+});
+
+test('automatic pregame commands preserve available choices but ignore illegal card actions', () => {
+  const snapshot = state(0, 0, 'continue_pregame');
+  snapshot.decision.actions[0].index = 0;
+  const cardAction = { index: 1, action_ref: { kind: 'use_pregame_action' } };
+  snapshot.decision.actions.push(cardAction);
+  assert.equal(emptyPregameCommand(snapshot), null);
+  cardAction.legal = false;
+  assert.equal(emptyPregameCommand(snapshot)?.action_ref.kind, 'continue_pregame');
+  for (const kind of ['keep_opening_hand', 'take_mulligan', 'use_pregame_action', 'pass_priority']) {
+    assert.equal(emptyPregameCommand(state(0, 0, kind)), null);
+  }
 });

@@ -204,7 +204,7 @@ export function GameSymbolHelper({sym,children}) {
   return description?<ComicTooltip title={ui(description.title)} description={ui(description.description)}>{children}</ComicTooltip>:children;
 }
 
-export function KeywordHelperText({ text, rule, className='', style, children,respectContext=false,context='' }) {
+export function KeywordHelperText({ text, rule, className='', style, children,respectContext=false,context='',rulesLineIndex }) {
   const ui = useUiText();
   const { locale } = useI18n({ optional: true });
   const enabled=useContext(KeywordHelpersEnabledContext);
@@ -232,6 +232,7 @@ export function KeywordHelperText({ text, rule, className='', style, children,re
         tabIndex={0}
         aria-label={ui("{0} rules helper", { 0: help.title })}
         data-keyword-helper={rule.id}
+        data-rules-line-index={rulesLineIndex}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {

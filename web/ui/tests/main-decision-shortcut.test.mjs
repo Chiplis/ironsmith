@@ -106,3 +106,29 @@ test('Space confirms attackers from focused cards and options, including no atta
     assert.equal(await page.evaluate(()=>window.confirms),6);
   } finally { await browser.close(); }
 });
+
+test('Space chooses Pay & Pass and never falls through to Pay while disabled', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<button class="decision-main-button" data-space-primary-action>Pay &amp; Pass</button><button id="pay" class="decision-main-button">Pay</button><input />');
+    const source = await readFile(new URL('../src/lib/main-decision-shortcut.js', import.meta.url), 'utf8');
+    await page.addScriptTag({ content: source.replace('export function', 'function') + `;
+      installMainDecisionShortcut(document); window.passes=0; window.pays=0;
+      document.querySelector('[data-space-primary-action]').onclick=()=>window.passes++;
+      document.querySelector('#pay').onclick=()=>window.pays++;
+    ` });
+    await page.locator('#pay').focus();
+    await page.keyboard.press('Space');
+    assert.equal(await page.evaluate(() => window.passes), 1);
+    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', repeat: true, bubbles: true })));
+    assert.equal(await page.evaluate(() => window.passes), 1);
+    await page.locator('[data-space-primary-action]').evaluate(button => button.disabled = true);
+    await page.keyboard.press('Space');
+    assert.equal(await page.evaluate(() => window.pays), 0);
+    assert.equal(await page.evaluate(() => window.passes), 1);
+    await page.locator('input').focus();
+    await page.keyboard.press('Space');
+    assert.equal(await page.locator('input').inputValue(), ' ');
+  } finally { await browser.close(); }
+});

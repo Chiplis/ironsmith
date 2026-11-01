@@ -1,3 +1,4 @@
+import { readGoldfishSeats, storeGoldfishSeats } from '@/lib/play-preferences.js';
 import PriorityPreferences from "@/components/priority/PriorityPreferences";
 import { createPriorityPolicy, groupedTriggerOrder, moveTriggerGroup } from "@/lib/priority-policy.js";
 import { installPriorityShortcuts, handleTriggerShortcut } from "@/lib/priority-shortcuts.js";
@@ -60,7 +61,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
-import { createPregameFollower, isAutomatedSeat, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
+import { createPregameFollower, emptyPregameCommand, isAutomatedSeat, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
 
 import { GameContext } from "./GameContext.shared";
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
@@ -833,8 +834,10 @@ export function GameProvider({ children }) {
   }, []);
   // Goldfished seats in local games: their decisions are answered
   // automatically and the hotseat view never hands the table to them.
-  const [automatedSeats, setAutomatedSeats] = useState(() => new Set());
+  // Remember seat toggles; Bob starts automated when no preference is saved.
+  const [automatedSeats, setAutomatedSeats] = useState(readGoldfishSeats);
   const automatedSeatsRef = useRef(automatedSeats);
+  useEffect(() => { storeGoldfishSeats(automatedSeats); }, [automatedSeats]);
   const toggleAutomatedSeat = useCallback((player) => {
     const seat = Number(player);
     if (!Number.isInteger(seat)) return;
@@ -1104,7 +1107,8 @@ export function GameProvider({ children }) {
         if (canAct == null && priorityPolicy.needsAnalysis(view) && currentGame.getPriorityCanAct) {
           canAct = await currentGame.getPriorityCanAct();
         }
-        command = autoPassEnabled ? priorityPolicy.evaluate(view, canAct) : null;
+        command = emptyPregameCommand(view)
+          ?? (autoPassEnabled ? priorityPolicy.evaluate(view, canAct) : null);
         if (!command) {
           // Required choices and responses belong to the human seat making them.
           const follow = pregameFollowerRef.current(st)
@@ -1576,7 +1580,8 @@ export function GameProvider({ children }) {
 
     const currentState = state;
     const forcedObjects = false;
-    const result = { command: autoPassEnabled ? priorityPolicy.evaluate(currentState) : null };
+    const result = { command: emptyPregameCommand(currentState)
+      ?? (autoPassEnabled ? priorityPolicy.evaluate(currentState) : null) };
 
     if (!result.command) {
       multiplayerAutomationAttemptRef.current = "";
@@ -1707,7 +1712,8 @@ export function GameProvider({ children }) {
       }
       const actorView = { ...state, perspective: state.decision.player };
       if (!isAutomatedSeat(automatedSeatsRef.current, state.decision.player)
-        && (!autoPassEnabled || !priorityPolicy.evaluate(actorView))) return;
+        && !emptyPregameCommand(actorView)
+        && !(autoPassEnabled ? priorityPolicy.evaluate(actorView) : null)) return;
       void wasmInteractionGateRef.current.runAutomatic(async () => {
         try { await finalizeState(game, stateRef.current); }
         catch (err) { setStatus(`Automatic action failed: ${err}`, true); }
@@ -2104,6 +2110,33 @@ export function GameProvider({ children }) {
     const pass = findPassPriorityAction(current?.decision);
     if (pass) void userDispatch(priorityCommandForAction(pass), "Passed priority");
   }, [stateRef, userDispatch]);
+
+  // Arm only a rendered, actionable priority window. Busy workers and modal
+  // decisions must not spend the player's response time in the background.
+  useEffect(() => {
+    const pending = priorityStopsState.window;
+    if (!pending || pending.kind !== 'policy-resolve') return;
+    const timer = setInterval(() => {
+      const current = stateRef.current;
+      if (!priorityStops.windowFor(current)) return;
+      if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
+        || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current
+        || !autoPassEnabled || priorityPolicy.status(current).fullControl || current?.loop_shortcut
+        || (current?.viewed_cards && !current.viewed_cards.inspector_only && !current.viewed_cards.inspectorOnly)
+        || document.visibilityState === 'hidden'
+        || [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].some(node => node.getClientRects().length)) {
+        priorityStops.deferWindow(pending.id);
+        return;
+      }
+      priorityStops.armWindow(pending.id);
+      const pass = findPassPriorityAction(current?.decision);
+      if (pass && priorityStops.expire(pending.id, current)) {
+        void userDispatch(priorityCommandForAction(pass), 'Countdown: passed priority');
+      }
+    }, 40);
+    return () => clearInterval(timer);
+  }, [priorityStopsState, priorityStops, stateRef, isSnapshotRendered, multiplayer.submittingAction,
+    autoPassEnabled, priorityPolicy, userDispatch]);
 
   useEffect(() => installPriorityShortcuts(document, {
     state: () => stateRef.current,

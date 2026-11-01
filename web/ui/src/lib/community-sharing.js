@@ -52,13 +52,17 @@ function customSet(value) {
   requireValue(object(value), 'a custom set must be an object.');
   title(value.name);
   cards(value.cards);
+  if (value.customMechanics != null) {
+    array(value.customMechanics, 'set mechanics');
+    mergeMechanics([], value.customMechanics);
+  }
 }
 export function validateCommunityShare(kind, value) {
   requireValue(object(value), 'missing content.');
   if (kind === 'set') {
     customSet(value);
     normalizeCommunityFormat({ name: value.name, customSets: [value] });
-    return { name: value.name.trim(), cards: structuredClone(value.cards) };
+    return { name: value.name.trim(), cards: structuredClone(value.cards), ...(value.customMechanics ? { customMechanics: structuredClone(value.customMechanics) } : {}) };
   }
   requireValue(kind === 'format', 'unknown content type.');
   title(value.name);

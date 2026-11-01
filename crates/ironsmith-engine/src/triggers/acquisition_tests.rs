@@ -99,6 +99,27 @@ fn equal_printed_slots_independent_registered_grants_and_incarnations_are_distin
 }
 
 #[test]
+fn matching_identity_ignores_acquisition_but_tracks_executable_ability_changes() {
+    use crate::triggers::compute_trigger_matching_identity;
+    let authored = definition(3, colored_trigger(), 1);
+    let first = bind(authored.clone(), 20, AbilityOrigin::Printed(0));
+    let second = bind(authored, 21, AbilityOrigin::Printed(1));
+    let first = triggered(&first);
+    let second = triggered(&second);
+    assert_ne!(compute_trigger_identity(first), compute_trigger_identity(second));
+    let matching = compute_trigger_matching_identity(first);
+    assert_eq!(matching, compute_trigger_matching_identity(second));
+    let rewritten = rewrite(first, Color::Black, Color::Blue);
+    assert_eq!(compute_trigger_identity(first), compute_trigger_identity(&rewritten));
+    assert_ne!(matching, compute_trigger_matching_identity(&rewritten));
+    let different_effect = bind(definition(3, colored_trigger(), 2), 20, AbilityOrigin::Printed(0));
+    assert_ne!(matching, compute_trigger_matching_identity(triggered(&different_effect)));
+    let mut conditional = first.clone();
+    conditional.intervening_if = Some(crate::ConditionExpr::MaxTimesEachTurn(1));
+    assert_ne!(matching, compute_trigger_matching_identity(&conditional));
+}
+
+#[test]
 fn first_discovery_text_change_and_expiry_share_once_per_turn_and_resolution_history() {
     let mut authored = definition(4, colored_trigger(), 1);
     let AbilityKind::Triggered(ability) = &mut authored.kind else { unreachable!() };

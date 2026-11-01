@@ -627,6 +627,13 @@ pub fn compute_trigger_identity(trigger_ability: &TriggeredAbility) -> TriggerId
     {
         return identity;
     }
+    compute_trigger_matching_identity(trigger_ability)
+}
+
+/// Structural equivalence for optional UI ordering automation. Acquisition
+/// identity includes the host and ability origin, so it must remain separate
+/// for trigger history even when two sources have matching abilities.
+pub(crate) fn compute_trigger_matching_identity(trigger_ability: &TriggeredAbility) -> TriggerIdentity {
     let mut hasher = DefaultHasher::new();
     trigger_ability.trigger.display().hash(&mut hasher);
     trigger_ability

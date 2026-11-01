@@ -688,9 +688,10 @@ export default function Shell() {
   const [smithComplete, setSmithComplete] = useState(false);
 
   if (loading || (!smithComplete && !wasmError && !initializationError)) {
-    const widthPct = Math.max(0, Math.min(100, wasmProgress * 100));
-    // Avoid showing 100% until progress has actually completed.
-    const pct = wasmProgress >= 1 ? 100 : Math.floor(widthPct);
+    // This screen also covers game setup and the smith outro. Reserve 100%
+    // for completed startup, when the table replaces the loading screen.
+    const widthPct = Math.max(0, Math.min(99, wasmProgress * 100));
+    const pct = Math.floor(widthPct);
     const phaseLabel =
       wasmPhase === "module" ? "Loading module..." :
       wasmPhase === "download" ? "Downloading WASM..." :

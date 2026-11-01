@@ -1,4 +1,5 @@
 cards.json
+./deploy-site.sh
 .DS_Store
 .playwright-screens
 .agents

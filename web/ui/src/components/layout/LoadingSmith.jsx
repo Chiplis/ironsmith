@@ -2,26 +2,29 @@ import { useEffect, useRef } from "react";
 
 const CYCLE_MS = 1600;
 const INTRO_MS = 960;
-const MIN_HITS = 6;
 const STRIKES = new Set(["strike", "grip", "mouth-shape", "brow-shape", "sparks", "head-effort"]);
+const isStrike = name => STRIKES.has(name) || name.startsWith("visor-impact-") || name.startsWith("traveling-spark-");
 
 // A shared clock keeps the hammer, expression, sparks and mask synchronized.
 export default function LoadingSmith({ progress = 0, ready = false, onComplete }) {
   const objectRef = useRef(null);
-  const startedRef = useRef(false);
+  const completedRef = useRef(false);
   const inputs = useRef({ progress, ready, onComplete });
   useEffect(() => { inputs.current = { progress, ready, onComplete }; }, [progress, ready, onComplete]);
 
   useEffect(() => {
     if (!ready) return;
-    // A missing/blocked decorative SVG must never prevent entering the game.
+    // A missing, blocked, or failed decorative SVG must never gate a ready game.
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
       onComplete?.();
       return;
     }
     const timeout = setTimeout(() => {
-      if (!startedRef.current) onComplete?.();
-    }, 3000);
+      if (!completedRef.current) {
+        completedRef.current = true;
+        onComplete?.();
+      }
+    }, 4500);
     return () => clearTimeout(timeout);
   }, [ready, onComplete]);
 
@@ -35,52 +38,70 @@ export default function LoadingSmith({ progress = 0, ready = false, onComplete }
       const doc = object.contentDocument;
       if (!doc?.querySelector('.hammer-arm')) return;
       started = true;
-      startedRef.current = true;
       const motion = matchMedia('(prefers-reduced-motion: reduce)');
       const animations = doc.getAnimations();
       for (const animation of animations) {
         animation.pause();
-        if (STRIKES.has(animation.animationName)) animation.effect.updateTiming({ iterations: Infinity });
+        if (isStrike(animation.animationName)) animation.effect.updateTiming({ iterations: Infinity });
+        if (animation.animationName === "forge-letter") {
+          // The SVG's sampled contours have matching points. Interpolate
+          // directly between the blank and finished glyph, without the old
+          // three-strike holds baked into its CSS timeline.
+          const frames = animation.effect.getKeyframes();
+          // Safari can expose an empty list for unsupported SVG d animation.
+          // Keep the SVG's static path instead of crashing the loading gate.
+          if (frames.length >= 2 && frames[0].d && frames.at(-1).d) {
+            animation.effect.setKeyframes([{ d: frames[0].d }, { d: frames.at(-1).d }]);
+            animation.effect.updateTiming({ delay: 0, duration: 1, fill: "both" });
+          }
+        }
       }
       let previous;
       let clock = 0;
-      let speed = 1;
-      let lastProgress = inputs.current.progress;
-      let sampleTime;
-      let rate = 0;
       let finishing = false;
       let outro = 0;
+      let hits = 0;
+      let letter = 0;
+      let letterFrom = 0;
+      let letterTarget = 0;
+      let impactTime = 0;
       const tick = now => {
-        if (disposed) return;
+        if (disposed || completedRef.current) return;
         const delta = previous === undefined ? 0 : Math.min(now - previous, 100);
         previous = now;
-        sampleTime ??= now;
         const { progress: currentProgress, ready: isReady, onComplete: complete } = inputs.current;
-        if (now - sampleTime >= 250) {
-          const measured = Math.max(0, currentProgress - lastProgress) / ((now - sampleTime) / 1000);
-          rate = rate * 0.6 + measured * 0.4;
-          lastProgress = currentProgress;
-          sampleTime = now;
-        }
-        // Aim for six blows over the measured loading duration, with a
-        // readable cadence even for stalled or cached downloads.
-        const target = isReady ? 3 : Math.max(0.65, Math.min(3, rate * MIN_HITS * CYCLE_MS / 1000));
-        speed += (target - speed) * (1 - Math.exp(-delta / 350));
+        // Keep the smith's rhythm steady; only the amount forged varies.
         const before = clock;
-        clock += delta * speed;
+        clock += delta;
         const cycles = Math.max(0, (clock - INTRO_MS) / CYCLE_MS);
-        if (!finishing && isReady && cycles >= MIN_HITS &&
+        const impactCount = Math.max(0, Math.floor(cycles - 0.44) + 1);
+        if (!finishing && impactCount > hits) {
+          hits = impactCount;
+          letterFrom = letter;
+          // Progress can jump on cached loads or regress between phases.
+          // Never unforge the letter; the first hit after readiness finishes it.
+          letterTarget = Math.max(letter,
+            isReady ? 1 : Math.max(0, Math.min(0.95, currentProgress)),
+          );
+          impactTime = INTRO_MS + (hits - 1 + 0.44) * CYCLE_MS;
+        }
+        const morph = Math.max(0, Math.min(1, (clock - impactTime) / (CYCLE_MS * 0.2)));
+        letter = letterFrom + (letterTarget - letterFrom) * morph * morph * (3 - 2 * morph);
+        if (!finishing && isReady && letter >= 1 &&
             Math.floor(cycles) > Math.floor(Math.max(0, (before - INTRO_MS) / CYCLE_MS))) {
           finishing = true;
         }
-        if (finishing) outro += delta * speed;
+        if (finishing) outro += delta;
         for (const animation of animations) {
           // Keep the mask closed until the last complete hammer cycle.
-          animation.currentTime = STRIKES.has(animation.animationName)
-            ? (finishing ? INTRO_MS : clock)
-            : (finishing ? 5760 + outro : Math.min(clock, INTRO_MS));
+          animation.currentTime = animation.animationName === "forge-letter"
+            ? letter
+            : isStrike(animation.animationName)
+              ? (finishing ? INTRO_MS : clock)
+              : (finishing ? 5760 + outro : Math.min(clock, INTRO_MS));
         }
         if ((motion.matches && isReady) || (finishing && outro >= 960)) {
+          completedRef.current = true;
           complete?.();
           return;
         }
@@ -92,7 +113,7 @@ export default function LoadingSmith({ progress = 0, ready = false, onComplete }
     start();
     return () => {
       disposed = true;
-      startedRef.current = false;
+      completedRef.current = false;
       cancelAnimationFrame(frame);
       object.removeEventListener('load', start);
     };

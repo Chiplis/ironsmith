@@ -1,5 +1,5 @@
 import useUiText from "@/i18n/useUiText";
-import { cloneElement, isValidElement, useEffect, useState, useSyncExternalStore } from "react";
+import { cloneElement, isValidElement, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Activity, Check, ClipboardCopy, Eraser } from "lucide-react";
 import { useGame, useMatchClock } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 import { journalSummary, recordCardRoutes } from "@/lib/engine-journal";
 import { useI18n } from "@/i18n/I18nContext";
 import { playerDisplayName } from "@/lib/player-display";
+import { parseDiagnosticReport } from "@/lib/diagnostic-report";
 import { matchDisputeDiagnostics } from "@/lib/match-dispute-diagnostics";
 
 const defaultTriggerClassName = "stone-pill table-zone-action-button inline-flex items-center justify-center gap-1 rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110";
@@ -106,6 +107,19 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [loaded, setLoaded] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const fileInput = useRef(null);
+  const loadReport = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      if (file.size > 64 * 1024 * 1024) throw new Error('Diagnostic files must be smaller than 64 MB.');
+      setLoaded({ name: file.name, report: parseDiagnosticReport(await file.text()) });
+      setLoadError('');
+    } catch (error) { setLoadError(error.message); }
+  };
   useSyncExternalStore(subscribeDiagnostics, diagnosticsVersion, diagnosticsVersion);
   // Ages keep counting while the sheet is open even when nothing new arrives.
   useEffect(() => {
@@ -122,6 +136,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
   const clock = useMatchClock();
 
   const report = async () => {
+    if (loaded) return loaded.report;
     const engine = await readEngineDiagnostics(game);
     // Read straight into the journal: `extra` is compacted for display, which
     // would truncate the route list into something a replay cannot use.
@@ -176,7 +191,31 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
             <div className="verify-match-eyebrow">{ui("Latency")}</div>
             <SheetTitle className="verify-match-title">{t("action.diagnostics")}</SheetTitle>
           </SheetHeader>
-          {snapshot ? (() => {
+          <div className="diagnostics-toolbar">
+            <input ref={fileInput} type="file" accept=".json,application/json" aria-label="Diagnostic report file" hidden onChange={loadReport} />
+            <Button type="button" variant="secondary" size="sm" onClick={() => fileInput.current?.click()}>Load diagnostic</Button>
+            {loaded && <Button type="button" variant="secondary" size="sm" onClick={() => { setLoaded(null); setLoadError(''); }}>Back to live</Button>}
+            {loadError && <span role="alert">{loadError}</span>}
+          </div>
+          {loaded ? <div className="diagnostics-body">
+            <section className="fantasy-sheet-section diagnostics-section">
+              <h3 className="diagnostics-section-title">{loaded.name}</h3>
+              <p>Saved report · {loaded.report.exportedAt || 'Unknown export time'}</p>
+              <p>Inspect the captured state and recorded events below. Loading a report does not restore a playable game.</p>
+              <div className="diagnostics-stat-grid">
+                <Stat label="Turn" value={loaded.report.gameState?.turn_number ?? '—'} />
+                <Stat label="Decision" value={loaded.report.gameState?.decision?.kind ?? '—'} />
+                <Stat label="Engine calls recorded" value={loaded.report.journal?.entries?.length ?? 0} />
+                <Stat label="Actions traced" value={loaded.report.traces?.length ?? 0} />
+              </div>
+            </section>
+            {['gameState', 'traces', 'events', 'engine', 'engineRequests', 'workerTasks', 'peers', 'mainThread', 'extra', 'environment', 'journal'].filter(key => loaded.report[key] != null).map(key =>
+              <details key={key} className="fantasy-sheet-section diagnostics-section">
+                <summary>{key}</summary>
+                <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>{JSON.stringify(loaded.report[key], null, 2)}</pre>
+              </details>)}
+            <div className="diagnostics-toolbar"><Button onClick={handleCopy}>{copied ? 'Copied' : 'Copy report'}</Button><Button onClick={handleDownload}>Download report</Button></div>
+          </div> : snapshot ? (() => {
             const summary = verdict({ snapshot, peerWait, multiplayer });
             const current = snapshot.current;
             // Match-clock epochs are stamped with the monotonic clock, like snapshot.at.

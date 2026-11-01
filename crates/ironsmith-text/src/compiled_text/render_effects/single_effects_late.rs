@@ -6139,6 +6139,17 @@ fn describe_structural_encore_keyword(
     if !costs.iter().any(is_exile_source_cost) {
         return None;
     }
+    // A granted encore cost can be the source card's mana value. The
+    // complete dynamic-cost equality also excludes colored pips, reductions,
+    // multipliers, and other charges that must not disappear into {X}.
+    let payments = costs.iter().filter(|cost| !is_exile_source_cost(cost)).collect::<Vec<_>>();
+    if let [payment] = payments.as_slice()
+        && payment.dynamic_mana_cost_ref() == Some(&ironsmith_core::DynamicManaCost::generic_equal_to(
+            Value::ManaValueOf(Box::new(ChooseSpec::Source)),
+        ))
+    {
+        return Some("Encore {X}, where X is its mana value".to_string());
+    }
     Some(format!(
         "Encore {}",
         keyword_base_cost_text(costs, is_exile_source_cost)?

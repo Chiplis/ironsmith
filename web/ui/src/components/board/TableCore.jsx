@@ -441,10 +441,11 @@ export default function TableCore({
         className="decision-phase-pass"
         aria-pressed={Boolean(phasePassing)}
         aria-label={ui("End turn")}
-        title={ui("Yield through this turn; combat and required choices stay manual")}
+        title={ui("Yield through this turn without attacking; required choices stay manual")}
         disabled={Boolean(state?.game_over)}
         onClick={togglePhasePassing}
       >{ui("End turn")}<PriorityShortcutHint number="6" /></button>}
+
     </div>
   ) : null;
   const middleTopbarElement = focusedHudDesktop && middleTopbar

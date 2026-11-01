@@ -8,6 +8,8 @@ use super::common;
 
 const TAGGED_REFERENCES: &[&[&str]] = &[
     &["it"],
+    &["him"],
+    &["her"],
     &["that", "card"],
     &["that", "creature"],
     &["the", "creature"],

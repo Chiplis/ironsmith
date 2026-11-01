@@ -20,6 +20,10 @@ struct CompileCardInput {
     custom_keyword_payments: Vec<String>,
     #[serde(default)]
     allow_unsupported: bool,
+    #[serde(default = "default_enforcement")]
+    enforce_filter_claims: bool,
+    #[serde(default = "default_enforcement")]
+    enforce_line_claims: bool,
     #[serde(default = "default_local_id")]
     local_id: u32,
     #[serde(default)]
@@ -32,6 +36,10 @@ struct CompileCardInput {
     semantic_score: Option<f32>,
 }
 
+fn default_enforcement() -> bool {
+    true
+}
+
 fn default_local_id() -> u32 {
     1
 }
@@ -42,17 +50,19 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
     for identity in &input.custom_keyword_identities {
         builder = builder.with_custom_keyword(identity.clone());
     }
-    // Card-builder compiles are strict: a filter word no reader reads fails
-    // the card instead of being silently dropped.
-    let mut compiled = ironsmith_compiler::word_claims::with_enforcement(|| {
-        CompilerFacade::new().compile_definition(
-            builder,
-            input.text.clone(),
-            CompilePolicy {
-                allow_unsupported: input.allow_unsupported,
-            },
-        )
-    })
+    let mut compiled = ironsmith_compiler::word_claims::with_enforcement_options(
+        input.enforce_filter_claims,
+        input.enforce_line_claims,
+        || {
+            CompilerFacade::new().compile_definition(
+                builder,
+                input.text.clone(),
+                CompilePolicy {
+                    allow_unsupported: input.allow_unsupported,
+                },
+            )
+        },
+    )
     .map_err(|error| error.to_string())?;
     for keyword in &input.custom_keyword_payments {
         compiled.definition.attribute_custom_keyword_payment(keyword);
@@ -104,6 +114,14 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
         "allowUnsupported".to_string(),
         input.allow_unsupported.to_string(),
     );
+    artifact.compiler_facts.insert(
+        "enforceFilterClaims".into(),
+        input.enforce_filter_claims.to_string(),
+    );
+    artifact.compiler_facts.insert(
+        "enforceLineClaims".into(),
+        input.enforce_line_claims.to_string(),
+    );
     artifact.semantic_score = input.semantic_score.map(|score| score.clamp(0.0, 1.0));
     artifact.refresh_checksum();
     Ok(artifact)
@@ -125,4 +143,41 @@ pub fn validate_compiled_card_artifact(input: JsValue) -> Result<(), JsValue> {
     artifact
         .validate()
         .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coverage_defaults_on_and_filter_can_be_disabled() {
+        let input = |filter: Option<bool>, line: Option<bool>| {
+            let mut value = serde_json::json!({
+                "name": "Gilded Banner",
+                "text": "Type: Enchantment\nBlorp creatures you control get +1/+1."
+            });
+            if let Some(filter) = filter {
+                value["enforceFilterClaims"] = filter.into();
+            }
+            if let Some(line) = line {
+                value["enforceLineClaims"] = line.into();
+            }
+            serde_json::from_value::<CompileCardInput>(value).unwrap()
+        };
+        let defaults = input(None, None);
+        assert!(defaults.enforce_filter_claims && defaults.enforce_line_claims);
+        assert!(
+            compile_artifact(input(Some(true), Some(false)))
+                .unwrap_err()
+                .contains("does not read 'blorp'")
+        );
+        assert!(
+            compile_artifact(input(Some(false), Some(true)))
+                .unwrap_err()
+                .contains("no reader reads")
+        );
+        let artifact = compile_artifact(input(Some(false), Some(false))).unwrap();
+        assert_eq!(artifact.compiler_facts["enforceFilterClaims"], "false");
+        assert_eq!(artifact.compiler_facts["enforceLineClaims"], "false");
+    }
 }

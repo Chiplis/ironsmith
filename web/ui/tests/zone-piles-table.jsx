@@ -1,3 +1,4 @@
+import { createPriorityPolicy } from "../src/lib/priority-policy";
 import {createPriorityStops} from "../src/lib/priority-stops";
 import useCardStackMode from "@/hooks/useCardStackMode";
 import TopbarUtilityControls from "../src/components/layout/TopbarUtilityControls";
@@ -32,6 +33,7 @@ function Fixture(){
  const [result,setResult]=useState('none');
  const [holdRule,setHoldRule]=useState('never');
  const [priorityController]=useState(()=>createPriorityStops());
+ const [priorityPolicy]=useState(()=>createPriorityPolicy({stops:priorityController}));
  const prioritySnapshot=useSyncExternalStore(priorityController.subscribe,priorityController.getSnapshot);
  const [perspective,setPerspective]=useState(Number(new URLSearchParams(location.search).get("perspective") || 0));
  const multiplayer = new URLSearchParams(location.search).has('multiplayer') ? {mode:'in_match',role:'client'} : {mode:'idle'};
@@ -91,6 +93,12 @@ function Fixture(){
  if (new URLSearchParams(location.search).has("pregame")) {
    state.decision={kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Keep hand",index:0},{kind:"use_pregame_action",label:"Use Serum Powder",index:1}]};
  }
+ if (new URLSearchParams(location.search).has("mulligan")) {
+   state.decision={kind:"priority",player:0,actions:[
+     {kind:"pass_priority",label:"Keep hand",index:0,action_ref:{kind:"keep_opening_hand"}},
+     {kind:"take_mulligan",label:"Mulligan",index:1,action_ref:{kind:"take_mulligan"}},
+   ]};
+ }
  if (new URLSearchParams(location.search).has("playableHand")) {
    state.stack=[]; state.stack_objects=[];
    state.decision={kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Pass priority",index:0},
@@ -100,7 +108,7 @@ function Fixture(){
    state.players=state.players.map(player=>({...player,battlefield:player.battlefield.map((card,index)=>({...card,
      chosen_values:index===3?["Type: Human"]:index===4?["Choice: odd"]:index===5?["Color: blue","Number: 3"]:[]}))}));
  }
- return <I18nProvider><GameContext.Provider value={{state,loopShortcut:new URLSearchParams(location.search).has("loopControls") ? {startRecording:()=>{}} : null,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer,playerAccentOverrides:{},game:null,holdRule,setHoldRule,priorityStops:prioritySnapshot.stops,cyclePriorityStop:(key,player)=>priorityController.cycleStop(key,state,player),effectOrderingState:{order:[1,0]},dispatch:async(command)=>setResult(JSON.stringify(command)),dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+ return <I18nProvider><GameContext.Provider value={{state,priorityPolicy,loopShortcut:new URLSearchParams(location.search).has("loopControls") ? {startRecording:()=>{}} : null,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer,playerAccentOverrides:{},game:null,holdRule,setHoldRule,priorityStops:prioritySnapshot.stops,cyclePriorityStop:(key,player)=>priorityController.cycleStop(key,state,player),effectOrderingState:{order:[1,0]},dispatch:async(command)=>setResult(JSON.stringify(command)),dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
  <main style={{height:"96vh"}}>{(new URLSearchParams(location.search).has("motion") || new URLSearchParams(location.search).has("stableDecisions") || new URLSearchParams(location.search).has("combatCycle")) && <button onClick={()=>setMotionStep(s=>(s+1)%4)}>Next decision</button>}<button onClick={()=>setAppearance("compactCards",!appearance.compactCards)}>Toggle battlefield style</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore middleUtilityControls={new URLSearchParams(location.search).has("utilities") ? <TopbarUtilityControls playerNames={["Alice", "Bob"]} startingLife={20} /> : null} onChangePerspective={setPerspective} legalTargetObjectIds={targetLook ? new Set([7001,7002]) : targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  {new URLSearchParams(location.search).has("decisionDock") && <div data-bottom-dock style={{position:'fixed',left:0,right:0,bottom:8,height:96,pointerEvents:'none'}}><div className="hand-reveal-shell" data-open="false" style={{position:'absolute',left:'50%',bottom:0,height:96}}><div className="hand-reveal-body" style={{height:'100%'}}><HandZone player={players[0]} isExpanded={false} layout="mobile-fan" /></div></div></div>}
  <DragOverlay />

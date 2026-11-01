@@ -1,3 +1,4 @@
+import { isPregameDecision } from './opening-hand-actions.js';
 import { resolvableTriggerGroup } from './resolve-group.js';
 import { booleanChoice } from './priority-policy.js';
 import { isHandOpen } from './hand-open.js';
@@ -10,18 +11,23 @@ export function installPriorityShortcuts(document, actions) {
     if (event.type !== 'keydown' || event.repeat || event.defaultPrevented || event.isComposing
       || event.ctrlKey || event.metaKey || typing(event.target)) return;
     const mtgo = readShortcutPreset() === 'mtgo';
-    // The raised hand owns plain digits, including positions without a card.
-    if (mtgo && isHandOpen() && !event.altKey) return;
+    // The raised hand owns digits during play; pregame keeps Keep hand and Mulligan.
+    if (mtgo && isHandOpen() && !event.altKey
+      && !(['0', '1'].includes(event.key) && isPregameDecision(actions.state()?.decision))) return;
     // Classic retains hand numbers; Alt+number offers the same commands.
     if (mtgo ? event.altKey : !event.altKey) return;
-    if (event.shiftKey || !'12345678'.includes(event.key) || !actions.state()?.decision) return;
+    if (event.shiftKey || !'012345678'.includes(event.key) || !actions.state()?.decision) return;
     if (event.key !== '5' && [...document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')]
       .some(node => node.getClientRects().length)) return;
     let handled = true;
     switch (event.key) {
+      case '0':
       case '1': {
-        const buttons = [...document.querySelectorAll('button.decision-main-button:not([data-secondary-priority-action])')]
-          .filter(button => !button.disabled && button.getClientRects().length && !button.closest('[inert], [aria-hidden="true"]'));
+        if (event.key === '0' && !isPregameDecision(actions.state()?.decision)) { handled = false; break; }
+        const selector = event.key === '0' ? 'button.action-strip-mulligan-button'
+          : 'button.decision-main-button:not([data-secondary-priority-action])';
+        const buttons = [...document.querySelectorAll(selector)]
+          .filter(button => !button.disabled && button.getAttribute('aria-disabled') !== 'true' && button.getClientRects().length && !button.closest('[inert], [aria-hidden="true"]'));
         if (buttons.length === 1) buttons[0].click(); else handled = false;
         break;
       }

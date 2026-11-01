@@ -2410,6 +2410,16 @@ pub(super) fn where_x_named_graveyard_count_binds_return_to_hand_target_count() 
 }
 
 #[test]
+pub(super) fn where_x_keyword_action_binds_target_limit_to_turn_history() {
+    let tokens = lex_line("Goad up to X target creatures, where X is the number of opponents you attacked this turn.", 0).unwrap();
+    let effects = parse_effect_sentence_lexed(&tokens).unwrap();
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("WithCountValue"), "target count must have a bound value: {debug}");
+    assert!(debug.contains("OpponentsAttacked"), "target limit must count attacked opponents: {debug}");
+    assert!(debug.contains("up_to_x: true"), "optional target count must remain optional: {debug}");
+}
+
+#[test]
 pub(super) fn where_x_colors_that_creature_was_binds_return_to_hand_target_count() {
     let text = "Return up to X cards from your graveyard to your hand, where X is the number of colors that creature was.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify return where-X sentence");

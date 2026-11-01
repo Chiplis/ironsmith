@@ -1,4 +1,5 @@
 import { samePlayerId } from "./player-display.js";
+import { priorityCommandForAction } from "./sync-commands.js";
 
 export const FOLLOW_ACTIVE_PLAYER_STORAGE_KEY = "ironsmith.followActivePlayer";
 
@@ -30,6 +31,15 @@ export function emptyPregameAction(state) {
   const action = actions[0];
   const kind = action.action_ref?.kind ?? action.kind;
   return kind === "continue_pregame" || kind === "begin_game" ? action : null;
+}
+
+// Multiplayer may only advance the local seat. Local hotseat callers supply
+// the deciding player's perspective so every empty opening step can settle.
+export function emptyPregameCommand(state) {
+  if (state?.loop_shortcut || state?.decision?.player == null
+    || !samePlayerId(state.decision.player, state.perspective)) return null;
+  const action = emptyPregameAction(state);
+  return action ? priorityCommandForAction(action) : null;
 }
 
 // Pregame belongs to each deciding seat even when turn-following is disabled.

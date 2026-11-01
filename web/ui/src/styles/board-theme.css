@@ -4276,7 +4276,8 @@ select::-ms-expand {
   border-color: rgba(167, 105, 91, 0.42) !important;
 }
 
-.mana-payment-pay-button {
+.mana-payment-pay-button,
+.mana-payment-pay-pass {
   animation: none !important;
   background: rgba(var(--decision-main-rgb, 115, 27, 222), 0.58) !important;
   border-color: rgba(var(--decision-main-rgb, 115, 27, 222), 0.7) !important;
@@ -4284,7 +4285,8 @@ select::-ms-expand {
   filter: none !important;
 }
 
-.mana-payment-pay-button:hover:not(:disabled) {
+.mana-payment-pay-button:hover:not(:disabled),
+.mana-payment-pay-pass:hover:not(:disabled) {
   background: rgba(var(--decision-main-rgb, 115, 27, 222), 0.72) !important;
   border-color: rgba(var(--decision-main-rgb, 115, 27, 222), 0.84) !important;
   filter: none !important;

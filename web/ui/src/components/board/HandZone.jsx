@@ -1,3 +1,4 @@
+import { HAND_ACTIVATE_SELECTED_EVENT, handCardPriorityActions } from '@/lib/hand-priority-action';
 import { compressedHandSelection, reservedHandHalfWidth } from "@/lib/hand-selection-layout";
 import useUiText from "@/i18n/useUiText";
 import useKeyboardPointerSuspend from "@/hooks/useKeyboardPointerSuspend";
@@ -30,7 +31,7 @@ import {
 } from "@/lib/hand-cast-keyboard";
 
 import { reconcilePseudoHand } from "@/lib/pseudo-hand";
-import { handKeyboardEntryCard, installHandNumberShortcut, onHandOpenChange, setHandOpen, useHandOpen, useHandNumbersVisible } from "@/lib/hand-open";
+import { setSelectedHandCardId, isHandOpen, handNavigationKeyAllowed, handKeyboardEntryCard, installHandNumberShortcut, onHandOpenChange, setHandOpen, useHandOpen, useHandNumbersVisible } from "@/lib/hand-open";
 
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
@@ -122,6 +123,7 @@ function buildPlayableMaps(state, player) {
       || action.kind === "begin_with_gemstone_caverns";
 
     if (isHandCard && isHandInteraction) {
+      if (state.decision.analysis_complete === true && action.payment_proven === false) continue;
       if (!handPlayable.has(objId)) handPlayable.set(objId, []);
       handPlayable.get(objId).push(action);
       continue;
@@ -1060,6 +1062,8 @@ export default function HandZone({
 
     const dismissPinnedHandCard = (event) => {
       const target = event.target;
+      // The main hand action must retain its selection until click submits it.
+      if (target instanceof Element && target.closest('[data-hand-primary-action]')) return;
       // The floating inspector owns its ability clicks. Dismissing the hand
       // broadcasts hand-inspection and closes that frame during pointer-down,
       // before the ability's click handler can submit anything (even with an
@@ -1365,10 +1369,27 @@ export default function HandZone({
     setHoveredHandObjectId(null);
   }, [suspendHandPointer]);
 
-  // With the docked hand opened by ".", the arrows step into it even though
-  // no card has focus yet: Right starts at the first card, Left at the last.
-  // Once a card has focus, GameCard's own arrow handling takes over.
+  // Both hand shortcuts reveal the same numbered, keyboard-owned hand.
   const handOpen = useHandOpen();
+  const selectedHandId = keyboardSelectedObjectId ?? pinnedHandObjectId ?? hoveredHandObjectId;
+  useEffect(() => {
+    if (isMe) setSelectedHandCardId(handOpen ? selectedHandId : null);
+  }, [isMe, handOpen, selectedHandId]);
+  useEffect(() => {
+    if (!isMe) return undefined;
+    const activate = event => {
+      if (!isHandOpen() || actionsPausedForSync || !samePlayerId(state?.decision?.player, state?.perspective)) return;
+      const card = handCards.find(card => String(card.id) === String(event.detail?.objectId ?? selectedHandId));
+      const plays = handCardPriorityActions(state?.decision, card?.id);
+      if (!card || !plays.length) return;
+      const list = centerCycleRef.current || handListRef.current;
+      const element = [...(list?.querySelectorAll('.game-card.hand-card') || [])].find(node => node.dataset.objectId === String(card.id));
+      if (!element || !element.getClientRects().length || element.closest('[inert], [aria-hidden="true"]')) return;
+      handleKeyboardCardActivate({ currentTarget: element, preventDefault() {} }, card, plays, null);
+    };
+    window.addEventListener(HAND_ACTIVATE_SELECTED_EVENT, activate);
+    return () => window.removeEventListener(HAND_ACTIVATE_SELECTED_EVENT, activate);
+  }, [isMe, state, handCards, selectedHandId, actionsPausedForSync, handleKeyboardCardActivate]);
   const showHandNumbers = useHandNumbersVisible() && isMe;
   const numberedHandIds = JSON.stringify(handCards.map(card => String(card.id)));
   useEffect(() => {
@@ -1386,24 +1407,27 @@ export default function HandZone({
   }, [isMe, numberedHandIds, handleKeyboardNavigation]);
   useHandBattlefieldClearance(handListRef, `${layout}:${Boolean(player)}`, handOpen || activeFanIndex != null);
   useEffect(() => {
-    if (!handOpen) return undefined;
-    const onKeyDown = (event) => {
-      const list = handListRef.current;
-      if (!list?.closest(".hand-reveal-shell")) return;
+    if (!handOpen || !isMe) return undefined;
+    const onKeyDown = event => {
+      const list = centerCycleRef.current || handListRef.current;
+      if (!isHandOpen() || !list || !handNavigationKeyAllowed(event, document)) return;
       const card = handKeyboardEntryCard(event, list);
-      if (!card) return;
       event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!card) return;
       handleKeyboardNavigation();
       card.focus({ preventScroll: true });
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [handOpen, handleKeyboardNavigation]);
-  // Closing the hand with "." puts every card back down, keyboard selection
+    // Capture at the window before field cards or target/placement controls
+    // can handle the same arrow. Casting closes the hand and releases them.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [handOpen, isMe, handleKeyboardNavigation]);
+  // Closing the hand with either shortcut puts every card back down, keyboard selection
   // and focus included.
   useEffect(() => onHandOpenChange((open) => {
-    const list = handListRef.current;
-    if (open || !list?.closest(".hand-reveal-shell")) return;
+    const list = centerCycleRef.current || handListRef.current;
+    if (open || !isMe || !list) return;
     if (list.contains(document.activeElement)) document.activeElement.blur();
     keyboardNavigationRef.current = false;
     setKeyboardNavigationActive(false);
@@ -1411,7 +1435,7 @@ export default function HandZone({
     setPinnedHandObjectId(null);
     clearHover();
     clearAnchoredCardPreview();
-  }), [clearAnchoredCardPreview, clearHover]);
+  }), [clearAnchoredCardPreview, clearHover, isMe]);
 
   const handleCardFocus = useCallback((_event, card) => {
     handleHoverEnter(card.id);
@@ -1800,7 +1824,7 @@ export default function HandZone({
             key={entry.key}
             card={card}
             variant="hand"
-            handNumber={showHandNumbers ? visualIndex + 1 : null}
+            handNumber={showHandNumbers && !isKeyboardSelected ? visualIndex + 1 : null}
             isPlayable={isPlayable}
             paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}
@@ -1956,7 +1980,7 @@ export default function HandZone({
             <GameCard
               card={card}
               variant="hand"
-              handNumber={showHandNumbers ? visualIndex + 1 : null}
+              handNumber={showHandNumbers && !isKeyboardSelected ? visualIndex + 1 : null}
               isPlayable={isPlayable}
               paymentProven={plays.some(action => action.payment_proven !== false)}
               glowKind={glowKind}

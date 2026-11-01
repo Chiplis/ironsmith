@@ -122,7 +122,9 @@ pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         PreDiagnostic,
         &[
             LexRuleHeadHint::Single("each"),
-            LexRuleHeadHint::Single("all")
+            LexRuleHeadHint::Single("all"),
+            LexRuleHeadHint::Single("it"),
+            LexRuleHeadHint::Single("that")
         ],
         parse_tagged_conditional_entry_counters_sentence
     ),

@@ -83,6 +83,7 @@ export const messages = {
   "Adding...": "Adding...",
   "Review the preview, then add your card to the selected player and zone.": "Review the preview, then add your card to the selected player and zone.",
 
+  "Yield through this turn without attacking; required choices stay manual": "Yield through this turn without attacking; required choices stay manual",
   "End turn": "End turn",
   "End the turn, ignoring phase pauses": "End the turn, ignoring phase pauses",
   "action.skippingPhase": "Skipping {phase}",
@@ -178,7 +179,7 @@ export const messages = {
   "action.hold": "Hold",
   "action.keepHand": "Keep hand",
   "action.mulligan": "Mulligan",
-  "action.passPriority": "Pass priority",
+  "action.passPriority": "Pass",
   "action.resolve": "Resolve",
   "action.priority": "Priority",
   "action.action": "Action",
@@ -852,7 +853,6 @@ export const ui = {
   "Disputes": "Disputes",
   "Distribute {0} total": "Distribute {0} total",
   "Distribution submitted": "Distribution submitted",
-  "Done Looking": "Done Looking",
   "Done": "Done",
   "double strike": "double strike",
   "Double Strike": "Double Strike",
@@ -2017,6 +2017,8 @@ export const ui = {
   "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.": "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.",
   "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".": "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".",
   "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.": "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.",
+  "Enforce filter coverage": "Enforce filter coverage",
+  "Enforce whole-line coverage": "Enforce whole-line coverage",
 };
 
 export const optionalMarkers = /\byou\s+may\b|\bmay\b/iu;

@@ -1834,8 +1834,10 @@ impl WasmGame {
     /// Finish a puzzle import after all requested zones have been populated.
     #[wasm_bindgen(js_name = finishPuzzleSetup)]
     pub fn finish_puzzle_setup(&mut self) -> Result<(), JsValue> {
-        self.finish_match_setup(0)
-            .map_err(|error| JsValue::from_str(&error))
+        // Imported positions already supply their hands and battlefield.
+        // Start the turn runner directly, without opening-hand decisions or draws.
+        self.reset_runtime_state();
+        self.recompute_ui_decision()
     }
 
     /// Seats whose hidden draws open an owner reveal window (Miracle).

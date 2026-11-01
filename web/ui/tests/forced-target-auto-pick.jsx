@@ -18,6 +18,24 @@ const scenario = params.get("scenario") || "forced-opponent";
 const allowHoverFallback = params.get("hoverFallback") === "1";
 
 const REQUIREMENTS = {
+  "optional-two": [{
+    description: "up to two target players",
+    min_targets: 0,
+    max_targets: 2,
+    legal_targets: [
+      { kind: "player", player: 1, name: "Bob" },
+      { kind: "player", player: 2, name: "Carol" },
+    ],
+  }],
+  "optional-one": [{
+    description: "up to one target player",
+    min_targets: 0,
+    max_targets: 1,
+    legal_targets: [
+      { kind: "player", player: 1, name: "Bob" },
+      { kind: "player", player: 2, name: "Carol" },
+    ],
+  }],
   // "Target opponent discards a card" with one opponent: no decision to make.
   "forced-opponent": [{
     description: "target opponent",
@@ -25,6 +43,12 @@ const REQUIREMENTS = {
     max_targets: 1,
     legal_targets: [{ kind: "player", player: 1, name: "Bob" }],
   }],
+  "forced-and-optional": [
+    { description: "target opponent", min_targets: 1, max_targets: 1,
+      legal_targets: [{ kind: "player", player: 1, name: "Bob" }] },
+    { description: "up to one target creature", min_targets: 0, max_targets: 1,
+      legal_targets: [{ kind: "object", object: 20, name: "Goblin Piker" }] },
+  ],
   // Three players: the opponent is a real choice, so nothing is picked.
   "two-opponents": [{
     description: "target opponent",
@@ -71,7 +95,7 @@ const decision = {
   kind: "targets",
   player: 0,
   source_id: 10,
-  description: "Choose targets for Lava Spike",
+  description: scenario.startsWith("optional-") ? "Choose optional targets" : "Choose targets for Lava Spike",
   requirements: REQUIREMENTS[scenario],
 };
 
@@ -144,6 +168,7 @@ const state = {
 };
 
 window.__dispatched = null;
+window.__dispatches = [];
 window.__cancelled = 0;
 
 function HoverProbe() {
@@ -166,7 +191,7 @@ export function Fixture() {
         holdRule: "never",
         setHoldRule: () => {},
         cancelDecision: () => { window.__cancelled += 1; },
-        dispatch: async (command) => { window.__dispatched = command; },
+        dispatch: async (command) => { window.__dispatched = command; window.__dispatches.push(command); },
         dispatchInBackground: async () => {},
       }}>
         <HoverProvider>
@@ -178,7 +203,9 @@ export function Fixture() {
                   <div style={{ width: 260 }} data-stack-host data-stack-preview-anchor="true">
                     <StackCard entry={stackEntry} />
                   </div>
-                  <TargetsDecision decision={decision} canAct />
+                  <div data-target-preview className={params.get("layout") === "strip" ? "battlefield-human-decision-panel" : undefined} style={params.has("capture") ? { width: 420, padding: 16, marginTop: 16, background: "#18191c", border: "1px solid #45413a" } : undefined}>
+                    <TargetsDecision decision={decision} canAct={params.get("canAct") !== "0"} layout={params.get("layout") || "panel"} />
+                  </div>
                   {/* Mounted with the very props every Workspace dock uses. */}
                   <RightRail
                     pinnedObjectId={null}

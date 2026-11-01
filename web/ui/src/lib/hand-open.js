@@ -6,7 +6,7 @@ export const TOGGLE_HAND_EVENT = "ironsmith:toggle-hand";
 // Whether the player has raised their hand with the keyboard. Hover and focus
 // still lift single cards; this lifts the whole hand until toggled again.
 let open = false;
-let numbersVisible = false;
+let selectedHandCardId = null;
 const listeners = new Set();
 
 function subscribe(listener) {
@@ -16,9 +16,9 @@ function subscribe(listener) {
 
 export function setHandOpen(value) {
   const next = Boolean(value);
-  if (next === open && (next || !numbersVisible)) return;
+  if (next === open) return;
   open = next;
-  if (!open) numbersVisible = false;
+  if (!open) selectedHandCardId = null;
   listeners.forEach(listener => listener());
 }
 
@@ -38,8 +38,19 @@ export function useHandOpen() {
   return useSyncExternalStore(subscribe, () => open, () => false);
 }
 
+export function setSelectedHandCardId(value) {
+  const next = value == null ? null : String(value);
+  if (next === selectedHandCardId) return;
+  selectedHandCardId = next;
+  listeners.forEach(listener => listener());
+}
+
+export function useSelectedHandCardId() {
+  return useSyncExternalStore(subscribe, () => selectedHandCardId, () => null);
+}
+
 export function useHandNumbersVisible() {
-  return useSyncExternalStore(subscribe, () => numbersVisible, () => false);
+  return useHandOpen();
 }
 
 function visible(element) {
@@ -47,24 +58,15 @@ function visible(element) {
   return element.getClientRects().length > 0 && style.visibility !== "hidden";
 }
 
-// H raises the numbered hand and leaves it open; "." toggles it.
+// Both shortcuts toggle the same numbered hand view.
 export function installHandToggleShortcut(document) {
   const onKeyDown = event => {
-    const showNumbers = event.key.toLowerCase() === "h";
-    if ((!showNumbers && event.key !== ".") || event.defaultPrevented || event.isComposing || event.repeat
-        || (!showNumbers && event.ctrlKey) || event.altKey || event.metaKey || event.shiftKey) return;
+    if ((event.key.toLowerCase() !== "h" && event.key !== ".") || event.defaultPrevented || event.isComposing || event.repeat
+        || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
     if (event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"]')) return;
     if ([...document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')].some(visible)) return;
-    if (showNumbers) {
-      // Do not cancel the modifier: ordinary Ctrl shortcuts must still work.
-      numbersVisible = true;
-      open = true;
-      listeners.forEach(listener => listener());
-      window.dispatchEvent(new CustomEvent(TOGGLE_HAND_EVENT, { detail: { open, showNumbers: true } }));
-    } else {
-      event.preventDefault();
-      toggleHandOpen();
-    }
+    event.preventDefault();
+    toggleHandOpen();
   };
   document.addEventListener("keydown", onKeyDown);
   return () => document.removeEventListener("keydown", onKeyDown);
@@ -146,20 +148,24 @@ export function useHandShellLift(shellRef, open) {
   }, [shellRef, open]);
 }
 
-// The hand card an arrow key should move to when focus is not already on a
-// card in this hand, or null when the key belongs to something else.
+// While the hand is open it owns card navigation, including when a field
+// card still has focus. Text inputs, menus and modal dialogs keep their keys.
+export function handNavigationKeyAllowed(event, doc) {
+  if (!["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"].includes(event.key) || event.defaultPrevented
+      || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
+  if (event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="listbox"], [role="menu"], [role="slider"]')) return false;
+  return ![...doc.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')].some(visible);
+}
+
 export function handKeyboardEntryCard(event, handList) {
-  if ((event.key !== "ArrowRight" && event.key !== "ArrowLeft") || event.defaultPrevented
-      || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return null;
   const doc = handList.ownerDocument;
-  const active = doc.activeElement;
-  if (active && active !== doc.body && handList.contains(active)) return null;
-  // Other focused controls (inputs, menus, a focused battlefield card) keep
-  // their own arrow-key behaviour.
-  if (active && active !== doc.body && active.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="listbox"], [role="menu"], [role="slider"], .game-card[role="button"]')) return null;
-  if ([...doc.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')].some(visible)) return null;
+  if (!handNavigationKeyAllowed(event, doc)) return null;
   const cards = [...handList.querySelectorAll('.game-card.hand-card[role="button"]')]
-    .filter(card => card.getClientRects().length > 0 && !card.hasAttribute("aria-hidden"));
-  if (cards.length === 0) return null;
-  return event.key === "ArrowRight" ? cards[0] : cards[cards.length - 1];
+    .filter(card => visible(card) && !card.hasAttribute("aria-hidden"));
+  if (!cards.length) return null;
+  const index = cards.indexOf(doc.activeElement?.closest?.('.game-card.hand-card'));
+  const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+  const next = index < 0 ? (forward ? 0 : cards.length - 1)
+    : (index + (forward ? 1 : -1) + cards.length) % cards.length;
+  return cards[next];
 }

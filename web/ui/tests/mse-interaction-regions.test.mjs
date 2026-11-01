@@ -50,3 +50,14 @@ test('Equip activation owns its keyword and cost hit area; inactive keywords kee
   assert.deepEqual(helpers.ranges.get(1),[]);
   assert.ok(mseRulesHelperView({...view,actions:new Map()}).ranges.get(1).length);
 });
+
+test('Equip hit and highlight region spans the entire measured rules field',()=>{
+  const fixture=result('Equip 1');
+  const property=fixture.context.property;
+  fixture.context.property=(name,key,group)=>key==='width'?280:property(name,key,group);
+  const action={kind:'activate_ability'};
+  const [region]=mseInteractionRegions(fixture,{lines:['Equip {1}'],actions:new Map([[0,[action]]])});
+  assert.equal(region.left,20);
+  assert.equal(region.width,280);
+  assert.equal(region.actions[0],action);
+});

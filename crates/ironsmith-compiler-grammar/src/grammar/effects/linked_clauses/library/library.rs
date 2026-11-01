@@ -147,6 +147,8 @@ pub fn parse_reveal_top_matching_followup_shape(
         crate::zone::Zone::Hand
     } else if starts_sequence(tail, &[&["into", "your", "graveyard"]]) {
         crate::zone::Zone::Graveyard
+    } else if starts_sequence(tail, &[&["onto", "the", "battlefield"]]) {
+        crate::zone::Zone::Battlefield
     } else if contains_sequence_phrase(tail, &[&["into", "your", "hand"]]) {
         crate::zone::Zone::Hand
     } else {
@@ -167,6 +169,7 @@ pub fn parse_reveal_top_matching_followup_shape(
         filter: filter_start..filter_end,
         chosen_type_reference: contains_sequence_phrase(filter, CHOSEN_TYPE),
         matched_zone,
+        matched_tapped: starts_sequence(tail, &[&["onto", "the", "battlefield", "tapped"]]),
         remainder,
     })
 }

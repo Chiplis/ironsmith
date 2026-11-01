@@ -345,6 +345,23 @@ pub fn with_enforcement<T>(f: impl FnOnce() -> T) -> T {
     f()
 }
 
+/// Set both enforcement options for one compile, restoring the caller's
+/// settings afterwards (including on panic). Process-level enforcement still applies.
+pub fn with_enforcement_options<T>(filter: bool, line: bool, f: impl FnOnce() -> T) -> T {
+    struct Restore(bool, bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ENFORCED.with(|value| value.set(self.0));
+            LINE_ENFORCED.with(|value| value.set(self.1));
+        }
+    }
+    let _restore = Restore(
+        ENFORCED.with(|value| value.replace(filter)),
+        LINE_ENFORCED.with(|value| value.replace(line)),
+    );
+    f()
+}
+
 /// Whether a caller on this thread asked for enforcement.
 pub fn enforcement_requested() -> bool {
     ENFORCED.with(Cell::get)
@@ -756,6 +773,25 @@ mod tests {
         let violations = claims.violations();
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].origins, vec![1, 2]);
+    }
+
+    #[test]
+    fn enforcement_options_are_independent_and_restore_after_panic() {
+        for filter in [false, true] {
+            for line in [false, true] {
+                with_enforcement_options(filter, line, || {
+                    assert_eq!(enforcement_requested(), filter);
+                    assert_eq!(line_enforcement_requested(), line);
+                    let _ = std::panic::catch_unwind(|| {
+                        with_enforcement_options(!filter, !line, || panic!("restore"));
+                    });
+                    assert_eq!(enforcement_requested(), filter);
+                    assert_eq!(line_enforcement_requested(), line);
+                });
+                assert!(!enforcement_requested());
+                assert!(!line_enforcement_requested());
+            }
+        }
     }
 
     #[test]
