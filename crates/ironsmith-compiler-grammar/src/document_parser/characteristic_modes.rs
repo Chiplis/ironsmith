@@ -134,6 +134,10 @@ pub(super) fn recognize_characteristics_mode(
     if effects_ast.is_empty() {
         return Err(unsupported());
     }
+    // "• 1/3 Turtle with hexproof." (Wild Shape): the power/toughness and
+    // characteristics were read into the template sentence parsed above,
+    // which carries no authored spans of its own.
+    crate::word_claims::claim_tokens(description_tokens);
     let mode_text = render_original_text_for_token_slice(line, body)
         .unwrap_or_else(|| render_token_slice(body))
         .trim()

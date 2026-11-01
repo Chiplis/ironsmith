@@ -28,12 +28,14 @@ pub(super) fn parse_equal_to_counted_active_stop(
     let (filter_tokens, count_tokens) = primitives::split_lexed_once_on_separator(tokens, || {
         primitives::phrase(&["equal", "to"]).void()
     })?;
+    let head_tokens = filter_tokens;
     let (_, filter_tokens) =
         primitives::parse_prefix(filter_tokens, |input: &mut LexStream<'_>| {
             primitives::any_phrase(&[&["a", "number", "of"], &["number", "of"]])
                 .void()
                 .parse_next(input)
         })?;
+    let number_of_tokens = &head_tokens[..head_tokens.len() - filter_tokens.len()];
     let filter_tokens = trim_commas(filter_tokens);
     let count_tokens = trim_commas(count_tokens);
     if filter_tokens.is_empty() || count_tokens.is_empty() {
@@ -42,11 +44,19 @@ pub(super) fn parse_equal_to_counted_active_stop(
 
     let count_words = TokenWordView::new(count_tokens).word_refs();
     let count = if permission_shapes::suffix_words(&count_words, &["sacrificed", "this", "way"]) {
+        // "the number of <objects> sacrificed this way": the prior action's
+        // count, read whole here.
+        crate::word_claims::claim_tokens(count_tokens);
         prior_action_count_value(&count_words).unwrap_or(Value::EventValue(EventValueSpec::Amount))
     } else {
         let (value, used) = values::parse_value_prefix_lexed(count_tokens)?;
         (used == count_tokens.len()).then_some(value)?
     };
+    // "a number of <cards> equal to <count>": the counted stop frame.
+    crate::word_claims::claim_tokens(number_of_tokens);
+    crate::word_claims::claim_tokens(
+        &tokens[head_tokens.len()..tokens.len() - count_tokens.len()],
+    );
 
     Some(ConsultTraversalStopShape {
         stop_rule: LibraryConsultStopRuleAst::MatchCount(count),

@@ -20,7 +20,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let dealt = PredicateAst::Source(SourcePredicateAst::SourceHasDealtDamageSinceEntered);
     let dealt_combat =
         PredicateAst::Source(SourcePredicateAst::SourceHasDealtCombatDamageSinceEntered);
-    match &words[subject_len..] {
+    let predicate = match &words[subject_len..] {
         ["hasnt" | "hasn't" | "havent" | "haven't", "dealt", "damage", "yet"]
         | ["has" | "have", "not", "dealt", "damage", "yet"] => {
             Some(PredicateAst::Not(Box::new(dealt)))
@@ -32,7 +32,12 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         ["has" | "have", "dealt", "damage"] => Some(dealt),
         ["has" | "have", "dealt", "combat", "damage"] => Some(dealt_combat),
         _ => None,
+    };
+    // The exact source damage-history shape, read whole.
+    if predicate.is_some() {
+        crate::word_claims::claim_tokens(tokens);
     }
+    predicate
 }
 
 #[cfg(test)]

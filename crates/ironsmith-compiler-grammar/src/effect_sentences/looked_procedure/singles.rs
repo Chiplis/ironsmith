@@ -960,6 +960,14 @@ pub(super) fn nonhand_replacement(
     let Some(predicate) = all_hand_replacement_predicate(sentence, rest, group.revealed) else {
         return false;
     };
+    // "the rest on the bottom of your library in any order": the chooser
+    // orders the remainder (LibraryBottomOrderAst::ChooserChooses below).
+    {
+        let words = crate::lexer::parser_token_word_refs(trimmed(sentence));
+        if let Some(at) = words.windows(3).position(|window| window == ["in", "any", "order"]) {
+            crate::word_claims::claim_words(&words[at..at + 3]);
+        }
+    }
     let player = group.owner;
     let hand_tag = helper_tag_for_tokens(sentence.lowered(), "hand");
     let mut hand_filter = ObjectFilter::tagged(group.tag.clone());

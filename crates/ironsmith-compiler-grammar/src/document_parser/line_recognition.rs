@@ -969,6 +969,16 @@ pub(super) fn recognize_modal_mode(
     if flavor_label {
         crate::word_claims::claim_tokens(&bullet_body[..bullet_body.len() - parse_tokens.len()]);
     }
+    // "• Cross-Slash — {0} — Destroy target tapped creature." (Cloud's Limit
+    // Break): a tiered mode's name is the same presentation label; the
+    // tier's cost follows it.
+    if tiered_prefix.is_some()
+        && let Some(label_end) = bullet_body
+            .iter()
+            .position(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+    {
+        crate::word_claims::claim_tokens(&bullet_body[..label_end]);
+    }
     let surface_tokens = if tiered_prefix.is_some() || flavor_label {
         bullet_body
     } else {

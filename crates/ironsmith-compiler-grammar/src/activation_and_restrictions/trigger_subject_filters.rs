@@ -536,6 +536,9 @@ fn trigger_subject_filter_reading(
             if other {
                 filter.other = true;
             }
+            // The relative clause ("that entered / was turned face up this
+            // turn") is the turn-history predicate set above.
+            crate::word_claims::claim_tokens(&subject_tokens[prefix_end..]);
             return Ok(Some(filter));
         }
         // "Whenever one or more creatures that are enchanted by an Aura you

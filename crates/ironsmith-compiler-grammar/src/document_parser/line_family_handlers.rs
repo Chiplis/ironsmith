@@ -1681,6 +1681,9 @@ pub(super) fn run_activation_line_family(
                     ctx.idx,
                     activated,
                 );
+                // "Stunning Strike — {1}{W}, {T}: ...": a leading
+                // presentation-only label is the ability's name.
+                claim_presentation_only_label(ctx.preprocessed, ctx.idx, ctx.line);
                 return line_family_match(
                     ctx,
                     LineDispatchResult::single(RecognizedLine::Activated(activated), next_idx),

@@ -504,6 +504,9 @@ pub fn parse_become_clause(
             become_body_tokens,
         )
     {
+        // "blue and isn't an artifact": the colors and the negated card type
+        // are the whole body, read here.
+        crate::word_claims::claim_tokens(become_body_tokens);
         // The first instruction owns the authored target and records its exact
         // affected objects. A source reference has no newly allocated result.
         let alias = if matches!(&target, TargetAst::Source(_))
@@ -766,6 +769,9 @@ pub fn parse_become_clause(
         && let Ok((second_power, second_toughness)) =
             crate::keyword_static::parse_pt_modifier_values(become_words[2])
     {
+        // "become 4/1 or 1/4": the two P/T values and the choice between
+        // them are all read here.
+        crate::word_claims::claim_tokens(become_body_tokens);
         return Ok(EffectAst::ObjectChoices(
             crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
                 chooser: crate::target::PlayerFilter::You,

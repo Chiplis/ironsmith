@@ -48,7 +48,13 @@ pub fn parse_partner_with_name_tokens(tokens: &[OwnedLexToken]) -> Option<String
     let name = render_token_slice(shape.name_tokens)
         .trim()
         .replace('"', "");
-    (!name.is_empty()).then_some(name)
+    if name.is_empty() {
+        return None;
+    }
+    // "Partner with Proud Mentor": the partner's card name is read as the
+    // name this ability pairs with (CR 702.124j).
+    crate::word_claims::claim_tokens(shape.name_tokens);
+    Some(name)
 }
 
 pub fn parse_partner_visible_label_tokens(tokens: &[OwnedLexToken]) -> Option<String> {

@@ -25,6 +25,8 @@ pub fn parse_resource_shuffle_shape(
             )
             && !exact_unit(target, tagged_reference)
         {
+            // "into their owners' libraries": each object's owner's library.
+            crate::word_claims::claim_tokens(&clause[into_idx..]);
             return Some(ResourceShuffleShape::ObjectsIntoOwnersLibraries {
                 target_len: into_idx,
             });

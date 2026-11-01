@@ -2194,6 +2194,8 @@ pub(super) fn parse_value_reference_comparison_predicate(
         bind_other_aggregate_to_compared_object(&left, &mut right);
         let mut left = left;
         mark_demonstrative_characteristic_subject(&mut left, &tokens[..comparison_start]);
+        // The compared value ("that spell's mana value") was parsed whole.
+        crate::word_claims::claim_tokens(&tokens[..comparison_start]);
         // A singular card predicate requires the referenced card to exist.
         // Numeric evaluation alone would turn an empty selection into zero
         // and incorrectly satisfy "the card's mana value is 1 or less".
@@ -3120,6 +3122,11 @@ pub(super) fn parse_you_attacked_with_n_or_more_creatures_shape(
     let (count, used) = parse_number(count_clause.tokens())?;
     if used != count_clause.tokens().len() {
         return None;
+    }
+    // "or more creatures this turn": the threshold's comparison, the counted
+    // attackers and the turn window.
+    if let Some(object_clause) = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause) {
+        crate::word_claims::claim_tokens(object_clause.tokens());
     }
     Some(PredicateAst::TurnEvents(
         TurnEventPredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count),
@@ -4361,6 +4368,10 @@ pub(super) fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<
     let zone_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     if !is_exiled_zone_clause(zone_clause) {
         return None;
+    }
+    // "remain(s) [exiled]": the still-in-exile state read here.
+    if let Some(action) = matched.capture_clause("action", clause) {
+        crate::word_claims::claim_tokens(action.tokens());
     }
     let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
     let subject = subject_clause.word_refs();
@@ -7261,6 +7272,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         }
     }
     if let ["it", "was", "sacrificed"] = monarch_words.as_slice() {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectWasSacrificed,
         ));
@@ -7311,6 +7323,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         ["none", "of", "those", "creatures", "attacked", "you"]
             | ["none", "of", "them", "attacked", "you"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::ValueComparison {
             left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
                 player: PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
@@ -7330,6 +7343,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     if let ["no", "other", "creatures", "are", "attacking", "that", "player"] =
         monarch_words.as_slice()
     {
+        crate::word_claims::claim_tokens(tokens);
         let mut filter = ObjectFilter::creature();
         filter.attacking = true;
         filter.zone = Some(Zone::Battlefield);
@@ -7391,6 +7405,9 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
                 && let Some(second) = conjuncts.pop()
                 && let Some(first) = conjuncts.pop()
             {
+                // The conjunction and the shared "attacked this combat".
+                crate::word_claims::claim_tokens(&subject[and_idx..=and_idx]);
+                crate::word_claims::claim_tokens(&tokens[tokens.len() - 3..]);
                 return Ok(PredicateAst::And(Box::new(first), Box::new(second)));
             }
         }

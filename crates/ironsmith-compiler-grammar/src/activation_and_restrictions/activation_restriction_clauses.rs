@@ -213,6 +213,13 @@ fn source_filtered_target_restriction(
             filter.zone = Some(crate::zone::Zone::Stack);
             filter.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
             filter.controller = Some(if opponents { PlayerFilter::Opponent } else { PlayerFilter::You });
+            // The trailing "your opponents control" / "you control" is the
+            // controller read here.
+            let words = crate::lexer::parser_token_word_refs(tokens);
+            let controller_words = if opponents { 3 } else { 2 };
+            if let Some(start) = words.len().checked_sub(controller_words) {
+                crate::word_claims::claim_words(&words[start..]);
+            }
             filter
         }
         TargetRestrictionEnvelope::FilteredSources {

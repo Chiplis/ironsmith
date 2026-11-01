@@ -176,6 +176,21 @@ pub fn parse_devotion_condition_shape(
     let Some((operator, amount_tokens)) =
         primitives::parse_prefix(after_is, parse_devotion_comparison)
     else {
+        // "is five or greater" / "is three or less": the comparison follows
+        // the amount.
+        if let Some((amount, rest)) =
+            primitives::parse_prefix(after_is, leaf::parse_leaf_number_prefix_lexed)
+            && let Some((operator, tail)) =
+                primitives::parse_prefix(rest, parse_trailing_devotion_comparison)
+            && super::trim_anthem_clause_tokens(tail).is_empty()
+        {
+            return Ok(Some(DevotionConditionShape {
+                player,
+                colors,
+                operator,
+                amount,
+            }));
+        }
         return Err(DevotionConditionError::UnsupportedComparison);
     };
     if amount_tokens.is_empty() {
@@ -665,23 +680,20 @@ fn parse_devotion_player(input: &mut LexStream<'_>) -> WResult<DevotionPlayerKin
 
 fn parse_devotion_colors(tokens: &[OwnedLexToken]) -> Result<Vec<Color>, DevotionConditionError> {
     let mut colors = Vec::new();
-    let mut input = LexStream::new(tokens);
-    while !input.is_empty() {
-        if alt((primitives::kw("and").void(), primitives::comma().void()))
-            .parse_next(&mut input)
-            .is_ok()
-        {
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is_comma() || token.is_word("and") {
             continue;
         }
-        let mut probe = input.clone();
-        let Ok(word) = primitives::word_parser_text.parse_next(&mut probe) else {
+        if token.as_word().is_none() {
             return Err(DevotionConditionError::UnsupportedColor(String::new()));
-        };
+        }
+        let word = token.parser_text();
         let Some(color) = Color::from_name(word) else {
             return Err(DevotionConditionError::UnsupportedColor(word.to_string()));
         };
         colors.push(color);
-        input = probe;
+        // The color word names the devotion this condition counts.
+        crate::word_claims::claim_tokens(&tokens[index..=index]);
     }
     if colors.is_empty() {
         return Err(DevotionConditionError::MissingColor);
@@ -699,6 +711,18 @@ fn parse_devotion_comparison(input: &mut LexStream<'_>) -> WResult<ValueComparis
         primitives::phrase(&["greater", "than"]).value(ValueComparisonOperator::GreaterThan),
         primitives::phrase(&["equal", "to"]).value(ValueComparisonOperator::Equal),
         primitives::phrase(&["not", "equal", "to"]).value(ValueComparisonOperator::NotEqual),
+    ))
+    .parse_next(input)
+}
+
+fn parse_trailing_devotion_comparison(
+    input: &mut LexStream<'_>,
+) -> WResult<ValueComparisonOperator> {
+    alt((
+        alt((primitives::phrase(&["or", "greater"]), primitives::phrase(&["or", "more"])))
+            .value(ValueComparisonOperator::GreaterThanOrEqual),
+        alt((primitives::phrase(&["or", "less"]), primitives::phrase(&["or", "fewer"])))
+            .value(ValueComparisonOperator::LessThanOrEqual),
     ))
     .parse_next(input)
 }

@@ -212,6 +212,8 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         // Damage result conditions examine only recipients of actual damage.
         // Player recipients have their own result predicate below.
         parse_prior_result_object_filter(&tokens[..copula_idx])?;
+        // "<object> is dealt damage this way": the passive damage result.
+        crate::word_claims::claim_tokens(&tokens[copula_idx..]);
         PriorEffectAction::DealtDamage
     } else if after == ["moved", "this", "way"] {
         let subject = crate::grammar::primitives::strip_lexed_prefix_phrase(

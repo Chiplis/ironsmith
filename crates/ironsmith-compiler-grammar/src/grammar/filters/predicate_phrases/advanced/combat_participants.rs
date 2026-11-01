@@ -22,6 +22,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             Combat::AttackingPlayerHasUnattackedOtherOpponent,
         _ => return None,
     };
+    // Every reading above is an exact whole-predicate match.
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::Triggering(TriggeringPredicateAst::CombatParticipant(condition)))
 }
 

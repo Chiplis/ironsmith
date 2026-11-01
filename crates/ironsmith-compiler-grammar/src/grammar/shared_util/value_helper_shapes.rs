@@ -493,11 +493,15 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
             return None;
         }
         let mut action_start = words.len().saturating_sub(suffix.len());
+        // "that were destroyed this way": the relative copula introduces the
+        // participle this action reads.
         if action_start > 0 && matches!(words[action_start - 1], "is" | "are" | "was" | "were") {
             action_start -= 1;
+            crate::word_claims::claim_words(&words[action_start..action_start + 1]);
         }
         if action_start > 0 && words[action_start - 1] == "that" {
             action_start -= 1;
+            crate::word_claims::claim_words(&words[action_start..action_start + 1]);
         }
         Some((*action, action_start))
     })

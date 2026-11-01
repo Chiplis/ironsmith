@@ -27,6 +27,7 @@ fn recipient(
     // "one of the chosen players" (Sower of Discord): the players this
     // source chose as it entered.
     let target = if words == ["one", "of", "the", "chosen", "players"] {
+        crate::word_claims::claim_words(&words);
         ChooseSpec::Player(crate::target::PlayerFilter::TaggedPlayer(
             ironsmith_core::tag::SOURCE_CHOSEN_PLAYERS_TAG.into(),
         ))

@@ -302,6 +302,18 @@ fn pending_aggregate_metric_value(
     if let Some(value) = parse_prior_effect_aggregate_metric_value(metric, object_words) {
         return Some(value);
     }
+    // "among the milled cards" / "of the exiled cards": exactly the objects
+    // the prior instruction affected, read whole.
+    let reference = object_words.strip_prefix(&["the"]).unwrap_or(object_words);
+    if let [participle, noun] = reference
+        && matches!(
+            *participle,
+            "chosen" | "destroyed" | "discarded" | "exiled" | "milled" | "revealed" | "sacrificed"
+        )
+        && matches!(*noun, "card" | "cards" | "creature" | "creatures" | "permanent" | "permanents")
+    {
+        crate::word_claims::claim_words(object_words);
+    }
     Some(Value::PendingEffectMetric { source, metric })
 }
 

@@ -513,76 +513,7 @@ fn parse_any_color_mana_spend_lexed<'a>(
         opt(primitives::kw("the")).parse_next(input)?;
         primitives::phrase(&["activation", "costs", "of"]).parse_next(input)?;
         let ability_tokens = take_nonempty_sentence_body(input)?;
-        let ability_words = crate::lexer::parser_token_word_refs(ability_tokens);
-        // "[<source>'s / its] <kind> abilities [of <objects>]": only
-        // activations of that kind of ability (a keyword ability such as
-        // equip, or a loyalty ability) qualify.
-        let abilities_at = ability_words
-            .iter()
-            .position(|word| matches!(*word, "abilities" | "ability"));
-        let ability_kind = abilities_at
-            .and_then(|index| index.checked_sub(1))
-            .and_then(|index| activated_ability_kind_word(ability_words[index]));
-        let holder_words = match (abilities_at, ability_kind) {
-            (Some(index), Some(_)) => &ability_words[..index - 1],
-            (Some(index), None) => &ability_words[..index],
-            (None, _) => &ability_words[..0],
-        };
-        if let Some(abilities_at) = abilities_at {
-            let tail_words = &ability_words[abilities_at + 1..];
-            // "this artifact's abilities" / "its abilities": the source's own
-            // activated abilities.
-            let source_holder = matches!(holder_words, ["its"])
-                || (!holder_words.is_empty()
-                    && crate::util::source_reference_surface_for_possessive_words(holder_words)
-                        .is_some());
-            if source_holder && tail_words.is_empty() {
-                crate::word_claims::claim_tokens(ability_tokens);
-                return Ok(ManaSpendPermissionShape::AnyColor {
-                    player,
-                    activation_filter_tokens: None,
-                    source_activation_only: true,
-                    any_type,
-                    ability_kind,
-                });
-            }
-            // "[<kind>] abilities of <objects>": the activation costs of
-            // those objects' abilities.
-            if holder_words.is_empty() && matches!(tail_words, ["of", _, ..]) {
-                let abilities_token = ability_tokens
-                    .iter()
-                    .position(|token| matches!(token.parser_text(), "abilities" | "ability"))
-                    .unwrap_or(0);
-                let filter_start = ability_tokens[abilities_token..]
-                    .iter()
-                    .position(|token| token.parser_text() == "of")
-                    .map_or(ability_tokens.len(), |index| abilities_token + index + 1);
-                crate::word_claims::claim_tokens(&ability_tokens[..filter_start]);
-                return Ok(ManaSpendPermissionShape::AnyColor {
-                    player,
-                    activation_filter_tokens: Some(trim_lexed_commas(&ability_tokens[filter_start..])),
-                    source_activation_only: false,
-                    any_type,
-                    ability_kind,
-                });
-            }
-            // "<kind> abilities" with no holder: that kind of ability of
-            // any object.
-            if holder_words.is_empty() && tail_words.is_empty() && ability_kind.is_some() {
-                crate::word_claims::claim_tokens(ability_tokens);
-                return Ok(ManaSpendPermissionShape::AnyColor {
-                    player,
-                    activation_filter_tokens: None,
-                    source_activation_only: false,
-                    any_type,
-                    ability_kind,
-                });
-            }
-        }
-        return Err(primitives::backtrack_err(
-            "mana spend permission",
-            "activation ability subject",
-        ));
+        return activation_ability_subject(player, any_type, ability_tokens);
     }
     if peek(primitives::phrase(&["to", "cast"])).parse_next(input).is_ok() {
         primitives::phrase(&["to", "cast"]).parse_next(input)?;
@@ -597,15 +528,123 @@ fn parse_any_color_mana_spend_lexed<'a>(
             filter_tokens: trim_lexed_commas(filter_tokens),
         });
     }
-    primitives::phrase(&["to", "activate", "abilities", "of"]).parse_next(input)?;
-    let filter_tokens = take_nonempty_sentence_body(input)?;
-    Ok(ManaSpendPermissionShape::AnyColor {
-        player,
-        activation_filter_tokens: Some(trim_lexed_commas(filter_tokens)),
-        source_activation_only: false,
-        any_type,
-        ability_kind: None,
-    })
+    // "to activate [<kind>] abilities of <objects>" / "to activate this
+    // creature's abilities" / "to activate loyalty abilities": the same
+    // ability subject as "to pay the activation costs of ...".
+    primitives::phrase(&["to", "activate"]).parse_next(input)?;
+    let ability_tokens = take_nonempty_sentence_body(input)?;
+    activation_ability_subject(player, any_type, ability_tokens)
+}
+
+/// The activated abilities whose activation costs a spend permission covers:
+/// "[<holder>'s] [<kind>] abilities [of <objects>]", where the holder is the
+/// source ("this artifact's", "its") or a possessive object filter
+/// ("planeswalkers'"), and the kind is a keyword ability or "loyalty".
+fn activation_ability_subject<'a>(
+    player: ManaSpendPlayerKind,
+    any_type: bool,
+    ability_tokens: &'a [OwnedLexToken],
+) -> WResult<ManaSpendPermissionShape<'a>> {
+    let ability_words = crate::lexer::parser_token_word_refs(ability_tokens);
+    // "[<source>'s / its] <kind> abilities [of <objects>]": only
+    // activations of that kind of ability (a keyword ability such as
+    // equip, or a loyalty ability) qualify.
+    let abilities_at = ability_words
+        .iter()
+        .position(|word| matches!(*word, "abilities" | "ability"));
+    let ability_kind = abilities_at
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| activated_ability_kind_word(ability_words[index]));
+    let holder_words = match (abilities_at, ability_kind) {
+        (Some(index), Some(_)) => &ability_words[..index - 1],
+        (Some(index), None) => &ability_words[..index],
+        (None, _) => &ability_words[..0],
+    };
+    if let Some(abilities_at) = abilities_at {
+        let tail_words = &ability_words[abilities_at + 1..];
+        // "this artifact's abilities" / "its abilities": the source's own
+        // activated abilities.
+        let source_holder = matches!(holder_words, ["its"])
+            || (!holder_words.is_empty()
+                && crate::util::source_reference_surface_for_possessive_words(holder_words)
+                    .is_some());
+        if source_holder && tail_words.is_empty() {
+            crate::word_claims::claim_tokens(ability_tokens);
+            return Ok(ManaSpendPermissionShape::AnyColor {
+                player,
+                activation_filter_tokens: None,
+                source_activation_only: true,
+                any_type,
+                ability_kind,
+            });
+        }
+        // "planeswalkers' loyalty abilities" / "Equipment's equip
+        // abilities": a possessive object filter holds the abilities. The
+        // lowering strips the possessive from the last holder token and reads
+        // the holder as an object filter.
+        if !source_holder
+            && !holder_words.is_empty()
+            && tail_words.is_empty()
+            && let Some(abilities_token) = ability_tokens
+                .iter()
+                .position(|token| matches!(token.parser_text(), "abilities" | "ability"))
+        {
+            let holder_end = abilities_token - usize::from(ability_kind.is_some());
+            let holder_tokens = trim_lexed_commas(&ability_tokens[..holder_end]);
+            if holder_tokens
+                .last()
+                .and_then(|token| token.as_word())
+                .is_some_and(|word| {
+                    word.ends_with('\'') || word.ends_with('’') || word.ends_with("'s") || word.ends_with("’s")
+                })
+            {
+                crate::word_claims::claim_tokens(&ability_tokens[holder_end..]);
+                return Ok(ManaSpendPermissionShape::AnyColor {
+                    player,
+                    activation_filter_tokens: Some(holder_tokens),
+                    source_activation_only: false,
+                    any_type,
+                    ability_kind,
+                });
+            }
+        }
+        // "[<kind>] abilities of <objects>": the activation costs of
+        // those objects' abilities.
+        if holder_words.is_empty() && matches!(tail_words, ["of", _, ..]) {
+            let abilities_token = ability_tokens
+                .iter()
+                .position(|token| matches!(token.parser_text(), "abilities" | "ability"))
+                .unwrap_or(0);
+            let filter_start = ability_tokens[abilities_token..]
+                .iter()
+                .position(|token| token.parser_text() == "of")
+                .map_or(ability_tokens.len(), |index| abilities_token + index + 1);
+            crate::word_claims::claim_tokens(&ability_tokens[..filter_start]);
+            return Ok(ManaSpendPermissionShape::AnyColor {
+                player,
+                activation_filter_tokens: Some(trim_lexed_commas(&ability_tokens[filter_start..])),
+                source_activation_only: false,
+                any_type,
+                ability_kind,
+            });
+        }
+        // "<kind> abilities" with no holder: that kind of ability of
+        // any object.
+        if holder_words.is_empty() && tail_words.is_empty() && ability_kind.is_some() {
+            crate::word_claims::claim_tokens(ability_tokens);
+            return Ok(ManaSpendPermissionShape::AnyColor {
+                player,
+                activation_filter_tokens: None,
+                source_activation_only: false,
+                any_type,
+                ability_kind,
+            });
+        }
+    }
+    Err(primitives::backtrack_err(
+        "mana spend permission",
+        "activation ability subject",
+    ))
 }
 
 /// The kind word before "abilities" in a spend scope: "loyalty", or the
@@ -714,6 +753,42 @@ mod tests {
                 ability_kind: None,
             })
         );
+
+        // Ability-kind scopes, with a possessive holder or "to activate".
+        for (line, holder) in [
+            (
+                "You may spend mana as though it were mana of any color to pay the activation costs of planeswalkers' loyalty abilities.",
+                Some(vec!["planeswalkers'"]),
+            ),
+            (
+                "You may spend mana as though it were mana of any color to activate loyalty abilities of planeswalkers you control.",
+                Some(vec!["planeswalkers", "you", "control"]),
+            ),
+            (
+                "You may spend mana as though it were mana of any color to activate equip abilities.",
+                None,
+            ),
+        ] {
+            let tokens = lex_line(line, 0).unwrap();
+            let Some(ManaSpendPermissionShape::AnyColor {
+                activation_filter_tokens,
+                source_activation_only: false,
+                ability_kind: Some(_),
+                ..
+            }) = parse_mana_spend_permission_tokens(&tokens)
+            else {
+                panic!("expected ability-kind spend scope for {line}");
+            };
+            assert_eq!(
+                activation_filter_tokens.map(|tokens| tokens
+                    .iter()
+                    .filter_map(|token| token.as_word())
+                    .map(str::to_ascii_lowercase)
+                    .collect::<Vec<_>>()),
+                holder.map(|words| words.into_iter().map(str::to_string).collect::<Vec<_>>()),
+                "{line}"
+            );
+        }
 
         let tokens = lex_line(
             "You may spend white mana as though it were mana of any color. You may spend other mana only as though it were colorless mana.",

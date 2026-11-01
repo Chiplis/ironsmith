@@ -236,6 +236,15 @@ pub(crate) fn read(
         };
         (None, statement)
     };
+    // "Copy that card three times." matched whole by `copy_statement`; the
+    // cast sentence is matched whole by the cast readers below.
+    let claim_pair = |copy_whole: bool| {
+        if copy_whole {
+            crate::word_claims::claim_tokens(copy);
+        }
+        crate::word_claims::claim_tokens(cast);
+    };
+    let copy_whole = choice.is_none();
     // "You may cast any number of spells with total mana value 6 or less
     // from among the copies without paying their mana costs." (Uldaros
     // Theorix): the copied cards are chosen together under the total mana
@@ -267,6 +276,7 @@ pub(crate) fn read(
             tag: chosen,
             effects: vec![mandatory_copy_cast(free)],
         }));
+        claim_pair(copy_whole);
         return Ok(Some(effects));
     }
     let Some((free, mandatory)) = cast_statement_mode(cast) else {
@@ -311,6 +321,7 @@ pub(crate) fn read(
     } else {
         effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects: casts }));
     }
+    claim_pair(copy_whole);
     Ok(Some(effects))
 }
 

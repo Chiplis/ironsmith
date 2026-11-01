@@ -680,6 +680,9 @@ pub fn parse_sentence_random_hand_reveal_then_loses_mana_value_life(
         return Ok(None);
     };
     let amount = Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag.key.clone())));
+    // ", then loses life equal to that card's mana value": the exact tail,
+    // read whole (the revealed card's mana value, that player's life loss).
+    crate::word_claims::claim_tokens(&tokens[split..]);
     effects.push(EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::That,

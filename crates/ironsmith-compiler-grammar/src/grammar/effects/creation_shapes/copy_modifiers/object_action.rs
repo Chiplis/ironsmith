@@ -89,13 +89,21 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             .filter(|phrase| modifier_words[location..].starts_with(phrase))
             .max_by_key(|phrase| phrase.len())
         {
-            let start = if location > 0
+            let mut start = if location > 0
                 && matches!(modifier_words[location - 1], "it" | "they" | "tokens" | "token")
             {
                 location - 1
             } else {
                 location
             };
+            // "except the token isn't legendary": the article of the subject.
+            if start + 1 == location
+                && start > 0
+                && matches!(modifier_words[start], "token" | "tokens")
+                && matches!(modifier_words[start - 1], "the" | "that" | "those" | "this" | "these")
+            {
+                start -= 1;
+            }
             crate::word_claims::claim_words(&modifier_words[start..location + phrase.len()]);
         }
     }

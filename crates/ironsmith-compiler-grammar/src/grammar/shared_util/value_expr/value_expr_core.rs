@@ -78,7 +78,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.get(offset) == Some(&"difference") {
         // "the difference": the pending comparison's difference, bound to
         // the enclosing "fewer/more ... than" condition when it lowers.
-        crate::word_claims::claim_words(&words[offset..offset + 1]);
+        crate::word_claims::claim_words(&words[..offset + 1]);
         return Some((Value::PendingComparisonDifference, offset + 1));
     }
 

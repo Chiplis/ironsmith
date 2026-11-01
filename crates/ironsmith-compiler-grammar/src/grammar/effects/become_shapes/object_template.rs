@@ -113,6 +113,8 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
         else if let Ok(kind) = leaf::parse_leaf_subtype_flexible_complete(word) { if !subtypes.contains(&kind) { subtypes.push(kind); } }
         else if let Some(next) = descriptor_words.get(index+1) {
             let kind = leaf::parse_leaf_subtype_flexible_complete(&format!("{word}-{next}")).ok()?;
+            crate::word_claims::claim_word(word);
+            crate::word_claims::claim_word(next);
             if !subtypes.contains(&kind) { subtypes.push(kind); } index += 1;
         } else { return None; }
         index += 1;

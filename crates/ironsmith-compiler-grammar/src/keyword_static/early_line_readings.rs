@@ -515,6 +515,8 @@ fn read_cant_cast_this_unless(
     let Some(condition) = super::static_condition_clause_bound(&tokens[unless_idx + 1..]) else {
         return Ok(None);
     };
+    // "You can't cast this [spell] unless/if": the restriction frame read here.
+    crate::word_claims::claim_tokens(&tokens[..=unless_idx]);
     let condition = if negated {
         crate::ConditionExpr::Not(Box::new(condition))
     } else {

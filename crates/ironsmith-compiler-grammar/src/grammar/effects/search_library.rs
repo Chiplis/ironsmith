@@ -1223,10 +1223,15 @@ pub fn derive_search_library_effect_routing_lexed(
         crate::word_claims::claim_words(&reveal_words[..len]);
     }
     let face_down_exile = clause_markers.exile_idx.is_some_and(|idx| {
-        search_word_stream_matches_at_some_offset(
-            &parser_token_word_refs(&search_tokens[idx..]),
-            FACE_DOWN_PHRASE,
-        )
+        let exile_words = parser_token_word_refs(&search_tokens[idx..]);
+        let face_down = search_word_stream_matches_at_some_offset(&exile_words, FACE_DOWN_PHRASE);
+        // "exile it face down": the face-down exile read here.
+        if face_down
+            && let Some(at) = exile_words.windows(2).position(|pair| pair == FACE_DOWN_PHRASE)
+        {
+            crate::word_claims::claim_words(&exile_words[at..at + 2]);
+        }
+        face_down
     });
     let shuffle = clause_markers.shuffle_idx.is_some() && !trailing_discard_before_shuffle;
     let split_battlefield_and_hand = clause_markers.put_idx.is_some()
@@ -1845,6 +1850,12 @@ pub fn parse_search_library_object_filter_lexed(
                 .trim_end_matches([',', '.'])
                 .trim()
                 .to_string();
+        // "a card named Hellkite Overlord": the literal name is the filter's
+        // name constraint, and a bare "card" selector is the default filter.
+        crate::word_claims::claim_tokens(&filter_tokens[name_start..name_end]);
+        if is_default_search_library_card_selector(&base_tokens) {
+            crate::word_claims::claim_tokens(&base_tokens);
+        }
         if negated_named {
             base_filter.excluded_name = Some(name);
             base_filter.set_excluded_name_surface(surface);

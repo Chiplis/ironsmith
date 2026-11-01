@@ -2598,9 +2598,12 @@ pub fn parse_create(
     // the iterated opponent inside one.
     let attack_target_player = if !attacking {
         None
-    } else if modifier_surface.has_phrase(CreatePhrase::AttackingThatPlayer) {
+    } else if let Some(at) = modifier_surface.phrase_location(CreatePhrase::AttackingThatPlayer) {
+        // "attacking that player": the attack target read here.
+        crate::word_claims::claim_words(&modifier_tail_words[at + 1..at + 3]);
         Some(PlayerAst::That)
-    } else if modifier_surface.has_phrase(CreatePhrase::AttackingThatOpponent) {
+    } else if let Some(at) = modifier_surface.phrase_location(CreatePhrase::AttackingThatOpponent) {
+        crate::word_claims::claim_words(&modifier_tail_words[at + 1..at + 3]);
         Some(PlayerAst::Defending)
     } else {
         None

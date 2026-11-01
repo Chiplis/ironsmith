@@ -55,6 +55,11 @@ pub fn parse_saga_chapter_header_tokens(
     }
     // The roman numerals are the chapter numbers this header returns.
     crate::word_claims::claim_tokens(&tokens[..tokens.len() - rest_tokens.len()]);
+    // "II — Pain — ..." (Summon: Anima): the chapter's name is a presentation
+    // label kept with the chapter, like an ability word.
+    if let Some(label) = body_shape.presentation_label_tokens {
+        crate::word_claims::claim_tokens(label);
+    }
     (!chapters.is_empty() && !body_shape.body_tokens.is_empty()).then_some(
         SagaChapterHeaderTokens {
             chapters,

@@ -2017,12 +2017,15 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
         .is_some_and(|token| token_word_is(token, NO_WORD))
     {
         if surface::exact_any(counter_clause, &[&["no", "counter"], &["no", "counters"]]) {
+            crate::word_claims::claim_tokens(counter_clause.tokens());
             return Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
                 without_counter: Some(crate::filter::CounterConstraint::Any),
                 ..Default::default()
             }));
         }
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
+        // "had no <kind> counters": the negated count read here.
+        crate::word_claims::claim_tokens(counter_clause.tokens().get(..1)?);
         return Some(PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectHadNoCounter(counter_type),
         ));
@@ -3491,6 +3494,7 @@ pub fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Opt
     let categories = matched.capture_clause("ordinal_categories", clause)?;
 
     let mut predicates = Vec::new();
+    let mut ordinal_tokens = Vec::new();
     for category in split_triggering_spell_ordinal_categories(categories.tokens()) {
         let category = LexedClause::new(category).trimmed();
         let category_tokens = strip_leading_article_tokens(category.tokens());
@@ -3508,10 +3512,13 @@ pub fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Opt
             operator: crate::effect::ValueComparisonOperator::Equal,
             right: Value::Fixed(ordinal.saturating_sub(1) as i32),
         });
+        ordinal_tokens.push(ordinal_token.clone());
     }
 
     let mut predicates = predicates.into_iter();
     let first = predicates.next()?;
+    // Each category's ordinal is the history count compared above.
+    crate::word_claims::claim_tokens(&ordinal_tokens);
     Some(predicates.fold(first, |left, right| {
         PredicateAst::Or(Box::new(left), Box::new(right))
     }))
@@ -3552,6 +3559,7 @@ pub fn parse_triggering_land_play_ordinal_predicate(
         if ordinal == 0 {
             return None;
         }
+        crate::word_claims::claim_tokens(std::slice::from_ref(ordinal_token));
         return Some(PredicateAst::ValueComparison {
             left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::LandsPlayed(
                 crate::target::PlayerFilter::You,

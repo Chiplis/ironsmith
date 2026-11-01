@@ -2065,6 +2065,19 @@ fn claim_dont_lose_mana_words(words: &[&str]) {
     take(&mut rest, &["this", "turn"]);
     if rest.is_empty() {
         crate::word_claims::claim_words(&words[negation..]);
+        // The retaining player: "you", "they" / "that player" (the player
+        // `dont_lose_mana_subject_player` binds).
+        let subject_start = negation
+            .checked_sub(2)
+            .filter(|start| words[*start..negation] == ["that", "player"])
+            .or_else(|| {
+                negation
+                    .checked_sub(1)
+                    .filter(|start| matches!(words[*start], "they" | "you"))
+            });
+        if let Some(start) = subject_start {
+            crate::word_claims::claim_words(&words[start..negation]);
+        }
     }
 }
 
@@ -2391,6 +2404,7 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     if crate::word_primitives::sequence_occurs(&words, &["until", "end", "of", "combat"])
         && crate::word_primitives::sequence_occurs(&words, &["lose", "this", "mana", "as", "steps", "end"])
     {
+        claim_dont_lose_mana_words(&words);
         let EffectAst::SubjectVerb(mut retention) =
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
                 dont_lose_mana_subject_player(&words),

@@ -18,7 +18,17 @@ fn participant(words: &[&str], contraction: bool) -> Option<(PlayerFilter, usize
     }
 }
 
+/// A turn-total player quantity ("the amount of life you gained this turn",
+/// "the number of cards they've drawn this turn", "the damage dealt to you
+/// this turn"). Each arm matches its whole phrase word for word, so the
+/// words it used are read.
 pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
+    let (value, used) = parse_turn_total(words)?;
+    crate::word_claims::claim_words(&words[..used]);
+    Some((value, used))
+}
+
+fn parse_turn_total(words: &[&str]) -> Option<(Value, usize)> {
     let mut start = usize::from(words.first() == Some(&"the"));
     if words.get(start) == Some(&"total") {
         start += 1;

@@ -502,12 +502,22 @@ pub fn parse_or_action_splits_tokens(tokens: &[OwnedLexToken]) -> Vec<OrActionSp
 }
 
 pub fn parse_tap_then_unattach_tokens(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_prefix(tokens, semantic_phrase(&["tap", "those"])).is_some()
-        && find_semantic_phrase(
-            tokens,
-            &["then", "unattach", "all", "equipment", "from", "them"],
+    // "Tap those [creatures], then unattach all Equipment from them." — the
+    // complete clause; any other words between the halves belong to another
+    // reading rather than being dropped.
+    primitives::parse_all(
+        tokens,
+        (
+            semantic_phrase(&["tap", "those"]),
+            opt(alt((primitives::kw("creatures"), primitives::kw("permanents")))),
+            opt(primitives::comma()),
+            semantic_phrase(&["then", "unattach", "all", "equipment", "from", "them"]),
+            primitives::sentence_end(),
         )
-        .is_some()
+            .void(),
+        "tap those then unattach",
+    )
+    .is_ok()
 }
 
 pub fn split_return_then_loses_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

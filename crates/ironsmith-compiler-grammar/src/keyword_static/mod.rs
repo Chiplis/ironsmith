@@ -7576,7 +7576,11 @@ pub(crate) fn damage_addition_parts_from_shape(
     if target_player_filter.is_none() && target_object_filter.is_none() {
         return Ok(None);
     }
+    // The body's restatement of the damaged recipient ("to that permanent or
+    // player instead"), read once the replacement commits.
+    let mut repeated_recipient_tokens: &[OwnedLexToken] = &[];
     if let Some(repeated_target_tokens) = spec.repeated_target_tokens {
+        repeated_recipient_tokens = repeated_target_tokens;
         let repeated_words = parser_token_word_refs(repeated_target_tokens);
         let demonstrative_only = match repeated_words.as_slice() {
             ["permanent", "or", "player"] | ["player", "or", "permanent"] => {
@@ -7627,6 +7631,7 @@ pub(crate) fn damage_addition_parts_from_shape(
         }
         value
     };
+    crate::word_claims::claim_tokens(repeated_recipient_tokens);
     Ok(Some(ironsmith_core::RegisterDamageAdditionEffect {
         source_filter,
         target_player_filter,
@@ -8642,6 +8647,9 @@ pub fn parse_enter_as_copy_as_enters_line(
                                     clause_words.join(" ")
                                 )));
                             }
+                            // "except it's a Spirit in addition to its other
+                            // types": every characteristic word was read above.
+                            crate::word_claims::claim_words(&characteristic_words);
                             match remainder {
                             keyword_static_lines::CopyCharacteristicRemainder::None => {}
                             keyword_static_lines::CopyCharacteristicRemainder::ConditionalEntry(entry) => {
@@ -9209,6 +9217,9 @@ pub fn parse_characteristic_defining_pt_line(
     let mut parsed_power: Option<Value> = None;
     let mut parsed_toughness: Option<Value> = None;
     let mut previous_value: Option<Value> = None;
+    // Word ranges of each axis head ("its toughness is equal to") and the
+    // joining "and"; claimed once the whole assignment reads.
+    let mut axis_head_word_ranges: Vec<(usize, usize)> = Vec::new();
     let mut idx = 0usize;
     while idx < line_words.len() {
         let Some((axis, value_start_word_idx)) =
@@ -9217,6 +9228,7 @@ pub fn parse_characteristic_defining_pt_line(
             idx += 1;
             continue;
         };
+        axis_head_word_ranges.push((idx, value_start_word_idx));
 
         let mut value_end_word_idx = line_words.len();
         let mut next_clause_word_idx = None;
@@ -9276,6 +9288,7 @@ pub fn parse_characteristic_defining_pt_line(
         previous_value = Some(value);
 
         if let Some(next_idx) = next_clause_word_idx {
+            axis_head_word_ranges.push((next_idx - 1, next_idx));
             idx = next_idx;
         } else {
             break;
@@ -9286,6 +9299,15 @@ pub fn parse_characteristic_defining_pt_line(
         return Ok(None);
     }
     claim_characteristic_pt_named_subject(tokens);
+    for (start, end) in axis_head_word_ranges {
+        if let Some(start) = static_keyword_shapes::parse_word_token_offset(tokens, start) {
+            let end = static_keyword_shapes::parse_word_token_offset(tokens, end)
+                .unwrap_or(tokens.len());
+            if start < end {
+                crate::word_claims::claim_tokens(&tokens[start..end]);
+            }
+        }
+    }
 
     Ok(Some(StaticAbility::characteristic_defining_pt(
         preserve_subject(parsed_power.unwrap_or(Value::SourcePower)),
@@ -9888,13 +9910,18 @@ pub fn parse_if_this_spell_costs_less_to_cast_line_lexed(
 
     if let Some((reduction, _)) = parsed_mana_cost {
         return Ok(Some(StaticAbility::new(
-            crate::static_abilities::ThisSpellCostReductionManaCost::new(reduction, condition)
-                .with_colored_only(
-                    costs_replacements_and_permissions::cost_reduction_is_colored_only(tokens),
-                ),
+            crate::static_abilities::ThisSpellCostReductionManaCost::new(
+                costs_replacements_and_permissions::generic_only_cost_reduction(tokens, reduction),
+                condition,
+            )
+            .with_colored_only(
+                costs_replacements_and_permissions::cost_reduction_is_colored_only(tokens),
+            ),
         )));
     }
 
+    // A generic amount already reduces only generic mana.
+    let _ = costs_replacements_and_permissions::cost_reduction_is_generic_only(tokens);
     Ok(Some(StaticAbility::new(
         crate::static_abilities::ThisSpellCostReduction::new(amount_value, condition),
     )))

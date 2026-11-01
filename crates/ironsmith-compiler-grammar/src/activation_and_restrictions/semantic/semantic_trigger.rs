@@ -208,9 +208,14 @@ fn parse_combat_damage_trigger_lexed(
         ["defending", "player"] | ["the", "defending", "player"] => Some(PlayerFilter::Defending),
         _ => None,
     };
+    let exact_recipient = controls_more_player.is_some();
     if let Some(player) =
         controls_more_player.or_else(|| parse_trigger_subject_player_filter(&target_words))
     {
+        if exact_recipient {
+            // The exact recipient shapes above are read whole.
+            crate::word_claims::claim_tokens(&target_tokens);
+        }
         return Ok(match source_filter {
             Some(source) if one_or_more => TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source,
@@ -933,6 +938,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         ["a", "mana", "ability", "of", "this", "resolves"]
             | ["a", "mana", "ability", "of", "this", "creature" | "permanent" | "artifact" | "land", "resolves"]
     ) {
+        crate::word_claims::claim_words(&words);
         return Ok(TriggerSpec::SourceManaAbilityResolves);
     }
     if let Some(trigger) = causal_events::parse(tokens)? { return Ok(trigger); }
@@ -940,6 +946,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let Some(trigger) = monarch_triggers::parse(tokens) {return Ok(trigger);}
 
     if let Some(player) = parse_unpaid_cumulative_upkeep_player(&words) {
+        // "<player> doesn't pay this <source>'s cumulative upkeep": all read.
+        crate::word_claims::claim_words(&words);
         return Ok(TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::CumulativeUpkeepNotPaid,
             player,
@@ -1621,8 +1629,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let attacks_token_idx =
             trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
         let subject_tokens = &tokens[..attacks_token_idx];
+        let subject = parse_attack_trigger_subject_filter_lexed(subject_tokens)?;
+        crate::word_claims::claim_words(&words[attacks_word_idx..]);
         return Ok(
-            match parse_attack_trigger_subject_filter_lexed(subject_tokens)? {
+            match subject {
                 Some(filter) => TriggerSpec::AttacksAlone(filter),
                 None => TriggerSpec::AttacksAlone(ObjectFilter::source()),
             },
@@ -1656,6 +1666,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     });
             }
             filter = filter.attacking_player(PlayerFilter::Any);
+            // "[that] ... attacks the monarch": the demonstrative binds the
+            // referenced object; verb and defending-monarch tail are read here.
+            if demonstrative {
+                crate::word_claims::claim_tokens(&subject_tokens[..1]);
+            }
+            crate::word_claims::claim_words(&words[attacks_word_idx..]);
             return Ok(TriggerSpec::ConditionQualified {
                 trigger: Box::new(TriggerSpec::Attacks(filter)),
                 condition: crate::cards::builders::PredicateAst::Player(
@@ -1741,6 +1757,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 cast_from
             };
             let surface = words[spell_idx.unwrap_or(words.len())..].join(" ");
+            // "from [anywhere other than] your hand": the origin zone read here.
+            if let Some(origin_start) =
+                spell_idx.and_then(|idx| trigger_word_token_start(tokens, idx))
+            {
+                crate::word_claims::claim_tokens(&tokens[origin_start..]);
+            }
             return Ok(TriggerSpec::ConditionQualified {
                 trigger: Box::new(TriggerSpec::YouCastThisSpell),
                 condition,
@@ -2232,6 +2254,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             subject_tokens,
             false,
         )) {
+            // "is/are exiled from the battlefield": the event verb and origin.
+            crate::word_claims::claim_words(&words[exiled_word_idx - 1..]);
             return Ok(TriggerSpec::ExiledFromBattlefield(filter));
         }
     }
@@ -3007,6 +3031,15 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     }),
                 )
             };
+            // "another" plus the graveyard-or-exile suffix, read as the two
+            // event branches and the other filter's exclusion.
+            let suffix_start = zone_change_words.len() - suffix_word_len;
+            crate::word_claims::claim_words(&zone_change_words[suffix_start..]);
+            if let Some(another) =
+                subject_tokens.iter().position(|token| token.as_word() == Some("another"))
+            {
+                crate::word_claims::claim_tokens(&subject_tokens[another..=another]);
+            }
             return Ok(TriggerSpec::Either(
                 Box::new(branch(source_filter)),
                 Box::new(branch(other_filter)),
@@ -3038,6 +3071,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             filter.nontoken = true;
             filter.set_explicit_card_noun(true);
         }
+        let suffix_start = zone_change_words.len() - suffix_word_len;
+        crate::word_claims::claim_words(&zone_change_words[suffix_start..]);
         return Ok(TriggerSpec::Either(
             Box::new(TriggerSpec::PutIntoGraveyardFromZone {
                 filter: filter.clone(),
@@ -4549,6 +4584,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let token_end = trigger_word_token_start(tokens, subject.len()).unwrap_or(tokens.len());
             if let Some(mut filter) = parse_trigger_subject_filter_lexed(&tokens[..token_end])? {
                 if has_leading_one_or_more(&tokens[..token_end]) { filter.set_union_one_or_more(true); }
+                crate::word_claims::claim_words(&words[subject.len()..]);
                 return Ok(TriggerSpec::IsDealtExcessDamage { filter, combat_only });
             }
         }
@@ -4564,6 +4600,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             ) {
                 filter.set_union_one_or_more(true);
             }
+            crate::word_claims::claim_words(&words[is_word_idx..]);
             return Ok(TriggerSpec::IsDealtExcessNoncombatDamage(filter));
         }
     }
@@ -5067,12 +5104,20 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             if let Some(during_turn) =
                 trigger_grammar::parse_not_during_turn_draw_suffix_words(tail)
             {
+                // A full-slice parse of the tail: verb and suffix are read.
+                crate::word_claims::claim_words(&words[draw_word_idx..]);
                 return Ok(TriggerSpec::PlayerDrawsCardNotDuringTurn {
                     player,
                     during_turn,
                 });
             }
             if has_draw_except_first_in_draw_step_pattern(tail) {
+                // The surface sequences are the whole tail when the lengths
+                // agree ("a card except the first one/card <player> draw(s) in
+                // [each of] <their> draw step(s)").
+                if matches!(tail.len(), 12 | 14) {
+                    crate::word_claims::claim_words(&words[draw_word_idx..]);
+                }
                 return Ok(TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player));
             }
             // Characteristics of the drawn card qualify the draw event;
@@ -5251,6 +5296,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 && let Some((source_filter, other_filter)) =
                     parse_source_or_another_trigger_subject_filters(filter_tokens)
             {
+                // "another" is the other branch's `other` exclusion.
+                if let Some(another) =
+                    filter_tokens.iter().position(|token| token.as_word() == Some("another"))
+                {
+                    crate::word_claims::claim_tokens(&filter_tokens[another..=another]);
+                }
                 return Ok(qualify(TriggerSpec::Either(
                     Box::new(TriggerSpec::PlayerSacrifices {
                         player: player.clone(),
@@ -5431,6 +5482,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let [subject @ .., "becomes", crate::keyword_forms::SADDLED] = words.as_slice()
         && is_source_reference_words(subject)
     {
+        crate::word_claims::claim_words(&words[subject.len()..]);
         return Ok(TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::BecomeSaddled,
             player: PlayerFilter::You,
@@ -6846,8 +6898,12 @@ fn trailing_not_from_hand_origin_start(tokens: &[OwnedLexToken]) -> Option<usize
 }
 
 fn claim_definite_beginning(words: &[&str]) {
-    if let ["the", "beginning", ..] = words {
-        crate::word_claims::claim_words(&words[..1]);
+    // "[the] beginning of": the step/phase start every beginning arm reads.
+    match words {
+        ["the", "beginning", "of", ..] => crate::word_claims::claim_words(&words[..3]),
+        ["the", "beginning", ..] => crate::word_claims::claim_words(&words[..1]),
+        ["beginning", "of", ..] => crate::word_claims::claim_words(&words[..2]),
+        _ => {}
     }
 }
 

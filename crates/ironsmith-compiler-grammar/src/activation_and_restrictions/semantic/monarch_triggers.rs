@@ -13,5 +13,6 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
         ["that", "player"] => PlayerFilter::IteratedPlayer,
         _ => return None,
     };
+    crate::word_claims::claim_words(&words);
     Some(TriggerSpec::PlayerBecomesMonarch(player))
 }

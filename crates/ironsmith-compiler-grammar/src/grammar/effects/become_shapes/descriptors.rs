@@ -174,6 +174,9 @@ pub fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLeadingCrea
         if let Some(next) = words.get(index + 1) {
             let compound = format!("{word}-{next}");
             if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(&compound) {
+                // "Assembly-Worker" split in two: both halves name the subtype.
+                crate::word_claims::claim_word(word);
+                crate::word_claims::claim_word(next);
                 push_unique(&mut subtypes, subtype);
                 index += 2;
                 continue;
@@ -222,6 +225,8 @@ pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCr
             let subtype = crate::grammar::primitives::probe_shape(
                 leaf::parse_leaf_subtype_flexible_complete(&compound),
             )?;
+            crate::word_claims::claim_word(word);
+            crate::word_claims::claim_word(next);
             push_unique(&mut subtypes, subtype);
             saw_subtype = true;
             index += 2;

@@ -107,6 +107,9 @@ fn try_parse_tiered_shared_body_block(
         return Ok(None);
     };
     let mut modes = Vec::new();
+    // Each tier's presentation label ("Galian Beast"), read once the block
+    // is recognized.
+    let mut tier_labels: Vec<&[OwnedLexToken]> = Vec::new();
     let mut probe_idx = idx + 2;
     while let Some(PreprocessedItem::Line(tier)) = preprocessed.items.get(probe_idx) {
         if !is_bullet_line(tier) {
@@ -115,6 +118,13 @@ fn try_parse_tiered_shared_body_block(
         let Some((cost, body_first)) = parse_tiered_mode_prefix_tokens(&tier.tokens) else {
             return Ok(None);
         };
+        let tier_surface = strip_modal_bullet_prefix_tokens(&tier.tokens);
+        if let Some(label_end) = tier_surface
+            .iter()
+            .position(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+        {
+            tier_labels.push(&tier_surface[..label_end]);
+        }
         let pt_words = crate::lexer::parser_token_word_refs(
             crate::util::trim_edge_punctuation_tokens(tier.tokens.get(body_first..).unwrap_or_default()),
         );
@@ -148,6 +158,13 @@ fn try_parse_tiered_shared_body_block(
     }
     if modes.is_empty() {
         return Ok(None);
+    }
+    // The "Tiered" keyword names this block's structure (CR 702.183).
+    if let Some(head) = line.tokens.first().filter(|token| token.is_word("tiered")) {
+        crate::word_claims::claim_tokens(std::slice::from_ref(head));
+    }
+    for label in tier_labels {
+        crate::word_claims::claim_tokens(label);
     }
     Ok(Some((
         RecognizedLine::Modal(RecognizedModalBlock {

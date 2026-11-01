@@ -922,6 +922,12 @@ pub fn parse_counted_from_looked_cards_action(
         shape.count.random = true;
     }
     let mut filter = effect_sentences::parse_looked_card_choice_filter(&choice_filter_tokens)?;
+    // "put all <cards> from among them": every matching card, no choice.
+    if shape.all_matching
+        && let Some(all) = shape.filter.start.checked_sub(1).and_then(|index| action_tokens.get(index))
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(all));
+    }
     let aggregate_constraint =
         lift_total_mana_value_choice_constraint(&choice_filter_tokens, &mut filter);
     effect_sentences::normalize_search_library_filter(&mut filter);

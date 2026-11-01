@@ -444,6 +444,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             _ => None,
         };
         if let Some(len) = devoured_len {
+            crate::word_claims::claim_words(&words[idx..idx + len]);
             return Some((
                 Value::SourceDevouredCreatureCount
                     .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),

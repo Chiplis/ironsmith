@@ -325,11 +325,74 @@ pub fn parse_cost_modifier_prefix_condition(
 /// green mana ..."). Without this sentence, the part of a colored reduction a
 /// cost doesn't require reduces its generic mana instead (CR 118.7b-c).
 pub fn cost_reduction_is_colored_only(tokens: &[OwnedLexToken]) -> bool {
-    use winnow::Parser as _;
-    crate::grammar::primitives::find_prefix(tokens, || {
-        crate::grammar::primitives::phrase(&["reduces", "only", "the", "amount", "of"]).void()
-    })
-    .is_some()
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(reduces) = words
+        .windows(5)
+        .position(|window| window == ["reduces", "only", "the", "amount", "of"])
+    else {
+        return false;
+    };
+    // "... of colored mana you pay" / "... of green mana you pay": only the
+    // colored part is reduced. Any other kind ("generic") is not this rule.
+    let tail = &words[reduces + 5..];
+    let kind_is_colored = |word: &str| {
+        word == "colored" || crate::color::Color::from_name(word).is_some()
+    };
+    let end = match tail {
+        [kind, "mana", "you", "pay", ..] if kind_is_colored(kind) => reduces + 9,
+        _ => return false,
+    };
+    // "This effect" names the cost reduction the sentence qualifies.
+    let start = if reduces >= 2 && words[reduces - 2..reduces] == ["this", "effect"] {
+        reduces - 2
+    } else {
+        reduces
+    };
+    crate::word_claims::claim_words(&words[start..end]);
+    true
+}
+
+/// "[this effect] reduces only the amount of generic mana you pay": the
+/// reduction applies to generic mana only. Claims the sentence when present.
+pub fn cost_reduction_is_generic_only(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(reduces) = words
+        .windows(9)
+        .position(|window| {
+            window == ["reduces", "only", "the", "amount", "of", "generic", "mana", "you", "pay"]
+        })
+    else {
+        return false;
+    };
+    let start = if reduces >= 2 && words[reduces - 2..reduces] == ["this", "effect"] {
+        reduces - 2
+    } else {
+        reduces
+    };
+    crate::word_claims::claim_words(&words[start..reduces + 9]);
+    true
+}
+
+/// A mana reduction under a generic-only rider: a generic reduction already
+/// reduces only generic mana (CR 601.2f), so it is unchanged; a colored
+/// reduction instead reduces generic mana by its amount, never the matching
+/// colored pips.
+pub fn generic_only_cost_reduction(
+    tokens: &[OwnedLexToken],
+    cost: crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    if !cost_reduction_is_generic_only(tokens) {
+        return cost;
+    }
+    let all_generic = cost.pips().iter().all(|pip| {
+        pip.iter()
+            .all(|symbol| matches!(symbol, crate::mana::ManaSymbol::Generic(_)))
+    });
+    if all_generic {
+        return cost;
+    }
+    let amount = u8::try_from(cost.mana_value()).unwrap_or(u8::MAX);
+    crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(amount)])
 }
 
 pub fn parse_optional_life_additional_cost_reduction_line(
@@ -1132,7 +1195,7 @@ pub fn parse_spells_cost_modifier_line(
         }
         if is_this_spell && let Some((cost, _)) = parsed_mana_cost.clone() {
             let mut ability = crate::static_abilities::ThisSpellCostReductionManaCost::new(
-                cost,
+                generic_only_cost_reduction(tokens, cost),
                 this_spell_condition,
             )
             .with_colored_only(cost_reduction_is_colored_only(tokens));
@@ -1142,8 +1205,11 @@ pub fn parse_spells_cost_modifier_line(
             return Ok(Some(StaticAbility::new(ability)));
         }
         if let Some((cost, _)) = parsed_mana_cost {
-            let mut ability = crate::static_abilities::CostReductionManaCost::new(filter, cost)
-                .with_colored_only(cost_reduction_is_colored_only(tokens));
+            let mut ability = crate::static_abilities::CostReductionManaCost::new(
+                filter,
+                generic_only_cost_reduction(tokens, cost),
+            )
+            .with_colored_only(cost_reduction_is_colored_only(tokens));
             if let Some(repetitions) = parsed_mana_cost_repetitions {
                 ability = ability.with_repetitions(repetitions);
             }
@@ -1155,6 +1221,8 @@ pub fn parse_spells_cost_modifier_line(
             }
             return Ok(Some(StaticAbility::new(ability)));
         }
+        // A generic amount already reduces only generic mana.
+        let _ = cost_reduction_is_generic_only(tokens);
         let mut ability = crate::static_abilities::CostReduction::new(filter, amount_value);
         if let Some(intersection) = characteristic_intersection {
             ability = ability.with_characteristic_intersection(intersection);
@@ -5112,6 +5180,8 @@ pub fn parse_prevent_all_damage_to_you_line(
     {
         return Ok(None);
     }
+    // The complete prevention sentence is read.
+    crate::word_claims::claim_words(&words);
     Ok(Some(StaticAbility::prevent_all_damage_to_you()))
 }
 
@@ -5515,6 +5585,9 @@ pub fn parse_attached_untap_and_activation_restrictions_line(
         (crate::effect::Restriction::activate_abilities_of(filter),
             format!("{} activated abilities can't be activated", render_token_slice(subject_tokens)))
     };
+    // The exact tail ("and its activated abilities can't be activated" /
+    // "and can't be beamed up") is the second restriction, read whole.
+    crate::word_claims::claim_tokens(tail_tokens);
     let activation = StaticAbilityAst::Static(StaticAbility::restriction(restriction, text));
     Ok(Some(vec![untap, activation]))
 }
@@ -9375,7 +9448,13 @@ pub fn parse_mana_spend_permission_clause(
                 let filter = if source_activation_only {
                     ObjectFilter::source()
                 } else if let Some(filter_tokens) = activation_filter_tokens {
-                    match parse_object_filter(filter_tokens, false) {
+                    // A possessive holder ("planeswalkers' loyalty
+                    // abilities") reads as its object filter.
+                    let filter_tokens =
+                        crate::grammar::activation_restrictions::parse_activation_possessive_owner_tokens(
+                            filter_tokens,
+                        );
+                    match parse_object_filter(&filter_tokens, false) {
                         Ok(filter) => filter,
                         Err(_) => return Ok(None),
                     }
@@ -9393,7 +9472,13 @@ pub fn parse_mana_spend_permission_clause(
                     ObjectFilter::source(),
                 )
             } else if let Some(filter_tokens) = activation_filter_tokens {
-                let filter = match parse_object_filter(filter_tokens, false) {
+                // A possessive holder ("creatures' abilities") reads as its
+                // object filter.
+                let filter_tokens =
+                    crate::grammar::activation_restrictions::parse_activation_possessive_owner_tokens(
+                        filter_tokens,
+                    );
+                let filter = match parse_object_filter(&filter_tokens, false) {
                     Ok(filter) => filter,
                     Err(_) => return Ok(None),
                 };
@@ -10558,6 +10643,10 @@ pub fn parse_activate_abilities_as_though_haste_line(
         return Ok(None);
     };
     let filter = parse_object_filter(&tokens[filter_start..filter_end], false)?;
+    // The permission frame and "as though <those objects> had haste" (the
+    // filtered objects, CR 302.6 ignored for them) are read here.
+    crate::word_claims::claim_tokens(&tokens[..filter_start]);
+    crate::word_claims::claim_tokens(&tokens[filter_end..]);
     let display = crate::lexer::render_token_slice(tokens)
         .trim()
         .trim_end_matches('.')

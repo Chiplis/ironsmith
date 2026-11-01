@@ -558,6 +558,17 @@ fn read_energy_count_clause(input: &PayClause<'_>) -> Result<Option<EffectAst>, 
             grammar::find_prefix(tokens, || grammar::phrase(&["equal", "to"]))
         {
             let amount_tokens = &tokens[equal_idx + 2..];
+            // "an amount of {E} equal to ...": the paid quantity's frame.
+            let head = &tokens[..equal_idx];
+            if let [an, amount, of, symbols @ ..] = head
+                && an.is_word("an")
+                && amount.is_word("amount")
+                && of.is_word("of")
+                && !symbols.is_empty()
+                && symbols.iter().all(energy_symbol_token)
+            {
+                crate::word_claims::claim_tokens(&head[..3]);
+            }
             if let Some((amount, used)) = parse_value(amount_tokens)
                 && used == amount_tokens.len()
             {

@@ -215,9 +215,19 @@ pub fn parse_choice_object_clause_tokens(
     } else if parse_leading_article(&refs) {
         words.drain(..1);
     }
+    let mut read_at_random = false;
     while let Some(span) = parse_random_modifier_span(&string_word_refs(&words)) {
         count = count.at_random();
         words.drain(span.first..span.end);
+        read_at_random = true;
+    }
+    if read_at_random {
+        // "at random": the random choice this count carries.
+        for pair in tokens.windows(2) {
+            if pair[0].as_word() == Some("at") && pair[1].as_word() == Some("random") {
+                crate::word_claims::claim_tokens(pair);
+            }
+        }
     }
     // "a different nonland card": different from every card already chosen
     // by this choice (CR 608.2c), the same running exclusion as "that
