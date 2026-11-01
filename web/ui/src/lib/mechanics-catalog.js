@@ -51,6 +51,12 @@ export function mechanicEntries(customDefinitions, { query = '', filter = 'all' 
 // valid. {Cost} stands for the price each card writes after the keyword.
 export const REMINDER_TEMPLATES = [
   {
+    kind: 'Temporary status', keyword: 'bribe',
+    reminder: 'Whenever you cast a spell, you may pay {Cost} to bribe this creature until end of turn.',
+    usage: 'Bribe {1}',
+    note: 'Marks the creature until end of turn. Other abilities can check whether it is bribed or trigger when it becomes bribed. Reapplying an active status does not trigger becoming it again.',
+  },
+  {
     kind: 'Static ability', keyword: 'sneaky',
     reminder: "This creature can't be blocked.",
     usage: 'Sneaky',
@@ -85,6 +91,12 @@ export const REMINDER_TEMPLATES = [
     reminder: "You may pay {Cost} rather than pay this spell's mana cost.",
     usage: 'Rush {R}',
     note: 'Paid instead of the mana cost while casting. Other text can check a mana price with the past participle, as in "if it was rushed". A card may also use a non-mana cost, as in "Rush—Sacrifice a creature."',
+  },
+  {
+    kind: 'Combat casting', keyword: 'ambush',
+    reminder: 'During your declare attackers step, any time you could cast an instant, you may cast this spell from your hand for {Cost} rather than pay its mana cost. This cost is reduced by {1} for each attacking creature. If you cast this spell this way, it enters tapped and attacking.',
+    usage: 'Ambush {3}{R}',
+    note: 'An alternative cost available after declaring attackers. Counts untapped attackers too. Only casting this way grants the discount and tapped-and-attacking entry.',
   },
   {
     kind: 'Timed exile', keyword: 'foresee',

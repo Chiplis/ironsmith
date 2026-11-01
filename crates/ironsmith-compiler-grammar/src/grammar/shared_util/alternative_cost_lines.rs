@@ -50,6 +50,10 @@ pub fn parse_self_zone_alternative_cost(
     let first_view = TokenWordView::new(&first);
     let first_words = first_view.word_refs();
     let prose = render_token_slice(&tokens).to_ascii_lowercase();
+    if let Some(method) = crate::word_claims::speculative_keep_if(
+        || parse_composed_zone_price(&tokens), |result| matches!(result, Ok(Some(_))),
+    )? { return Ok(Some(method)); }
+
     if let Some(rest) = prose.strip_prefix("you may cast this spell for ")
         && let Some((price, rest)) = rest.split_once(" rather than pay its mana cost. if you do, put ")
         && let Some(amount) = rest.trim_end_matches('.').strip_suffix(" +1/+1 counters on target land you control. that land becomes a 0/0 elemental creature with haste. it's still a land")
@@ -1095,4 +1099,88 @@ pub(crate) fn described_spell_text_substitution(tokens: &[OwnedLexToken]) -> Opt
         _ => return None,
     };
     Some((cleave, crate::lexer::lex_line(price, 0).ok()?))
+}
+
+
+/// Read a casting permission, then independently attach each price-owned rider.
+/// No rider is mandatory and their order is irrelevant. Unknown suffixes decline
+/// the whole reading rather than letting an unrelated static discount absorb them.
+pub(crate) fn parse_composed_zone_price(tokens: &[OwnedLexToken]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let Some(first) = sentences.first() else { return Ok(None); };
+    let Some((zone, cost, mut instructions)) = read_zone_price_permission(first)? else { return Ok(None); };
+    for sentence in &sentences[1..] {
+        if read_price_reduction(sentence, &mut instructions)? { continue; }
+        if read_price_entry_instruction(sentence, &mut instructions) { continue; }
+        return Ok(None);
+    }
+    Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+        "Composed zone price", zone, cost, None, false,
+    ).with_zone_cast_instructions(instructions)))
+}
+
+fn read_zone_price_permission(tokens: &[OwnedLexToken]) -> Result<Option<(crate::zone::Zone, ironsmith_core::TotalCost<crate::model::CompilerCost>, ironsmith_core::ZoneCastInstructions)>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let Some(head) = words.word_windows(5).position(|w| w == ["you", "may", "cast", "this", "spell"]) else { return Ok(None); };
+    let mut instructions = ironsmith_core::ZoneCastInstructions::default();
+    let mut prefix = &words[..head];
+    if let Some(timing) = prefix.strip_suffix(&["any", "time", "you", "could", "cast", "an", "instant"]) {
+        instructions.instant_timing = true;
+        prefix = timing;
+    }
+    if !prefix.is_empty() {
+        let Some((restriction, _)) = super::cast_restriction_lines::fixed_restriction(prefix) else { return Ok(None); };
+        if restriction.condition.is_some() { return Ok(None); }
+        let Some(timing) = restriction.timing else { return Ok(None); };
+        instructions.casting_window = Some(timing);
+    }
+    let tail = &words[head + 5..];
+    let (zone, frame_words) = match tail.get(..4) {
+        Some(["from", "your", "hand", "for"]) => (crate::zone::Zone::Hand, 4),
+        Some(["from", "your", "graveyard", "for"]) => (crate::zone::Zone::Graveyard, 4),
+        _ => return Ok(None),
+    };
+    let cost_word = head + 5 + frame_words;
+    let Some(rather) = words.iter().enumerate().skip(cost_word).find_map(|(i,w)| (*w == "rather").then_some(i)) else { return Ok(None); };
+    if words[rather..] != ["rather", "than", "pay", "its", "mana", "cost"] { return Ok(None); }
+    // Mana is not a word; start immediately after "for", not at the next word.
+    let cost_start = view.token_start_indices()[cost_word - 1] + 1;
+    let cost_end = view.token_start_indices()[rather];
+    let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&tokens[cost_start..cost_end])?;
+    crate::word_claims::claim_tokens(&tokens[..cost_start]);
+    crate::word_claims::claim_tokens(&tokens[cost_end..]);
+    Ok(Some((zone, cost, instructions)))
+}
+
+fn read_price_reduction(tokens: &[OwnedLexToken], instructions: &mut ironsmith_core::ZoneCastInstructions) -> Result<bool, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !words.starts_with(&["this", "cost", "is", "reduced", "by"]) { return Ok(false); }
+    let Some(each) = words.word_windows(2).position(|w| w == ["for", "each"]) else { return Ok(false); };
+    let amount_start = view.token_start_indices()[4] + 1;
+    let amount_end = view.token_start_indices()[each];
+    let amount_text = render_token_slice(&tokens[amount_start..amount_end]);
+    let Some(amount) = amount_text.trim().strip_prefix('{').and_then(|v| v.strip_suffix('}')).and_then(|v| v.parse::<u32>().ok()) else { return Ok(false); };
+    let filter_start = view.token_start_indices()[each + 1] + 1;
+    let Some(mut filter) = crate::keyword_static::parse_complete_cost_count_filter(&tokens[filter_start..])? else { return Ok(false); };
+    if filter.zone.is_none() { filter.zone = Some(crate::zone::Zone::Battlefield); }
+    instructions.generic_cost_reductions.push((amount, filter));
+    crate::word_claims::claim_tokens(&tokens[..filter_start]);
+    Ok(true)
+}
+
+fn read_price_entry_instruction(tokens: &[OwnedLexToken], instructions: &mut ironsmith_core::ZoneCastInstructions) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    let Some(tail) = words.strip_prefix(&["if", "you", "cast", "this", "spell", "this", "way", "it", "enters"]) else { return false; };
+    match tail {
+        ["tapped"] => instructions.enters_tapped = true,
+        ["attacking"] => instructions.enters_attacking = true,
+        ["tapped", "and", "attacking"] => { instructions.enters_tapped = true; instructions.enters_attacking = true; }
+        _ => return false,
+    }
+    crate::word_claims::claim_tokens(tokens);
+    true
 }

@@ -213,13 +213,27 @@ impl EffectExecutor for ironsmith_core::SetPermanentDesignationEffect {
         crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
             let targets = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
             let mut changed = Vec::new();
+            let mut events = Vec::new();
             for id in targets {
                 if game.is_phased_out(id) { continue; }
-                match self.designation {
+                match &self.designation {
                     ironsmith_core::PermanentDesignation::Harnessed => if game.harness(id) { changed.push(id); },
+                    ironsmith_core::PermanentDesignation::CustomStatus { name, until_end_of_turn } => {
+                        if game.apply_custom_status(id, name, *until_end_of_turn) {
+                            changed.push(id);
+                            let controller = game.current_controller(id).unwrap_or(ctx.controller);
+                            let mut event = KeywordActionEvent::new(KeywordActionKind::CustomStatusGained, controller, id, 1);
+                            event.custom_status = Some(name.clone());
+                            event.snapshot = game.object(id).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
+                            events.push(crate::effects::observe_action_completion(game,
+                                TriggerEvent::new_with_provenance(event, ctx.provenance), Some(ctx.provenance))?);
+                        }
+                    }
                 }
             }
-            Ok(EffectOutcome::with_objects(changed))
+            let mut outcome = EffectOutcome::with_objects(changed);
+            for event in events { outcome = outcome.with_event(event); }
+            Ok(outcome)
         })
     }
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> { Some(&self.target) }

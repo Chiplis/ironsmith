@@ -1910,6 +1910,7 @@ impl GameState {
         self.auxiliary_tracking_mut().simultaneous_library_placements.clear();
         self.turn_store.grant_cast_uses_this_turn.clear();
         self.turn_store.cast_spell_lki.clear();
+        self.cleanup_custom_statuses_end_of_turn();
         self.battlefield_flags_mut()
             .saddled_until_end_of_turn
             .clear();

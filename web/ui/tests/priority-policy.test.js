@@ -264,3 +264,16 @@ test('blocker protection holds legal blocks; disabling retains normal blocker de
  assert.equal(policy.status(state).stopWithAttackers, true);
  assert.equal(policy.status(state).stopWithBlockers, false);
 });
+
+test('activated inspector preferences apply to stack copies and optional resolution choices', () => {
+ const { policy } = setup();
+ const ability = entry({ ability_kind: 'Activated', automation_identity: 'activated:definition:123', name: 'Test Artifact' });
+ policy.setRule(ability, 'source', { yield: true, answer: 'yes' }, base());
+ assert.ok(policy.evaluate(stack({ ...ability, id: 99 })));
+ assert.equal(policy.evaluate(stack({ ...ability, automation_identity: 'activated:definition:other' })), null);
+ const resolving = base({ resolving_stack_object: { ...ability, id: 99 }, decision: {
+   kind: 'select_options', player: 0, source_id: ability.inspect_object_id, choice_kind: 'boolean',
+   options: [{ index: 0 }, { index: 1 }],
+ } });
+ assert.deepEqual(policy.evaluate(resolving), { type: 'select_options', option_indices: [1] });
+});

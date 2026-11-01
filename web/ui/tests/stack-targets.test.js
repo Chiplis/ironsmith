@@ -1,4 +1,5 @@
 import test from "node:test";
+import { stackEntryKindLabel } from "../src/lib/stack-entry-kind.js";
 import assert from "node:assert/strict";
 import {
   buildStackTargetPresentation,
@@ -59,7 +60,7 @@ test("a completed resolving entry cannot reappear at priority", () => {
   const next = { id: 82, name: "Next spell" };
   const prompt = { stack_objects: [next], resolving_stack_object: old,
     decision: { kind: "select_options", player: 0 } };
-  assert.deepEqual(getVisibleStackObjects(prompt), [old, next], "keep the active resolution during its prompt");
+  assert.deepEqual(getVisibleStackObjects(prompt), [{ ...old, __resolving: true }, next], "keep the active resolution during its prompt");
   const priority = { ...prompt, decision: { kind: "priority", player: 0 } };
   assert.deepEqual(getVisibleStackObjects(priority), [next]);
   assert.deepEqual(getVisibleStackObjects({ ...priority, stack_objects: [] }), []);
@@ -203,4 +204,22 @@ test("a visible opponent hand target stays collapsed until its zone is explicitl
   assert.deepEqual(open.temporaryZoneViews, []);
   assert.equal(open.arrows.length, 1, "the target is linked once the player has opened the shared hand");
   assert.equal(open.arrows[0].toId, 21);
+});
+
+test("resolving abilities stay above siblings sharing their display id", () => {
+  for (const ability_kind of [null, "Triggered", "Activated"]) {
+    const lower = { id: 7, target_object_id: 101, ability_kind };
+    const top = { id: 7, target_object_id: 102, ability_kind };
+    const before = stackEntryRenderKeys([top, lower]);
+    const visible = getVisibleStackObjects({
+      stack_objects: [lower], resolving_stack_object: top,
+      decision: { kind: "select_options" },
+    });
+    assert.equal(visible.length, 2);
+    assert.deepEqual(stackEntryRenderKeys(visible), before);
+    assert.equal(stackEntryKindLabel(visible[0]), "Resolving");
+    assert.notEqual(stackEntryKindLabel(visible[1]), "Resolving");
+    assert.deepEqual(getVisibleStackObjects({ stack_objects: [lower, top],
+      resolving_stack_object: top }), visible);
+  }
 });

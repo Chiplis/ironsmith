@@ -84,8 +84,8 @@
 .priority-preferences .priority-clear { height: auto; padding: 10px 12px; justify-content: space-between; white-space: normal; text-align: left; }
 .priority-control-status { max-width: 180px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-size: 11px; color: var(--ui-text-secondary); }
 .stack-automation-button {
-  position: absolute; top: 4px; right: 4px; z-index: 8;
-  width: 28px; height: 28px;
+  position: absolute; top: calc(100% + 4px); right: 8px; z-index: 80;
+  width: 28px; height: 22px; padding: 0;
   border: 1px solid var(--ui-border-strong);
   border-radius: var(--ui-radius-control);
   background: var(--ui-surface-control);
@@ -100,3 +100,6 @@
   .priority-stop-list > div { grid-template-columns: minmax(0, 1fr) 76px 102px; gap: 5px; }
   .priority-check:has(select) { flex-direction: column; align-items: stretch; }
 }
+
+/* The menu sits below the frame, clear of even wide power/toughness boxes. */
+.game-card.stack-card:has(> .stack-automation-button) { overflow: visible; }

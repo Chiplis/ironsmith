@@ -3,6 +3,7 @@ import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefini
 import { MTG_KEYWORD_RULES } from './mtg-keyword-rules.generated.js';
 import { OFFICIAL_KEYWORD_FORMS, officialSurfaceForms, customKeywordForms, normalizeFormOverrides, surfaceForms } from './keyword-forms.js';
 import { applyCustomTokens, draftTokens } from './custom-tokens.js';
+import { mentionsStatus, expandStatusActions, expandStatusGrants, expandStatusReferences } from './custom-status-mechanics.js';
 
 export const mechanicKey = value => String(value || '').normalize('NFKC').replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
 export const reminderKey = value => mechanicKey(value).replace(/[“”]/g, '"');
@@ -189,7 +190,7 @@ export function draftMechanics(draft, known = []) {
   const declared = supplied.flatMap(def => draft.faces.flatMap(face => definingReminders(face, def.keyword)));
   return mergeMechanics(supplied, declared).filter(def => draft.faces.some(face => {
     const semantic = String(face.oracleText || '').replace(/\([^()]*\)/g, '');
-    return mechanicPattern(def).test(semantic) || designationPattern(def).test(semantic);
+    return mechanicPattern(def).test(semantic) || designationPattern(def).test(semantic) || mentionsStatus(semantic, def);
   }));
 }
 
@@ -200,7 +201,7 @@ export function compileDraftInput(draft, definitions) {
     const used = definitions.filter(def => mechanicPattern(def).test(semantic) || valuePattern(def.keyword).test(semantic));
     // A card naming another card's keyword ("a blinked spell") reads its
     // receipts but never gains its identity.
-    const referenced = definitions.filter(def => designationPattern(def).test(semantic));
+    const referenced = definitions.filter(def => designationPattern(def).test(semantic) || mentionsStatus(semantic, def));
     if (!used.length && !referenced.length) {
       const result = { ...face };
       delete result.customKeywordIdentities;
@@ -286,6 +287,11 @@ export function compileDraftInput(draft, definitions) {
         if (!outsideQuotation(before, offset)) return match;
         return `${prefix}${def.expansion.replace(/[.!?]+$/, '')}${then ? '. Then ' : ''}`;
       });
+    }
+    for (const def of definitions) {
+      text = expandStatusGrants(text, def, mechanicExpansion);
+      text = expandStatusActions(text, def);
+      text = expandStatusReferences(text, def);
     }
     for (const def of used) text = bindParticipleReferences(text, def);
     for (const def of referenced) text = bindDesignations(text, def);

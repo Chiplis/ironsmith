@@ -43,15 +43,15 @@ export function getVisibleStackObjects(state) {
   // a leftover resolving snapshot must not resurrect it in the stack UI.
   if (!resolvingStackObject || state?.decision?.kind === "priority") return realStackObjects;
 
-  const resolvingId = Number(resolvingStackObject?.id);
-  if (
-    Number.isFinite(resolvingId)
-    && realStackObjects.some((entry) => Number(entry?.id) === resolvingId)
-  ) {
-    return realStackObjects;
-  }
-
-  return [resolvingStackObject, ...realStackObjects];
+  // Presentation ids can be shared by distinct abilities. Only the engine's
+  // target id identifies the same stack occurrence; never collapse siblings.
+  const resolvingTargetId = resolvingStackObject.target_object_id;
+  const duplicateIndex = resolvingTargetId == null ? -1 : realStackObjects.findIndex(
+    (entry) => entry.target_object_id != null
+      && String(entry.target_object_id) === String(resolvingTargetId),
+  );
+  const remaining = realStackObjects.filter((_, index) => index !== duplicateIndex);
+  return [{ ...resolvingStackObject, __resolving: true }, ...remaining];
 }
 
 export function getVisibleTopStackObject(state) {

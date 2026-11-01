@@ -7976,6 +7976,9 @@ fn parse_put_or_remove_then_when_removed_this_way(
 }
 
 pub(crate) fn parse_described_effect_bundle(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effect) = crate::custom_status::source_effect(tokens) {
+        return Ok(Some(vec![effect]));
+    }
     // The complete instruction binds every later "it" to the actual return
     // result. No keyword name is introduced by this reading.
     let body = crate::lexer::render_token_slice(tokens).to_ascii_lowercase();

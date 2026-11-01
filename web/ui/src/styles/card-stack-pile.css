@@ -73,6 +73,10 @@
   animation-delay: -2.8s;
 }
 
+.card-stack-pile[data-expanded="true"] .card-stack-float {
+  animation-play-state: paused;
+}
+
 .game-card.stack-card--frame {
   position: relative;
   display: block;

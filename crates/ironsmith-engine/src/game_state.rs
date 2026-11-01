@@ -523,6 +523,8 @@ struct BattlefieldFlags {
     /// Class levels above 1 (CR 716.2); absent means level 1.
     class_levels: HashMap<ObjectId, u32>,
     harnessed: HashSet<ObjectId>,
+    /// true expires at cleanup, false lasts until this incarnation leaves.
+    custom_statuses: HashMap<ObjectId, std::collections::BTreeMap<String, bool>>,
     /// Creatures that are renowned.
     renowned: HashSet<ObjectId>,
     /// Entry lore processing completed for this battlefield incarnation, even

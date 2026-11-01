@@ -350,6 +350,7 @@ impl GameState {
     /// mutation. Runtime cost follows the sparse tracker sizes rather than the
     /// number of permanents on the battlefield.
     pub(crate) fn cleanup_damage_and_regeneration_end_of_turn(&mut self) {
+        self.cleanup_custom_statuses_end_of_turn();
         if self.battlefield_flags.damage_marked.is_empty()
             && self.battlefield_flags.regeneration_shields.is_empty()
             && self.battlefield_flags.regenerated_this_turn.is_empty()
@@ -732,7 +733,41 @@ impl GameState {
         Some(copy_id)
     }
 
-    /// Check if a Case permanent has become solved.
+    /// Named statuses are battlefield-incarnation state, not copiable abilities.
+    pub fn has_custom_status(&self, id: ObjectId, name: &str) -> bool {
+        self.battlefield_flags.custom_statuses.get(&id).is_some_and(|statuses| statuses.contains_key(name))
+    }
+
+    pub fn custom_status_names(&self, id: ObjectId) -> Vec<String> {
+        self.battlefield_flags.custom_statuses.get(&id)
+            .map(|statuses| statuses.keys().cloned().collect()).unwrap_or_default()
+    }
+
+    pub fn apply_custom_status(&mut self, id: ObjectId, name: &str, until_end_of_turn: bool) -> bool {
+        if name.is_empty() || self.is_phased_out(id)
+            || !self.object(id).is_some_and(|object| object.zone == Zone::Battlefield) { return false; }
+        let statuses = self.battlefield_flags_mut().custom_statuses.entry(id).or_default();
+        let fresh = !statuses.contains_key(name);
+        // A shorter repeated application cannot shorten a lasting status.
+        statuses.entry(name.to_owned()).and_modify(|expires| *expires &= until_end_of_turn)
+            .or_insert(until_end_of_turn);
+        self.mark_object_changed_and_continuous_state_dirty(id);
+        fresh
+    }
+
+    pub fn cleanup_custom_statuses_end_of_turn(&mut self) {
+        let changed: Vec<_> = self.battlefield_flags.custom_statuses.iter()
+            .filter(|(_, statuses)| statuses.values().any(|expires| *expires))
+            .map(|(id, _)| *id).collect();
+        self.battlefield_flags_mut().custom_statuses.retain(|_, statuses| {
+            statuses.retain(|_, expires| !*expires);
+            !statuses.is_empty()
+        });
+        for id in changed {
+            self.mark_object_changed_and_continuous_state_dirty(id);
+        }
+    }
+
     pub fn is_harnessed(&self, id: ObjectId) -> bool {
         self.battlefield_flags.harnessed.contains(&id)
     }
@@ -2515,6 +2550,7 @@ impl GameState {
             flags.solved_cases.remove(&id);
             flags.class_levels.remove(&id);
             flags.harnessed.remove(&id);
+            flags.custom_statuses.remove(&id);
             flags.renowned.remove(&id);
             flags.saga_entry_lore_processed.remove(&id);
             flags.flipped.remove(&id);

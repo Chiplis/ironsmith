@@ -569,6 +569,11 @@ fn split_escapes_with_enters_this_way_line(line: &str) -> Option<Vec<String>> {
 }
 
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    // Price-owned modifiers retain their antecedent. Ask the clause composer,
+    // not a keyword/paragraph whitelist, whether this is one complete permission.
+    let (price, _) = crate::word_claims::speculative(||
+        crate::grammar::shared_util::alternative_cost_lines::parse_composed_zone_price(line_tokens));
+    if matches!(price, Ok(Some(_))) { return vec![line.to_owned()]; }
     let prose = line.to_ascii_lowercase();
     if (prose.starts_with("as an additional cost to cast this spell, you may ")
         && prose.contains("any number of times."))

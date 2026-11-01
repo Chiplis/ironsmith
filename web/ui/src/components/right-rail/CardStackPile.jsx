@@ -626,9 +626,9 @@ export default function CardStackPile({
   const place = liveCount > 1
     ? (viewedIndex === 0 ? "Top" : viewedIndex === liveCount - 1 ? "Bottom" : null)
     : null;
-  // Match 90% of the regular card composition, independent of viewport
+  // Match 75% of the regular card composition, independent of viewport
   // size and the space reserved for the resting stack.
-  const hoverHeight = CARD_FRAME_RENDER_HEIGHT * 0.9;
+  const hoverHeight = CARD_FRAME_RENDER_HEIGHT * 0.75;
   const hoverScale = geometry.height > 0 ? hoverHeight / geometry.height : 1;
   // Grow upward from the resting footprint, keeping the front frame on screen.
   const hoverOffset = Math.max(0, 8 - (geometry.top + geometry.height - hoverHeight));

@@ -770,7 +770,7 @@ pub(super) fn compile_subject_verb_early(
                 ]),
             ])], Vec::new()))
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { designation }) => Ok((vec![Effect::new(ironsmith_core::SetPermanentDesignationEffect { target: ChooseSpec::Source, designation: *designation })], Vec::new())),
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { designation }) => Ok((vec![Effect::new(ironsmith_core::SetPermanentDesignationEffect { target: ChooseSpec::Source, designation: designation.clone() })], Vec::new())),
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
             action,
             amount,

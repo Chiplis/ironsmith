@@ -1877,6 +1877,7 @@ export const ui = {
   "Hidden-card disclosure": "Hidden-card disclosure",
   "Hide my IP address (relay only, slower)": "Hide my IP address (relay only, slower)",
   "Hide my IP address in WebSocket and tournament lobbies (relay only, slower)": "Hide my IP address in WebSocket and tournament lobbies (relay only, slower)",
+  "Countdown Priority": "Countdown Priority",
   "Hold Priority": "Hold Priority",
   "Include custom cards": "Include custom cards",
   "Invite code": "Invite code",
@@ -1912,7 +1913,7 @@ export const ui = {
   "Saving...": "Saving...",
   "Send message": "Send message",
   "Send": "Send",
-  "Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Hold Priority. Turn off to pause until you act.": "Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Hold Priority. Turn off to pause until you act.",
+  "Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Countdown Priority. Turn off to pause until you act.": "Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Countdown Priority. Turn off to pause until you act.",
   "Small artwork tiles": "Small artwork tiles",
   "Tapped": "Tapped",
   "The tournament's signing key stays in this browser. Issue one invite per player; whoever redeems a code first owns that seat.": "The tournament's signing key stays in this browser. Issue one invite per player; whoever redeems a code first owns that seat.",
@@ -2013,12 +2014,15 @@ export const ui = {
   "Phrasal forms that mean the same thing, separated by commas.": "Phrasal forms that mean the same thing, separated by commas.",
   "Compiled meaning:": "Compiled meaning:",
   "Blink": "Blink",
+  "Combat casting": "Combat casting",
   "Timed exile": "Timed exile",
   "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.": "Write {Number} where an amount goes. Each card then gives the amount and its price after the keyword, as Suspend does: \"Foresee 3—{1}{U}\". Any counter name works, and \"or whenever …\" adds more ways to remove one.",
   "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".": "Write {Number} where an amount goes and {Type} where a card type goes; the card then gives them after the keyword, as in \"Suspend 3—{1}{U}\" or \"Behold a Goblin\".",
   "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.": "To fix how cards write its parameters, follow the name with their layout, such as \"Forge {Number} {Cost}\" or \"Herald a {Type}\". Without a layout, a card may give them in any order, separated by a dash or a space.",
   "Enforce filter coverage": "Enforce filter coverage",
   "Enforce whole-line coverage": "Enforce whole-line coverage",
+  "Temporary status": "Temporary status",
+  "Marks the creature until end of turn. Other abilities can check whether it is bribed or trigger when it becomes bribed. Reapplying an active status does not trigger becoming it again.": "Marks the creature until end of turn. Other abilities can check whether it is bribed or trigger when it becomes bribed. Reapplying an active status does not trigger becoming it again.",
 };
 
 export const optionalMarkers = /\byou\s+may\b|\bmay\b/iu;

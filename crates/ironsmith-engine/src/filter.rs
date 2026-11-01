@@ -5397,6 +5397,10 @@ impl ObjectFilterExt for ObjectFilter {
 
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
+        for name in &self.excluded_custom_statuses { post_noun_qualifiers.push(format!("without the {name} status")); }
+        for name in &self.custom_statuses {
+            post_noun_qualifiers.push(format!("with the {name} status"));
+        }
         if self.renowned {
             parts.push("renowned".to_string());
         }

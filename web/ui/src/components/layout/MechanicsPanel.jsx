@@ -155,7 +155,18 @@ export function MechanicForm({ saved, onSaved, initial, onSave }) {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [template, setTemplate] = useState(null);
-  const set = field => event => { setSaveError(''); setDraft(current => ({ ...current, [field]: event.target.value })); };
+  const set = field => event => {
+    const value = event.target.value;
+    setSaveError('');
+    setDraft(current => {
+      const selected = REMINDER_TEMPLATES.find(candidate => candidate.kind === template);
+      const statusReminder = keyword => selected.reminder.replace(/\bbribe\b/g, splitMechanicName(keyword).keyword || selected.keyword);
+      const reminder = field === 'keyword' && selected?.kind === 'Temporary status'
+        && current.reminder === statusReminder(current.keyword)
+        ? statusReminder(value) : current.reminder;
+      return { ...current, reminder, [field]: value };
+    });
+  };
   const defaults = defaultForms(splitMechanicName(draft.keyword).keyword);
   // Live validation uses exactly the checks saving will apply.
   const { definition, problem } = useMemo(() => {
@@ -191,7 +202,9 @@ export function MechanicForm({ saved, onSaved, initial, onSave }) {
       <summary className="cursor-pointer text-sm font-semibold">{ui('Mechanic templates')}</summary>
     <TemplatePicker selected={template} keyword={draft.keyword} onPick={picked => {
       setSaveError(''); setTemplate(picked.kind);
-      setDraft(current => ({ ...current, keyword: current.keyword.trim() ? current.keyword : picked.keyword, reminder: picked.reminder }));
+      setDraft(current => ({ ...current, keyword: current.keyword.trim() ? current.keyword : picked.keyword, reminder: picked.kind === 'Temporary status'
+        ? picked.reminder.replace(/\bbribe\b/g, splitMechanicName(current.keyword.trim() || picked.keyword).keyword)
+        : picked.reminder }));
     }} />
     </details>
     <label className="card-forge-field"><span className="card-forge-section-label">{ui('Reminder text')}</span>

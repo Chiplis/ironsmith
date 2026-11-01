@@ -415,6 +415,7 @@ fn read_subject_status_condition(
     input: &ConditionClause<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(condition) = crate::custom_status::source_condition(tokens) { return Ok(Some(condition)); }
     // Negation changes the predicate, not the identity of its subject.
     let words = AnthemNormalizedWords::new(tokens);
     let words = words.word_refs();
