@@ -152,12 +152,127 @@ pub fn counters_among_players_and_permanents_value(scope_words: &[&str]) -> Opti
     })
 }
 
+/// A characteristic metric over a turn-history scope ("card types among
+/// spells you've cast this turn", "... among permanents you've sacrificed
+/// this turn") reads that history, never the objects that currently match
+/// the scope's nouns (a resolved spell or a sacrificed permanent is gone).
+///
+/// `None`: the scope is not historical. `Some(None)`: it is, but this
+/// metric/history pair has no history-backed value yet (an honest gap, e.g.
+/// names among creatures that died this turn); the current-object reading
+/// would be wrong.
+pub fn historical_aggregate_scope_value(
+    metric: AggregateValueMetric,
+    scope_words: &[&str],
+) -> Option<Option<Value>> {
+    use ironsmith_core::TurnHistoryCount;
+    let mut counted = vec!["for", "each"];
+    counted.extend_from_slice(scope_words);
+    let (parsed, probe) = crate::word_claims::speculative(|| {
+        crate::util::parse_for_each_count_value_words(&counted)
+    });
+    let (value, used) = parsed?;
+    if used != counted.len() {
+        return None;
+    }
+    let distinct = match metric {
+        AggregateValueMetric::Colors => Some(ironsmith_core::DistinctCharacteristic::Colors),
+        AggregateValueMetric::DistinctManaValues => {
+            Some(ironsmith_core::DistinctCharacteristic::ManaValues)
+        }
+        AggregateValueMetric::DistinctPowers => Some(ironsmith_core::DistinctCharacteristic::Powers),
+        AggregateValueMetric::PermanentTypes => {
+            Some(ironsmith_core::DistinctCharacteristic::PermanentTypes)
+        }
+        AggregateValueMetric::BasicLandTypes => {
+            Some(ironsmith_core::DistinctCharacteristic::BasicLandTypes)
+        }
+        AggregateValueMetric::CreatureTypes => Some(
+            ironsmith_core::DistinctCharacteristic::Subtypes(Some(
+                crate::types::SubtypeFamily::Creature,
+            )),
+        ),
+        AggregateValueMetric::PlaneswalkerTypes => Some(
+            ironsmith_core::DistinctCharacteristic::Subtypes(Some(
+                crate::types::SubtypeFamily::Planeswalker,
+            )),
+        ),
+        AggregateValueMetric::SubtypeFamilyTypes(family) => {
+            Some(ironsmith_core::DistinctCharacteristic::Subtypes(Some(family)))
+        }
+        AggregateValueMetric::AnySubtypes => {
+            Some(ironsmith_core::DistinctCharacteristic::Subtypes(None))
+        }
+        _ => None,
+    };
+    let modeled = match (metric, value.unhinted()) {
+        (
+            AggregateValueMetric::CardTypes,
+            Value::TurnHistoryCount(TurnHistoryCount::SpellsCast { player, filter, .. })
+            | Value::SpellsCastThisTurnMatching { player, filter, .. },
+        ) => Some(Value::CardTypesAmongSpellsCastThisTurn {
+            player: player.clone(),
+            filter: filter.clone(),
+        }),
+        (AggregateValueMetric::CardTypes, Value::SpellsCastThisTurn(player)) => {
+            Some(Value::CardTypesAmongSpellsCastThisTurn {
+                player: player.clone(),
+                filter: crate::ObjectFilter::default(),
+            })
+        }
+        (
+            AggregateValueMetric::CardTypes,
+            Value::TurnHistoryCount(TurnHistoryCount::Sacrificed { player, filter }),
+        ) => Some(Value::TurnHistoryCount(
+            TurnHistoryCount::SacrificedCardTypes {
+                player: player.clone(),
+                filter: filter.clone(),
+            },
+        )),
+        (
+            _,
+            Value::TurnHistoryCount(TurnHistoryCount::SpellsCast { player, filter, .. })
+            | Value::SpellsCastThisTurnMatching { player, filter, .. },
+        ) => distinct.map(|characteristic| Value::DistinctAmongSpellsCastThisTurn {
+            characteristic,
+            player: player.clone(),
+            filter: filter.clone(),
+        }),
+        (_, Value::SpellsCastThisTurn(player)) => {
+            distinct.map(|characteristic| Value::DistinctAmongSpellsCastThisTurn {
+                characteristic,
+                player: player.clone(),
+                filter: crate::ObjectFilter::default(),
+            })
+        }
+        (_, Value::TurnHistoryCount(TurnHistoryCount::Sacrificed { player, filter })) => {
+            distinct.map(|characteristic| {
+                Value::TurnHistoryCount(TurnHistoryCount::SacrificedDistinct {
+                    characteristic,
+                    player: player.clone(),
+                    filter: filter.clone(),
+                })
+            })
+        }
+        (_, Value::TurnHistoryCount(_) | Value::CreaturesDiedThisTurn) => None,
+        _ => return None,
+    };
+    if modeled.is_some() {
+        probe.keep();
+    }
+    Some(modeled)
+}
+
 pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
     let surface = value_shapes::parse_aggregate_value_surface(words)?;
     if surface.metric == AggregateValueMetric::Counters
         && let Some(value) = counters_among_players_and_permanents_value(surface.scope_words)
     {
         return Some(value);
+    }
+    if let Some(historical) = historical_aggregate_scope_value(surface.metric, surface.scope_words)
+    {
+        return historical;
     }
     let filter = crate::grammar::primitives::probe_shape(parse_object_filter_words(
         surface.scope_words,
@@ -169,6 +284,14 @@ pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
         AggregateValueMetric::PermanentTypes => Some(Value::PermanentTypesAmong(filter)),
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
         AggregateValueMetric::PlaneswalkerTypes => Some(Value::PlaneswalkerTypesAmong(filter)),
+        AggregateValueMetric::SubtypeFamilyTypes(family) => Some(Value::SubtypesAmong {
+            family: Some(family),
+            filter,
+        }),
+        AggregateValueMetric::AnySubtypes => Some(Value::SubtypesAmong {
+            family: None,
+            filter,
+        }),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
         AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),

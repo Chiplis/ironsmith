@@ -1028,6 +1028,11 @@ pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
             "{player} {verb} a card for each creature type among {}",
             describe_count_filter_value_subject(filter)
         )),
+        Value::SubtypesAmong { family, filter } => Some(format!(
+            "{player} {verb} a card for each {} among {}",
+            ironsmith_core::DistinctCharacteristic::Subtypes(*family).singular_phrase(),
+            describe_count_filter_value_subject(filter)
+        )),
         Value::CardTypesAmong(filter) => Some(format!(
             "{player} {verb} a card for each card type among {}",
             describe_count_filter_value_subject(filter)
@@ -1408,6 +1413,20 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::CreatureTypesAmong(filter) => Some(format!(
             "creature type among {}",
             describe_count_filter_value_subject(filter)
+        )),
+        Value::SubtypesAmong { family, filter } => Some(format!(
+            "{} among {}",
+            ironsmith_core::DistinctCharacteristic::Subtypes(*family).singular_phrase(),
+            describe_count_filter_value_subject(filter)
+        )),
+        Value::DistinctAmongSpellsCastThisTurn {
+            characteristic,
+            player,
+            filter,
+        } => Some(format!(
+            "{} among {}",
+            characteristic.singular_phrase(),
+            describe_spells_cast_this_turn_phrase(player, filter)
         )),
         Value::CardTypesAmong(filter) => Some(format!(
             "card type among {}",

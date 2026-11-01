@@ -234,7 +234,7 @@ pub use filter_model::{
     GlobalCharacteristicDomainSurface, GraveyardEntryHistorySurface, LiteralNameSurface,
     ObjectCharacteristic, ObjectCharacteristicRelation, ObjectCharacteristicRelationKind,
     ObjectFilter, ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef,
-    ParityRequirement, PlayedByOpponentSurface, PlayerFilter, PlayerQuantity, PlayerTurnHistoryFilter,
+    ParityRequirement, PlayedByOpponentSurface, PlayerFilter, PlayerQuantity, PlayerTurnHistoryFilter, TargetObjectPlayerRelation,
     PowerToughnessRelation, PtReference,
     SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
     TaggedOpbjectRelation, TargetabilityConstraint,
@@ -296,6 +296,7 @@ pub use trigger_model::{
 pub use types::{CardType, Subtype, SubtypeFamily, Supertype};
 pub use value_model::{
     AttachmentConditionHost, Condition, CombatParticipantCondition, ConditionConjunction, DeathHistoryControllerSurface,
+    DistinctCharacteristic,
     EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
     ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
     PriorEffectMetricQuery, ColorChoiceReference, ObjectRule, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,

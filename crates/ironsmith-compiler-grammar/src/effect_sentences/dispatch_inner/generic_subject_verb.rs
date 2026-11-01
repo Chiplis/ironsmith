@@ -2910,36 +2910,54 @@ pub fn parse_zone_replacement_subject_verb(
     if !replacement_pattern.accepts_full(replacement_clause.trimmed()) {
         return Ok(None);
     }
-    // The pronoun reading names the replaced card only when the condition's
-    // subject is a card ("if a card would be put ...").
-    if pronoun
-        && !condition_match
-            .capture_clause("object", condition_clause)
-            .is_some_and(|object| object.trimmed().word_refs() == ["a", "card"])
-    {
-        return Ok(None);
-    }
-    // "if a card would be put ...": the program replaces the move of any card
-    // (`GenericZoneReplacementProgram` has no object filter), so only that
-    // exact object is this reading; a narrower one ("a creature card")
-    // would otherwise be silently widened.
     let Some(object) = condition_match.capture_clause("object", condition_clause) else {
         return Ok(None);
     };
-    if object.trimmed().word_refs() != ["a", "card"] {
-        return Ok(None);
+    let object = object.trimmed();
+    let object_words = object.word_refs();
+    // "if a card would be put ...": every card the player owns. This is the
+    // standing "exile instead of graveyard" program (Gaea's Will).
+    if object_words == ["a", "card"] {
+        crate::word_claims::claim_tokens(object.tokens());
+        return Ok(Some(
+            GenericZoneReplacementProgram {
+                player: PlayerAst::You,
+                from_zone: Zone::Graveyard,
+                replacement_zone: Zone::Exile,
+                duration: Until::EndOfTurn,
+            }
+            .lower(),
+        ));
     }
-    crate::word_claims::claim_tokens(object.trimmed().tokens());
-
-    Ok(Some(
-        GenericZoneReplacementProgram {
-            player: PlayerAst::You,
-            from_zone: Zone::Graveyard,
-            replacement_zone: Zone::Exile,
-            duration: Until::EndOfTurn,
-        }
-        .lower(),
-    ))
+    // "if that card would be put ...": the object a preceding instruction
+    // named. "if a creature card / a nontoken creature / a card an opponent
+    // owns would be put ...": only matching objects. Either way the replaced
+    // move is into your graveyard this turn, so the object is one you own.
+    let mut filter = if matches!(
+        object_words.as_slice(),
+        ["that", "card"] | ["that", "creature"] | ["that", "permanent"] | ["it"]
+    ) {
+        crate::word_claims::claim_tokens(object.tokens());
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+    } else {
+        let Ok(filter) = crate::object_filters::parse_object_filter_lexed(object.tokens(), false)
+        else {
+            return Ok(None);
+        };
+        filter
+    };
+    if filter.owner.is_none() {
+        filter.owner = Some(crate::target::PlayerFilter::You);
+    }
+    Ok(Some(EffectAst::subject_verb_register_future_zone_replacement(
+        filter,
+        None,
+        Some(Zone::Graveyard),
+        Zone::Exile,
+        crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn,
+        crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+        false,
+    )))
 }
 
 /// Whether the sentence has a choice complement's shape: a party or aggregate
@@ -3335,6 +3353,15 @@ pub fn parse_vote_subject_verb(
 fn vote_options_clause_before_reveal_tail<'a>(options_clause: LexedClause<'a>) -> LexedClause<'a> {
     let options_clause = options_clause.trimmed();
     if let Some(matched) = VOTE_REVEAL_TAIL_PATTERN.locate_in(options_clause) {
+        // "then those votes are revealed": the secret vote's reveal, which
+        // the vote program performs (secret council).
+        let words = options_clause.word_refs();
+        if let Some(tail) = words.get(matched.word_range.clone())
+            && tail.len() == 5
+            && tail[4] == "revealed"
+        {
+            crate::word_claims::claim_words(tail);
+        }
         return options_clause
             .between_word_range(0, matched.word_range.start)
             .map(LexedClause::trimmed)

@@ -1374,6 +1374,17 @@ fn quoted_attachment_grant_token_replacements(
             // "An opponent may have you draw" offers an action; it does
             // not grant an ability or change the source of later references.
             && !has_index.checked_sub(1).is_some_and(|index| tokens[index].is_word("may"))
+            // Only an ability statement follows a stripped grant: a trigger
+            // ("has whenever this creature ...") or an activated ability
+            // ("has {T}: ..."). "If it has madness, untap Anje Falkenrath"
+            // tests a keyword; the card's name there is its own source.
+            && {
+                let granted = &tokens[has_index + 1..];
+                granted
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+                    || granted.iter().any(|token| token.kind == TokenKind::Colon)
+            }
             && let Some(replacement) = host_for_head(&tokens[..=has_index])
         {
             replacements[has_index + 1..].fill(Some(replacement));

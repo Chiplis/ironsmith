@@ -107,11 +107,12 @@ pub fn parse_for_each_object_filter(
 ) -> Result<ObjectFilter, CardTextError> {
     let words = crate::lexer::token_word_refs(filter_tokens);
     // "for each card type among noncreature spells you've cast this turn"
-    // (Hurkyl, Master Wizard) iterates characteristics, not objects.
-    if matches!(
-        words.as_slice(),
-        ["card" | "creature", "type" | "types", "among", ..] | ["color" | "colors", "among", ..]
-    ) {
+    // (Hurkyl, Master Wizard) iterates characteristics, not objects; so does
+    // every other type or color family ("land types", "colors", ...),
+    // which the characteristic readers own.
+    if crate::word_claims::probe_only(|| {
+        crate::grammar::shared_util::value_shapes::is_type_or_color_family_iteration(&words)
+    }) {
         return Err(CardTextError::ParseError(format!(
             "for-each characteristic iteration is not an object filter (clause: '{}')",
             words.join(" ")

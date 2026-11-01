@@ -474,13 +474,6 @@ fn parse_turn_history_intervening_predicate(
             filter,
         )))));
     }
-    if surface::exact_words(&words, &["it", "has", "madness"]) {
-        return Ok(Some(PredicateAst::TaggedMatches(
-            crate::tag::CompilerReferenceTag::It.bind(),
-            ObjectFilter::default()
-                .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness),
-        )));
-    }
     // "At the beginning of the next end step, if you haven't cast it, return
     // it to its owner's hand." (Psychic Theft, Planeswalker's Mischief): the
     // exiled card was not cast. A cast card is a new object the delayed

@@ -724,6 +724,8 @@ fn read_may_cast_it(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTex
     // not a persistent permission. Claim it before the generic leading-may
     // path strips `may` while probing broader cast-permission surfaces.
     if let Some(spec) = parse_may_cast_it_sentence(tokens) {
+        // The may-cast facts match the whole clause, so every word is read.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(vec![build_may_cast_tagged_effect(&spec)]));
     }
     Ok(None)

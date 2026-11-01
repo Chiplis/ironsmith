@@ -291,6 +291,20 @@ pub(crate) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
                 "a card for each card type among {}",
                 describe_spells_cast_this_turn_phrase(player, filter)
             ),
+            Value::DistinctAmongSpellsCastThisTurn {
+                characteristic,
+                player,
+                filter,
+            } => format!(
+                "a card for each {} among {}",
+                characteristic.singular_phrase(),
+                describe_spells_cast_this_turn_phrase(player, filter)
+            ),
+            Value::SubtypesAmong { family, filter } => format!(
+                "a card for each {} among {}",
+                ironsmith_core::DistinctCharacteristic::Subtypes(*family).singular_phrase(),
+                describe_count_filter_value_subject(filter)
+            ),
             Value::SourcePower
             | Value::SourceToughness
             | Value::PowerOf(_)
@@ -6428,6 +6442,24 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
                 ),
             })
         }
+        Value::TurnHistoryCount(TurnHistoryCount::SacrificedDistinct {
+            characteristic,
+            player,
+            filter,
+        }) => {
+            let subject = pluralize_noun_phrase(&describe_history_event_object(filter));
+            let head = characteristic.singular_phrase();
+            Some(match player {
+                PlayerFilter::You => {
+                    format!("{head} among {subject} you've sacrificed this turn")
+                }
+                PlayerFilter::Any => format!("{head} among {subject} sacrificed this turn"),
+                other => format!(
+                    "{head} among {subject} {} sacrificed this turn",
+                    describe_player_filter(other)
+                ),
+            })
+        }
         Value::TurnHistoryCount(TurnHistoryCount::SacrificedCardTypes { player, filter }) => {
             let subject = pluralize_noun_phrase(&describe_history_event_object(filter));
             Some(match player {
@@ -6737,6 +6769,16 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
         ),
         TurnHistoryCount::SacrificedCardTypes { player, filter } => format!(
             "the number of card types among {} {} sacrificed this turn",
+            pluralize_noun_phrase(&describe_for_each_filter(filter)),
+            if *player == PlayerFilter::You { "you've".to_string() } else { describe_player_filter(player) }
+        ),
+        TurnHistoryCount::SacrificedDistinct {
+            characteristic,
+            player,
+            filter,
+        } => format!(
+            "the number of {} among {} {} sacrificed this turn",
+            characteristic.plural_phrase(),
             pluralize_noun_phrase(&describe_for_each_filter(filter)),
             if *player == PlayerFilter::You { "you've".to_string() } else { describe_player_filter(player) }
         ),
@@ -7669,6 +7711,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of planeswalker types among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::SubtypesAmong { family, filter } => format!(
+            "the number of {} among {}",
+            ironsmith_core::DistinctCharacteristic::Subtypes(*family).plural_phrase(),
+            describe_count_filter_value_subject(filter)
+        ),
         Value::CardTypesAmong(filter) => format!(
             "the number of card types among {}",
             describe_count_filter_value_subject(filter)
@@ -8375,6 +8422,15 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::CardTypesAmongSpellsCastThisTurn { player, filter } => format!(
             "the number of card types among {}",
+            describe_spells_cast_this_turn_phrase(player, filter)
+        ),
+        Value::DistinctAmongSpellsCastThisTurn {
+            characteristic,
+            player,
+            filter,
+        } => format!(
+            "the number of {} among {}",
+            characteristic.plural_phrase(),
             describe_spells_cast_this_turn_phrase(player, filter)
         ),
         Value::SpellsCastThisTurnMatching {

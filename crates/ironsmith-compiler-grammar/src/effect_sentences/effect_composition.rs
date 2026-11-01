@@ -325,6 +325,8 @@ fn parse_exile_top_library_then_play_bundle(
                 | ["you", "choose", "one", "of", "those", "cards"]
         ) {
             exile_tokens = trim_commas(before_then);
+            // "then (you) choose one of them": the inline choice read here.
+            crate::word_claims::claim_tokens(&after_then);
             inline_choice_tokens = Some(after_then);
         }
     }

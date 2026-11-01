@@ -161,6 +161,10 @@ pub(super) fn parse_filtered_toughness_assignment_line(
         .flatten()
         .or_else(|| infer_attached_subject_filter_from_condition_expr(condition.as_ref()));
     let subject = parse_anthem_subject_with_attached_fallback(&subject_tokens, attached.as_ref())?;
+    // "assigns combat damage equal to its toughness rather than its power"
+    // (and the coordinated no-defender permission `assignment_body`
+    // recognized) is the rule this reading builds.
+    crate::word_claims::claim_tokens(&tokens[verb..]);
     // "[Each creature ...] assigns combat damage equal to its toughness" is
     // a rule effect of this source (CR 510.1a), not an ability the matching
     // creatures gain, so their losing abilities can't remove it.

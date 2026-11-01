@@ -455,6 +455,8 @@ pub fn parse_change_target_clause_inner(
     let target = TargetAst::Object(filter, span_from_tokens(tokens), None);
 
     let mode = if split.fixed_to_source {
+        // "to this creature": the source reference names the new target.
+        crate::word_claims::claim_tokens(&split.fixed_source_tokens);
         RetargetModeAst::OneToFixed {
             target: TargetAst::Source(span_from_tokens(tokens)),
         }

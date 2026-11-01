@@ -3143,23 +3143,61 @@ impl StaticAbilityKind for ShuffleIntoLibraryFromGraveyard {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        let tag = crate::tag::TagKey::from(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG);
-        let reveal = crate::effect::Effect::new(crate::effects::RevealTaggedEffect::new(
-            tag.clone(),
-        ));
-        let shuffle = crate::effect::Effect::new(crate::effects::ShuffleLibraryEffect::new(
-            crate::target::PlayerFilter::OwnerOf(ironsmith_core::ObjectRef::Tagged(tag)),
-        ));
-        let mut effect =
-            ZoneReplacementSpec::new(ObjectFilter::specific(source), crate::zone::Zone::Library)
-                .to_zone(crate::zone::Zone::Graveyard)
-                .build(source, controller);
-        effect.replacement = ReplacementAction::MoveToZoneThen {
-            zone: crate::zone::Zone::Library,
-            effects: vec![reveal, shuffle],
-        };
-        Some(effect)
+        Some(self_shuffle_into_library_replacement(
+            source,
+            controller,
+            crate::zone::Zone::Graveyard,
+            true,
+        ))
     }
+}
+
+/// "If this would be put into <zone> from anywhere, [reveal this and]
+/// shuffle it into its owner's library instead": the source moves to its
+/// owner's library instead, is optionally revealed, and that library is
+/// shuffled through the canonical shuffle path.
+pub(crate) fn self_shuffle_into_library_replacement(
+    source: ObjectId,
+    controller: PlayerId,
+    to_zone: crate::zone::Zone,
+    reveal: bool,
+) -> ReplacementEffect {
+    let tag = crate::tag::TagKey::from(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG);
+    let mut effects = Vec::new();
+    if reveal {
+        effects.push(crate::effect::Effect::new(crate::effects::RevealTaggedEffect::new(
+            tag.clone(),
+        )));
+    }
+    effects.push(crate::effect::Effect::new(crate::effects::ShuffleLibraryEffect::new(
+        crate::target::PlayerFilter::OwnerOf(ironsmith_core::ObjectRef::Tagged(tag)),
+    )));
+    let mut effect =
+        ZoneReplacementSpec::new(ObjectFilter::specific(source), crate::zone::Zone::Library)
+            .to_zone(to_zone)
+            .build(source, controller);
+    effect.replacement = ReplacementAction::MoveToZoneThen {
+        zone: crate::zone::Zone::Library,
+        effects,
+    };
+    effect
+}
+
+/// The rules text of [`self_shuffle_into_library_replacement`].
+pub(crate) fn self_shuffle_into_library_display(to_zone: crate::zone::Zone, reveal: bool) -> String {
+    let zone = match to_zone {
+        crate::zone::Zone::Graveyard => "a graveyard",
+        crate::zone::Zone::Exile => "exile",
+        crate::zone::Zone::Hand => "a hand",
+        crate::zone::Zone::Battlefield => "the battlefield",
+        crate::zone::Zone::Library => "a library",
+        crate::zone::Zone::Stack => "the stack",
+        crate::zone::Zone::Command => "the command zone",
+        #[allow(unreachable_patterns)]
+        _ => "another zone",
+    };
+    let reveal = if reveal { "reveal this and " } else { "" };
+    format!("If this would be put into {zone} from anywhere, {reveal}shuffle it into its owner's library instead")
 }
 
 /// All permanents enter the battlefield tapped.
@@ -5820,6 +5858,28 @@ impl StaticAbilityKind for LegendRuleDoesntApplyToController {
             "permanents".to_string()
         };
         format!("The \"legend rule\" doesn't apply to {noun} you control")
+    }
+
+    fn legend_rule_exemption_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        Some(&self.filter)
+    }
+}
+
+/// The legend rule doesn't apply to permanents matching `filter`, whoever
+/// controls them ("The legend rule doesn't apply to Spiders").
+#[derive(Debug, Clone, PartialEq)]
+pub struct LegendRuleDoesntApplyToMatching {
+    pub filter: crate::target::ObjectFilter,
+    pub display: String,
+}
+
+impl StaticAbilityKind for LegendRuleDoesntApplyToMatching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::LegendRuleDoesntApplyToMatching
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
     }
 
     fn legend_rule_exemption_filter(&self) -> Option<&crate::target::ObjectFilter> {

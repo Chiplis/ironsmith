@@ -90,6 +90,8 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
     };
     let would = rest.iter().position(|word| *word == "would")?;
     let (subject, predicate) = (&rest[..would], &rest[would + 1..]);
+    // "would <exact zone-change predicate>": the arm read every word.
+    let claim_predicate = || crate::word_claims::claim_words(&rest[would..]);
     match predicate {
         // "If damage would be dealt to you", "If combat damage would be dealt
         // to this creature".
@@ -241,21 +243,31 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
             })
         }
         // "If enchanted land would be destroyed" (CR 701.8).
-        ["be", "destroyed"] => Some(ReplacedEventSpec::Destroy {
-            target: object_subject(header, subject)?,
-        }),
+        ["be", "destroyed"] => {
+            let target = object_subject(header, subject)?;
+            claim_predicate();
+            Some(ReplacedEventSpec::Destroy { target })
+        }
         // "If this creature would die": put into a graveyard from the
         // battlefield (CR 700.4).
-        ["leave", "the", "battlefield"] => Some(ReplacedEventSpec::ZoneChange {
-            object: object_subject(header, subject)?,
-            from: Some(Zone::Battlefield),
-            to: None,
-        }),
-        ["die"] => Some(ReplacedEventSpec::ZoneChange {
-            object: object_subject(header, subject)?,
-            from: Some(Zone::Battlefield),
-            to: Some(Zone::Graveyard),
-        }),
+        ["leave", "the", "battlefield"] => {
+            let object = object_subject(header, subject)?;
+            claim_predicate();
+            Some(ReplacedEventSpec::ZoneChange {
+                object,
+                from: Some(Zone::Battlefield),
+                to: None,
+            })
+        }
+        ["die"] => {
+            let object = object_subject(header, subject)?;
+            claim_predicate();
+            Some(ReplacedEventSpec::ZoneChange {
+                object,
+                from: Some(Zone::Battlefield),
+                to: Some(Zone::Graveyard),
+            })
+        }
         // "If this would be put into a graveyard from the battlefield", "...
         // from anywhere".
         ["be", "put", "into", "a", "graveyard", origin @ ..] => {
@@ -264,8 +276,10 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                 ["from", "the", "battlefield"] => Some(Zone::Battlefield),
                 _ => return None,
             };
+            let object = object_subject(header, subject)?;
+            claim_predicate();
             Some(ReplacedEventSpec::ZoneChange {
-                object: object_subject(header, subject)?,
+                object,
                 from,
                 to: Some(Zone::Graveyard),
             })

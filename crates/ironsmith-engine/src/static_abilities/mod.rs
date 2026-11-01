@@ -4576,6 +4576,13 @@ impl StaticAbility {
         Self::new(LegendRuleDoesntApplyToController::new(filter))
     }
 
+    pub fn legend_rule_doesnt_apply_to_matching(
+        filter: crate::target::ObjectFilter,
+        display: String,
+    ) -> Self {
+        Self::new(LegendRuleDoesntApplyToMatching { filter, display })
+    }
+
     pub fn legend_rule_doesnt_apply_to_tokens_you_control() -> Self {
         Self::new(LegendRuleDoesntApplyToControllerTokens)
     }

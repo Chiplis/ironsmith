@@ -352,6 +352,9 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller's".to_string()
         }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            format!("that player or that object's {}'s", relation.noun())
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_possessive_player_filter(base),
@@ -479,6 +482,9 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
+        }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            format!("that player or that object's {}", relation.noun())
         }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
@@ -710,6 +716,90 @@ fn casting_costs_have_keyword(
         ironsmith_core::keyword_forms::official_keyword_ability_prefix(method.name())
             == Some(keyword)
     }) || optional_costs.iter().any(|cost| cost.kind.official_keyword() == Some(keyword))
+}
+
+/// Whether an effect grants `object` a casting method that a casting-keyword
+/// marker names: "if it has flashback" sees flashback granted by Snapcaster
+/// Mage, "if it has madness" sees madness granted by Falkenrath Gorger. The
+/// object's own casting methods are [`casting_costs_have_keyword`]'s.
+pub(super) fn object_has_granted_casting_keyword(
+    object: &Object,
+    marker: &str,
+    game: &crate::game_state::GameState,
+    ctx: &FilterContext,
+) -> bool {
+    object_has_granted_casting_keyword_in_zone(object, object.zone, marker, game, ctx)
+}
+
+/// [`object_has_granted_casting_keyword`] for the card as it was in `zone`.
+/// A discarded card's "if it has madness" reads the hand snapshot while the
+/// card itself is already in exile or the graveyard (new object, CR 400.7):
+/// grants are matched against the card's current characteristics but scoped
+/// to the zone the snapshot recorded.
+pub(super) fn object_has_granted_casting_keyword_in_zone(
+    object: &Object,
+    zone: Zone,
+    marker: &str,
+    game: &crate::game_state::GameState,
+    ctx: &FilterContext,
+) -> bool {
+    let words = marker.split_whitespace().collect::<Vec<_>>();
+    let Some(keyword) = ironsmith_core::keyword_forms::official_keyword_ability(&words) else {
+        return false;
+    };
+    // A face-down object has no casting methods (as for alternative-cast kinds).
+    if game.is_face_down(object.id) {
+        return false;
+    }
+    // Permission queries keep the checking player's scope, as for
+    // alternative-cast kinds (Snapcaster Mage grants flashback to its
+    // controller).
+    let Some(player) = ctx.you else {
+        return false;
+    };
+    // A grant whose own filter names a casting keyword ("each card without
+    // flashback in your graveyard has flashback") would re-enter this query
+    // while the registry evaluates it; inside that evaluation only the
+    // card's own casting methods count.
+    thread_local! {
+        static IN_GRANTED_CASTING_KEYWORD: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+    }
+    if IN_GRANTED_CASTING_KEYWORD.with(|flag| flag.replace(true)) {
+        return false;
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            IN_GRANTED_CASTING_KEYWORD.with(|flag| flag.set(false));
+        }
+    }
+    let _reset = Reset;
+    let grants = if zone == object.zone {
+        game.effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(game, object.id, zone, player)
+    } else {
+        // Zone-scoped grants carry the zone in their card filter ("each
+        // Vampire creature card you own that isn't on the battlefield" is one
+        // grant per zone, each filtered to that zone), so the card is matched
+        // as it was in the recorded zone.
+        let mut recorded = object.clone();
+        recorded.zone = zone;
+        crate::derived_view::DerivedGameView::new(game)
+            .granted_alternative_casts_for_card_view(object.id, &recorded, zone, player)
+    };
+    grants
+        .iter()
+        .any(|grant| {
+            // "Cast it as though it had flash" (paying a cost) grants no flash
+            // keyword.
+            !matches!(
+                grant.method,
+                crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+            ) && ironsmith_core::keyword_forms::official_keyword_ability_prefix(grant.method.name())
+                == Some(keyword)
+        })
 }
 
 pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
@@ -1413,6 +1503,13 @@ pub(crate) fn describe_comparison(cmp: &Comparison) -> String {
             Value::PlaneswalkerTypesAmong(filter) => {
                 format!(
                     "the number of planeswalker types among {}",
+                    filter.description()
+                )
+            }
+            Value::SubtypesAmong { family, filter } => {
+                format!(
+                    "the number of {} among {}",
+                    ironsmith_core::DistinctCharacteristic::Subtypes(*family).plural_phrase(),
                     filter.description()
                 )
             }

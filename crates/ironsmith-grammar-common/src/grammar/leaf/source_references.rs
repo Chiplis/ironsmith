@@ -326,6 +326,9 @@ fn parse_this_source_noun(input: &mut &str) -> WResult<LeafThisSourceNoun> {
             literal("creature"),
             literal("token"),
             literal("case"),
+            // "this emblem deals 2 damage" (CR 114.4): an emblem is the
+            // source of its own abilities.
+            literal("emblem"),
         ))
         .value(LeafThisSourceNoun::Generic),
     ))

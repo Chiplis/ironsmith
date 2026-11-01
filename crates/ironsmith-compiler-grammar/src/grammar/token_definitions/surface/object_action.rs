@@ -137,6 +137,9 @@ pub fn parse_token_definition_shape_tokens(
     }
 
     if all(&["vehicle", "artifact"]) && !has("creature") {
+        // "Vehicle artifact" is the subtype and card type of this shape.
+        reads("vehicle");
+        reads("artifact");
         return Some(TokenDefinitionSpec::Vehicle(VehicleTokenShape {
             name: names::vehicle_surface_name(&words, named_card.as_deref()),
             text_roles: described_roles(named_card.is_some()),
@@ -155,6 +158,9 @@ pub fn parse_token_definition_shape_tokens(
             .iter()
             .any(|kind| has(kind))
     {
+        // "enchantment" is the card type of this shape; its enchantment
+        // subtypes are read below.
+        reads("enchantment");
         return Some(TokenDefinitionSpec::Enchantment(EnchantmentTokenShape {
             name: scope.name.clone().unwrap_or_else(|| "Enchantment".into()),
             text_roles: described_roles(named_card.is_some()),
@@ -308,10 +314,31 @@ pub fn parse_token_definition_shape_tokens(
     let declared_name = named_card.as_deref().or(leading_name.as_deref());
     let named_non_construct =
         declared_name.is_some_and(|name| !name.eq_ignore_ascii_case("Construct"));
+    // The Construct template is a colorless Construct artifact creature: it
+    // owns the description only when the description says nothing else
+    // (another color, type or subtype is a different creature, read by the
+    // complete-description shapes below).
+    let construct_template_words = words.iter().all(|word| {
+        matches!(
+            *word,
+            "a" | "an" | "tapped" | "snow" | "construct" | "colorless" | "artifact" | "creature"
+        ) || token_pt(&[*word]).is_some()
+            // A dynamic "X/X" P/T is still the template's own P/T fact; the
+            // create reader binds X separately.
+            || word.split_once('/').is_some_and(|(power, toughness)| {
+                [power, toughness].iter().all(|side| {
+                    *side == "x" || (!side.is_empty() && side.bytes().all(|b| b.is_ascii_digit()))
+                })
+            })
+    });
     if has("construct")
         && !named_non_construct
+        && construct_template_words
         && (pt.is_none() || construct_cda || construct_plus || all(&["construct", "0/0"]))
     {
+        for word in ["construct", "colorless", "artifact", "creature"] {
+            reads(word);
+        }
         let artifact_scaling = if construct_plus {
             Some(ConstructArtifactScalingShape::GetsPlusOnePerArtifact)
         } else if construct_cda {

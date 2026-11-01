@@ -131,6 +131,7 @@ pub(crate) fn rewrite_static_model_words(
         P::MorphCostIncrease { .. } => {}
         P::UnlockCostReduction { .. } => {}
         P::OpponentDiscardThisToBattlefieldWithCounters { .. } => {}
+        P::ShuffleIntoOwnersLibraryInstead { .. } => {}
         P::None | P::SelfSubjectSurface { .. } => {
             if !wordless_leaf(model.id) { return Err(hold(model)); }
         }

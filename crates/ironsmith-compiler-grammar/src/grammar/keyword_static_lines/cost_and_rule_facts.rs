@@ -190,6 +190,18 @@ pub fn parse_equip_cost_modifier_head_tokens(
     } else {
         EquipCostPayer::Unspecified
     };
+    // The head naming the priced equip activations: "equip abilities",
+    // "equip cost(s)", or "this Equipment's equip abilities cost(s)".
+    let head_words = if source_relative_equipment {
+        4
+    } else {
+        2
+    };
+    if let Some(head_end) =
+        crate::lexer::TokenWordView::new(tokens).token_index_after_words(head_words)
+    {
+        crate::word_claims::claim_tokens(&tokens[..head_end]);
+    }
     Some(EquipCostModifierHead {
         cost_token,
         equip_abilities_head,
@@ -210,51 +222,71 @@ pub enum LegendRuleScopeShape {
     Controller,
     ControllerCreatures,
     ControllerTokens,
+    /// "doesn't apply to it": the source itself.
+    Source,
+    /// "doesn't apply to them" / "to those permanents": the objects a
+    /// leading condition names ("If there are exactly two permanents named
+    /// Brothers Yamazaki on the battlefield, ..."), so the exemption holds
+    /// exactly while that condition does.
+    ConditionObjects,
+    /// "doesn't apply to <objects>": an object scope without "you control",
+    /// read by the line's object-scope reader.
+    Objects,
 }
 
 pub fn parse_legend_rule_doesnt_apply_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LegendRuleScopeShape> {
-    let has_negative = primitives::find_prefix(tokens, || {
-        alt((
-            primitives::kw("doesnt").void(),
-            primitives::kw("doesn't").void(),
-            primitives::phrase(&["does", "not"]),
-        ))
-        .void()
-    })
-    .is_some();
-    (has_negative
-        && primitives::find_prefix(tokens, || primitives::phrase(&["legend", "rule"]).void())
-            .is_some()
-        && primitives::find_prefix(tokens, || primitives::kw("apply").void()).is_some())
-    .then(|| {
-        // "creature tokens you control" (The Master, Multiplied) is a typed
-        // object scope, read by the controller-scope object reader.
-        if primitives::find_prefix(tokens, || {
-            primitives::phrase(&["creature", "tokens", "you", "control"]).void()
-        })
-        .is_some()
-        {
-            LegendRuleScopeShape::Controller
-        } else if primitives::find_prefix(tokens, || {
-            primitives::phrase(&["creatures", "you", "control"]).void()
-        })
-        .is_some()
-        {
-            LegendRuleScopeShape::ControllerCreatures
-        } else if primitives::find_prefix(tokens, || {
-            primitives::phrase(&["tokens", "you", "control"]).void()
-        })
-        .is_some()
-        {
-            LegendRuleScopeShape::ControllerTokens
-        } else if primitives::find_prefix(tokens, || primitives::kw("you").void()).is_some() {
-            LegendRuleScopeShape::Controller
-        } else {
-            LegendRuleScopeShape::Global
+    // The complete sentence: `[the] ["]legend rule["] doesn't apply [to
+    // <scope>]`, read word by word (the quotes are not words).
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let rest = words.strip_prefix(&["the"]).unwrap_or(&words);
+    let rest = rest.strip_prefix(&["legend", "rule"])?;
+    let rest = rest
+        .strip_prefix(&["doesnt"])
+        .or_else(|| rest.strip_prefix(&["doesn't"]))
+        .or_else(|| rest.strip_prefix(&["does", "not"]))?;
+    let rest = rest.strip_prefix(&["apply"])?;
+    let (scope, object_words) = match rest {
+        [] => (LegendRuleScopeShape::Global, 0),
+        ["to", "you"] => (LegendRuleScopeShape::Controller, 0),
+        ["to", "creatures", "you", "control"] => (LegendRuleScopeShape::ControllerCreatures, 1),
+        ["to", "tokens", "you", "control"] => (LegendRuleScopeShape::ControllerTokens, 1),
+        // "to <objects> you control": the controller scope; the object
+        // noun phrase ("permanents", "Spiders", "creature tokens") is read by
+        // the line's object-scope reader.
+        ["to", "permanents" | "permanent", "you", "control"] => {
+            (LegendRuleScopeShape::Controller, 1)
         }
-    })
+        ["to", objects @ .., "you", "control"] if !objects.is_empty() => {
+            (LegendRuleScopeShape::Controller, 0)
+        }
+        ["to", "it"] => (LegendRuleScopeShape::Source, 1),
+        ["to", "them"] | ["to", "those", _] | ["to", "both", "of", "them"] => {
+            (LegendRuleScopeShape::ConditionObjects, rest.len() - 1)
+        }
+        ["to", objects @ ..] if !objects.is_empty() => (LegendRuleScopeShape::Objects, 0),
+        _ => return None,
+    };
+    // The frame words; an object scope's own words are its reader's.
+    let frame_end = words.len() - rest.len();
+    crate::word_claims::claim_words(&words[..frame_end]);
+    match (scope, rest) {
+        (_, []) => {}
+        (_, ["to", "you"]) => crate::word_claims::claim_words(rest),
+        (LegendRuleScopeShape::Source | LegendRuleScopeShape::ConditionObjects, _) => {
+            crate::word_claims::claim_words(rest);
+        }
+        (LegendRuleScopeShape::Objects, [to, ..]) => crate::word_claims::claim_words(&[*to]),
+        (_, [to, middle @ .., you, control]) => {
+            crate::word_claims::claim_words(&[*to, *you, *control]);
+            if object_words > 0 {
+                crate::word_claims::claim_words(middle);
+            }
+        }
+        _ => {}
+    }
+    Some(scope)
 }
 
 pub fn parse_all_cards_spells_permanents_colorless_tokens(tokens: &[OwnedLexToken]) -> bool {

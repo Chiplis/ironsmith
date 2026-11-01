@@ -242,6 +242,7 @@ const TRAILING_THAT_PLAYER_SHUFFLE_PHRASES: &[&[&str]] = &[
 ];
 const LABELED_ABILITY_EXACT_PHRASES: &[&[&str]] = &[
     &["spell", "mastery"],
+    &["fathomless", "descent"],
     &["totem", "armor"],
     &["fateful", "hour"],
     &["join", "forces"],
@@ -270,11 +271,13 @@ const LABELED_ABILITY_FIRST_WORDS: &[&str] = &[
     "enrage",
     "boast",
     "buyback",
+    "celebration",
     "cycling",
     "bloodrush",
     "channel",
     "chroma",
     "cohort",
+    "companion",
     "constellation",
     "converge",
     "corrupted",
@@ -312,6 +315,7 @@ const LABELED_ABILITY_FIRST_WORDS: &[&str] = &[
     "stagger",
     "strive",
     "surge",
+    "sweep",
     "threshold",
     "undergrowth",
     "void",
@@ -858,6 +862,9 @@ pub struct ChooseNewTargetsClauseSplit<'a> {
 pub struct ChangeTargetClauseSplit {
     pub target_tokens: Vec<OwnedLexToken>,
     pub fixed_to_source: bool,
+    /// "to this creature": the source-reference words after "to" when
+    /// `fixed_to_source`.
+    pub fixed_source_tokens: Vec<OwnedLexToken>,
     /// "change the target of that spell to enchanted creature [if able]":
     /// the destination object phrase after "to" when it is not "this ...".
     pub fixed_target_tokens: Option<Vec<OwnedLexToken>>,
@@ -975,6 +982,7 @@ pub fn split_change_target_clause_lexed(
 
     let mut tail_tokens = trim_commas(after_prefix_tokens).to_vec();
     let mut fixed_to_source = false;
+    let mut fixed_source_tokens = Vec::new();
     let mut fixed_target_tokens = None;
     if let Some((before_to, to_tail)) =
         primitives::split_lexed_once_on_separator(&tail_tokens, || {
@@ -983,8 +991,12 @@ pub fn split_change_target_clause_lexed(
         })
     {
         let before_len = before_to.len();
-        if token_slice_first_is(to_tail, "this") {
+        // "to this creature" / "to this permanent": the source itself.
+        if token_slice_first_is(to_tail, "this")
+            && crate::util::is_source_reference_words(&token_word_refs(trim_commas(to_tail).as_slice()))
+        {
             fixed_to_source = true;
+            fixed_source_tokens = trim_commas(to_tail).to_vec();
             tail_tokens.truncate(before_len);
         } else {
             let to_words = token_word_refs(to_tail);
@@ -1008,6 +1020,7 @@ pub fn split_change_target_clause_lexed(
     Some(ChangeTargetClauseSplit {
         target_tokens: tail_tokens,
         fixed_to_source,
+        fixed_source_tokens,
         fixed_target_tokens,
     })
 }

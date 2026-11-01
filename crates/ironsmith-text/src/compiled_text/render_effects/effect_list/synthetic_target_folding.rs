@@ -204,6 +204,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
+        | Value::SubtypesAmong { filter, .. }
         | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)

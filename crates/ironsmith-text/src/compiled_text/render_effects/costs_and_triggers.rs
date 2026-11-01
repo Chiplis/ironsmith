@@ -1483,6 +1483,20 @@ pub(super) fn describe_payment_each_value(value: &Value) -> String {
             "creature type among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::SubtypesAmong { family, filter } => format!(
+            "{} among {}",
+            ironsmith_core::DistinctCharacteristic::Subtypes(*family).singular_phrase(),
+            describe_count_filter_value_subject(filter)
+        ),
+        Value::DistinctAmongSpellsCastThisTurn {
+            characteristic,
+            player,
+            filter,
+        } => format!(
+            "{} among {}",
+            characteristic.singular_phrase(),
+            describe_spells_cast_this_turn_phrase(player, filter)
+        ),
         Value::CardTypesAmong(filter) => format!(
             "card type among {}",
             describe_count_filter_value_subject(filter)

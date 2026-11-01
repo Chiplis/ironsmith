@@ -182,6 +182,9 @@ pub fn parse_activation_restriction_surface_tokens(
             )
         };
         if leading.is_empty() || leading_timing.is_some() || leading_condition.is_some() {
+            // "[activate only] ... [and] only once [each turn]": the limit this
+            // reading adds is read from the trailing words.
+            crate::word_claims::claim_tokens(&tokens[leading.len()..]);
             let limit = match limit {
                 TrailingOnceLimit::EachTurn => PredicateAst::MaxActivationsPerTurn(1),
                 TrailingOnceLimit::Lifetime => PredicateAst::MaxActivationsPerObject(1),

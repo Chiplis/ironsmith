@@ -20,13 +20,121 @@ pub enum LeadingOptionalCompanionVerb {
     Destroy,
     Tap,
     Untap,
+    /// Any other verb whose object is a target phrase ("exile", "return",
+    /// "regenerate", a custom card's verb, ...).
+    Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// "<verb> <slot>, <slot>, and <slot>": one action applied to independently
+/// chosen target slots, each with its own count ("up to one target creature
+/// and up to two target lands", "target artifact and one target land").
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeadingOptionalCompanionShape<'a> {
     pub verb: LeadingOptionalCompanionVerb,
-    pub first_target_tokens: &'a [OwnedLexToken],
-    pub companion_tokens: &'a [OwnedLexToken],
+    pub verb_token: &'a OwnedLexToken,
+    /// Each slot's own tokens; the last slot also carries any trailing words
+    /// the action shares (a destination such as "to their owners' hands").
+    pub slots: Vec<&'a [OwnedLexToken]>,
+    /// The separators between slots (",", "and", ", and").
+    pub separators: Vec<&'a [OwnedLexToken]>,
+    /// Trailing words of the last slot that every slot's action shares, when
+    /// the last slot ends in a prepositional tail after its target noun.
+    pub shared_tail: &'a [OwnedLexToken],
+}
+
+impl<'a> LeadingOptionalCompanionShape<'a> {
+    pub fn first_target_tokens(&self) -> &'a [OwnedLexToken] {
+        self.slots[0]
+    }
+
+    pub fn companion_tokens(&self) -> &'a [OwnedLexToken] {
+        self.slots[self.slots.len() - 1]
+    }
+}
+
+const TARGET_COUNT_WORDS: &[&str] = &["up", "to", "another", "other", "any", "number", "of", "x"];
+
+/// Whether a target slot starts at `start`: optional count words ("up to
+/// one", "two", "another", "any number of") followed by "target".
+fn target_slot_starts_at(tokens: &[OwnedLexToken], start: usize) -> bool {
+    for token in tokens.iter().skip(start).take(6) {
+        let Some(text) = word(token) else {
+            return false;
+        };
+        if text == "target" {
+            return true;
+        }
+        if !(TARGET_COUNT_WORDS.contains(&text)
+            || crate::util::parse_number_word_u32(text).is_some()
+            || text.parse::<u32>().is_ok())
+        {
+            return false;
+        }
+    }
+    false
+}
+
+/// Split a verb's object list into independently counted target slots.
+/// Only a separator that is directly followed by a target slot splits; any
+/// other comma or "and" belongs to the current slot's own filter.
+pub fn split_target_slot_list(
+    body: &[OwnedLexToken],
+) -> Option<(Vec<&[OwnedLexToken]>, Vec<&[OwnedLexToken]>)> {
+    let mut slots = Vec::new();
+    let mut separators = Vec::new();
+    let mut slot_start = 0usize;
+    let mut index = 1usize;
+    while index < body.len() {
+        let token = &body[index];
+        let next_start = if word(token) == Some("and") {
+            Some(index + 1)
+        } else if token.is_comma() {
+            Some(if body.get(index + 1).and_then(word) == Some("and") {
+                index + 2
+            } else {
+                index + 1
+            })
+        } else {
+            None
+        };
+        if let Some(next_start) = next_start
+            && index > slot_start
+            && target_slot_starts_at(body, next_start)
+        {
+            slots.push(&body[slot_start..index]);
+            separators.push(&body[index..next_start]);
+            slot_start = next_start;
+            index = next_start + 1;
+            continue;
+        }
+        index += 1;
+    }
+    if slots.is_empty() || slot_start >= body.len() {
+        return None;
+    }
+    slots.push(&body[slot_start..]);
+    Some((slots, separators))
+}
+
+/// The prepositional tail of the last slot after its target noun phrase
+/// ("... target land card from your graveyard to the battlefield"), which a
+/// shared action such as "return" applies to every slot.
+fn shared_slot_tail(last_slot: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let Some(target) = last_slot.iter().position(|token| word(token) == Some("target")) else {
+        return &[];
+    };
+    last_slot[target + 1..]
+        .iter()
+        .position(|token| {
+            matches!(word(token), Some("to" | "into" | "onto" | "from" | "until" | "under"))
+        })
+        .map_or(&[], |offset| {
+            let tail = &last_slot[target + 1 + offset..];
+            // The tail is the shared destination or duration only; a comma
+            // starts a following clause.
+            let end = tail.iter().position(OwnedLexToken::is_comma).unwrap_or(tail.len());
+            &tail[..end]
+        })
 }
 
 fn word(token: &OwnedLexToken) -> Option<&str> {
@@ -116,47 +224,82 @@ pub fn parse_shared_subject_optional_companion_shape(
     })
 }
 
-/// Captures a leading action applied to one required/source object and one
-/// independently optional target, such as `tap it and up to one target ...`
-/// or `destroy target artifact and up to one other target artifact`.
+/// Captures a leading action applied to independently counted target slots:
+/// `tap it and up to one target ...`, `destroy target artifact and up to one
+/// other target artifact`, `untap up to one target creature and up to two
+/// target lands`, `exile target creature, up to one target artifact, and up
+/// to one target enchantment`.
 pub fn parse_leading_optional_companion_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingOptionalCompanionShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
-    let (verb, body) = match tokens.first().and_then(word) {
-        Some("destroy") => (LeadingOptionalCompanionVerb::Destroy, &tokens[1..]),
-        Some("tap") => (LeadingOptionalCompanionVerb::Tap, &tokens[1..]),
-        // "Untap up to one target creature and up to one target land" (Kiora,
-        // Master of the Depths): two independently counted target slots.
-        Some("untap") => (LeadingOptionalCompanionVerb::Untap, &tokens[1..]),
-        _ => return None,
+    let verb_token = tokens.first()?;
+    let verb = match word(verb_token)? {
+        "destroy" => LeadingOptionalCompanionVerb::Destroy,
+        "tap" => LeadingOptionalCompanionVerb::Tap,
+        "untap" => LeadingOptionalCompanionVerb::Untap,
+        // Verbs whose object is not a list of target slots: a counter, a
+        // token, a card choice, or a revealed/looked-at set.
+        "put" | "choose" | "create" | "search" | "look" | "reveal" | "distribute" | "deal"
+        | "deals" | "if" | "when" | "whenever" | "at" | "as" | "until" | "you" | "each"
+        | "target" | "up" => return None,
+        _ => LeadingOptionalCompanionVerb::Other,
     };
-    let separator = optional_companion_separator(body)?;
-    let first_target_tokens = trim_lexed_commas(&body[..separator]);
-    let companion_tokens = trim_lexed_commas(&body[separator + 1..]);
-    // This grammar owns a two-subject companion shape. In an Oxford-comma
-    // list of three or more explicit targets, the final `and up to` would
-    // otherwise make every earlier target look like one compound first
-    // subject. Leave those lists to the generic multi-target fanout parser,
-    // which gives every repeated target phrase its own choice slot and wraps
-    // all of the resulting actions in one coordinated sequence.
-    if explicit_target_phrase_count(body) > 2 {
+    let body = &tokens[1..];
+    // A following action (", then discard a card") or clause break is not
+    // part of any slot; the chain grammar owns the sequence.
+    if body.iter().any(|token| {
+        matches!(word(token), Some("then")) || token.kind == crate::lexer::TokenKind::Semicolon
+    }) {
         return None;
     }
-    if first_target_tokens.is_empty()
-        || companion_tokens.is_empty()
-        || !companion_tokens.iter().any(|token| token.is_word("target"))
+    let (slots, separators) = split_target_slot_list(body)?;
+    // "an opponent chooses target creature they control" / "target creature
+    // of an opponent's choice": a slot with its own chooser is not a plain
+    // target slot of this action.
+    if slots.iter().any(|slot| {
+        slot.iter()
+            .any(|token| matches!(word(token), Some("choice" | "chooses" | "choose")))
+    }) {
+        return None;
+    }
+    // "Shuffle this creature and target creature ..." (Floodpits Drowner):
+    // for a general verb every slot, the first included, is a target slot;
+    // a leading source reference keeps its own reading.
+    if verb == LeadingOptionalCompanionVerb::Other && !target_slot_starts_at(slots[0], 0) {
+        return None;
+    }
+    // A non-final slot with its own zone or destination phrase ("target
+    // card from your graveyard and target card from an opponent's
+    // graveyard") is an independent clause, not a slot sharing the last
+    // slot's tail.
+    if slots[..slots.len() - 1]
+        .iter()
+        .any(|slot| !shared_slot_tail(slot).is_empty())
     {
         return None;
     }
-    // The verb is re-stated synthetically for each branch, and the "and"
-    // joins the two target slots: both are read by this coordination.
-    crate::word_claims::claim_tokens(&tokens[..1]);
-    crate::word_claims::claim_tokens(&body[separator..separator + 1]);
+    // "Destroy target X, target Y, and target Z" is the destroy family's
+    // own multi-target list (`parse_destroy_multi_target_shape`), which
+    // already gives every slot its own choice; this shape keeps only the
+    // destroy pair it has always owned.
+    if verb == LeadingOptionalCompanionVerb::Destroy
+        && (slots.len() > 2
+            || explicit_target_phrase_count(body) > 2
+            || slots[1].first().and_then(word) != Some("up"))
+    {
+        return None;
+    }
+    if slots.iter().any(|slot| trim_lexed_commas(slot).is_empty()) {
+        return None;
+    }
+    let shared_tail = shared_slot_tail(slots[slots.len() - 1]);
     Some(LeadingOptionalCompanionShape {
         verb,
-        first_target_tokens,
-        companion_tokens,
+        verb_token,
+        slots: slots.into_iter().map(trim_lexed_commas).collect(),
+        separators,
+        shared_tail,
     })
 }
 
@@ -218,11 +361,11 @@ mod tests {
         let shape = parse_leading_optional_companion_shape(&tokens).unwrap();
         assert_eq!(shape.verb, LeadingOptionalCompanionVerb::Destroy);
         assert_eq!(
-            render_token_slice(shape.first_target_tokens),
+            render_token_slice(shape.first_target_tokens()),
             "target artifact or enchantment"
         );
         assert_eq!(
-            render_token_slice(shape.companion_tokens),
+            render_token_slice(shape.companion_tokens()),
             "up to one other target artifact or enchantment."
         );
     }

@@ -602,6 +602,17 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     /// Background" or other pairing variants).
     fn tail_has_partner_family(&self) -> bool;
     fn tail_has_ability_marker(&self, marker: &str) -> bool;
+    /// A casting keyword granted by another effect (Snapcaster Mage's
+    /// flashback), read from the subject's current object.
+    fn tail_has_granted_casting_keyword(
+        &self,
+        marker: &str,
+        game: &crate::game_state::GameState,
+        ctx: &FilterContext,
+    ) -> bool {
+        game.object(self.subject_object_id())
+            .is_some_and(|object| object_has_granted_casting_keyword(object, marker, game, ctx))
+    }
     fn tail_has_tap_activated_ability(&self) -> bool;
     fn tail_has_non_mana_activated_ability(&self) -> bool;
     fn tail_is_commander(&self, game: &crate::game_state::GameState) -> bool;
@@ -961,6 +972,26 @@ impl TailMatchSubject for ObjectSnapshot {
     ) -> bool {
         game.object(self.object_id)
             .is_some_and(|obj| object_has_alternative_cast_kind(obj, kind, game, ctx))
+    }
+
+    fn tail_has_granted_casting_keyword(
+        &self,
+        marker: &str,
+        game: &crate::game_state::GameState,
+        ctx: &FilterContext,
+    ) -> bool {
+        if let Some(object) = game.object(self.object_id) {
+            return object_has_granted_casting_keyword(object, marker, game, ctx);
+        }
+        // The card left the zone this snapshot recorded (a discarded card is
+        // already in exile or the graveyard when "if it has madness" is
+        // checked): match grants in the recorded zone against the card's
+        // current incarnation (Falkenrath Gorger's grant to Vampire cards).
+        game.find_object_by_stable_id(self.stable_id)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| {
+                object_has_granted_casting_keyword_in_zone(object, self.zone, marker, game, ctx)
+            })
     }
 
     fn tail_has_complete_abilities(&self) -> bool {
@@ -2968,6 +2999,22 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i64)
         }
+        Value::SubtypesAmong { family, filter } => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    let subtypes = game
+                        .current_subtypes(object.id)
+                        .unwrap_or_else(|| object.subtypes.to_vec());
+                    for subtype in subtypes {
+                        if family.is_none_or(|family| family.contains(subtype)) {
+                            seen.insert(subtype);
+                        }
+                    }
+                }
+            }
+            Some(seen.len() as i64)
+        }
         Value::CardTypesAmong(filter) | Value::PermanentTypesAmong(filter) => {
             let permanent_only = matches!(rhs, Value::PermanentTypesAmong(_));
             let mut seen = std::collections::HashSet::new();
@@ -3667,6 +3714,16 @@ impl PlayerFilterExt for PlayerFilter {
                         .first()
                         .is_some_and(|snapshot| snapshot.controller == player)
             }
+            // A battle's protector is game state, read by
+            // `player_filter_matches_game`; the owner is on the snapshot.
+            PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                ctx.target_players.contains(&player)
+                    || (*relation == ironsmith_core::TargetObjectPlayerRelation::Owner
+                        && ctx
+                            .target_objects
+                            .first()
+                            .is_some_and(|snapshot| snapshot.owner == player))
+            }
             PlayerFilter::Excluding { base, excluded } => {
                 base.matches_player(player, ctx) && !excluded.matches_player(player, ctx)
             }
@@ -4136,6 +4193,16 @@ pub(crate) fn player_filter_matches_game(
             player_filter_matches_game(base, player, game, ctx)
                 && !player_filter_matches_game(excluded, player, game, ctx)
         }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(
+            ironsmith_core::TargetObjectPlayerRelation::Protector,
+        ) => {
+            ctx.target_players.contains(&player)
+                || ctx
+                    .target_objects
+                    .first()
+                    .and_then(|snapshot| game.battle_protector(snapshot.object_id))
+                    == Some(player)
+        }
         other => other.matches_player(player, ctx),
     }
 }
@@ -4541,6 +4608,7 @@ impl ObjectFilterExt for ObjectFilter {
             !subject.tail_has_ability_marker(marker)
                 && !stack_entry
                     .is_some_and(|entry| stack_entry_has_ability_marker(game, entry, marker))
+                && !subject.tail_has_granted_casting_keyword(marker, game, ctx)
         }) {
             return false;
         }
@@ -4548,6 +4616,7 @@ impl ObjectFilterExt for ObjectFilter {
             subject.tail_has_ability_marker(marker)
                 || stack_entry
                     .is_some_and(|entry| stack_entry_has_ability_marker(game, entry, marker))
+                || subject.tail_has_granted_casting_keyword(marker, game, ctx)
         }) {
             return false;
         }
@@ -5524,6 +5593,15 @@ impl ObjectFilterExt for ObjectFilter {
                     controller_suffix =
                         Some("that player or that object's controller controls".to_string())
                 }
+                PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some(format!(
+                        "that player or that object's {} controls",
+                        relation.noun()
+                    ))
+                }
                 PlayerFilter::Excluding { .. } if ctrl.is_your_team() => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
@@ -5661,6 +5739,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::IteratedPlayer => "that player owns".to_string(),
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "that player or that object's controller owns".to_string()
+                }
+                PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                    format!("that player or that object's {} owns", relation.noun())
                 }
                 // "permanents they control but don't own": every owner except
                 // the player the surrounding clause is about.

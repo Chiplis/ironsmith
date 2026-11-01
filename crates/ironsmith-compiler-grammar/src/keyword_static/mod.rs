@@ -9564,8 +9564,15 @@ pub fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) -> Option
 pub fn parse_shuffle_into_library_from_graveyard_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    if is_shuffle_into_library_from_graveyard_line_lexed(tokens) {
-        return Ok(Some(StaticAbility::shuffle_into_library_from_graveyard()));
+    // "If this would be put into <zone> from anywhere, [reveal this and]
+    // shuffle it into its owner's library instead." is read whole; the
+    // replaced destination and the reveal are the ability's.
+    if let Some(shape) = crate::grammar::abilities::parse_self_shuffle_into_library_shape(tokens) {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(StaticAbility::shuffle_into_owners_library_instead(
+            shape.to_zone,
+            shape.reveal,
+        )));
     }
 
     Ok(None)

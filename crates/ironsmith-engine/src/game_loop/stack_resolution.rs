@@ -128,7 +128,9 @@ fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) 
     use crate::target::PlayerFilter;
 
     match filter {
-        PlayerFilter::Target(_) | PlayerFilter::TargetPlayerOrControllerOfTarget => true,
+        PlayerFilter::Target(_)
+        | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_) => true,
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_references_target_player(base)
                 || player_filter_references_target_player(excluded)

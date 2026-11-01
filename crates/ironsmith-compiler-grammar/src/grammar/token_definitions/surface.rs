@@ -666,7 +666,12 @@ pub(super) fn creature_rules(
         mercenary_pump: common::word_present(words, "mercenary")
             && all(&["creature", "1/1", "red"]),
         combat_restriction,
-        can_block_only_flying: all(&["can", "block", "only", "creatures", "flying"]),
+        // "This token can block only creatures with flying.": the exact
+        // restriction this flag models, read as a phrase.
+        can_block_only_flying: common::phrase_read(
+            words,
+            &["can", "block", "only", "creatures", "with", "flying"],
+        ),
         counter_noncreature_unless_pays: all(&[
             "counter",
             "noncreature",

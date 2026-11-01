@@ -81,7 +81,8 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
         | PlayerFilter::CastCardTypeThisTurn(_) | PlayerFilter::TurnHistory(_)
         | PlayerFilter::AttackedBySourceThisTurn
         | PlayerFilter::ChosenPlayer | PlayerFilter::TaggedPlayer(_) | PlayerFilter::IteratedPlayer
-        | PlayerFilter::TargetPlayerOrControllerOfTarget | PlayerFilter::ControllerOf(_)
+        | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_) | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_) | PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {}
     }
     Ok(rewritten)
@@ -142,7 +143,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         created_with_source, created_with_source_surface, entered_graveyard_this_turn,
         entered_graveyard_from_battlefield_this_turn, entered_graveyard_from_library_this_turn,
         entered_graveyard_not_from_battlefield_this_turn, not_put_into_graveyard_this_combat,
-        milled_into_graveyard_this_turn, surveilled_this_turn, fought_this_turn, attacking_battle,
+        milled_into_graveyard_this_turn, surveilled_this_turn, fought_this_turn, attacking_battle, attacking_planeswalker,
         counters_put_on_this_turn, counter_source_history, discarded_or_cycled_this_turn_by,
         was_dealt_damage_this_turn, dealt_damage_this_turn, dealt_damage_by_source_this_turn,
         was_dealt_damage_by_source_this_game, dealt_damage_to_player_this_turn,
@@ -277,6 +278,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::LeastPower(filter) | Value::LeastToughness(filter) | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter) | Value::CreatureTypesAmong(filter)
         | Value::PlaneswalkerTypesAmong(filter)
+        | Value::SubtypesAmong { filter, .. }
         | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter) | Value::StaticAbilitiesAmong { filter, .. }
         | Value::ColorsAmong(filter) | Value::ColorPairsAmong(filter)
@@ -315,7 +317,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::PlayersWhoControlAtLeastMoreThanYou { players: player, filter, .. }
         | Value::SpellsCastThisTurnMatching { player, filter, .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. }
-        | Value::CardTypesAmongSpellsCastThisTurn { player, filter } => {
+        | Value::CardTypesAmongSpellsCastThisTurn { player, filter }
+        | Value::DistinctAmongSpellsCastThisTurn { player, filter, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }
@@ -469,6 +472,7 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
             *player = rewrite_player_filter_words(player, change)?;
         }
         TurnHistoryCount::Sacrificed { player, filter } | TurnHistoryCount::SacrificedCardTypes { player, filter }
+        | TurnHistoryCount::SacrificedDistinct { player, filter, .. }
         | TurnHistoryCount::CreaturesAttackedWith { player, filter, .. }
         | TurnHistoryCount::CombatDamageSourcesToPlayers { player, filter, .. }
         | TurnHistoryCount::PlayersDealtCombatDamageBy { players: player, sources: filter }

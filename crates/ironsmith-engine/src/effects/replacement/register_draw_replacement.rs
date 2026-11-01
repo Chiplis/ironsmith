@@ -82,6 +82,7 @@ impl EffectExecutor for RegisterDrawReplacementEffect {
             PlayerFilter::You
                 | PlayerFilter::IteratedPlayer
                 | PlayerFilter::TargetPlayerOrControllerOfTarget
+                | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
                 | PlayerFilter::Target(_)
                 | PlayerFilter::AliasedTarget(_)
                 | PlayerFilter::TaggedPlayer(_)

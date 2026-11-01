@@ -1033,6 +1033,8 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
         let first = parse_get_pump_clause(subject_tokens, &first_tokens, full_tokens)?;
         let second = parse_get_pump_clause(subject_tokens, &second_tokens, full_tokens)?;
         if let (Some(first), Some(second)) = (first, second) {
+            // The "or" is the choice between the two branches.
+            crate::word_claims::claim_tokens(std::slice::from_ref(alternative.or_token));
             return Ok(Some(EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseOneOf {
                     chooser: crate::target::PlayerFilter::You,

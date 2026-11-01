@@ -44,6 +44,14 @@ pub(super) fn parse_milling_trigger(
         // A completed mill can end in any public replacement destination.
         filter.zone = None;
     }
+    // The milling player, the verb ("mills" / "are milled"), "one or more"
+    // and a bare "card(s)" are read here; a card filter reads itself.
+    if filter.is_some() {
+        crate::word_claims::claim_words(&words[..start]);
+        crate::word_claims::claim_words(&words[end..]);
+    } else {
+        crate::word_claims::claim_words(&words);
+    }
     Ok(Some(TriggerSpec::CardsMilled {
         player,
         filter,

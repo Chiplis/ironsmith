@@ -482,18 +482,69 @@ fn each_player_exile_top_cast_uses_captured_exile_and_cast_clauses() {
 
 #[test]
 fn zone_replacement_uses_captured_condition_and_replacement_clauses() {
-    // The program carries no object filter, so only "a card" (any card) is
-    // read; a tagged "that card" must not be widened to every card.
+    use crate::cards::builders::{ReplacementActionAst, ZoneReplacementDurationAst};
+
+    // A future replacement of the move of matching objects into your
+    // graveyard this turn: the registered replacement's object filter, or
+    // None when the parser produced something else.
+    fn future_graveyard_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement {
+                    filter,
+                    from_zone: None,
+                    to_zone: Some(Zone::Graveyard),
+                    replacement_zone: Zone::Exile,
+                    duration: ZoneReplacementDurationAst::UntilEndOfTurn,
+                    ..
+                }),
+            ..
+        }) = effect
+        else {
+            return None;
+        };
+        Some(filter)
+    }
+
+    // "that card" binds to the object a preceding instruction named, not to
+    // every card.
     let tagged = crate::lexer::lex_line(
         "If that card would be put into your graveyard this turn, exile that card instead.",
         0,
     )
     .expect("tagged replacement text should lex");
+    let effect = parse_zone_replacement_subject_verb(&tagged)
+        .expect("zone replacement parser should not error")
+        .expect("tagged zone replacement should parse");
+    let filter = future_graveyard_filter(&effect)
+        .unwrap_or_else(|| panic!("expected a future graveyard replacement: {effect:#?}"));
     assert!(
-        parse_zone_replacement_subject_verb(&tagged)
-            .expect("zone replacement parser should not error")
-            .is_none()
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }),
+        "{filter:#?}"
     );
+    assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+
+    // A narrowed object keeps its filter: only creature cards are exiled.
+    let narrowed = crate::lexer::lex_line(
+        "If a creature card would be put into your graveyard from anywhere this turn, exile that card instead.",
+        0,
+    )
+    .expect("narrowed replacement text should lex");
+    let effect = parse_zone_replacement_subject_verb(&narrowed)
+        .expect("zone replacement parser should not error")
+        .expect("narrowed zone replacement should parse");
+    let filter = future_graveyard_filter(&effect)
+        .unwrap_or_else(|| panic!("expected a future graveyard replacement: {effect:#?}"));
+    assert!(
+        filter.card_types.contains(&crate::types::CardType::Creature),
+        "{filter:#?}"
+    );
+    assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+
+    // "a card" stays the standing exile-instead-of-graveyard program.
     for text in [
         "If a card would be put into your graveyard from anywhere this turn, exile that card instead.",
     ] {

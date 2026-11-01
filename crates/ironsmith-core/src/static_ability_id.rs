@@ -607,6 +607,10 @@ pub enum StaticAbilityId {
     /// A sticker-sheet row (CR 123.7, 123.8) and its ticket cost; inert on
     /// the sheet itself (CR 123.2). Appended for wire compatibility.
     TicketSticker,
+    /// "The legend rule doesn't apply to <objects>" without a controller
+    /// scope: matching permanents are exempt in every controller's group
+    /// (CR 704.5j). Appended for wire compatibility.
+    LegendRuleDoesntApplyToMatching,
 }
 
 impl StaticAbilityId {
@@ -991,6 +995,7 @@ impl StaticAbilityId {
             | LegendRuleDoesntApply
             | LegendRuleDoesntApplyToController
             | LegendRuleDoesntApplyToControllerTokens
+            | LegendRuleDoesntApplyToMatching
             | ManaSpendPermission
             | SpendManaAsAnyColor
             | SpendManaAsAnyColorActivationCosts

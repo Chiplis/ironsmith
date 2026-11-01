@@ -654,6 +654,7 @@ impl TriggerMatcher for AttacksTrigger {
                 | display_filter.targets_only_player.take().is_some();
         // "Whenever this creature attacks a battle" (Thrashing Frontliner).
         let attacks_battle = std::mem::take(&mut display_filter.attacking_battle);
+        let attacks_planeswalker = std::mem::take(&mut display_filter.attacking_planeswalker);
         let described_subject = display_filter.description();
         let articleless_attachment_subject =
             display_filter.tagged_constraints.iter().any(|constraint| {
@@ -732,6 +733,7 @@ impl TriggerMatcher for AttacksTrigger {
                 " the player with the most life or tied for most life".to_string()
             }
             (None, false) if attacks_battle => " a battle".to_string(),
+            (None, false) if attacks_planeswalker => " a planeswalker".to_string(),
             _ => String::new(),
         };
 

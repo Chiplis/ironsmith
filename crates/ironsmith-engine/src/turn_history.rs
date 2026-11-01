@@ -2469,6 +2469,32 @@ pub(crate) fn resolve_turn_history_count(
                     && filter.matches_snapshot(snapshot, filter_ctx, game)
             })
             .count() as i32,
+        TurnHistoryCount::SacrificedDistinct {
+            characteristic,
+            player,
+            filter,
+        } => {
+            // Each value counts once however many sacrificed permanents had
+            // it; each permanent is read as it last existed on the battlefield.
+            let mut seen = std::collections::HashSet::new();
+            for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<SacrificeEvent>() else {
+                    continue;
+                };
+                let Some(snapshot) = event.snapshot.as_ref().or(record.object_snapshot.as_ref())
+                else {
+                    continue;
+                };
+                let sacrificing_player = event.sacrificing_player.unwrap_or(snapshot.controller);
+                if !player.matches_player(sacrificing_player, filter_ctx)
+                    || !filter.matches_snapshot(snapshot, filter_ctx, game)
+                {
+                    continue;
+                }
+                seen.extend(snapshot.distinct_characteristic_keys(*characteristic));
+            }
+            seen.len() as i32
+        }
         TurnHistoryCount::SacrificedCardTypes { player, filter } => {
             // A card type counts once however many sacrificed permanents had
             // it; each permanent is read as it last existed on the battlefield.

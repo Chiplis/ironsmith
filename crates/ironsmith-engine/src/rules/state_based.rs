@@ -500,6 +500,7 @@ impl SbaCandidates {
                         StaticAbilityId::LegendRuleDoesntApply
                             | StaticAbilityId::LegendRuleDoesntApplyToController
                             | StaticAbilityId::LegendRuleDoesntApplyToControllerTokens
+                            | StaticAbilityId::LegendRuleDoesntApplyToMatching
                     )
                 })) << 8)
                 | (u16::from(chars.static_abilities.iter().any(|ability| {
@@ -2002,6 +2003,7 @@ fn check_legend_rule_with_view(
                         ability.id(),
                         StaticAbilityId::LegendRuleDoesntApplyToController
                             | StaticAbilityId::LegendRuleDoesntApplyToControllerTokens
+                            | StaticAbilityId::LegendRuleDoesntApplyToMatching
                     )
             }) {
                 let fallback =
@@ -2012,6 +2014,10 @@ fn check_legend_rule_with_view(
                     } else {
                         crate::target::ObjectFilter::permanent()
                     };
+                // A cross-controller exemption covers every controller's
+                // group; the others cover only the source controller's.
+                let any_controller =
+                    ability.id() == StaticAbilityId::LegendRuleDoesntApplyToMatching;
                 controller_exemptions.push((
                     controller,
                     obj_id,
@@ -2019,6 +2025,7 @@ fn check_legend_rule_with_view(
                         .legend_rule_exemption_filter()
                         .cloned()
                         .unwrap_or(fallback),
+                    any_controller,
                 ));
             }
         }
@@ -2048,8 +2055,8 @@ fn check_legend_rule_with_view(
         }
         if controller_exemptions
             .iter()
-            .any(|(controller, source, filter)| {
-                *controller == chars.controller
+            .any(|(controller, source, filter, any_controller)| {
+                (*any_controller || *controller == chars.controller)
                     && game.object(obj_id).is_some_and(|candidate| {
                         filter.matches(
                             candidate,

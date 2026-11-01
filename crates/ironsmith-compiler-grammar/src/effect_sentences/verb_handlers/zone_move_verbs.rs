@@ -782,9 +782,20 @@ fn parse_draw_for_each_known_count_value(
     Ok(
         match zone_move_grammar::parse_draw_known_count_shape(tokens) {
             Some(zone_move_grammar::DrawKnownCountShape::KickCount) => Some(Value::KickCount),
-            Some(zone_move_grammar::DrawKnownCountShape::ColorsAmong { filter_tokens }) => Some(
-                Value::ColorsAmong(parse_object_filter(filter_tokens, false)?),
-            ),
+            Some(zone_move_grammar::DrawKnownCountShape::ColorsAmong { filter_tokens }) => {
+                // "colors among spells you've cast this turn": the cast
+                // history, not the spells still on the stack.
+                let scope_words = crate::lexer::token_word_refs(filter_tokens);
+                if let Some(historical) =
+                    crate::grammar::shared_util::value_helper_shapes::historical_aggregate_scope_value(
+                        crate::grammar::shared_util::value_shapes::AggregateValueMetric::Colors,
+                        &scope_words,
+                    )
+                {
+                    return Ok(historical);
+                }
+                Some(Value::ColorsAmong(parse_object_filter(filter_tokens, false)?))
+            }
             Some(zone_move_grammar::DrawKnownCountShape::CreaturesDiedThisTurn) => {
                 Some(Value::CreaturesDiedThisTurn)
             }

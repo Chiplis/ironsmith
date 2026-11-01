@@ -121,7 +121,7 @@ pub fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
 /// the possessor names that object, so reading "owner" reads it too.
 pub fn claim_owner_possessors(tokens: &[OwnedLexToken]) {
     for pair in tokens.windows(2) {
-        if matches!(pair[0].parser_text(), "its" | "their")
+        if matches!(pair[0].parser_text(), "its" | "their" | "his" | "her")
             && matches!(
                 pair[1].parser_text(),
                 "owner" | "owners" | "owner's" | "owners'"

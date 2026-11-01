@@ -5562,6 +5562,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::TaggedPlayer(_)
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
         | PlayerFilter::Target(_)
         | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::ControllerOf(_)

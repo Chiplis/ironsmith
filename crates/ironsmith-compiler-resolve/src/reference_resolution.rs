@@ -10923,6 +10923,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::PlaneswalkerTypesAmong(filter)
+        | Value::SubtypesAmong { filter, .. }
         | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)

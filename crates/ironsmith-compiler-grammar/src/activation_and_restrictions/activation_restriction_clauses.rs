@@ -2009,6 +2009,8 @@ pub fn parse_activated_ability_subject(
         words.as_slice(),
         ["its", "activated", "abilities"] | ["their", "activated", "abilities"]
     ) {
+        // The referenced object's activated abilities, read whole.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(ParsedActivatedAbilitySubject {
             filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             target: None,

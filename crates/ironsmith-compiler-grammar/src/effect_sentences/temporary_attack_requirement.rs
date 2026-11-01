@@ -594,6 +594,8 @@ pub(super) fn parse_referenced_combat_requirement(tokens: &[OwnedLexToken]) -> O
     if !is_referenced_creatures_subject(&body[..index]) {
         return None;
     }
+    // The back-referenced subject ("that creature", "those creatures").
+    crate::word_claims::claim_tokens(&body[..index]);
     let mut creatures = crate::target::ObjectFilter::creature().match_tagged(
         crate::tag::CompilerReferenceTag::It.bind(),
         crate::target::TaggedOpbjectRelation::IsTaggedObject,

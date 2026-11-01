@@ -341,6 +341,7 @@ fn bind_named_restriction_player(
         crate::target::PlayerFilter::Target(_)
         | crate::target::PlayerFilter::AliasedTarget(_)
         | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+        | crate::target::PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
         | crate::target::PlayerFilter::IteratedPlayer
         | crate::target::PlayerFilter::TaggedPlayer(_)
         | crate::target::PlayerFilter::ChosenPlayer => {
@@ -815,6 +816,7 @@ impl EffectExecutor for CantEffect {
                 crate::target::PlayerFilter::Target(_)
                 | crate::target::PlayerFilter::AliasedTarget(_)
                 | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+                | crate::target::PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
                 | crate::target::PlayerFilter::IteratedPlayer
                 | crate::target::PlayerFilter::TaggedPlayer(_)
                 | crate::target::PlayerFilter::ChosenPlayer => {
@@ -833,6 +835,7 @@ impl EffectExecutor for CantEffect {
                 crate::target::PlayerFilter::Target(_)
                 | crate::target::PlayerFilter::AliasedTarget(_)
                 | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+                | crate::target::PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
                 | crate::target::PlayerFilter::IteratedPlayer
                 | crate::target::PlayerFilter::TaggedPlayer(_)
                 | crate::target::PlayerFilter::ChosenPlayer => {

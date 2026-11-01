@@ -102,6 +102,13 @@ pub(crate) fn describe_source_condition_static_ability(
         Wither => Some("wither"),
         Infect => Some("infect"),
         Changeling => Some("changeling"),
+        // Every other keyword the "has <keyword>" filter reads as a static
+        // ability ("if it has convoke" must not render as "a permanent with
+        // convoke").
+        Cascade => Some("cascade"),
+        Convoke => Some("convoke"),
+        Phasing => Some("phasing"),
+        Protection => Some("protection"),
         _ => None,
     }
 }
@@ -477,6 +484,14 @@ fn describe_turn_history_value_comparison(
                 from_outside_hand: false,
                 ..
             } if operator == Equal => true,
+            // Any other comparison of that ordinal count has no prose that
+            // reads every field.
+            H::SpellsCast {
+                before_triggering_spell: true,
+                from_zone: None,
+                from_outside_hand: false,
+                ..
+            } => false,
             H::SpellsCast { exclude_source, .. } => !*exclude_source && presence_only,
             H::KeywordActionsPerformed { .. } => presence_only,
             H::Died { .. }
@@ -496,15 +511,6 @@ fn describe_turn_history_value_comparison(
             H::MovedZones { filter, from, to } => {
                 filter.controller.is_none() || (*from == Some(Zone::Battlefield) && to.is_none())
             }
-            // The ordinal prose ("it's the second creature spell you've cast
-            // this turn") reads the player, filter, source exclusion and
-            // event boundary; it has no words for an origin zone.
-            H::SpellsCast {
-                before_triggering_spell: true,
-                from_zone: None,
-                from_outside_hand: false,
-                ..
-            } => operator == Equal,
             H::DamageDealtBySource
             | H::Cycled(_)
             | H::DiscardedOrCycled(_)
@@ -854,6 +860,19 @@ fn describe_turn_history_value_comparison_prose(
                     "{player} sacrificed {count_text} or more {plural} this turn"
                 ))
             }
+        }
+        ironsmith_core::TurnHistoryCount::SacrificedDistinct {
+            characteristic,
+            player,
+            filter,
+        } => {
+            let player = describe_history_player_subject(player);
+            let subject = describe_history_filter_subject(filter, "permanent");
+            let plural = pluralize_relative_object_phrase(&subject);
+            let head = characteristic.plural_phrase();
+            Some(format!(
+                "{count_text} or more {head} are among {plural} {player} sacrificed this turn"
+            ))
         }
         ironsmith_core::TurnHistoryCount::SacrificedCardTypes { player, filter } => {
             let player = describe_history_player_subject(player);

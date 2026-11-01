@@ -78,8 +78,26 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             ));
         }
     }
-    if surface.has_phrase(CreationPhrase::NotLegendary) {
+    if let Some(location) = surface.phrase_location(CreationPhrase::NotLegendary) {
         spec.removed_supertypes.push(Supertype::Legendary);
+        // "except it isn't legendary": the exception's subject and the
+        // negated supertype are the removed-supertype modifier.
+        if let Some(phrase) = CreationPhrase::NotLegendary
+            .alternatives()
+            .iter()
+            .copied()
+            .filter(|phrase| modifier_words[location..].starts_with(phrase))
+            .max_by_key(|phrase| phrase.len())
+        {
+            let start = if location > 0
+                && matches!(modifier_words[location - 1], "it" | "they" | "tokens" | "token")
+            {
+                location - 1
+            } else {
+                location
+            };
+            crate::word_claims::claim_words(&modifier_words[start..location + phrase.len()]);
+        }
     }
     spec.set_base_power_toughness = modifier_words
         .iter()
@@ -215,8 +233,24 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     }
 
     if let Some(addition) = surface.phrase_location(CreationPhrase::AdditionToOtherTypes) {
+        // "except it's a Spirit in addition to its other types": the
+        // identity copula, its article and the addition phrase read as the
+        // added-types modifier.
+        let phrase_len = CreationPhrase::AdditionToOtherTypes
+            .alternatives()
+            .iter()
+            .filter(|alternative| modifier_words[addition..].starts_with(alternative))
+            .map(|alternative| alternative.len())
+            .max()
+            .unwrap_or(0);
+        crate::word_claims::claim_words(&modifier_words[addition..addition + phrase_len]);
         let mut colors = ColorSet::new();
         for word in &modifier_words[..addition] {
+            if CreationWords::new(&[*word]).first_is(CreationWordClass::Article)
+                || matches!(*word, "its" | "it" | "is" | "s" | "it's" | "it’s" | "they" | "are" | "re" | "theyre" | "they're" | "they’re")
+            {
+                crate::word_claims::claim_word(word);
+            }
             if let Some(color) = crate::util::parse_color(word) {
                 colors = colors.union(color);
             }
@@ -264,8 +298,13 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
                         | "they're"
                         | "they’re"
                 )
-                || parse_pt_word(word).is_some()
             {
+                // "except it's a 4/4 black Zombie": the identity copula and
+                // its article introduce the replacement characteristics.
+                crate::word_claims::claim_word(word);
+                continue;
+            }
+            if parse_pt_word(word).is_some() {
                 continue;
             }
             if let Some(color) = crate::util::parse_color(word) {

@@ -737,13 +737,70 @@ pub fn is_effect_discard_to_library_replacement_line_lexed(tokens: &[OwnedLexTok
 }
 
 pub fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, &["would", "be", "put"])
-        && contains_token_word(tokens, "graveyard")
-        && contains_token_word(tokens, "anywhere")
-        && contains_token_word(tokens, "reveal")
-        && contains_token_word(tokens, "shuffle")
-        && contains_token_word(tokens, "library")
-        && contains_token_word(tokens, "instead")
+    parse_self_shuffle_into_library_shape(tokens).is_some()
+}
+
+/// The replaced destination and reveal of a self-shuffle replacement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelfShuffleIntoLibraryShape {
+    pub to_zone: crate::zone::Zone,
+    pub reveal: bool,
+}
+
+/// "If <this> would be put into <zone> from anywhere, [reveal <this> and]
+/// shuffle it into its owner's library instead." (Darksteel Colossus,
+/// Progenitus). The subject must name the source: a "this ..." reference,
+/// or a name the reveal clause repeats (the raw card name before
+/// self-reference normalization). Anything else is not this reading.
+pub fn parse_self_shuffle_into_library_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SelfShuffleIntoLibraryShape> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let rest = words.strip_prefix(&["if"])?;
+    let would = rest.windows(3).position(|window| window == ["would", "be", "put"])?;
+    let subject = &rest[..would];
+    if subject.is_empty() {
+        return None;
+    }
+    let rest = rest[would + 3..].strip_prefix(&["into"])?;
+    let from = rest.iter().position(|word| *word == "from")?;
+    let to_zone = match &rest[..from] {
+        ["a", "graveyard"] | ["your", "graveyard"] | ["its", "owner's" | "owners", "graveyard"] => {
+            crate::zone::Zone::Graveyard
+        }
+        ["exile"] => crate::zone::Zone::Exile,
+        ["a", "hand"] | ["your", "hand"] | ["its", "owner's" | "owners", "hand"] => {
+            crate::zone::Zone::Hand
+        }
+        _ => return None,
+    };
+    let rest = rest[from..].strip_prefix(&["from", "anywhere"])?;
+    let (reveal, rest) = match rest.strip_prefix(&["reveal"]) {
+        Some(after) => {
+            let and = after.iter().position(|word| *word == "and")?;
+            let revealed = &after[..and];
+            if revealed != ["it"] && revealed != subject {
+                return None;
+            }
+            (true, &after[and + 1..])
+        }
+        None => (false, rest),
+    };
+    if rest
+        != [
+            "shuffle", "it", "into", "its", "owner's", "library", "instead",
+        ]
+        && rest != ["shuffle", "it", "into", "its", "owners", "library", "instead"]
+    {
+        return None;
+    }
+    // The subject is the source: "this", "this <noun>", or a repeated name.
+    let names_source = crate::util::is_source_reference_words(subject)
+        || (reveal && subject.first() != Some(&"a") && subject.first() != Some(&"an"));
+    if !names_source {
+        return None;
+    }
+    Some(SelfShuffleIntoLibraryShape { to_zone, reveal })
 }
 
 fn parse_unsigned_integer_token<'a>(

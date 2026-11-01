@@ -225,6 +225,9 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that planeswalker's controller".to_string()
         }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            format!("that player or that object's {}", relation.noun())
+        }
         PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "opponent attacking that player".into(),
         // "Target opponent whose turn it is" (The Beamtown Bullies): the
         // active player, restricted to your opponents.

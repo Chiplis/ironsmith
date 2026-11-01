@@ -132,7 +132,7 @@ pub(super) fn read_object_filter(
     input: &RestrictionSubject<'_>,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let tokens = input.tokens;
-    if let Some(filter) = read_target_player_or_planeswalker_controller_subject(tokens) {
+    if let Some(filter) = read_player_or_object_relative_player_subject(tokens)? {
         return Ok(Some(filter));
     }
     if let Ok(mut filter) = parse_object_filter(tokens, false)
@@ -146,37 +146,96 @@ pub(super) fn read_object_filter(
     Ok(None)
 }
 
+/// The player relation an "<object ref>'s <role>" names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObjectRelativePlayerRole {
+    Controller,
+    Owner,
+    Protector,
+}
+
+fn object_relative_player_role(word: &str) -> Option<ObjectRelativePlayerRole> {
+    match word {
+        "controller" | "controllers" => Some(ObjectRelativePlayerRole::Controller),
+        "owner" | "owners" => Some(ObjectRelativePlayerRole::Owner),
+        "protector" | "protectors" => Some(ObjectRelativePlayerRole::Protector),
+        _ => None,
+    }
+}
+
 /// "creatures controlled by that player or by that planeswalker's
-/// controller" (Concussive Bolt): the controller of the earlier "target
-/// player or planeswalker". Read before the plain filter, whose "or" would
-/// otherwise split the subject into a creature/planeswalker union.
-fn read_target_player_or_planeswalker_controller_subject(
+/// controller" (Concussive Bolt), and every "<player ref> or [by] <object
+/// ref>'s controller/owner/protector" relation: the player of an earlier
+/// "target player or <object>" choice, or the named relation of the chosen
+/// object. Read before the plain filter, whose "or" would otherwise split the
+/// subject into an object-type union.
+fn read_player_or_object_relative_player_subject(
     tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
+) -> Result<Option<ObjectFilter>, CardTextError> {
     let view = crate::grammar::primitives::TokenWordView::new(tokens);
     let words = view.word_refs();
-    let relation_start = words.iter().position(|word| *word == "controlled")?;
-    if relation_start == 0 {
-        return None;
+    let Some(relation_start) = words.iter().position(|word| *word == "controlled") else {
+        return Ok(None);
+    };
+    if relation_start == 0 || words.get(relation_start + 1) != Some(&"by") {
+        return Ok(None);
     }
-    let planeswalkers = |word: &str| matches!(word, "planeswalker's" | "planeswalker’s" | "planeswalkers");
-    match &words[relation_start..] {
-        ["controlled", "by", "that", "player" | "opponent", "or", "that", walker, "controller"]
-        | ["controlled", "by", "that", "player" | "opponent", "or", "by", "that", walker, "controller"]
-            if planeswalkers(*walker) => {}
-        _ => return None,
-    }
-    let base_end = view.map_word_or_end_to_token_boundary(relation_start)?;
+    let relation = &words[relation_start + 2..];
+    // "<player ref>": "that player", "that opponent", "target player", "it".
+    let player_len = match relation {
+        ["that" | "target" | "the", "player" | "opponent", ..] => 2,
+        _ => return Ok(None),
+    };
+    let rest = &relation[player_len..];
+    let rest = match rest {
+        ["or", "by", rest @ ..] | ["or", rest @ ..] => rest,
+        _ => return Ok(None),
+    };
+    // "<object ref>'s <role>": "that planeswalker's controller", "its
+    // controller", "that battle's protector", "the chosen permanent's owner".
+    let role = match rest {
+        ["its", role] => object_relative_player_role(role),
+        ["that" | "the" | "target", .., possessive, role]
+            if possessive.ends_with("'s")
+                || possessive.ends_with("’s")
+                || possessive.ends_with('s') =>
+        {
+            object_relative_player_role(role)
+        }
+        _ => None,
+    };
+    let Some(role) = role else {
+        return Ok(None);
+    };
+    let base_end = view
+        .map_word_or_end_to_token_boundary(relation_start)
+        .ok_or_else(|| CardTextError::ParseError("missing restriction subject".to_string()))?;
     let base_tokens = &tokens[..base_end];
-    let mut filter = parse_object_filter(base_tokens, false).ok()?;
+    let Ok(mut filter) = parse_object_filter(base_tokens, false) else {
+        return Ok(None);
+    };
     if filter == ObjectFilter::default() {
-        return None;
+        return Ok(None);
+    }
+    match role {
+        ObjectRelativePlayerRole::Controller => {
+            filter.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+        }
+        ObjectRelativePlayerRole::Owner => {
+            filter.controller = Some(PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(
+                ironsmith_core::TargetObjectPlayerRelation::Owner,
+            ));
+        }
+        ObjectRelativePlayerRole::Protector => {
+            filter.controller = Some(PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(
+                ironsmith_core::TargetObjectPlayerRelation::Protector,
+            ));
+        }
     }
     crate::word_claims::claim_tokens(&tokens[base_end..]);
-    filter.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
     filter.zone = Some(crate::zone::Zone::Battlefield);
     if crate::grammar::filters::reference_tag_stage::has_plural_object_head_surface(tokens) {
         filter.set_plural_object_noun_surface(true);
     }
-    Some(filter)
+    Ok(Some(filter))
 }

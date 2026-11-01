@@ -28,6 +28,8 @@ pub struct FixedPtAlternativeShape<'a> {
     pub first_modifier: OwnedLexToken,
     pub second_modifier: OwnedLexToken,
     pub trailing_tokens: &'a [OwnedLexToken],
+    /// The "or" between the two modifiers.
+    pub or_token: &'a OwnedLexToken,
 }
 
 fn normalized_pt_modifier_prefix(
@@ -62,6 +64,7 @@ pub fn parse_fixed_pt_alternative_shape(
         first_modifier,
         second_modifier,
         trailing_tokens,
+        or_token,
     })
 }
 

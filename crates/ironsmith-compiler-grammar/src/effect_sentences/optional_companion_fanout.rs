@@ -54,18 +54,42 @@ fn subject_action_clause(
 }
 
 fn leading_action_clause(
-    verb: LeadingOptionalCompanionVerb,
+    verb: &str,
     target: &[OwnedLexToken],
+    shared_tail: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
-    let verb = match verb {
-        LeadingOptionalCompanionVerb::Destroy => "destroy",
-        LeadingOptionalCompanionVerb::Tap => "tap",
-        LeadingOptionalCompanionVerb::Untap => "untap",
-    };
-    let mut clause = Vec::with_capacity(target.len() + 1);
+    let mut clause = Vec::with_capacity(target.len() + shared_tail.len() + 1);
     clause.push(synthetic_word(verb));
     clause.extend_from_slice(target);
+    clause.extend_from_slice(shared_tail);
     clause
+}
+
+/// One branch per target slot. A non-final slot takes the shared trailing
+/// words of the last slot (a destination or duration) when its action reads
+/// with them, and stands alone otherwise.
+fn parse_leading_slot_branches(
+    verb: &str,
+    slots: &[&[OwnedLexToken]],
+    shared_tail: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let last = slots.len().saturating_sub(1);
+    let mut effects = Vec::new();
+    for (index, slot) in slots.iter().enumerate() {
+        let parsed = if index < last && !shared_tail.is_empty() {
+            match crate::word_claims::speculative_keep_if(
+                || parse_rewritten_effects(leading_action_clause(verb, slot, shared_tail)),
+                Result::is_ok,
+            ) {
+                Ok(effects) => effects,
+                Err(_) => parse_rewritten_effects(leading_action_clause(verb, slot, &[]))?,
+            }
+        } else {
+            parse_rewritten_effects(leading_action_clause(verb, slot, &[]))?
+        };
+        effects.extend(parsed);
+    }
+    Ok(effects)
 }
 
 fn choice_grant_parts(effect: EffectAst) -> Option<(TargetAst, Vec<GrantedAbilityAst>, Until)> {
@@ -171,13 +195,28 @@ fn parse_optional_companion_fanout_body(
     }
 
     if let Some(shape) = parse_leading_optional_companion_shape(tokens) {
-        let mut first =
-            parse_rewritten_effects(leading_action_clause(shape.verb, shape.first_target_tokens))?;
-        let second =
-            parse_rewritten_effects(leading_action_clause(shape.verb, shape.companion_tokens))?;
-        first.extend(second);
+        let verb = shape.verb_token.parser_text().to_ascii_lowercase();
+        let effects = if matches!(shape.verb, LeadingOptionalCompanionVerb::Other) {
+            // Any other verb: the slot list is this reading only when every
+            // slot's action reads; otherwise the verb's own grammar owns it.
+            match crate::word_claims::speculative_keep_if(
+                || parse_leading_slot_branches(&verb, &shape.slots, shape.shared_tail),
+                Result::is_ok,
+            ) {
+                Ok(effects) => effects,
+                Err(_) => return Ok(None),
+            }
+        } else {
+            parse_leading_slot_branches(&verb, &shape.slots, shape.shared_tail)?
+        };
+        // The verb is re-stated synthetically for each branch, and the
+        // separators join the target slots: both are read by this fanout.
+        crate::word_claims::claim_tokens(std::slice::from_ref(shape.verb_token));
+        for separator in &shape.separators {
+            crate::word_claims::claim_tokens(separator);
+        }
         let coordinated = EffectAst::Coordinated {
-            effects: first,
+            effects,
             leading_duration: false,
             result_conjunction: false,
         };

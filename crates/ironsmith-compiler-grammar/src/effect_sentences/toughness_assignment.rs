@@ -32,6 +32,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         return Ok(None);
     };
     let subject = &tokens[..verb];
+    // The complete assignment body `assignment_body` recognized (and its
+    // coordinated no-defender permission) is the granted rule.
+    crate::word_claims::claim_tokens(&tokens[verb..]);
     let mut abilities = vec![GrantedAbilityAst::StaticAbility(Box::new(
         StaticAbilityAst::Static(
             crate::model::CompilerStaticAbilityCore::this_creature_assigns_combat_damage_using_toughness(),

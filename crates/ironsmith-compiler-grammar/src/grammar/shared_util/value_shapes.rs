@@ -30,6 +30,11 @@ pub enum AggregateValueMetric {
     Counters,
     /// "unlocked doors among Rooms you control" (Rampaging Soulrager).
     UnlockedDoors,
+    /// "land types among lands you control", "artifact types among ...",
+    /// "enchantment types", "battle types", "spell types" (CR 205.3).
+    SubtypeFamilyTypes(crate::types::SubtypeFamily),
+    /// "subtypes among permanents you control": every family at once.
+    AnySubtypes,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,6 +53,32 @@ pub struct QuantityComparisonWords {
 pub struct QuantityComparisonTokens {
     pub comparison: Comparison,
     pub consumed_tokens: usize,
+}
+
+impl AggregateValueMetric {
+    /// A type or color family ("card types", "land types", "colors"): a
+    /// "for each <family> among <pool>" iterates characteristics, never the
+    /// pool's objects. Distinct-value metrics ("different powers") and the
+    /// families printed cards read through dedicated readers (basic land
+    /// types, Magnigoth Treefolk) keep their readings.
+    pub fn is_type_or_color_family(self) -> bool {
+        matches!(
+            self,
+            Self::CardTypes
+                | Self::CreatureTypes
+                | Self::PlaneswalkerTypes
+                | Self::Colors
+                | Self::SubtypeFamilyTypes(_)
+                | Self::AnySubtypes
+        )
+    }
+}
+
+/// Whether `words` open with a type- or color-family characteristic
+/// ("card type among ...", "land types among ...", "colors among ...").
+pub fn is_type_or_color_family_iteration(words: &[&str]) -> bool {
+    parse_aggregate_value_surface(words)
+        .is_some_and(|surface| surface.metric.is_type_or_color_family())
 }
 
 pub fn parse_aggregate_value_surface<'a>(
@@ -119,130 +150,162 @@ fn parse_aggregate_metric(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<AggregateValueMetric> {
     alt((
-        (
-            primitives::word_slice_exact("basic"),
-            primitives::word_slice_exact("land"),
-            alt((
-                primitives::word_slice_exact("type"),
-                primitives::word_slice_exact("types"),
-            )),
-            primitives::word_slice_exact("among"),
-        )
-            .value(AggregateValueMetric::BasicLandTypes),
-        (
-            alt((
-                primitives::word_slice_exact("card").value(AggregateValueMetric::CardTypes),
-                primitives::word_slice_exact("permanent")
-                    .value(AggregateValueMetric::PermanentTypes),
-                primitives::word_slice_exact("creature").value(AggregateValueMetric::CreatureTypes),
-                primitives::word_slice_exact("planeswalker")
-                    .value(AggregateValueMetric::PlaneswalkerTypes),
-            )),
-            alt((
-                primitives::word_slice_exact("type"),
-                primitives::word_slice_exact("types"),
-            )),
-            primitives::word_slice_exact("among"),
-        )
-            .map(|(metric, _, _)| metric),
-        (
-            primitives::word_slice_exact("different"),
-            primitives::word_slice_exact("color"),
-            alt((
-                primitives::word_slice_exact("pairs"),
-                primitives::word_slice_exact("pair"),
-            )),
-            primitives::word_slice_exact("among"),
-        )
-            .value(AggregateValueMetric::ColorPairs),
-        (
-            alt((
-                primitives::word_slice_exact("color"),
-                primitives::word_slice_exact("colors"),
-            )),
-            primitives::word_slice_exact("among"),
-        )
-            .value(AggregateValueMetric::Colors),
         alt((
             (
-                // "five or more mana values among cards in your graveyard"
-                // counts distinct mana values with or without "different".
-                opt(primitives::word_slice_exact("different")),
-                primitives::word_slice_exact("mana"),
+                primitives::word_slice_exact("basic"),
+                primitives::word_slice_exact("land"),
                 alt((
-                    primitives::word_slice_exact("value"),
-                    primitives::word_slice_exact("values"),
+                    primitives::word_slice_exact("type"),
+                    primitives::word_slice_exact("types"),
                 )),
                 primitives::word_slice_exact("among"),
             )
-                .value(AggregateValueMetric::DistinctManaValues),
+                .value(AggregateValueMetric::BasicLandTypes),
+            (
+                alt((
+                    primitives::word_slice_exact("card").value(AggregateValueMetric::CardTypes),
+                    primitives::word_slice_exact("permanent")
+                        .value(AggregateValueMetric::PermanentTypes),
+                    primitives::word_slice_exact("creature").value(AggregateValueMetric::CreatureTypes),
+                    primitives::word_slice_exact("planeswalker")
+                        .value(AggregateValueMetric::PlaneswalkerTypes),
+                )),
+                alt((
+                    primitives::word_slice_exact("type"),
+                    primitives::word_slice_exact("types"),
+                )),
+                primitives::word_slice_exact("among"),
+            )
+                .map(|(metric, _, _)| metric),
             (
                 primitives::word_slice_exact("different"),
-                primitives::word_slice_exact("mana"),
+                primitives::word_slice_exact("color"),
                 alt((
-                    primitives::word_slice_exact("cost"),
-                    primitives::word_slice_exact("costs"),
+                    primitives::word_slice_exact("pairs"),
+                    primitives::word_slice_exact("pair"),
                 )),
                 primitives::word_slice_exact("among"),
             )
-                .value(AggregateValueMetric::DistinctManaCosts),
+                .value(AggregateValueMetric::ColorPairs),
+            alt((
+                (
+                    alt((
+                        primitives::word_slice_exact("land").value(crate::types::SubtypeFamily::Land),
+                        primitives::word_slice_exact("artifact")
+                            .value(crate::types::SubtypeFamily::Artifact),
+                        primitives::word_slice_exact("enchantment")
+                            .value(crate::types::SubtypeFamily::Enchantment),
+                        primitives::word_slice_exact("battle")
+                            .value(crate::types::SubtypeFamily::Battle),
+                        primitives::word_slice_exact("spell").value(crate::types::SubtypeFamily::Spell),
+                    )),
+                    alt((
+                        primitives::word_slice_exact("type"),
+                        primitives::word_slice_exact("types"),
+                    )),
+                    primitives::word_slice_exact("among"),
+                )
+                    .map(|(family, _, _)| AggregateValueMetric::SubtypeFamilyTypes(family)),
+                (
+                    alt((
+                        primitives::word_slice_exact("subtype"),
+                        primitives::word_slice_exact("subtypes"),
+                    )),
+                    primitives::word_slice_exact("among"),
+                )
+                    .value(AggregateValueMetric::AnySubtypes),
+            )),
             (
-                primitives::word_slice_exact("differently"),
-                primitives::word_slice_exact("named"),
+                alt((
+                    primitives::word_slice_exact("color"),
+                    primitives::word_slice_exact("colors"),
+                )),
+                primitives::word_slice_exact("among"),
             )
-                .value(AggregateValueMetric::DistinctNames),
+                .value(AggregateValueMetric::Colors),
         )),
-        (
-            primitives::word_slice_exact("different"),
-            primitives::word_slice_exact("power"),
-            primitives::word_slice_exact("values"),
-            primitives::word_slice_exact("among"),
-        )
-            .value(AggregateValueMetric::DistinctPowers),
-        (
-            primitives::word_slice_exact("different"),
-            primitives::word_slice_exact("powers"),
-            primitives::word_slice_exact("among"),
-        )
-            .value(AggregateValueMetric::DistinctPowers),
-        (
-            primitives::word_slice_exact("different"),
-            primitives::word_slice_exact("power"),
-            primitives::word_slice_exact("among"),
-        )
-            .value(AggregateValueMetric::DistinctPowers),
         alt((
+            alt((
+                (
+                    // "five or more mana values among cards in your graveyard"
+                    // counts distinct mana values with or without "different".
+                    opt(primitives::word_slice_exact("different")),
+                    primitives::word_slice_exact("mana"),
+                    alt((
+                        primitives::word_slice_exact("value"),
+                        primitives::word_slice_exact("values"),
+                    )),
+                    primitives::word_slice_exact("among"),
+                )
+                    .value(AggregateValueMetric::DistinctManaValues),
+                (
+                    primitives::word_slice_exact("different"),
+                    primitives::word_slice_exact("mana"),
+                    alt((
+                        primitives::word_slice_exact("cost"),
+                        primitives::word_slice_exact("costs"),
+                    )),
+                    primitives::word_slice_exact("among"),
+                )
+                    .value(AggregateValueMetric::DistinctManaCosts),
+                (
+                    primitives::word_slice_exact("differently"),
+                    primitives::word_slice_exact("named"),
+                )
+                    .value(AggregateValueMetric::DistinctNames),
+            )),
             (
-                opt(primitives::word_slice_exact("different")),
-                alt((
-                    primitives::word_slice_exact("kinds"),
-                    primitives::word_slice_exact("kind"),
-                )),
-                primitives::word_slice_exact("of"),
-                alt((
-                    primitives::word_slice_exact("counter"),
-                    primitives::word_slice_exact("counters"),
-                )),
+                primitives::word_slice_exact("different"),
+                primitives::word_slice_exact("power"),
+                primitives::word_slice_exact("values"),
                 primitives::word_slice_exact("among"),
             )
-                .value(AggregateValueMetric::DistinctCounterTypes),
+                .value(AggregateValueMetric::DistinctPowers),
             (
-                alt((
-                    primitives::word_slice_exact("counter"),
-                    primitives::word_slice_exact("counters"),
-                )),
+                primitives::word_slice_exact("different"),
+                primitives::word_slice_exact("powers"),
                 primitives::word_slice_exact("among"),
             )
-                .value(AggregateValueMetric::Counters),
+                .value(AggregateValueMetric::DistinctPowers),
             (
-                primitives::word_slice_exact("unlocked"),
-                alt((
-                    primitives::word_slice_exact("door"),
-                    primitives::word_slice_exact("doors"),
-                )),
+                primitives::word_slice_exact("different"),
+                primitives::word_slice_exact("power"),
                 primitives::word_slice_exact("among"),
             )
-                .value(AggregateValueMetric::UnlockedDoors),
+                .value(AggregateValueMetric::DistinctPowers),
+            alt((
+                (
+                    opt(primitives::word_slice_exact("different")),
+                    alt((
+                        primitives::word_slice_exact("kinds"),
+                        primitives::word_slice_exact("kind"),
+                    )),
+                    primitives::word_slice_exact("of"),
+                    alt((
+                        primitives::word_slice_exact("counter"),
+                        primitives::word_slice_exact("counters"),
+                    )),
+                    primitives::word_slice_exact("among"),
+                )
+                    .value(AggregateValueMetric::DistinctCounterTypes),
+                (
+                    alt((
+                        primitives::word_slice_exact("counter"),
+                        primitives::word_slice_exact("counters"),
+                    )),
+                    primitives::word_slice_exact("among"),
+                )
+                    .value(AggregateValueMetric::Counters),
+                (
+                    primitives::word_slice_exact("unlocked"),
+                    alt((
+                        primitives::word_slice_exact("door"),
+                        primitives::word_slice_exact("doors"),
+                    )),
+                    primitives::word_slice_exact("among"),
+                )
+                    .value(AggregateValueMetric::UnlockedDoors),
+            )),
         )),
     ))
     .parse_next(input)

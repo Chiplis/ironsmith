@@ -4152,6 +4152,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::TaggedPlayer(_)
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
         | PlayerFilter::Excluding { .. }
         | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_)

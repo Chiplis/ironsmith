@@ -1263,6 +1263,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::PlaneswalkerTypesAmong(filter)
+        | Value::SubtypesAmong { filter, .. }
         | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)

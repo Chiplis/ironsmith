@@ -75,6 +75,9 @@ pub enum ManaSpendPermissionShape<'a> {
         player: ManaSpendPlayerKind,
         activation_filter_tokens: Option<&'a [OwnedLexToken]>,
         source_activation_only: bool,
+        /// "as though it were mana of any type": colorless mana is also
+        /// convertible (CR 609.4b).
+        any_type: bool,
     },
     /// "You may spend mana as though it were mana of any color to cast
     /// planeswalker spells." (Oath of Nissa).
@@ -468,8 +471,13 @@ fn parse_any_color_mana_spend_lexed<'a>(
     ))
     .parse_next(input)?;
     primitives::phrase(&[
-        "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "color",
+        "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
     ])
+    .parse_next(input)?;
+    let any_type = alt((
+        primitives::kw("color").value(false),
+        primitives::kw("type").value(true),
+    ))
     .parse_next(input)?;
     if peek(primitives::sentence_end()).parse_next(input).is_ok() {
         primitives::sentence_end().parse_next(input)?;
@@ -477,6 +485,19 @@ fn parse_any_color_mana_spend_lexed<'a>(
             player,
             activation_filter_tokens: None,
             source_activation_only: false,
+            any_type,
+        });
+    }
+    // "to activate those/these/its abilities" (Drana and Linvala, after a
+    // copy grant): the abilities named are the source's own activated
+    // abilities, whose activation costs are the source's (CR 609.4b).
+    if peek(referenced_abilities_activation_tail).parse_next(input).is_ok() {
+        referenced_abilities_activation_tail.parse_next(input)?;
+        return Ok(ManaSpendPermissionShape::AnyColor {
+            player,
+            activation_filter_tokens: None,
+            source_activation_only: true,
+            any_type,
         });
     }
     if peek(primitives::phrase(&["to", "pay"]))
@@ -501,11 +522,17 @@ fn parse_any_color_mana_spend_lexed<'a>(
             player,
             activation_filter_tokens: None,
             source_activation_only: true,
+            any_type,
         });
     }
     if peek(primitives::phrase(&["to", "cast"])).parse_next(input).is_ok() {
         primitives::phrase(&["to", "cast"]).parse_next(input)?;
         let filter_tokens = take_nonempty_sentence_body(input)?;
+        if any_type {
+            return Ok(ManaSpendPermissionShape::AnyTypeToCast {
+                filter_tokens: trim_lexed_commas(filter_tokens),
+            });
+        }
         return Ok(ManaSpendPermissionShape::AnyColorToCast {
             player,
             filter_tokens: trim_lexed_commas(filter_tokens),
@@ -517,7 +544,26 @@ fn parse_any_color_mana_spend_lexed<'a>(
         player,
         activation_filter_tokens: Some(trim_lexed_commas(filter_tokens)),
         source_activation_only: false,
+        any_type,
     })
+}
+
+/// "to activate those/these/its/their abilities" or "to activate the copied
+/// abilities", ending the sentence.
+fn referenced_abilities_activation_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["to", "activate"]).parse_next(input)?;
+    alt((
+        primitives::kw("those").void(),
+        primitives::kw("these").void(),
+        primitives::kw("its").void(),
+        primitives::kw("their").void(),
+        primitives::phrase(&["the", "copied"]).void(),
+    ))
+    .parse_next(input)?;
+    alt((primitives::kw("abilities").void(), primitives::kw("ability").void()))
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(())
 }
 
 fn validate_spell_subject(tokens: &[OwnedLexToken]) -> WResult<()> {

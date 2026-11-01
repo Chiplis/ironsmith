@@ -664,6 +664,76 @@ mod counter_pairs {
     }
 }
 
+/// One distinct value of a [`ironsmith_core::DistinctCharacteristic`]: the
+/// thing a "<characteristic> among ..." aggregate counts once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DistinctCharacteristicKey {
+    Color(crate::color::Color),
+    Number(i64),
+    CardType(CardType),
+    Subtype(Subtype),
+}
+
+/// The distinct values `characteristic` takes on one object, given that
+/// object's (current or last-known) characteristics.
+pub fn distinct_characteristic_keys(
+    characteristic: ironsmith_core::DistinctCharacteristic,
+    card_types: &[CardType],
+    subtypes: &[Subtype],
+    colors: ColorSet,
+    mana_value: u32,
+    power: Option<i32>,
+) -> Vec<DistinctCharacteristicKey> {
+    use ironsmith_core::DistinctCharacteristic as C;
+    match characteristic {
+        C::Colors => crate::color::Color::ALL
+            .into_iter()
+            .filter(|color| colors.contains(*color))
+            .map(DistinctCharacteristicKey::Color)
+            .collect(),
+        C::ManaValues => vec![DistinctCharacteristicKey::Number(i64::from(mana_value))],
+        C::Powers => power
+            .map(|power| DistinctCharacteristicKey::Number(i64::from(power)))
+            .into_iter()
+            .collect(),
+        C::PermanentTypes => card_types
+            .iter()
+            .copied()
+            .filter(|card_type| card_type.is_permanent_type())
+            .map(DistinctCharacteristicKey::CardType)
+            .collect(),
+        C::BasicLandTypes => subtypes
+            .iter()
+            .copied()
+            .filter(|subtype| subtype.is_basic_land_type())
+            .map(DistinctCharacteristicKey::Subtype)
+            .collect(),
+        C::Subtypes(family) => subtypes
+            .iter()
+            .copied()
+            .filter(|subtype| family.is_none_or(|family| family.contains(*subtype)))
+            .map(DistinctCharacteristicKey::Subtype)
+            .collect(),
+    }
+}
+
+impl ObjectSnapshot {
+    /// The distinct values `characteristic` takes on this last-known object.
+    pub fn distinct_characteristic_keys(
+        &self,
+        characteristic: ironsmith_core::DistinctCharacteristic,
+    ) -> Vec<DistinctCharacteristicKey> {
+        distinct_characteristic_keys(
+            characteristic,
+            &self.card_types,
+            &self.subtypes,
+            self.colors,
+            self.mana_value(),
+            self.power,
+        )
+    }
+}
+
 impl ObjectSnapshot {
     /// Capture immutable characteristics before an instruction changes identity or state.
     pub fn from_object_id(game: &crate::game_state::GameState, id: ObjectId) -> Option<Self> {

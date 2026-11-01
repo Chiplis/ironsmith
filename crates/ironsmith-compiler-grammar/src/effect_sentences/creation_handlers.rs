@@ -239,9 +239,15 @@ fn parse_create_equal_to_dynamic_count(
     let Some(spec) = creation_grammar::parse_equal_to_count_clause_tokens(tail_tokens) else {
         return Ok(None);
     };
+    // The authored "equal to" that introduces the amount reads with it.
+    let authored_equal_to = tail_tokens
+        .get(spec.cut_token..spec.cut_token + 2)
+        .filter(|pair| pair[0].is_word("equal") && pair[1].is_word("to"))
+        .unwrap_or_default();
     let mut equal_tokens = super::super::lexer::synthetic_word_tokens(["equal", "to"]);
     equal_tokens.extend_from_slice(spec.value_tokens);
     if crate::grammar::etb_static_lines::parse_equal_to_mana_spent_to_cast_tokens(&equal_tokens) {
+        crate::word_claims::claim_tokens(authored_equal_to);
         return Ok(Some((
             Value::ManaSpentToCastThisSpell.with_surface_hint(ValueSurfaceHint::EqualTo),
             spec.cut_token,
@@ -254,6 +260,7 @@ fn parse_create_equal_to_dynamic_count(
     let mut synthetic_tokens = super::super::lexer::synthetic_word_tokens(["where", "x", "is"]);
     synthetic_tokens.extend_from_slice(spec.value_tokens);
     Ok(parse_create_value_binding(&synthetic_tokens)?.map(|value| {
+        crate::word_claims::claim_tokens(authored_equal_to);
         let value = if references_prior_result {
             value.with_surface_hint(ValueSurfaceHint::PriorEffectResult)
         } else {
@@ -1595,7 +1602,8 @@ pub fn lower_complete_simple_create_shape(
 #[path = "creation_handlers/create_clause_readings.rs"]
 mod create_clause_readings;
 
-/// Claim the copy head of a token copy ("[a token] that's a copy of"): the
+/// Claim the copy head of a token copy ("[a token] that's a copy of", "[two]
+/// tokens that are copies of"): the
 /// words that make the created token a copy of the source that follows.
 fn claim_token_copy_head(tail_tokens: &[OwnedLexToken]) {
     let Some(of) = tail_tokens.iter().position(|token| token.as_word() == Some("of")) else {
@@ -1604,7 +1612,10 @@ fn claim_token_copy_head(tail_tokens: &[OwnedLexToken]) {
     let head_word = |token: &OwnedLexToken| {
         matches!(
             token.as_word(),
-            Some("that's" | "thats" | "that" | "is" | "a" | "an" | "copy" | "copies")
+            Some(
+                "that's" | "thats" | "that" | "is" | "are" | "a" | "an" | "copy" | "copies"
+                    | "token" | "tokens"
+            )
         )
     };
     let start = tail_tokens[..of]
@@ -2550,6 +2561,26 @@ pub fn parse_create(
                 crate::word_claims::claim_words(&modifier_tail_words[index..=index]);
             }
         }
+        // "tokens ... that are tapped and attacking" / "that is attacking".
+        for (index, triple) in modifier_tail_words.windows(3).enumerate() {
+            if matches!(triple, ["that", "are" | "is", "tapped" | "attacking"]) {
+                crate::word_claims::claim_words(&modifier_tail_words[index..index + 2]);
+            }
+        }
+        // The entry states themselves ("tapped", "attacking", joined by
+        // "and") are the flags read above.
+        for (index, word) in modifier_tail_words.iter().enumerate() {
+            let state = matches!(*word, "tapped" | "attacking");
+            let joins_states = *word == "and"
+                && index > 0
+                && matches!(modifier_tail_words[index - 1], "tapped" | "attacking")
+                && modifier_tail_words
+                    .get(index + 1)
+                    .is_some_and(|next| matches!(*next, "tapped" | "attacking"));
+            if state || joins_states {
+                crate::word_claims::claim_words(&modifier_tail_words[index..=index]);
+            }
+        }
     }
     // CR 508.4: "attacking that player/opponent" names what the token
     // attacks. "That opponent" is the attacked (defending) player outside a
@@ -2862,6 +2893,8 @@ pub fn parse_investigate(
         }
 
         let count = parse_investigate_for_each_count(filter_tokens)?;
+        // "investigate for each <counted>": the per-count head.
+        crate::word_claims::claim_tokens(&tokens[..2.min(tokens.len())]);
 
         return Ok(EffectAst::subject_verb_investigate(player, count));
     }
@@ -2893,6 +2926,7 @@ pub fn parse_investigate(
         }
 
         let each_count = parse_investigate_for_each_count(filter_tokens)?.into_unhinted();
+        crate::word_claims::claim_tokens(&trailing[..2.min(trailing.len())]);
         count = match (count, each_count) {
             (Value::Fixed(1), Value::Count(filter)) => {
                 Value::CountScaled(filter, 1).with_surface_hint(ValueSurfaceHint::ForEach)

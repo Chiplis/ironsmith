@@ -2,28 +2,61 @@ use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
 
-/// "return that card and the sacrificed card to the battlefield under your
-/// control" (Rescue from the Underworld): two definite references share one
-/// destination. Each is its own return; read as one phrase, the second
-/// reference was dropped.
+/// "return <definite reference> and <definite reference> to <zone>": two
+/// already-identified objects share one destination ("that card and the
+/// sacrificed card" on Rescue from the Underworld, "that artifact and the
+/// exiled card", "it and the discarded creature", "those cards and the
+/// sacrificed land", "that card and the creature exiled with this"). Each is
+/// its own return, read by the ordinary reference reader with the shared
+/// destination; read as one phrase, the second reference would be dropped.
 fn split_reference_pair_return(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    // A quoted rule or a declared target is not a pair of references.
+    if tokens.iter().any(|token| {
+        token.kind == crate::lexer::TokenKind::Quote || token.is_any_word(&["target", "targets"])
+    }) {
+        return None;
+    }
     let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
-    let left_words = crate::lexer::token_word_refs(&tokens[..and_idx]);
-    if !matches!(left_words.as_slice(), ["that", "card" | "creature"] | ["it"]) {
-        return None;
-    }
+    let left_ref = &tokens[..and_idx];
     let right = &tokens[and_idx + 1..];
-    let right_words = crate::lexer::token_word_refs(right);
-    let ["the", participle, "card" | "creature", "to", ..] = right_words.as_slice() else {
-        return None;
+    // The shared destination begins at the first "to" after the second
+    // reference.
+    let to_idx = right.iter().position(|token| token.is_word("to"))?;
+    let right_ref = &right[..to_idx];
+    // Both conjuncts name objects already identified: a pronoun or a
+    // demonstrative/definite noun phrase. Quantified sets ("all", "each")
+    // and fresh selections ("a", "target") keep their own grammar.
+    let is_definite_reference = |reference: &[OwnedLexToken]| {
+        let words = crate::lexer::token_word_refs(reference);
+        match words.as_slice() {
+            ["it" | "them" | "him" | "her"] => true,
+            ["that" | "those" | "this" | "these" | "the", rest @ ..] => {
+                !rest.is_empty()
+                    && !rest.iter().any(|word| {
+                        matches!(*word, "and" | "or" | "all" | "each" | "a" | "an" | "to")
+                    })
+            }
+            _ => false,
+        }
     };
-    if !participle.ends_with("ed") {
+    if !is_definite_reference(left_ref) || !is_definite_reference(right_ref) {
         return None;
     }
-    let mut left = tokens[..and_idx].to_vec();
-    left.extend_from_slice(right.get(3..)?);
+    // "Return this Saga and the exiled card to their owner's hand" (The
+    // Aesir Escape Valhalla): the source and its linked card move together
+    // in one return (the paired source-and-exiled reading), not as two
+    // separate moves.
+    if crate::util::is_source_reference_words(&crate::lexer::token_word_refs(left_ref)) {
+        return None;
+    }
+    let destination = &right[to_idx..];
+    if destination.len() < 2 {
+        return None;
+    }
+    let mut left = left_ref.to_vec();
+    left.extend_from_slice(destination);
     Some((left, right.to_vec()))
 }
 

@@ -157,7 +157,7 @@ pub enum PutCounterSequenceShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CounterPlacementShape<'a> {
-    pub descriptor: CounterDescriptorShape,
+    pub descriptor: CounterListDescriptorShape,
     pub target_tokens: &'a [OwnedLexToken],
     /// The "and" that joins this recipient to the previous one of the same
     /// counter group ("on him and up to one target God you control").
@@ -202,6 +202,52 @@ fn parse_counter_descriptor_lexed<'a>(
         additional,
         fewer,
     })
+}
+
+/// One member of a counter-kind list ("X +1/+1 counters and a flying
+/// counter"): its count may be the spell's X.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CounterListDescriptorShape {
+    pub amount: leaf::LeafNumber,
+    pub counter_type: CounterType,
+}
+
+impl CounterListDescriptorShape {
+    pub fn count_value(self) -> crate::effect::Value {
+        match self.amount {
+            leaf::LeafNumber::Fixed(count) => crate::effect::Value::Fixed(count as i32),
+            leaf::LeafNumber::X => crate::effect::Value::X,
+        }
+    }
+}
+
+fn parse_counter_list_descriptor_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterListDescriptorShape> {
+    alt((
+        parse_counter_descriptor_lexed.map(|descriptor| CounterListDescriptorShape {
+            amount: leaf::LeafNumber::Fixed(descriptor.count),
+            counter_type: descriptor.counter_type,
+        }),
+        |input: &mut LexStream<'a>| {
+            primitives::kw("x").parse_next(input)?;
+            let counter_type_tokens = (
+                repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(counter_noun)).void(),
+                counter_noun,
+            )
+                .take()
+                .parse_next(input)?;
+            let counter_type = filters::parse_counter_type_from_tokens(counter_type_tokens)
+                .ok_or_else(|| {
+                    primitives::backtrack_err("counter descriptor", "recognized counter type")
+                })?;
+            Ok(CounterListDescriptorShape {
+                amount: leaf::LeafNumber::X,
+                counter_type,
+            })
+        },
+    ))
+    .parse_next(input)
 }
 
 fn controller_tail<'a>(input: &mut LexStream<'a>) -> WResult<ReturnControllerAst> {
@@ -1259,10 +1305,11 @@ pub fn parse_put_counter_sequence_tokens(
 /// ("a +1/+1 counter and a lifelink counter on that creature", Arwen, Mortal
 /// Queen), as one placement per kind.
 fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<Vec<CounterPlacementShape<'a>>> {
-    let first = parse_counter_descriptor_lexed.parse_next(input)?;
-    let more: Vec<CounterDescriptorShape> = repeat(
+    let first = parse_counter_list_descriptor_lexed.parse_next(input)?;
+    let more: Vec<CounterListDescriptorShape> = repeat(
         0..,
-        (primitives::kw("and"), parse_counter_descriptor_lexed).map(|(_, descriptor)| descriptor),
+        (primitives::kw("and"), parse_counter_list_descriptor_lexed)
+            .map(|(_, descriptor)| descriptor),
     )
     .parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
@@ -1271,7 +1318,7 @@ fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<Vec<CounterPlacem
         any.void(),
         peek(alt((
             primitives::comma().void(),
-            (primitives::kw("and"), peek(parse_counter_descriptor_lexed)).void(),
+            (primitives::kw("and"), peek(parse_counter_list_descriptor_lexed)).void(),
             primitives::sentence_end(),
         ))),
     )
@@ -1279,7 +1326,8 @@ fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<Vec<CounterPlacem
     .take()
     .parse_next(input)?;
     let recipients = split_counter_recipients(target_tokens);
-    let descriptors: Vec<CounterDescriptorShape> = std::iter::once(first).chain(more).collect();
+    let descriptors: Vec<CounterListDescriptorShape> =
+        std::iter::once(first).chain(more).collect();
     Ok(recipients
         .into_iter()
         .flat_map(|(recipient_joiner, target_tokens)| {

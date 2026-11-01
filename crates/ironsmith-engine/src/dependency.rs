@@ -706,6 +706,22 @@ fn evaluate_value(
             }
             ValueEval::Scalar(seen.len() as i32)
         }
+        Value::SubtypesAmong { family, filter } => {
+            let mut seen = std::collections::HashSet::new();
+            for (id, chars) in baseline {
+                let Some(obj) = objects.get(id) else {
+                    continue;
+                };
+                if object_matches_filter_with_chars(filter, obj, chars, game, effect_controller) {
+                    for subtype in &chars.subtypes {
+                        if family.is_none_or(|family| family.contains(*subtype)) {
+                            seen.insert(*subtype);
+                        }
+                    }
+                }
+            }
+            ValueEval::Scalar(seen.len() as i32)
+        }
         Value::CardTypesAmong(filter) | Value::PermanentTypesAmong(filter) => {
             let permanent_only = matches!(value, Value::PermanentTypesAmong(_));
             let mut seen = std::collections::HashSet::new();
@@ -1104,6 +1120,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::TaggedPlayer(_)
             | PlayerFilter::IteratedPlayer
             | PlayerFilter::TargetPlayerOrControllerOfTarget
+            | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
             | PlayerFilter::Target(_)
             | PlayerFilter::AliasedTarget(_)
             | PlayerFilter::Excluding { .. }
@@ -1681,6 +1698,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::BasicLandTypesAmong(_)
         | Value::CreatureTypesAmong(_)
         | Value::PlaneswalkerTypesAmong(_)
+        | Value::SubtypesAmong { .. }
         | Value::PermanentTypesAmong(_)
         | Value::CardTypesAmong(_)
         | Value::StaticAbilitiesAmong { .. }
@@ -1778,6 +1796,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
         | Value::CardTypesAmongSpellsCastThisTurn { .. }
+        | Value::DistinctAmongSpellsCastThisTurn { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::WasKicked
@@ -2560,6 +2579,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::PlaneswalkerTypesAmong(filter)
+        | Value::SubtypesAmong { filter, .. }
         | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter) => {
             modification_can_change_type_characteristics(modification)
@@ -2608,6 +2628,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         Value::SpellsCastThisTurnMatching { .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { .. }
         | Value::CardTypesAmongSpellsCastThisTurn { .. }
+        | Value::DistinctAmongSpellsCastThisTurn { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::CommanderColorIdentityColors(_)

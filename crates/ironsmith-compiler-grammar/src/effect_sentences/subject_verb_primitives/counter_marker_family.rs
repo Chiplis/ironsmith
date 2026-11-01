@@ -386,7 +386,7 @@ fn lower_counter_placements(
             crate::word_claims::claim_tokens(placement.target_tokens);
             effects.push(EffectAst::subject_verb_put_counters(
                 placement.descriptor.counter_type,
-                Value::Fixed(placement.descriptor.count as i32),
+                placement.descriptor.count_value(),
                 TargetAst::Source(None),
                 None,
                 false,
@@ -400,7 +400,7 @@ fn lower_counter_placements(
             let filter = parse_object_filter(filter_tokens, false)?;
             effects.push(EffectAst::subject_verb_put_counters_all(
                 placement.descriptor.counter_type,
-                Value::Fixed(placement.descriptor.count as i32),
+                placement.descriptor.count_value(),
                 filter,
             ));
             continue;
@@ -423,7 +423,7 @@ fn lower_counter_placements(
             crate::lexer::parser_token_word_refs(placement.target_tokens).contains(&"target");
         let effect = EffectAst::subject_verb_put_counters(
             placement.descriptor.counter_type,
-            Value::Fixed(placement.descriptor.count as i32),
+            placement.descriptor.count_value(),
             target,
             target_count,
             false,
@@ -990,10 +990,132 @@ pub use resource_programs::{parse_draw_then_connive_sentence, parse_sentence_dra
 mod zone_programs;
 pub use zone_programs::clone_return_effect_with_subtype;
 
+/// "a number of +1/+1 counters equal to your devotion to green and a
+/// trample counter on target creature": a counter-kind list one of whose
+/// members has a dynamic count. Each member is its own placement on the
+/// shared recipient, read by the ordinary single-kind reader (so every count
+/// shape it knows works in a list), and later members of a targeted list put
+/// their counters on the object the first one chose. `None` unless at least
+/// one member has an "a number of ..." count and every member reads.
+fn parse_shared_counter_target_with_dynamic_member(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let body = match tokens.first() {
+        Some(first) if first.is_word("put") => &tokens[1..],
+        _ => tokens,
+    };
+    // The recipient follows the last "on"; a dynamic amount may itself
+    // mention "on" ("equal to the number of counters on it").
+    let on = body.iter().rposition(|token| token.is_word("on"))?;
+    let (descriptors, target_tokens) = (&body[..on], body.get(on + 1..)?);
+    if target_tokens.is_empty() || descriptors.is_empty() {
+        return None;
+    }
+    // Members split at an "and" or comma that opens another counter
+    // descriptor: a count word followed, before the next split, by a
+    // counter noun.
+    let opens_descriptor = |rest: &[OwnedLexToken]| {
+        rest.first().is_some_and(|token| token.is_any_word(&["a", "an", "x"]))
+            || crate::grammar::leaf::parse_leaf_number_prefix_tokens(rest).is_some()
+    };
+    let mut members: Vec<&[OwnedLexToken]> = Vec::new();
+    let mut separators: Vec<&[OwnedLexToken]> = Vec::new();
+    let mut start = 0usize;
+    let mut index = 0usize;
+    while index < descriptors.len() {
+        let token = &descriptors[index];
+        let separator_len = if token.is_comma() {
+            if descriptors.get(index + 1).is_some_and(|next| next.is_word("and")) { 2 } else { 1 }
+        } else if token.is_word("and") {
+            1
+        } else {
+            0
+        };
+        if separator_len > 0
+            && index > start
+            && opens_descriptor(&descriptors[index + separator_len..])
+            && descriptors[start..index]
+                .iter()
+                .any(|token| token.is_any_word(&["counter", "counters"]))
+        {
+            members.push(&descriptors[start..index]);
+            separators.push(&descriptors[index..index + separator_len]);
+            start = index + separator_len;
+            index = start;
+            continue;
+        }
+        index += 1;
+    }
+    members.push(descriptors.get(start..)?);
+    let is_dynamic = |member: &[OwnedLexToken]| {
+        crate::lexer::token_word_refs(member).starts_with(&["a", "number", "of"])
+    };
+    if members.len() < 2
+        || !members.iter().any(|member| is_dynamic(member))
+        || members
+            .iter()
+            .any(|member| !member.iter().any(|token| token.is_any_word(&["counter", "counters"])))
+    {
+        return None;
+    }
+    let each_recipient = zone_counter_shapes::strip_each_counter_prefix(target_tokens).is_some();
+    let on_token = OwnedLexToken::word("on".to_string(), crate::cards::TextSpan::synthetic());
+    let it_token = OwnedLexToken::word("it".to_string(), crate::cards::TextSpan::synthetic());
+    let (effects, probe) = crate::word_claims::speculative(|| {
+        let mut effects = Vec::with_capacity(members.len());
+        for (position, member) in members.iter().enumerate() {
+            let mut clause: Vec<OwnedLexToken> = member.to_vec();
+            clause.push(on_token.clone());
+            if position == 0 || each_recipient {
+                clause.extend_from_slice(target_tokens);
+            } else {
+                clause.push(it_token.clone());
+            }
+            effects.push(parse_put_counters(&clause).ok()?);
+        }
+        Some(effects)
+    });
+    let effects = effects?;
+    probe.keep();
+    // The list's joiners and the shared "on" read as the list itself.
+    for separator in separators {
+        crate::word_claims::claim_tokens(separator);
+    }
+    crate::word_claims::claim_tokens(std::slice::from_ref(&body[on]));
+    Some(effects)
+}
+
 pub fn parse_shared_counter_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if counter_shapes::parse_shared_counter_target_tokens(tokens).is_none()
+        && let Some(effects) = parse_shared_counter_target_with_dynamic_member(tokens)
+    {
+        return Ok(Some(effects));
+    }
     if let Some(shape) = counter_shapes::parse_shared_counter_target_tokens(tokens) {
+        // "a +1/+1 counter and a flying counter on each creature you
+        // control": every matching object receives every kind, the same
+        // all-recipients placement one kind on "each" is.
+        if let Some(filter_tokens) =
+            zone_counter_shapes::strip_each_counter_prefix(shape.target_tokens)
+            && parse_counter_target_count_prefix(shape.target_tokens)?.is_none()
+        {
+            let filter = parse_object_filter(filter_tokens, false)?;
+            return Ok(Some(
+                shape
+                    .descriptors
+                    .into_iter()
+                    .map(|descriptor| {
+                        EffectAst::subject_verb_put_counters_all(
+                            descriptor.counter_type,
+                            descriptor.count_value(),
+                            filter.clone(),
+                        )
+                    })
+                    .collect(),
+            ));
+        }
         let target = parse_target_phrase(shape.target_tokens)?;
         let effects = shape
             .descriptors
@@ -1002,7 +1124,7 @@ pub fn parse_shared_counter_target(
             .map(|(index, descriptor)| {
                 EffectAst::subject_verb_put_counters(
                     descriptor.counter_type,
-                    Value::Fixed(descriptor.count as i32),
+                    descriptor.count_value(),
                     if index == 0 {
                         target.clone()
                     } else {

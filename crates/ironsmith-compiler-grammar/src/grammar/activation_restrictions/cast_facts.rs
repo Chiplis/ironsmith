@@ -202,6 +202,8 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
     if !matches!(input.first().copied(), Some("spell" | "spells")) {
         return None;
     }
+    // The spell noun is the restriction's object kind (`ObjectFilter::spell`).
+    crate::word_claims::claim_words(&input[..1]);
     input = &input[1..];
 
     if exact(input, &["of", "the", "chosen", "color"]) {

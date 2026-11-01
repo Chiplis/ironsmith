@@ -1008,6 +1008,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "that player or that object's controller".to_string()
                 }
+                PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                    format!("that player or that object's {}", relation.noun())
+                }
                 PlayerFilter::Excluding { base, excluded } => format!(
                     "{} other than {}",
                     base.description(),

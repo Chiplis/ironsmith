@@ -217,6 +217,11 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
     {
         return Some(value);
     }
+    if let Some(historical) =
+        value_helper_shapes::historical_aggregate_scope_value(surface.metric, surface.scope_words)
+    {
+        return historical;
+    }
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter_lexed(scope_tokens, false))?;
 
@@ -226,6 +231,14 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
         AggregateValueMetric::PermanentTypes => Some(Value::PermanentTypesAmong(filter)),
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
         AggregateValueMetric::PlaneswalkerTypes => Some(Value::PlaneswalkerTypesAmong(filter)),
+        AggregateValueMetric::SubtypeFamilyTypes(family) => Some(Value::SubtypesAmong {
+            family: Some(family),
+            filter,
+        }),
+        AggregateValueMetric::AnySubtypes => Some(Value::SubtypesAmong {
+            family: None,
+            filter,
+        }),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
         AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
@@ -378,10 +391,9 @@ fn history_filter_from_word_prefix(
 ) -> Option<ObjectFilter> {
     // "card type among noncreature spells you've cast this turn" (Hurkyl,
     // Master Wizard) counts characteristics of the spells, never the spells.
-    if matches!(
-        words.to_word_refs().as_slice(),
-        ["card" | "creature", "type" | "types", "among", ..] | ["color" | "colors", "among", ..]
-    ) {
+    if crate::word_claims::probe_only(|| {
+        value_shapes::is_type_or_color_family_iteration(&words.to_word_refs())
+    }) {
         return None;
     }
     let range = words.token_span_for_words(0, end_word)?;

@@ -1464,3 +1464,210 @@ fn idris_gets_the_imprinted_cards_abilities_and_plus_x_for_its_mana_value() {
     settle(&mut g, &mut queue, &mut dm);
     assert_eq!(g.player(ALICE).unwrap().life, 21, "the Relic's ability, not the Stranger's");
 }
+
+const ANJE_FALKENRATH: &str = "Mana cost: {1}{B}{R}\nType: Legendary Creature — Vampire\nPower/Toughness: 1/3\nHaste\n{T}, Discard a card: Draw a card.\nWhenever you discard a card, if it has madness, untap Anje Falkenrath.";
+
+const FALKENRATH_GORGER: &str = "Mana cost: {R}\nType: Creature — Vampire Berserker\nPower/Toughness: 2/1\nEach Vampire creature card you own that isn't on the battlefield has madness. The madness cost is equal to its mana cost. (If you discard a card with madness, discard it into exile. When you do, cast it for its madness cost or put it into your graveyard.)";
+
+/// Gorger grants madness to Vampire cards in hand: discarding one to Anje's
+/// ability untaps Anje; discarding a non-Vampire (no madness) doesn't.
+#[test]
+fn anje_untaps_only_when_the_discarded_card_has_granted_madness() {
+    let anje_def = compile("Anje Falkenrath", ANJE_FALKENRATH);
+    let gorger_def = compile("Falkenrath Gorger", FALKENRATH_GORGER);
+    let index = activated_index(&anje_def, Zone::Battlefield);
+    for (discard, untaps) in [("Vampire Card", true), ("Plain Card", false)] {
+        let mut g = game(2);
+        stock_library(&mut g, ALICE, 3);
+        let anje = put(&mut g, &anje_def, ALICE, Zone::Battlefield);
+        put(&mut g, &gorger_def, ALICE, Zone::Battlefield);
+        let vampire = body("Vampire Card", vec![CardType::Creature], vec![Subtype::Vampire], 2, 2, 2);
+        g.create_object_from_definition(&vampire, ALICE, Zone::Hand);
+        let plain = body("Plain Card", vec![CardType::Artifact], vec![], 0, 0, 2);
+        g.create_object_from_definition(&plain, ALICE, Zone::Hand);
+        g.refresh_continuous_state().unwrap();
+        let mut dm = Script {
+            object_preference: vec![discard],
+            // Decline the madness cast; the card goes to the graveyard.
+            accept: false,
+            ..Script::default()
+        };
+        let mut queue = perform(&mut g, anje, ALICE, Some(index), &mut dm).expect("activate Anje");
+        assert!(g.is_tapped(anje), "tapped as a cost");
+        settle(&mut g, &mut queue, &mut dm);
+        assert!(
+            find_named(&g, discard, Zone::Hand).is_empty(),
+            "{discard} was discarded; offered {:?}",
+            dm.offered_objects
+        );
+        assert_eq!(!g.is_tapped(anje), untaps, "discarded {discard}");
+    }
+}
+
+const FLASHBACK_WATCHER: &str = "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 1/1\nWhenever you discard a card, if it has flashback, draw a card.";
+
+const DISCARD_OUTLET: &str = "Mana cost: {1}\nType: Artifact\n{1}, Discard a card: You gain 1 life.";
+
+/// Discarding Think Twice (flashback) draws a card; discarding a card without
+/// flashback doesn't. Snapcaster Mage can't set this up: its flashback is
+/// granted to a card already in the graveyard, and a discarded card comes
+/// from hand, so the printed keyword stands in for "has flashback".
+#[test]
+fn discard_trigger_draws_only_for_a_card_with_flashback() {
+    let watcher = compile("Flashback Watcher", FLASHBACK_WATCHER);
+    let outlet_def = compile("Discard Outlet", DISCARD_OUTLET);
+    let think_twice = compile(
+        "Think Twice",
+        "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nFlashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    let index = activated_index(&outlet_def, Zone::Battlefield);
+    for (discard, draws) in [("Think Twice", true), ("Plain Card", false)] {
+        let mut g = game(2);
+        stock_library(&mut g, ALICE, 3);
+        put(&mut g, &watcher, ALICE, Zone::Battlefield);
+        let outlet = put(&mut g, &outlet_def, ALICE, Zone::Battlefield);
+        g.create_object_from_definition(&think_twice, ALICE, Zone::Hand);
+        let plain = body("Plain Card", vec![CardType::Artifact], vec![], 0, 0, 2);
+        g.create_object_from_definition(&plain, ALICE, Zone::Hand);
+        add_mana(&mut g, ALICE, ManaSymbol::Colorless, 1);
+        let mut dm = Script {
+            object_preference: vec![discard],
+            ..Script::default()
+        };
+        let library_before = g.player(ALICE).unwrap().library.len();
+        let mut queue = perform(&mut g, outlet, ALICE, Some(index), &mut dm).expect("activate outlet");
+        settle(&mut g, &mut queue, &mut dm);
+        assert_eq!(find_named(&g, discard, Zone::Graveyard).len(), 1, "{discard} was discarded");
+        assert_eq!(
+            library_before - g.player(ALICE).unwrap().library.len(),
+            usize::from(draws),
+            "discarded {discard}"
+        );
+    }
+}
+
+const PLANESWALKER_HUNTER: &str = "Mana cost: {2}\nType: Creature — Soldier\nPower/Toughness: 2/2\nWhenever this creature attacks a planeswalker, draw a card.";
+
+/// The trigger draws when the creature attacks a planeswalker and not when
+/// it attacks a player.
+#[test]
+fn attacks_a_planeswalker_trigger_ignores_attacks_on_players() {
+    let hunter = compile("Planeswalker Hunter", PLANESWALKER_HUNTER);
+    let walker = body("Fixture walker", vec![CardType::Planeswalker], vec![], 0, 0, 3);
+    for at_walker in [true, false] {
+        let mut g = game(2);
+        stock_library(&mut g, ALICE, 3);
+        let attacker = put(&mut g, &hunter, ALICE, Zone::Battlefield);
+        let bob_walker = put(&mut g, &walker, BOB, Zone::Battlefield);
+        g.object_mut(bob_walker)
+            .unwrap()
+            .counters
+            .insert(CounterType::Loyalty, 5);
+        let target = if at_walker {
+            AttackTarget::Planeswalker(bob_walker)
+        } else {
+            AttackTarget::Player(BOB)
+        };
+        let library_before = g.player(ALICE).unwrap().library.len();
+        let mut dm = Script::default();
+        declare_attackers(&mut g, ALICE, &[(attacker, target)], &mut dm);
+        assert_eq!(
+            library_before - g.player(ALICE).unwrap().library.len(),
+            usize::from(at_walker),
+            "attacking a planeswalker: {at_walker}"
+        );
+    }
+}
+
+const GRAVE_WARD: &str = "Mana cost: {1}{B}\nType: Instant\nIf a creature card would be put into your graveyard from anywhere this turn, exile it instead.";
+
+/// After the spell resolves, Alice's dying creature is exiled instead, while
+/// her destroyed noncreature permanent still goes to the graveyard.
+#[test]
+fn creature_cards_go_to_exile_instead_of_the_graveyard_this_turn() {
+    let mut g = game(2);
+    let bear = put(&mut g, &creature("Doomed Bear", 2, 2), ALICE, Zone::Battlefield);
+    let relic = put(
+        &mut g,
+        &body("Doomed Relic", vec![CardType::Artifact], vec![], 0, 0, 1),
+        ALICE,
+        Zone::Battlefield,
+    );
+    add_mana(&mut g, ALICE, ManaSymbol::Black, 1);
+    add_mana(&mut g, ALICE, ManaSymbol::Colorless, 1);
+    let spell = g.create_object_from_definition(&compile("Grave Ward", GRAVE_WARD), ALICE, Zone::Hand);
+    let mut dm = Script::default();
+    let mut queue = perform(&mut g, spell, ALICE, None, &mut dm).expect("cast Grave Ward");
+    settle(&mut g, &mut queue, &mut dm);
+    assert_eq!(
+        find_named(&g, "Grave Ward", Zone::Graveyard).len(),
+        1,
+        "the instant itself is not a creature card"
+    );
+
+    destroy(&mut g, relic, bear);
+    assert_eq!(find_named(&g, "Doomed Bear", Zone::Exile).len(), 1, "creature card exiled instead");
+    assert!(find_named(&g, "Doomed Bear", Zone::Graveyard).is_empty());
+    destroy(&mut g, bear, relic);
+    assert_eq!(find_named(&g, "Doomed Relic", Zone::Graveyard).len(), 1, "noncreature card is unaffected");
+}
+
+const SPIDER_LEGENDS: &str = "Mana cost: {1}{G}\nType: Enchantment\nThe \"legend rule\" doesn't apply to Spiders.";
+
+/// With the static on the battlefield, two same-named legendary Spiders
+/// under one controller both survive SBAs; two same-named legendary Bears
+/// still lose one to the legend rule.
+#[test]
+fn legend_rule_exemption_applies_only_to_spiders() {
+    let mut g = game(2);
+    put(&mut g, &compile("Spider Legends", SPIDER_LEGENDS), ALICE, Zone::Battlefield);
+    let legend = |name: &str, subtype: Subtype| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![subtype])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    };
+    let spider = legend("Twin Spider", Subtype::Spider);
+    let bear = legend("Twin Bear", Subtype::Bear);
+    for _ in 0..2 {
+        put(&mut g, &spider, ALICE, Zone::Battlefield);
+        put(&mut g, &bear, ALICE, Zone::Battlefield);
+    }
+    let mut dm = Script::default();
+    let mut queue = TriggerQueue::new();
+    settle(&mut g, &mut queue, &mut dm);
+    assert_eq!(find_named(&g, "Twin Spider", Zone::Battlefield).len(), 2, "Spiders are exempt");
+    assert_eq!(find_named(&g, "Twin Bear", Zone::Battlefield).len(), 1, "the legend rule still applies");
+}
+
+const UNTAP_PAIR: &str = "Mana cost: {1}{G}\nType: Instant\nUntap up to one target creature and up to one target land.";
+
+/// One creature target and one land target, each from its own pool; both
+/// untap and nothing else does.
+#[test]
+fn untap_up_to_one_creature_and_up_to_one_land() {
+    let mut g = game(2);
+    let bear = put(&mut g, &creature("Tapped Bear", 2, 2), ALICE, Zone::Battlefield);
+    let other = put(&mut g, &creature("Other Tapped Bear", 2, 2), ALICE, Zone::Battlefield);
+    let land = put(&mut g, &basic_plains("Tapped Plains"), ALICE, Zone::Battlefield);
+    for id in [bear, other, land] {
+        g.tap(id);
+    }
+    add_mana(&mut g, ALICE, ManaSymbol::Green, 1);
+    add_mana(&mut g, ALICE, ManaSymbol::Colorless, 1);
+    let spell = g.create_object_from_definition(&compile("Untap Pair", UNTAP_PAIR), ALICE, Zone::Hand);
+    let mut dm = Script {
+        targets: vec![Target::Object(bear), Target::Object(land)],
+        ..Script::default()
+    };
+    let mut queue = perform(&mut g, spell, ALICE, None, &mut dm).expect("cast Untap Pair");
+    assert_eq!(dm.offered_targets.len(), 2, "two target requirements: {:?}", dm.offered_targets);
+    assert!(!dm.offered_targets[0].contains(&Target::Object(land)), "first target is a creature");
+    assert!(!dm.offered_targets[1].contains(&Target::Object(bear)), "second target is a land");
+    settle(&mut g, &mut queue, &mut dm);
+    assert!(!g.is_tapped(bear));
+    assert!(!g.is_tapped(land));
+    assert!(g.is_tapped(other), "only the targets untap");
+}

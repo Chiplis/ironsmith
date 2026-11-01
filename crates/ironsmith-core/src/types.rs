@@ -171,6 +171,11 @@ impl SubtypeFamily {
         }
     }
 
+    /// Whether `subtype` is one of this family's types.
+    pub fn contains(self, subtype: Subtype) -> bool {
+        subtype.belongs_to_family(self)
+    }
+
     pub const fn all_subtypes(self) -> &'static [Subtype] {
         match self {
             SubtypeFamily::Land => Subtype::all_land_types(),

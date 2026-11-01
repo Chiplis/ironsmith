@@ -917,6 +917,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let [subject @ .., "face" | "faces", "a", "dilemma"] = words.as_slice()
         && let Some(player) = parse_trigger_subject_player_filter(subject)
     {
+        // "face(s) a dilemma": the keyword action (choosing modes).
+        crate::word_claims::claim_words(&words[subject.len()..]);
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::FaceDilemma,
             player,
@@ -1094,6 +1096,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let filter = source_reference_surface_for_trigger_subject(&tokens[source_start..])
             .map(ObjectFilter::source_with_surface)
             .unwrap_or_else(ObjectFilter::source);
+        // The counter noun of "the last <kind> counter is removed".
+        crate::word_claims::claim_words(&words[counter_idx..=counter_idx]);
         return Ok(TriggerSpec::CounterRemovedFrom {
                     source_controller: None,
             filter,
@@ -1802,6 +1806,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let searched_word_view = ActivationRestrictionCompatWords::new(&searched_tokens);
             let searched_words = searched_word_view.to_word_refs();
             if trigger_pattern_accepts(&searched_words, LIBRARY_SEARCH_TARGET_PATTERN) {
+                crate::word_claims::claim_tokens(&tokens[search_idx..=search_idx]);
                 return Ok(TriggerSpec::PlayerSearchesLibrary(player));
             }
         }
@@ -1818,6 +1823,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             && let Some((player, caused_by_effect, source_controller_shuffles)) =
                 parse_shuffle_trigger_subject(&subject_words)
         {
+            crate::word_claims::claim_tokens(&tokens[shuffle_idx..=shuffle_idx]);
             return Ok(TriggerSpec::PlayerShufflesLibrary {
                 player,
                 caused_by_effect,
@@ -1835,6 +1841,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let gifted_word_view = ActivationRestrictionCompatWords::new(&gifted_tokens);
             let gifted_words = gifted_word_view.to_word_refs();
             if trigger_pattern_accepts(&gifted_words, GIFT_TAIL_PATTERN) {
+                crate::word_claims::claim_tokens(&tokens[give_idx..=give_idx]);
                 return Ok(TriggerSpec::PlayerGivesGift(player));
             }
         }
@@ -1869,6 +1876,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     words.join(" ")
                 ))
             })?;
+            crate::word_claims::claim_tokens(&tokens[create_idx..=create_idx]);
             return Ok(TriggerSpec::TokensCreated {
                 player,
                 filter,
@@ -2067,12 +2075,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 split_activation_cost_tap_condition_tail_lexed(tail_tokens, raw_tail_words);
             let ability_tail_tokens = ability_tail_tokens.as_slice();
             let tail_words = ability_tail_words.as_slice();
+            // The activation verb every reading below hangs off.
+            let claim_verb = || crate::word_claims::claim_words(&words[activate_idx..=activate_idx]);
             // "Whenever an opponent activates a loyalty ability" (Gideon the
             // Oathless): any loyalty ability, whatever its source.
             if matches!(
                 tail_words,
                 ["a", "loyalty", "ability"] | ["loyalty", "abilities"]
             ) {
+                claim_verb();
+                crate::word_claims::claim_tokens(ability_tail_tokens);
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter: ObjectFilter::default(),
@@ -2084,6 +2096,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             if let Some(filter) =
                 parse_loyalty_ability_trigger_tail_lexed(ability_tail_tokens, tail_words)?
             {
+                claim_verb();
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter,
@@ -2097,6 +2110,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 // named-ability tail are this reading.
                 crate::word_claims::claim_tokens(&tokens[activate_idx..activate_idx + 1]);
                 crate::word_claims::claim_tokens(ability_tail_tokens);
+                claim_verb();
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter: ObjectFilter::default().with_ability_marker(marker),
@@ -2112,6 +2126,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     Some(marker) => owner_filter.with_ability_marker(marker),
                     None => owner_filter,
                 };
+                claim_verb();
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter,
@@ -2123,6 +2138,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             if let Some((filter, non_mana_only)) =
                 parse_ability_of_object_trigger_tail_lexed(ability_tail_tokens, tail_words)?
             {
+                claim_verb();
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter,
@@ -2132,6 +2148,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 });
             }
             if let Some(filter) = parse_ability_targets_trigger_tail_lexed(ability_tail_tokens)? {
+                claim_verb();
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter,
@@ -2141,6 +2158,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 });
             }
             if trigger_pattern_accepts(tail_words, ACTIVATED_ABILITY_TAIL_PATTERN) {
+                claim_verb();
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter: ObjectFilter::default(),
@@ -2774,6 +2792,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             // the entering object must be an attacking creature as it enters.
             if words.get(enters_word_idx + 1) == Some(&"attacking") {
                 filter.attacking = true;
+                crate::word_claims::claim_word(words[enters_word_idx + 1]);
             }
             let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
                 Some(crate::events::cause::CauseFilter::not_type(
@@ -2872,6 +2891,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         {
             let destination_name =
                 transform_destination_name_after_into(&word_view, transforms_word_idx, tokens);
+            // "transforms into <face>": the event verb this trigger names.
+            crate::word_claims::claim_tokens(
+                tokens.get(transforms_token_idx..=transforms_token_idx).unwrap_or_default(),
+            );
             return Ok(this_transforms_trigger_spec(
                 source_reference_surface_for_trigger_subject(subject_tokens),
                 destination_name,
@@ -3637,6 +3660,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if matches!(descriptor_words.first().copied(), Some("a" | "an")) {
             crate::word_claims::claim_words(&descriptor_words[..1]);
         }
+        // "a counter" / "one or more counters": the counted noun, of any kind
+        // when no kind is named.
+        crate::word_claims::claim_words(&words[counter_word_idx..=counter_word_idx]);
 
         return Ok(TriggerSpec::CounterPutOn {
             filter,
@@ -3654,6 +3680,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             trigger_pattern_accepts(tail, PLAYER_GETS_ONE_OR_MORE_ENERGY_TAIL_PATTERN)
         })
     {
+        // "gets one or more {E}": the gain verb and its energy tail.
+        crate::word_claims::claim_words(&words[get_word_idx..]);
         return Ok(TriggerSpec::PlayerGetsCounters {
             player,
             counter_type: Some(CounterType::Energy),
@@ -3677,6 +3705,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             ActivationRestrictionCompatWords::new(descriptor_span).to_word_refs();
         let one_or_more = trigger_pattern_accepts(&descriptor_words, ONE_OR_MORE_PREFIX_PATTERN);
         let counter_type = parse_counter_type_from_tokens(counter_descriptor_tokens);
+        crate::word_claims::claim_word(words[get_word_idx]);
 
         return Ok(TriggerSpec::PlayerGetsCounters {
             player,
@@ -3980,6 +4009,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     ))
                 })?
             };
+            crate::word_claims::claim_word(words[crew_word_idx]);
+            if source_becomes_crewed {
+                crate::word_claims::claim_words(subject_words);
+            }
             return Ok(TriggerSpec::KeywordActionTaggedObject {
                 action: crate::events::KeywordActionKind::Crew,
                 player: PlayerFilter::Any,
@@ -4006,6 +4039,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             } else {
                 None
             };
+            if revealed_filter.is_some() || tail.is_empty() {
+                // "explores" and its revealed-card tail are read here.
+                crate::word_claims::claim_words(&words[explore_word_idx..]);
+            }
             return Ok(match revealed_filter {
                 Some(object_filter) => TriggerSpec::KeywordActionTaggedObject {
                     action: crate::events::KeywordActionKind::Explore,
@@ -4038,6 +4075,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)?
             && words[fight_word_idx + 1..].is_empty()
         {
+            crate::word_claims::claim_word(words[fight_word_idx]);
             return Ok(TriggerSpec::KeywordAction {
                 action: crate::events::KeywordActionKind::Fight,
                 player: PlayerFilter::Any,
@@ -4056,6 +4094,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)?
             && words[connive_word_idx + 1..].is_empty()
         {
+            crate::word_claims::claim_word(words[connive_word_idx]);
             return Ok(TriggerSpec::KeywordAction {
                 action: crate::events::KeywordActionKind::Connive,
                 player: PlayerFilter::Any,
@@ -4141,6 +4180,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     {
         // CR 716.2a: Class levels are a designation set by the level ability,
         // not level counters.
+        crate::word_claims::claim_words(&words);
         return Ok(TriggerSpec::ThisClassBecomesLevel(level));
     }
     if trigger_pattern_accepts(&words, BECOMES_MONSTROUS_TRIGGER_SUFFIX)
@@ -5336,6 +5376,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     {
         let won = words[result_idx].eq_ignore_ascii_case("win")
             || words[result_idx].eq_ignore_ascii_case("wins");
+        // The flip result verb is the event read here.
+        crate::word_claims::claim_word(words[result_idx]);
         return Ok(TriggerSpec::PlayerCoinFlipResult { player, won });
     }
 
@@ -6069,7 +6111,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         // "Whenever this creature attacks a battle" (CR 508.1b): the attack
         // target restriction stays on the attacker filter so attacking a
         // player or planeswalker doesn't trigger it.
-        if tail == ["a", "battle"] {
+        // "attacks a battle" / "attacks a planeswalker" (CR 508.1b): the
+        // attack-target kind stays on the attacker filter, so attacking a
+        // player (or the other permanent kind) doesn't trigger it.
+        if tail == ["a", "battle"] || tail == ["a", "planeswalker"] {
+            let attacks_planeswalker = tail[1] == "planeswalker";
             let attacks_token_idx =
                 trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
             let subject_tokens = trim_edge_punctuation(&tokens[..attacks_token_idx]);
@@ -6083,7 +6129,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 parse_attack_trigger_subject_filter_lexed(&subject_tokens)?
             };
             if let Some(mut filter) = filter {
-                filter.attacking_battle = true;
+                if attacks_planeswalker {
+                    filter.attacking_planeswalker = true;
+                } else {
+                    filter.attacking_battle = true;
+                }
+                // The attack verb and the attacked-object kind are read here.
+                crate::word_claims::claim_words(&words[attacks_word_idx..]);
+                if is_source_reference_words(subject_words) {
+                    crate::word_claims::claim_tokens(&subject_tokens);
+                }
                 return Ok(TriggerSpec::Attacks(filter));
             }
         }
@@ -6161,10 +6216,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     false,
                 )
             } else {
-                // An unrestricted tail ("attacks a planeswalker") is never
-                // dropped here: no reading would keep its attack-target
-                // restriction, so the trigger would fire on every attack.
-                // "attacks a battle" is read above into `attacking_battle`.
+                // An unmodeled tail is never dropped here: the trigger would
+                // fire on every attack. "attacks a battle/planeswalker" is read
+                // above into `attacking_battle` / `attacking_planeswalker`.
                 (&words[..], None, false)
             }
         } else {
@@ -6906,7 +6960,7 @@ pub(super) fn parse_ability_of_object_trigger_tail_lexed(
     let Some(tail) = trigger_grammar::parse_ability_of_object_tail(tail_tokens) else {
         return Ok(None);
     };
-    let filter_tokens = &tail_tokens[tail.filter];
+    let filter_tokens = &tail_tokens[tail.filter.clone()];
     let mut filter = parse_object_filter_lexed(filter_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported activated-ability trigger source filter (clause: '{}')",
@@ -6920,6 +6974,30 @@ pub(super) fn parse_ability_of_object_trigger_tail_lexed(
     }
     if tail.chosen_type_reference {
         filter.chosen_creature_type = true;
+    }
+    // "an ability of <object>": the activated ability whose source the
+    // filter names; "that isn't a mana ability" is the non-mana restriction.
+    let head = &tail_tokens[..tail.filter.start];
+    if matches!(
+        crate::lexer::token_word_refs(head).as_slice(),
+        ["an" | "any", "ability", "of"]
+            | ["an" | "any", "activated", "ability", "of"]
+            | ["activated", "abilities", "of"]
+            | ["abilities", "of"]
+    ) {
+        crate::word_claims::claim_tokens(head);
+    }
+    let rest = &tail_tokens[tail.filter.end..];
+    let rest_words = crate::lexer::token_word_refs(rest);
+    if (tail.non_mana_only
+        && matches!(
+            rest_words.as_slice(),
+            ["that", "isnt" | "isn't", "a", "mana", "ability"]
+                | ["that", "arent" | "aren't", "mana", "abilities"]
+        ))
+        || (tail.chosen_type_reference && rest_words.as_slice() == ["of", "that", "type"])
+    {
+        crate::word_claims::claim_tokens(rest);
     }
     Ok(Some((filter, tail.non_mana_only)))
 }

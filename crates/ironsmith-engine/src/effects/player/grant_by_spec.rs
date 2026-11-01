@@ -65,6 +65,7 @@ fn lock_contextual_owner_controller(
                     | PlayerFilter::TaggedPlayer(_)
                     | PlayerFilter::ChosenPlayer
                     | PlayerFilter::TargetPlayerOrControllerOfTarget
+                    | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
                     | PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_))
                     | PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(_))
                     | PlayerFilter::AliasedOwnerOf(crate::target::ObjectRef::Tagged(_))

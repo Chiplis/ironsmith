@@ -1260,7 +1260,11 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
             let both_card_types = parse_card_type(prev).is_some() && parse_card_type(next).is_some();
             let both_subtypes =
                 parse_subtype_flexible(prev).is_some() && parse_subtype_flexible(next).is_some();
-            if both_card_types || both_subtypes {
+            // "red or green creature spell": the color list collects into
+            // `colors`, which matches any listed color.
+            let both_colors = crate::util::parse_color(prev).is_some()
+                && crate::util::parse_color(next).is_some();
+            if both_card_types || both_subtypes || both_colors {
                 crate::word_claims::claim_word(word);
             }
         }

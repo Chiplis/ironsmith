@@ -1167,6 +1167,19 @@ pub(super) fn matches_subject(
     {
         return false;
     }
+    if filter.attacking_planeswalker
+        && !game.combat.as_ref().is_some_and(|combat| {
+            combat.attackers.iter().any(|attacker| {
+                attacker.creature == subject.object_id()
+                    && matches!(
+                        attacker.target,
+                        crate::combat_state::AttackTarget::Planeswalker(_)
+                    )
+            })
+        })
+    {
+        return false;
+    }
     if filter.attacked_this_turn && !game.creature_attacked_this_turn(subject.object_id()) {
         return false;
     }

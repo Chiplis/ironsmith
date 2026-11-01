@@ -5306,6 +5306,15 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
             "a card for each card type among {}",
             describe_spells_cast_this_turn_phrase(player, filter)
         )),
+        Value::DistinctAmongSpellsCastThisTurn {
+            characteristic,
+            player,
+            filter,
+        } => Some(format!(
+            "a card for each {} among {}",
+            characteristic.singular_phrase(),
+            describe_spells_cast_this_turn_phrase(player, filter)
+        )),
         Value::PlayersBeingAttacked => Some("a card for each player being attacked".to_string()),
         // "draw a card for each kind of counter on it" (Blitzball Stadium's
         // granted trigger): distinct counter kinds on the source object.
@@ -5365,6 +5374,11 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
         )),
         Value::CreatureTypesAmong(filter) => Some(format!(
             "a card for each creature type among {}",
+            describe_count_filter_value_subject(filter)
+        )),
+        Value::SubtypesAmong { family, filter } => Some(format!(
+            "a card for each {} among {}",
+            ironsmith_core::DistinctCharacteristic::Subtypes(*family).singular_phrase(),
             describe_count_filter_value_subject(filter)
         )),
         Value::CardTypesAmong(filter) => Some(format!(
@@ -6334,6 +6348,7 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::LeastToughness(filter)
         | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
+        | Value::SubtypesAmong { filter, .. }
         | Value::CreatureTypesAmong(filter)
         | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)

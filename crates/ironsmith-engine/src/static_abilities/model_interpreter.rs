@@ -1128,6 +1128,11 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::LegendRuleDoesntApplyToController { filter } => {
                 if model.id == Some(StaticAbilityId::LegendRuleDoesntApplyToControllerTokens) {
                     StaticAbility::legend_rule_doesnt_apply_to_tokens_you_control()
+                } else if model.id == Some(StaticAbilityId::LegendRuleDoesntApplyToMatching) {
+                    StaticAbility::legend_rule_doesnt_apply_to_matching(
+                        filter.clone(),
+                        model.label.clone(),
+                    )
                 } else {
                     StaticAbility::legend_rule_doesnt_apply_to_controller_matching(filter.clone())
                 }
@@ -2889,6 +2894,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         if let ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { name } = self.payload() {
             return name.clone();
         }
+        if let ironsmith_core::StaticAbilityPayload::ShuffleIntoOwnersLibraryInstead {
+            to_zone,
+            reveal,
+        } = &self.model.payload
+        {
+            return super::misc::self_shuffle_into_library_display(*to_zone, *reveal);
+        }
         if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
             filter,
             from_zone: Some(crate::zone::Zone::Battlefield),
@@ -3280,6 +3292,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Multiply(*factor))));
         }
 
+        if let ironsmith_core::StaticAbilityPayload::ShuffleIntoOwnersLibraryInstead {
+            to_zone,
+            reveal,
+        } = &self.model.payload
+        {
+            return Some(super::misc::self_shuffle_into_library_replacement(
+                source, controller, *to_zone, *reveal,
+            ));
+        }
         if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
             filter,
             from_zone,

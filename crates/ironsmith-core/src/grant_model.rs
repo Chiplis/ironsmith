@@ -1532,6 +1532,9 @@ where
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "That player or that object's controller may".to_string()
                 }
+                PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                    format!("That player or that object's {} may", relation.noun())
+                }
                 PlayerFilter::Excluding { .. } => "A player may".to_string(),
                 PlayerFilter::Target(_) => "Target player may".to_string(),
                 PlayerFilter::AliasedTarget(_) => "That player may".to_string(),

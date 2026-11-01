@@ -5690,8 +5690,19 @@ pub(crate) fn parse_complete_create_statement(
         } else {
             crate::util::parse_subject(&parse_tokens[..verb_idx])
         };
+        // "That permanent's controller or that player creates ..." (Acorn
+        // Catapult): the controller of the tagged recipient, which resolves
+        // to the tagged player when the recipient was a player.
+        let controller_or_that_player = matches!(
+            subject,
+            crate::util::SubjectAst::Player(PlayerAst::ItsController)
+        ) && crate::lexer::token_word_refs(&parse_tokens[..verb_idx])
+            .ends_with(&["or", "that", "player"]);
         let created =
             super::creation_handlers::parse_create(&parse_tokens[verb_idx..], Some(subject))?;
+        if controller_or_that_player {
+            crate::word_claims::claim_tokens(&parse_tokens[verb_idx - 3..verb_idx]);
+        }
         let created = if !quantified_opponents
             && let Some(owner) =
                 crate::grammar::effects::become_shapes::parse_controller_owner_subject_tokens(
@@ -11059,6 +11070,38 @@ pub(crate) fn parse_turn_scoped_enter_tapped_replacement(
     ))
 }
 
+/// The spend-permission clause of a sentence carrying a this-turn lifetime
+/// (a leading "until end of turn," or a trailing "this turn"), with the
+/// duration tokens the reader claims once the clause is read. `None` when
+/// the sentence names no such lifetime.
+fn temporary_spend_permission_body(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], Vec<&[OwnedLexToken]>)> {
+    let mut body = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(body);
+    if !words.contains(&"spend") || !words.contains(&"though") {
+        return None;
+    }
+    let mut duration = Vec::new();
+    if let [until, end, of, turn, rest @ ..] = body
+        && until.parser_text() == "until"
+        && end.parser_text() == "end"
+        && of.parser_text() == "of"
+        && turn.parser_text() == "turn"
+    {
+        duration.push(&body[..4]);
+        body = crate::lexer::trim_lexed_commas(rest);
+    }
+    if let [rest @ .., this, turn] = body
+        && this.parser_text() == "this"
+        && turn.parser_text() == "turn"
+    {
+        duration.push(&body[body.len() - 2..]);
+        body = rest;
+    }
+    (!duration.is_empty()).then_some((body, duration))
+}
+
 /// Complete mana rewriting, color selection, and temporary spending sentences
 /// have typed owners before generic conditional/action-chain decomposition.
 fn read_typed_mana_output_sentence(
@@ -11073,6 +11116,26 @@ fn read_typed_mana_output_sentence(
                 symbol,
             );
         permission.other_mana_only_as_colorless = false;
+        return Ok(Some(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission {
+                permission,
+                until: crate::effect::Until::EndOfTurn,
+                display: crate::lexer::render_token_slice(tokens),
+            }),
+        )));
+    }
+    // "You may spend mana as though it were mana of any color/type [to ...]
+    // this turn." / "Until end of turn, you may spend mana as though ...":
+    // the general spend permission, registered for the rest of the turn.
+    if let Some((body, duration)) = temporary_spend_permission_body(tokens)
+        && let Some((permission, _)) =
+            crate::keyword_static::parse_mana_spend_permission_clause(body)?
+    {
+        for duration_tokens in duration {
+            crate::word_claims::claim_tokens(duration_tokens);
+        }
         return Ok(Some(EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,

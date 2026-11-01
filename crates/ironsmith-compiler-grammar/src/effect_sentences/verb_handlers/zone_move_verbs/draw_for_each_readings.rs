@@ -37,6 +37,13 @@ impl CountedFilter<'_> {
         self.read_by_cache.borrow_mut().insert(id, read);
         read
     }
+    /// "<characteristic> among <pool>" ("colors among spells you've cast
+    /// this turn"): the aggregate reading's input, never a count of the
+    /// pool's objects nor of the pool's history events.
+    fn is_characteristic_aggregate(&self) -> bool {
+        let words = crate::lexer::token_word_refs(self.tokens);
+        crate::grammar::shared_util::value_shapes::parse_aggregate_value_surface(&words).is_some()
+    }
     /// A reading's outcome: its error is a committed diagnostic on the input.
     fn outcome(&self, read: Result<Option<Value>, CardTextError>) -> ParseOutcome<Value> {
         let span = crate::util::span_from_tokens(self.tokens);
@@ -68,7 +75,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("turn-history-count"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| !input.is_characteristic_aggregate(),
         read: |input| input.outcome(read_turn_history_count(input)),
     },
     Reading {
@@ -85,7 +92,7 @@ const READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |input| {
             // Readings ranked above this one that read the input read it.
-            !input.read_by("turn-history-count")
+            !input.read_by("turn-history-count") && !input.is_characteristic_aggregate()
         },
         read: |input| input.outcome(read_spells_cast_this_turn_matching_count(input)),
     },

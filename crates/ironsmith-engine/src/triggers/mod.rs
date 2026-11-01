@@ -193,6 +193,9 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
         }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            format!("that player or that object's {}", relation.noun())
+        }
         PlayerFilter::ControllerOf(_) => "that object's controller".to_string(),
         PlayerFilter::OwnerOf(_) => "that object's owner".to_string(),
         PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -247,6 +250,9 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player's or that object's controller's".to_string()
+        }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            format!("that player's or that object's {}'s", relation.noun())
         }
         PlayerFilter::ControllerOf(_) => "that object's controller's".to_string(),
         PlayerFilter::OwnerOf(_) => "that object's owner's".to_string(),

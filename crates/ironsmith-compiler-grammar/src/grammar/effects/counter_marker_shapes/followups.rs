@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedCounterTargetShape<'a> {
-    pub descriptors: Vec<CounterDescriptorShape>,
+    pub descriptors: Vec<CounterListDescriptorShape>,
     pub target_tokens: &'a [OwnedLexToken],
 }
 
@@ -31,7 +31,8 @@ fn parse_shared_counter_target_lexed<'a>(
 ) -> WResult<SharedCounterTargetShape<'a>> {
     opt(primitives::kw("put")).parse_next(input)?;
     let descriptors =
-        separated(2.., parse_counter_descriptor_lexed, descriptor_separator).parse_next(input)?;
+        separated(2.., parse_counter_list_descriptor_lexed, descriptor_separator)
+            .parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
     let target_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
         .map(|((), _)| ())

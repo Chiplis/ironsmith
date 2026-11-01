@@ -571,8 +571,13 @@ pub fn strip_trailing_instead(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     .unwrap_or(tokens)
 }
 
+/// "each <filter>" / "all <filter>": every matching object receives the
+/// counters, not one chosen object.
 pub fn strip_each_counter_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("each"))?;
+    let (_, rest) = primitives::parse_prefix(
+        tokens,
+        alt((primitives::kw("each"), primitives::kw("all"))),
+    )?;
     Some(trim_shape_edges(rest))
 }
 

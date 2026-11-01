@@ -2583,6 +2583,9 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
 fn resized_char_map_for_rewrite(original_map: &[usize], previous: &str, normalized: &str) -> Vec<usize> {
     let before: Vec<_> = previous.chars().collect();
     let after: Vec<_> = normalized.chars().collect();
+    if let Some(mapped) = word_substitution_char_map(original_map, &before, &after) {
+        return mapped;
+    }
     let mut prefix = 0;
     while prefix < before.len().min(after.len()) && before[prefix] == after[prefix] { prefix += 1; }
     let mut suffix = 0;
@@ -2593,11 +2596,102 @@ fn resized_char_map_for_rewrite(original_map: &[usize], previous: &str, normaliz
     // Rewrites may insert or remove words in the middle of a line. The
     // unchanged suffix retains its original source positions and spelling.
     let middle_end = after.len() - suffix;
-    let fill = original_map.get(prefix).copied().or_else(|| original_map.last().copied()).unwrap_or(0);
+    // A pure insertion that extends the word before it ("attack" -> "attacks",
+    // "leave" -> "leaves": agreement for a plural self-reference) belongs to
+    // that word: map it onto the word's last character, so the rewritten
+    // word still maps back to exactly the authored word.
+    let inflects_previous_word = prefix > 0
+        && prefix + suffix == before.len()
+        && before[prefix - 1].is_alphanumeric()
+        && after[prefix..middle_end].iter().all(|ch| ch.is_alphanumeric())
+        && after.get(middle_end).is_none_or(|ch| !ch.is_alphanumeric());
+    let fill = if inflects_previous_word {
+        original_map.get(prefix - 1).copied()
+    } else {
+        original_map.get(prefix).copied()
+    }
+    .or_else(|| original_map.last().copied())
+    .unwrap_or(0);
     mapped.resize(middle_end, fill);
     let source_suffix = before.len() - suffix;
     mapped.extend((source_suffix..before.len()).map(|i| original_map.get(i).copied().unwrap_or(fill)));
     mapped
+}
+
+/// The char map for a rewrite that only substitutes whole words in place:
+/// personal pronouns ("he" -> "it", "his" -> "its", "they" -> "it") and verb
+/// agreement ("attack" -> "attacks"), in any combination. Each replacement
+/// word maps onto exactly the authored word it replaced (both endpoints), so
+/// the rewritten word still maps back to that authored word's span. `None`
+/// when the rewrite does anything else (inserts or removes words, reorders,
+/// substitutes other words); the caller then keeps its coarse diff.
+fn word_substitution_char_map(
+    original_map: &[usize],
+    before: &[char],
+    after: &[char],
+) -> Option<Vec<usize>> {
+    fn words(chars: &[char]) -> Vec<std::ops::Range<usize>> {
+        let mut ranges = Vec::new();
+        let mut start = 0;
+        for (index, ch) in chars.iter().enumerate() {
+            if *ch == ' ' {
+                ranges.push(start..index);
+                start = index + 1;
+            }
+        }
+        ranges.push(start..chars.len());
+        ranges
+    }
+    fn split_trailing(word: &[char]) -> (&[char], &[char]) {
+        let core_len = word.len()
+            - word
+                .iter()
+                .rev()
+                .take_while(|ch| matches!(ch, ',' | '.' | ';' | ':'))
+                .count();
+        word.split_at(core_len)
+    }
+    if before == after || original_map.len() != before.len() {
+        return None;
+    }
+    let before_words = words(before);
+    let after_words = words(after);
+    if before_words.len() != after_words.len() {
+        return None;
+    }
+    let mut mapped = Vec::with_capacity(after.len());
+    for (index, (b, a)) in before_words.iter().zip(&after_words).enumerate() {
+        if index > 0 {
+            // The separating space maps to the authored separator.
+            mapped.push(original_map[b.start - 1]);
+        }
+        let (b_word, a_word) = (&before[b.clone()], &after[a.clone()]);
+        if b_word == a_word {
+            mapped.extend_from_slice(&original_map[b.clone()]);
+            continue;
+        }
+        let (b_core, b_trailing) = split_trailing(b_word);
+        let (a_core, a_trailing) = split_trailing(a_word);
+        let a_text: String = a_core.iter().collect();
+        let substitution = b_trailing == a_trailing
+            && !b_core.is_empty()
+            && !a_core.is_empty()
+            && (matches!(a_text.as_str(), "it" | "its" | "it's" | "itself" | "this")
+                || a_core.starts_with(b_core)
+                || b_core.starts_with(a_core));
+        if !substitution {
+            return None;
+        }
+        // Spread the replacement core over the authored core, keeping both
+        // endpoints; the trailing punctuation maps one to one.
+        let (b_len, a_len) = (b_core.len(), a_core.len());
+        for j in 0..a_len {
+            let offset = if a_len == 1 { 0 } else { j * (b_len - 1) / (a_len - 1) };
+            mapped.push(original_map[b.start + offset]);
+        }
+        mapped.extend_from_slice(&original_map[b.start + b_len..b.end]);
+    }
+    (mapped.len() == after.len()).then_some(mapped)
 }
 
 /// "If X is 4 or more, do all of the above." (Multiple Choice): the earlier

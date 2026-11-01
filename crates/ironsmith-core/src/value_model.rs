@@ -9,8 +9,57 @@ use crate::{
 
 use crate::{
     ChooseSpec, ChooseSpecSurfaceHint, Color, ColorSet, SacrificedObjectKind,
-    SourceReferenceSurface,
+    SourceReferenceSurface, SubtypeFamily,
 };
+
+/// A characteristic whose distinct values a history-backed aggregate counts
+/// ("colors among spells you've cast this turn", "mana values among
+/// permanents you've sacrificed this turn"). Card types keep their dedicated
+/// variants.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum DistinctCharacteristic {
+    /// CR 105.2: each color counts once.
+    Colors,
+    /// Distinct mana values (CR 202.3).
+    ManaValues,
+    /// Distinct powers; objects with no power don't contribute.
+    Powers,
+    /// CR 110.4: artifact, battle, creature, enchantment, land, planeswalker.
+    PermanentTypes,
+    /// CR 205.3i: Plains, Island, Swamp, Mountain, Forest.
+    BasicLandTypes,
+    /// Subtypes of one family (CR 205.3), or of any family when `None`.
+    Subtypes(Option<SubtypeFamily>),
+}
+
+impl DistinctCharacteristic {
+    /// The singular noun phrase a "for each <phrase> among ..." uses.
+    pub fn singular_phrase(self) -> String {
+        match self {
+            Self::Colors => "color".to_string(),
+            Self::ManaValues => "mana value".to_string(),
+            Self::Powers => "power".to_string(),
+            Self::PermanentTypes => "permanent type".to_string(),
+            Self::BasicLandTypes => "basic land type".to_string(),
+            Self::Subtypes(Some(family)) => family.type_phrase().to_string(),
+            Self::Subtypes(None) => "subtype".to_string(),
+        }
+    }
+
+    /// The plural noun phrase ("colors", "land types").
+    pub fn plural_phrase(self) -> String {
+        match self {
+            Self::Colors => "colors".to_string(),
+            Self::ManaValues => "different mana values".to_string(),
+            Self::Powers => "different powers".to_string(),
+            Self::PermanentTypes => "permanent types".to_string(),
+            Self::BasicLandTypes => "basic land types".to_string(),
+            Self::Subtypes(Some(family)) => format!("{}s", family.type_phrase()),
+            Self::Subtypes(None) => "subtypes".to_string(),
+        }
+    }
+}
 
 /// Selects the object whose attachments are counted by an attachment
 /// relationship condition.
@@ -682,6 +731,17 @@ pub enum TurnHistoryCount {
     /// this turn ("the total power of Daleks that died this turn", Genesis of
     /// the Daleks). Appended to preserve serialized ordinals.
     DiedTotalPower(ObjectFilter),
+    /// Distinct values of a characteristic among the permanents matching the
+    /// filter which matching players sacrificed this turn, read from each
+    /// permanent's last-known information ("colors among permanents you've
+    /// sacrificed this turn"); the card-type case is
+    /// [`TurnHistoryCount::SacrificedCardTypes`]. Appended to preserve
+    /// serialized ordinals.
+    SacrificedDistinct {
+        characteristic: DistinctCharacteristic,
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
 }
 
 impl TurnHistoryCount {
@@ -1137,6 +1197,23 @@ pub enum Value {
     /// Misunderstood Trapeze Elf; CR 107.4b). On the stack, each {X} counts
     /// as the value chosen for X (CR 107.3). Appended.
     GenericManaInManaCostOf(Box<ChooseSpec>),
+    /// The number of distinct subtypes of one family among matching objects
+    /// ("for each land type among lands you control", "artifact types",
+    /// "enchantment types"; CR 205.3), or of every family when `family` is
+    /// `None` ("subtypes among ..."). Appended.
+    SubtypesAmong {
+        family: Option<SubtypeFamily>,
+        filter: ObjectFilter,
+    },
+    /// Distinct values of a characteristic among matching spells cast this
+    /// turn, read from cast history like
+    /// [`Value::CardTypesAmongSpellsCastThisTurn`] so resolved spells still
+    /// contribute ("colors among spells you've cast this turn"). Appended.
+    DistinctAmongSpellsCastThisTurn {
+        characteristic: DistinctCharacteristic,
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
 }
 
 impl Value {

@@ -2838,9 +2838,59 @@ pub fn parse_legend_rule_doesnt_apply_line(
             keyword_static_lines::LegendRuleScopeShape::ControllerTokens => {
                 StaticAbility::legend_rule_doesnt_apply_to_tokens_you_control()
             }
+            // "doesn't apply to it": the legend rule groups permanents by
+            // controller (CR 704.5j), so exempting the source is the
+            // controller-scoped exemption matching the source.
+            keyword_static_lines::LegendRuleScopeShape::Source => {
+                StaticAbility::legend_rule_doesnt_apply_to_controller_matching(
+                    ObjectFilter::source(),
+                )
+            }
+            // "If there are exactly two permanents named X ..., the legend
+            // rule doesn't apply to them" (Brothers Yamazaki): the leading
+            // condition (applied by the static-line condition wrapper) names
+            // the objects, so the exemption holds exactly while it does.
+            keyword_static_lines::LegendRuleScopeShape::ConditionObjects => {
+                StaticAbility::legend_rule_doesnt_apply()
+            }
+            // "doesn't apply to <objects>": a controller-relative object
+            // scope is the controller-scoped exemption; any other scope
+            // exempts matching permanents in every controller's group.
+            keyword_static_lines::LegendRuleScopeShape::Objects => {
+                let Some(mut filter) = legend_rule_object_scope(tokens)? else {
+                    return Ok(None);
+                };
+                if filter.controller == Some(crate::target::PlayerFilter::You) {
+                    filter.controller = None;
+                    StaticAbility::legend_rule_doesnt_apply_to_controller_matching(filter)
+                } else {
+                    let display = crate::lexer::render_token_slice(tokens)
+                        .trim()
+                        .trim_end_matches('.')
+                        .to_string();
+                    StaticAbility::legend_rule_doesnt_apply_to_matching(filter, display)
+                }
+            }
         }));
     }
     Ok(None)
+}
+
+/// The object filter after "... doesn't apply to".
+fn legend_rule_object_scope(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(apply) = tokens.iter().position(|token| token.parser_text() == "apply") else {
+        return Ok(None);
+    };
+    let Some(scope) = tokens.get(apply + 2..) else {
+        return Ok(None);
+    };
+    let scope = crate::util::trim_edge_punctuation_tokens(scope);
+    if scope.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(parse_object_filter(scope, false)?))
 }
 
 /// The object noun phrase of "... doesn't apply to <objects> you control",
@@ -2872,9 +2922,9 @@ fn legend_rule_controlled_object_scope(
     if matches!(noun_words.as_slice(), ["permanents"] | ["permanent"]) {
         return Ok(None);
     }
-    let Ok(mut filter) = parse_object_filter(&tokens[start..end], false) else {
-        return Ok(None);
-    };
+    // A named object scope that does not parse is an honest failure, never
+    // a silent widening to every permanent its controller controls.
+    let mut filter = parse_object_filter(&tokens[start..end], false)?;
     if filter == ObjectFilter::default() {
         return Ok(None);
     }
@@ -8781,33 +8831,38 @@ pub fn parse_copy_activated_and_triggered_abilities_line(
     }
     // "Idris has all activated and triggered abilities of the exiled card and
     // gets +X/+X, where X is the exiled card's mana value": a second static
-    // predicate on the same subject, read as its own line ("<subject> gets
-    // ...") rather than swallowed into the donor filter.
+    // predicate on the same subject ("and gets ...", "and has ...", "and
+    // can't be blocked ...", any static predicate), read as its own line
+    // ("<subject> <predicate>") rather than swallowed into the donor filter.
     let filter_start = has_idx + 1 + MARKER.len();
-    let and_gets = (filter_start + 1..words.len()).find(|&index| {
-        words[index - 1] == "and" && matches!(words[index], "gets" | "get")
-    });
+    let view = crate::lexer::TokenWordView::new(&tokens);
     let mut extra_abilities = Vec::new();
-    let words_end = if let Some(gets_idx) = and_gets {
-        let view = crate::lexer::TokenWordView::new(&tokens);
-        let (Some(subject_end), Some(and_token), Some(gets_token)) = (
-            view.map_word_to_token_start(has_idx),
-            view.map_word_to_token_start(gets_idx - 1),
-            view.map_word_to_token_start(gets_idx),
-        ) else {
-            return Ok(None);
-        };
-        let mut predicate_tokens = tokens[..subject_end].to_vec();
-        predicate_tokens.extend_from_slice(&tokens[gets_token..]);
-        let Some(abilities) = parse_static_ability_ast_line_lexed(&predicate_tokens)? else {
-            return Ok(None);
-        };
-        crate::word_claims::claim_tokens(&tokens[and_token..gets_token]);
-        extra_abilities = abilities;
-        gets_idx - 1
-    } else {
-        words.len()
-    };
+    let mut words_end = words.len();
+    if let Some(subject_end) = view.map_word_to_token_start(has_idx) {
+        for predicate_idx in filter_start + 1..words.len() {
+            if words[predicate_idx - 1] != "and" {
+                continue;
+            }
+            let (Some(and_token), Some(predicate_token)) = (
+                view.map_word_to_token_start(predicate_idx - 1),
+                view.map_word_to_token_start(predicate_idx),
+            ) else {
+                continue;
+            };
+            let mut predicate_tokens = tokens[..subject_end].to_vec();
+            predicate_tokens.extend_from_slice(&tokens[predicate_token..]);
+            let parsed = crate::word_claims::speculative_keep_if(
+                || parse_static_ability_ast_line_lexed(&predicate_tokens),
+                |parsed| matches!(parsed, Ok(Some(_))),
+            );
+            if let Ok(Some(abilities)) = parsed {
+                crate::word_claims::claim_tokens(&tokens[and_token..predicate_token]);
+                extra_abilities = abilities;
+                words_end = predicate_idx - 1;
+                break;
+            }
+        }
+    }
     let words = &words[..words_end];
     let filter_words = &words[filter_start..];
     let filter = match filter_words {
@@ -8851,25 +8906,38 @@ pub fn parse_copy_activated_and_triggered_abilities_line(
 /// costs, which are the source's own (CR 609.4b). The source has no other
 /// activated ability on these cards, so the source's activation costs are
 /// exactly those abilities.
-/// The head and tail token ranges of a copy line followed by "You may spend
-/// mana as though it were mana of any color to activate those abilities."
+/// The head and tail token ranges of a copy line followed by a spend
+/// permission for the source's own activated abilities ("You may spend mana
+/// as though it were mana of any color/type to activate those abilities", or
+/// "... to pay the activation costs of its abilities"), read by the general
+/// mana spend permission grammar.
 fn copy_activated_spend_tail_split(
     tokens: &[OwnedLexToken],
 ) -> Option<(std::ops::Range<usize>, std::ops::Range<usize>)> {
-    const SPEND_TAIL: &[&str] = &[
-        "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
-        "color", "to", "activate", "those", "abilities",
-    ];
-    let view = TokenWordView::new(tokens);
-    let words = view.word_refs();
-    let tail_start = words.len().checked_sub(SPEND_TAIL.len())?;
-    if tail_start == 0 || words[tail_start..] != *SPEND_TAIL {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [.., _, tail] = sentences.as_slice() else {
+        return None;
+    };
+    let tail_start =
+        (tail.as_ptr() as usize - tokens.as_ptr() as usize) / std::mem::size_of::<OwnedLexToken>();
+    if tail_start == 0 || tail_start > tokens.len() {
         return None;
     }
-    Some((
-        view.token_span_for_words(0, tail_start)?,
-        view.token_span_for_words(tail_start, words.len())?,
-    ))
+    if !matches!(
+        crate::word_claims::probe_only(|| keyword_static_lines::parse_mana_spend_permission_tokens(tail)),
+        Some(keyword_static_lines::ManaSpendPermissionShape::AnyColor {
+            source_activation_only: true,
+            activation_filter_tokens: None,
+            ..
+        })
+    ) {
+        return None;
+    }
+    let mut head_end = tail_start;
+    while head_end > 0 && tokens[head_end - 1].kind == crate::lexer::TokenKind::Period {
+        head_end -= 1;
+    }
+    (head_end > 0).then_some((0..head_end, tail_start..tokens.len()))
 }
 
 pub fn parse_copy_activated_abilities_with_spend_permission_line(
@@ -8887,18 +8955,30 @@ pub fn parse_copy_activated_abilities_with_spend_permission_line(
     if copy_ability.id() != crate::static_abilities::StaticAbilityId::CopyActivatedAbilities {
         return Ok(None);
     }
-    crate::word_claims::claim_tokens(&tokens[tail_range]);
-    let permission = crate::effect::ManaSpendPermission::any_color_for_activation(
-        PlayerFilter::You,
-        ObjectFilter::source(),
-    );
+    let tail = &tokens[tail_range];
+    // The general spend-permission grammar reads (and claims) the tail.
+    let Some(keyword_static_lines::ManaSpendPermissionShape::AnyColor {
+        player,
+        source_activation_only: true,
+        activation_filter_tokens: None,
+        any_type,
+    }) = keyword_static_lines::parse_mana_spend_permission_tokens(tail)
+    else {
+        return Ok(None);
+    };
+    let player = match player {
+        keyword_static_lines::ManaSpendPlayerKind::You => PlayerFilter::You,
+        keyword_static_lines::ManaSpendPlayerKind::Any => PlayerFilter::Any,
+    };
+    let mut permission =
+        crate::effect::ManaSpendPermission::any_color_for_activation(player, ObjectFilter::source());
+    if any_type {
+        permission.mode = ironsmith_core::value_model::ManaSpendMode::AnyType;
+    }
+    let display = render_token_slice(tail).trim().trim_end_matches('.').to_string();
     Ok(Some(vec![
         copy,
-        StaticAbilityAst::Static(StaticAbility::mana_spend_permission(
-            permission,
-            "You may spend mana as though it were mana of any color to activate those abilities"
-                .to_string(),
-        )),
+        StaticAbilityAst::Static(StaticAbility::mana_spend_permission(permission, display)),
     ]))
 }
 
@@ -9193,6 +9273,17 @@ pub fn parse_spend_mana_as_any_color_lines(
 pub fn parse_spend_mana_as_any_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    Ok(parse_mana_spend_permission_clause(tokens)?.map(|(permission, display)| {
+        StaticAbilityAst::Static(StaticAbility::mana_spend_permission(permission, display))
+    }))
+}
+
+/// The permission and display of a complete "you may spend mana as though
+/// ..." clause, shared by the static line and the temporary ("this turn",
+/// "until end of turn") resolving instruction.
+pub fn parse_mana_spend_permission_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(crate::effect::ManaSpendPermission, String)>, CardTextError> {
     let Some(shape) = keyword_static_lines::parse_mana_spend_permission_tokens(tokens) else {
         return Ok(None);
     };
@@ -9267,6 +9358,7 @@ pub fn parse_spend_mana_as_any_color_line(
             player,
             activation_filter_tokens,
             source_activation_only,
+            any_type,
         } => {
             let player = match player {
                 keyword_static_lines::ManaSpendPlayerKind::You => PlayerFilter::You,
@@ -9286,7 +9378,11 @@ pub fn parse_spend_mana_as_any_color_line(
             } else {
                 crate::effect::ManaSpendPermission::any_color(player.clone())
             };
-            let display = if player == PlayerFilter::Any {
+            let mut permission = permission;
+            if any_type {
+                permission.mode = ironsmith_core::value_model::ManaSpendMode::AnyType;
+            }
+            let display = if player == PlayerFilter::Any && !any_type {
                 "Players may spend mana as though it were mana of any color".to_string()
             } else {
                 clause_words.join(" ")
@@ -9295,9 +9391,7 @@ pub fn parse_spend_mana_as_any_color_line(
         }
     };
 
-    Ok(Some(StaticAbilityAst::Static(
-        StaticAbility::mana_spend_permission(permission, display),
-    )))
+    Ok(Some((permission, display)))
 }
 #[cfg(test)]
 mod tests {

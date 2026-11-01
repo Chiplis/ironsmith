@@ -320,6 +320,7 @@ pub fn parse_activated_devotion_value_tokens(
         .parse_next(&mut color_input)
         .is_ok()
     {
+        crate::word_claims::claim_words(&color_words[..2]);
         return Ok(Some(Value::DevotionToChosenColor(player)));
     }
 
@@ -336,6 +337,8 @@ pub fn parse_activated_devotion_value_tokens(
         colors = colors.with(color);
         end += 2;
     }
+    // "devotion to black [and red]": the colors read.
+    crate::word_claims::claim_words(&color_words[..end]);
     Ok(Some(Value::devotion_to_colors(player, colors)))
 }
 

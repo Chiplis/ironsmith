@@ -943,14 +943,14 @@ pub fn parse_sentence_put_multiple_counters_on_target(
 
     let first_effect = EffectAst::subject_verb_put_counters(
         first.counter_type,
-        Value::Fixed(first.count as i32),
+        first.count_value(),
         target.clone(),
         None,
         false,
     );
     let second_effect = EffectAst::subject_verb_put_counters(
         second.counter_type,
-        Value::Fixed(second.count as i32),
+        second.count_value(),
         TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(tokens),

@@ -339,6 +339,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::Sacrificed { player, filter }
                 | TurnHistoryCount::TokensCreatedMatching { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
+                | TurnHistoryCount::SacrificedDistinct { player, filter, .. }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter, .. } => {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)

@@ -236,6 +236,13 @@ pub fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPu
     {
         return None;
     }
+    // "into your hand" / "into their hand": the putting player's own hand.
+    if let [possessor, hand, ..] = trim_lexed_commas(destination)
+        && matches!(possessor.parser_text(), "your" | "their")
+        && matches!(hand.parser_text(), "hand" | "hands")
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(possessor));
+    }
     let head = trim_lexed_commas(body.get(..into_index)?);
     let count = if permission_shapes::exact_tokens_any(head, &[&["it"], &["them"]]) {
         None

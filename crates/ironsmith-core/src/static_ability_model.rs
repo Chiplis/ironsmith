@@ -1591,6 +1591,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         exile_with_counters: Vec<(CounterType, u32)>,
         follow_up_effects: Vec<E>,
     },
+    /// "If this would be put into <to_zone> from anywhere, [reveal this and]
+    /// shuffle it into its owner's library instead" when the wording is not
+    /// the printed graveyard-and-reveal form (whose payload is `None`).
+    ShuffleIntoOwnersLibraryInstead {
+        to_zone: Zone,
+        reveal: bool,
+    },
     /// A removable static ability redirecting matching zone-change events.
     RedirectZoneChange {
         filter: ObjectFilter,
@@ -3849,6 +3856,9 @@ where
             } => StaticAbilityPayload::RedirectZoneChange {
                 filter, from_zone, to_zone, destination,
             },
+            StaticAbilityPayload::ShuffleIntoOwnersLibraryInstead { to_zone, reveal } => {
+                StaticAbilityPayload::ShuffleIntoOwnersLibraryInstead { to_zone, reveal }
+            }
             StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -8033,6 +8043,19 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    /// The self-shuffle replacement for another replaced destination or
+    /// without the reveal; the printed graveyard-and-reveal form keeps
+    /// [`Self::shuffle_into_library_from_graveyard`].
+    pub fn shuffle_into_owners_library_instead(to_zone: Zone, reveal: bool) -> Self {
+        if to_zone == Zone::Graveyard && reveal {
+            return Self::shuffle_into_library_from_graveyard();
+        }
+        Self {
+            id: Some(StaticAbilityId::ShuffleIntoLibraryFromGraveyard),
+            label: "shuffle into owner's library instead".into(),
+            payload: StaticAbilityPayload::ShuffleIntoOwnersLibraryInstead { to_zone, reveal },
+        }
+    }
     pub fn permanents_enter_tapped() -> Self {
         Self {
             id: Some(StaticAbilityId::AllPermanentsEnterTapped),
@@ -8238,6 +8261,16 @@ impl<
         Self {
             id: Some(StaticAbilityId::LegendRuleDoesntApplyToController),
             label: format!("The \"legend rule\" doesn't apply to {noun} you control"),
+            payload: StaticAbilityPayload::LegendRuleDoesntApplyToController { filter },
+        }
+    }
+    /// "The legend rule doesn't apply to <objects>": every matching permanent
+    /// is exempt, whoever controls it. Shares the controller-scoped payload;
+    /// the id selects the cross-controller reading.
+    pub fn legend_rule_doesnt_apply_to_matching(filter: ObjectFilter, display: String) -> Self {
+        Self {
+            id: Some(StaticAbilityId::LegendRuleDoesntApplyToMatching),
+            label: display,
             payload: StaticAbilityPayload::LegendRuleDoesntApplyToController { filter },
         }
     }

@@ -814,6 +814,12 @@ pub fn parse_copy_spell_clause(
             clause_shapes::parse_copy_target_shape_tokens(copy_target_tail),
             clause_shapes::CopyTargetShape::TaggedIt
         );
+        // The retarget permission ("and may choose a new target for the
+        // copy") is this copy's may-choose-new-targets flag; its grammar
+        // reads the permission's own words.
+        if let Some(idx) = copy_clause_split_idx {
+            let _ = clause_shapes::parse_copy_retarget_shape_tokens(&copy_clause_tail[idx + 1..]);
+        }
         let mut base = EffectAst::subject_verb_copy_spell(
             target,
             count,
@@ -2132,11 +2138,13 @@ pub fn parse_redirect_next_damage_sentence(
                         TargetAst::Source(None),
                     )
                 } else if destination_words == ["you"] {
+                    crate::word_claims::claim_tokens(&shape.destination);
                     (
                         ironsmith_core::TimedDamageRedirectDestination::Controller,
                         TargetAst::Source(None),
                     )
                 } else if destination_words == ["its", "controller"] {
+                    crate::word_claims::claim_tokens(&shape.destination);
                     (
                         ironsmith_core::TimedDamageRedirectDestination::DamageSourceController,
                         TargetAst::Source(None),

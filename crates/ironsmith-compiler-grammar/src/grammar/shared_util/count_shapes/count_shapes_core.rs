@@ -222,6 +222,8 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         if let Some((value, used)) =
             crate::grammar::shared_util::value_expr::parse_life_total_quantity_words(&counted)
         {
+            // "for each opponent who ...": the counted player noun.
+            crate::word_claims::claim_words(&words[..3]);
             return Some((value, used));
         }
     }
@@ -233,6 +235,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         } else {
             PlayerFilter::Opponent
         };
+        crate::word_claims::claim_words(words);
         return Some((
             Value::CountPlayers(filter).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
             3,
@@ -722,6 +725,13 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     // prior-result object memory.
     if let Some(exact) = exact_event_basis {
         return Some(exact);
+    }
+    // "for each card type among cards exiled this way": a characteristic
+    // metric over the prior result, not a count of those objects.
+    if prior_result_marker.is_some()
+        && let Some(value) = value_helper_shapes::parse_aggregate_scope_value_words(count_words)
+    {
+        return Some((value, filter_end));
     }
     if let Some(relative_this_way) = prior_result_marker {
         let this_way_start = idx + relative_this_way;

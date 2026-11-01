@@ -38,6 +38,8 @@ pub(super) fn read_player_life_change_this_turn_predicate(
         return Ok(Some(predicate));
     }
     if let Some(predicate) = parse_opponent_dealt_damage_this_turn_predicate(predicate_tokens) {
+        // A whole-clause shape ("an opponent was dealt damage this turn").
+        crate::word_claims::claim_tokens(predicate_tokens);
         return Ok(Some(predicate));
     }
     if let Some(predicate) = parse_total_stat_threshold_predicate(predicate_tokens) {

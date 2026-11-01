@@ -12,6 +12,9 @@ pub(super) fn read_may_cast_it(
     if super::super::super::super::parse_leading_player_may_lexed(tokens).is_some()
         && let Some(spec) = parse_may_cast_it_sentence(tokens)
     {
+        // The may-cast facts match the whole sentence (subject, verb,
+        // reference and tail), so every word is read here.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(vec![build_may_cast_tagged_effect(&spec)]));
     }
     Ok(None)

@@ -89,6 +89,18 @@ pub(super) fn parse_simple_subtype_spell_filter(tokens: &[OwnedLexToken]) -> Opt
 }
 
 pub(super) fn parse_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let filter = read_ability_source_filter(tokens)?;
+    // A trailing "source(s)" is the noun the descriptor qualifies.
+    let tokens = strip_article(trim_lexed_commas(tokens));
+    if let Some(last) = tokens.iter().rposition(|token| token.as_word().is_some())
+        && tokens[last].as_word().is_some_and(|word| matches!(word, "source" | "sources"))
+    {
+        crate::word_claims::claim_tokens(&tokens[last..=last]);
+    }
+    Some(filter)
+}
+
+fn read_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let tokens = strip_article(trim_lexed_commas(tokens));
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();

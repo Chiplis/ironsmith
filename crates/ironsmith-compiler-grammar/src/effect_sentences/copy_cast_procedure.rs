@@ -534,6 +534,12 @@ pub(super) fn continue_with(
             if matches!(statement, CopyStatement::EachThenCast) {
                 group.cast = for_each_copy_then_cast(sentence);
             }
+            // "Copy it, then you may cast the copy …" / "For each card exiled
+            // this way, copy it, and you may cast the copy …": the copy
+            // reference and the cast clause are both matched exactly.
+            if group.cast.is_some() {
+                crate::word_claims::claim_tokens(sentence.lowered());
+            }
             group.exiled = Exiled::Card {
                 copy: Some(statement),
             };
@@ -547,6 +553,9 @@ pub(super) fn continue_with(
             let Some(cast) = cast else {
                 return Ok(false);
             };
+            // "You may cast the copy [without paying its mana cost]": the
+            // may-cast facts match this whole statement.
+            crate::word_claims::claim_tokens(sentence.lowered());
             group.cast = Some(cast);
         }
         Exiled::Collection { chosen: None } => {
@@ -563,6 +572,7 @@ pub(super) fn continue_with(
             let Some(cast) = chosen_copy_cast(sentence, *times) else {
                 return Ok(false);
             };
+            crate::word_claims::claim_tokens(sentence.lowered());
             group.cast = Some(cast);
         }
     }

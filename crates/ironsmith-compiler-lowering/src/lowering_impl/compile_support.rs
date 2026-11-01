@@ -1220,6 +1220,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::Sacrificed { player, filter }
                 | TurnHistoryCount::TokensCreatedMatching { player, filter }
                 | TurnHistoryCount::SacrificedCardTypes { player, filter }
+                | TurnHistoryCount::SacrificedDistinct { player, filter, .. }
                 | TurnHistoryCount::CreaturesAttackedWith { player, filter, .. } => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);

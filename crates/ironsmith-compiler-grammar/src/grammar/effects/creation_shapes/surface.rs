@@ -173,7 +173,7 @@ pub enum CreationPhrase {
 }
 
 impl CreationPhrase {
-    fn alternatives(self) -> &'static [&'static [&'static str]] {
+    pub(crate) fn alternatives(self) -> &'static [&'static [&'static str]] {
         match self {
             Self::AbilityFromAmong => &[
                 &["ability", "from", "among"],

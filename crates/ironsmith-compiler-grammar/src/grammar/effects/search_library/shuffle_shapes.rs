@@ -134,7 +134,12 @@ fn possessive_owner_target_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedL
         crate::grammar::activation_restrictions::parse_activation_possessive_owner_tokens(
             target_tokens,
         );
-    (normalized != target_tokens).then_some(normalized)
+    if normalized == target_tokens {
+        return None;
+    }
+    // "<object>'s owner": the owner relation is the shuffling player.
+    crate::word_claims::claim_tokens(std::slice::from_ref(owner));
+    Some(normalized)
 }
 
 fn singular_back_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -281,6 +286,28 @@ pub fn parse_shuffle_object_shape_lexed(
     }
     let destination = trim_lexed_commas(after_into);
     let (library_idx, (), after_library) = primitives::find_prefix(destination, || library_marker)?;
+    // "Its owner shuffles it into their library": the possessor is the
+    // owner-subject, whose library the owner-library shuffle names.
+    if owner_subject_target_tokens.is_some()
+        && let [possessor] = &destination[..library_idx]
+        && matches!(possessor.parser_text(), "their" | "his" | "her")
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(possessor));
+    }
+    // "Shuffle the cards from your hand into your library", "each player
+    // shuffles ... into their library": the shuffling player's own library.
+    if owner_subject_target_tokens.is_none()
+        && let [possessor] = &destination[..library_idx]
+        && match possessor.parser_text() {
+            "your" => subject_tokens.is_empty()
+                || crate::lexer::token_word_refs(subject_tokens).as_slice() == ["you"],
+            "their" | "his" | "her" => !subject_tokens.is_empty()
+                && crate::lexer::token_word_refs(subject_tokens).as_slice() != ["you"],
+            _ => false,
+        }
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(possessor));
+    }
     let reference = if owner_subject_target_tokens.is_some()
         && complete_shape(target_tokens, singular_back_reference)
     {

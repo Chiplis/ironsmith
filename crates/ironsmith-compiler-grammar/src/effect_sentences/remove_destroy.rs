@@ -48,6 +48,8 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             if !leave_one && target_words.first().copied() == Some("all") {
                 let filter_tokens = strip_leading_token_words_any(target_tokens, &["all"]);
                 let filter = parse_object_filter(filter_tokens, false)?;
+                // "from all <objects>": the universal quantifier of the holders.
+                crate::object_filters::claim_outside(target_tokens, filter_tokens);
                 return Ok(EffectAst::subject_verb_remove_counters_all(
                     Value::CountersOn(Box::new(ChooseSpec::Iterated), counter_type),
                     filter,
@@ -68,6 +70,7 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     ]
             );
             let target = if pronoun_target {
+                crate::word_claims::claim_tokens(target_tokens);
                 // "remove all -1/-1 counters from it": the pronoun names the
                 // latest object antecedent (falling back to the source only
                 // when there is none), not unconditionally the source.

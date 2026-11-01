@@ -31,15 +31,19 @@ pub(super) fn parse_permanent_lifecycle_trigger(
             return Ok(None);
         }
         if tail.is_empty() {
-            return Ok(Some(TriggerSpec::PermanentTransforms(subject(
-                &tokens[..end],
-            )?)));
+            let filter = subject(&tokens[..end])?;
+            // The transform verb is the event this trigger names.
+            crate::word_claims::claim_tokens(tokens.get(end..).unwrap_or_default());
+            return Ok(Some(TriggerSpec::PermanentTransforms(filter)));
         }
         if tail.first() == Some(&"into") && tail.len() > 1 {
             let start = trigger_word_token_start(tokens, index + 2).unwrap_or(tokens.len());
             let destination = parse_object_filter_lexed(&tokens[start..], false)?;
+            let filter = subject(&tokens[..end])?;
+            // "transforms into": the event verb and the destination's lead-in.
+            crate::word_claims::claim_tokens(tokens.get(end..start).unwrap_or_default());
             return Ok(Some(TriggerSpec::PermanentTransformsInto {
-                filter: subject(&tokens[..end])?,
+                filter,
                 destination,
             }));
         }

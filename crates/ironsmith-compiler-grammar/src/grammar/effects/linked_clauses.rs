@@ -43,6 +43,8 @@ pub(super) fn sequence_word<'a>(
     move |input: &mut LexStream<'a>| {
         let token = next_word(input)?;
         if token.parser_text() == expected {
+            // A literal word match reads the word, as `kw` does.
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
             Ok(())
         } else {
             Err(primitives::backtrack_err("sequence pair word", expected))
@@ -67,7 +69,11 @@ pub(super) fn sequence_any_phrase<'a, 'b>(
     move |input: &mut LexStream<'a>| {
         for alternative in alternatives {
             let mut probe = input.clone();
-            if sequence_phrase(alternative).parse_next(&mut probe).is_ok() {
+            // A partly matched alternative reads nothing.
+            if crate::word_claims::speculative_keep_if(
+                || sequence_phrase(alternative).parse_next(&mut probe).is_ok(),
+                |matched| *matched,
+            ) {
                 *input = probe;
                 return Ok(());
             }
@@ -118,10 +124,12 @@ pub(super) fn seek_sequence_phrase<'a>(
     let initial_len = input.len();
     while !input.is_empty() {
         let mut probe = input.clone();
-        if sequence_any_phrase(alternatives)
-            .parse_next(&mut probe)
-            .is_ok()
-        {
+        // A locator: finding the phrase reads nothing.
+        if crate::word_claims::probe_only(|| {
+            sequence_any_phrase(alternatives)
+                .parse_next(&mut probe)
+                .is_ok()
+        }) {
             return Ok(initial_len.saturating_sub(input.len()));
         }
         let _: &'a OwnedLexToken = any.parse_next(input)?;

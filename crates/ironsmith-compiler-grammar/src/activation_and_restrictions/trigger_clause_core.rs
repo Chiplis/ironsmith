@@ -2757,6 +2757,9 @@ fn try_parse_player_puts_object_onto_battlefield_lexed(
         trim_edge_punctuation_tokens(&tokens[subject_start_token..subject_end_token]);
     let mut filter = parse_object_filter_lexed(subject_tokens, false)?;
     filter.set_player_puts_onto_battlefield_surface(true);
+    // "<player> puts <object> onto the battlefield": the entering cause.
+    crate::word_claims::claim_words(&words[put_word..=put_word]);
+    crate::word_claims::claim_words(&words[subject_end_word..]);
     Ok(Some(apply_leading_trigger_intro_surface(
         TriggerSpec::EntersBattlefield {
             filter,

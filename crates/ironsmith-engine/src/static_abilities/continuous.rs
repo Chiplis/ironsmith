@@ -3429,7 +3429,8 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::IteratedPlayer => {
                 "as long as that player is the monarch".to_string()
             }
-            crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget => {
+            crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+            | crate::target::PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_) => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::Target(_) => {

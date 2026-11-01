@@ -28,7 +28,10 @@ fn demonstrative_object_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
                         leaf::parse_leaf_demonstrative_object_head_complete(singular).is_ok()
                     })
     })
-    .void()
+    // The object noun ("creature's", "creatures") names the antecedent.
+    .map(|token: &OwnedLexToken| {
+        crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    })
     .parse_next(input)
 }
 

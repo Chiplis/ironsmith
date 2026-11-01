@@ -543,6 +543,8 @@ fn parse_different_names_tokens(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>
             if parse_word_phrase(&mut input, phrase).is_err() || !input.is_empty() {
                 continue;
             }
+            // The distinct-names decoration the filter carries.
+            crate::word_claims::claim_tokens(candidate);
             let mut stripped = Vec::with_capacity(tokens.len().saturating_sub(phrase.len()));
             stripped.extend_from_slice(&tokens[..token_start]);
             stripped.extend_from_slice(&tokens[token_end..]);
@@ -563,6 +565,7 @@ fn parse_different_names_words<'a>(words: &'a [&'a str]) -> (Vec<&'a str>, bool)
             if parse_word_phrase(&mut input, phrase).is_err() || !input.is_empty() {
                 continue;
             }
+            crate::word_claims::claim_words(candidate);
             let mut stripped = Vec::with_capacity(words.len().saturating_sub(phrase.len()));
             stripped.extend_from_slice(&words[..word_start]);
             stripped.extend_from_slice(&words[word_end..]);

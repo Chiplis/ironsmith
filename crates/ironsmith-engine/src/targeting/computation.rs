@@ -1798,9 +1798,13 @@ fn compute_object_targets_with_filter_context(
     let mut targets = Vec::new();
 
     let mut candidate_filter;
-    let filter = if filter.controller
-        == Some(crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget)
-    {
+    let filter = if matches!(
+        filter.controller,
+        Some(
+            crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+                | crate::target::PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
+        )
+    ) {
         candidate_filter = filter.clone();
         candidate_filter.controller = None;
         &candidate_filter

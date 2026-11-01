@@ -2882,6 +2882,7 @@ fn relax_prior_target_player_filter(filter: &PlayerFilter) -> PlayerFilter {
     match filter {
         PlayerFilter::Target(_)
         | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
         | PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
         | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target) => PlayerFilter::Any,
         PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {
@@ -4705,7 +4706,8 @@ pub fn player_matches_filter_with_combat(
             // IteratedPlayer is resolved at runtime during iteration, not here
             false
         }
-        PlayerFilter::TargetPlayerOrControllerOfTarget => false,
+        PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_) => false,
         PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
             // Target filters are resolved through targeting, not direct matching
             true

@@ -550,12 +550,16 @@ pub(super) fn parse_effect_clause_unstacked(
                     Some(0)
                 } else {
                     let words = crate::lexer::parser_token_word_refs(rest);
-                    (words.as_slice()
+                    let second_from_top = words.as_slice()
                         == [
                             "it", "into", "their", "library", "second", "from", "the", "top", "or",
                             "on", "the", "bottom",
-                        ])
-                    .then_some(1)
+                        ];
+                    if second_from_top {
+                        // The whole placement choice is read here.
+                        crate::word_claims::claim_tokens(rest);
+                    }
+                    second_from_top.then_some(1)
                 };
                 if let Some(top_position) = top_position {
                     return Ok(EffectAst::subject_verb(

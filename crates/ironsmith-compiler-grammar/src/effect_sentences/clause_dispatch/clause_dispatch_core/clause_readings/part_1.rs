@@ -559,6 +559,10 @@ pub(super) fn read_may_cast_it(input: &Clause<'_>) -> Result<Option<EffectAst>, 
         ),
     };
     if let Some(spec) = parse_may_cast_it_sentence(tokens) {
+        // The may-cast facts match the whole clause: its subject, verb,
+        // reference ("it", "that card", "the exiled card", "the copy") and
+        // tail, so every word is read by this reading.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(build_may_cast_tagged_effect(&spec)));
     }
     Ok(None)

@@ -22,6 +22,9 @@ pub fn parse_cast_this_spell_only(
         return Ok(Some(StaticAbility::this_spell_cast_restriction(kind, text)));
     }
     if let Some((kind, text)) = fixed_restriction(tail) {
+        // The fixed timing window ("during the declare blockers step") is
+        // read whole by its exact arm.
+        crate::word_claims::claim_words(tail);
         return Ok(Some(StaticAbility::this_spell_cast_restriction(kind, text)));
     }
     // "Cast this spell only if you were dealt damage this turn by a red

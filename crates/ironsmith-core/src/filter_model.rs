@@ -1868,6 +1868,31 @@ pub enum PlayerFilter {
     /// has the monarch designation; matches no one while there is none.
     /// Appended to preserve serialized ordinals.
     Monarch,
+    /// "that player or that planeswalker's owner" / "... that battle's
+    /// protector": the player of an earlier "target player or <object>"
+    /// choice, or the named relation of the chosen object. The owner/protector
+    /// counterpart of `TargetPlayerOrControllerOfTarget`. Appended to preserve
+    /// serialized ordinals.
+    TargetPlayerOrRelatedPlayerOfTarget(TargetObjectPlayerRelation),
+}
+
+/// The player an object names in [`PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum TargetObjectPlayerRelation {
+    /// The object's owner.
+    Owner,
+    /// The battle's designated protector (CR 310.8).
+    Protector,
+}
+
+impl TargetObjectPlayerRelation {
+    pub fn noun(self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Protector => "protector",
+        }
+    }
 }
 
 /// A per-player quantity compared by [`PlayerFilter::QuantityGreaterThanPlayer`].
@@ -2092,6 +2117,7 @@ impl PlayerFilter {
             | Self::ChosenPlayer
             | Self::TaggedPlayer(_)
             | Self::TargetPlayerOrControllerOfTarget
+            | Self::TargetPlayerOrRelatedPlayerOfTarget(_)
             | Self::ControllerOf(_)
             | Self::OwnerOf(_)
             | Self::AliasedOwnerOf(_)
@@ -2305,6 +2331,9 @@ impl PlayerFilter {
             Self::IteratedPlayer => "that player".to_string(),
             Self::TargetPlayerOrControllerOfTarget => {
                 "that player or that object's controller".to_string()
+            }
+            Self::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                format!("that player or that object's {}", relation.noun())
             }
             Self::Target(inner) => format!("target {}", inner.description()),
             Self::AliasedTarget(_) => "that player".to_string(),
@@ -2950,6 +2979,10 @@ pub struct ObjectFilter {
     /// The object is an attacking creature whose attack target is a battle
     /// ("if it's attacking a battle", Rampaging Geoderm).
     pub attacking_battle: bool,
+    /// The object is an attacking creature whose attack target is a
+    /// planeswalker ("Whenever this creature attacks a planeswalker").
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub attacking_planeswalker: bool,
     /// Requires this exact object to have received matching counters this turn
     /// from a source controlled by the matching player.
     pub counters_put_on_this_turn: Option<CountersPutOnThisTurnConstraint>,
@@ -3329,6 +3362,7 @@ impl std::fmt::Debug for ObjectFilter {
             surveilled_this_turn,
             fought_this_turn,
             attacking_battle,
+            attacking_planeswalker,
             counters_put_on_this_turn,
             counter_source_history,
             discarded_or_cycled_this_turn_by,
@@ -3551,6 +3585,7 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("surveilled_this_turn", surveilled_this_turn);
         out.field("fought_this_turn", fought_this_turn);
         out.field("attacking_battle", attacking_battle);
+        out.field("attacking_planeswalker", attacking_planeswalker);
         out.field("counters_put_on_this_turn", counters_put_on_this_turn);
         out.field("counter_source_history", counter_source_history);
         out.field("discarded_or_cycled_this_turn_by", discarded_or_cycled_this_turn_by);
@@ -5981,6 +6016,15 @@ impl ObjectFilter {
                     controller_suffix =
                         Some("that player or that object's controller controls".to_string())
                 }
+                PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some(format!(
+                        "that player or that object's {} controls",
+                        relation.noun()
+                    ))
+                }
                 PlayerFilter::Excluding { .. } if ctrl.is_your_team() => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
@@ -6193,6 +6237,9 @@ impl ObjectFilter {
                 PlayerFilter::IteratedPlayer => "that player owns".to_string(),
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "that player or that object's controller owns".to_string()
+                }
+                PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+                    format!("that player or that object's {} owns", relation.noun())
                 }
                 // "a spell they don't own": every owner except the player the
                 // surrounding clause is about.
@@ -8171,6 +8218,9 @@ impl ObjectFilter {
         if self.attacking_battle {
             parts.push("attacking a battle".to_string());
         }
+        if self.attacking_planeswalker {
+            parts.push("attacking a planeswalker".to_string());
+        }
         if let Some(constraint) = &self.counters_put_on_this_turn {
             parts.push(describe_counters_put_on_this_turn_constraint(constraint));
         }
@@ -9515,6 +9565,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller's".to_string()
         }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            format!("that player or that object's {}'s", relation.noun())
+        }
         PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => {
             "an opponent attacking that player's".into()
         }
@@ -9678,6 +9731,9 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
+        }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            format!("that player or that object's {}", relation.noun())
         }
         PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => {
             "opponent attacking that player".into()
@@ -10339,6 +10395,20 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::PlaneswalkerTypesAmong(filter) => format!(
                 "the number of planeswalker types among {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::SubtypesAmong { family, filter } => format!(
+                "the number of {} among {}",
+                crate::DistinctCharacteristic::Subtypes(*family).plural_phrase(),
+                describe_count_filter_subject(filter)
+            ),
+            Value::DistinctAmongSpellsCastThisTurn {
+                characteristic,
+                filter,
+                ..
+            } => format!(
+                "the number of {} among {} cast this turn",
+                characteristic.plural_phrase(),
                 describe_count_filter_subject(filter)
             ),
             Value::DistinctManaCosts(filter) => format!(

@@ -391,6 +391,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::TaggedPlayer(_)
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
         | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_)
         | PlayerFilter::AliasedTarget(_)
@@ -651,6 +652,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::PlaneswalkerTypesAmong(filter)
+        | Value::SubtypesAmong { filter, .. }
         | Value::PermanentTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
@@ -680,6 +682,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
             | TurnHistoryCount::MovedZones { filter, .. }
             | TurnHistoryCount::Sacrificed { filter, .. }
             | TurnHistoryCount::SacrificedCardTypes { filter, .. }
+            | TurnHistoryCount::SacrificedDistinct { filter, .. }
             | TurnHistoryCount::CountersPutOn { filter, .. }
             | TurnHistoryCount::CreaturesAttackedWith { filter, .. }
             | TurnHistoryCount::CombatDamageSourcesToPlayers { filter, .. },
@@ -2618,6 +2621,10 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::PlaneswalkerTypesAmong(filter) => {
             Ok(Value::PlaneswalkerTypesAmong(resolve_it_tag(filter, refs)?))
         }
+        Value::SubtypesAmong { family, filter } => Ok(Value::SubtypesAmong {
+            family: *family,
+            filter: resolve_it_tag(filter, refs)?,
+        }),
         Value::CardTypesAmong(filter) => Ok(Value::CardTypesAmong(resolve_it_tag(filter, refs)?)),
         Value::PermanentTypesAmong(filter) => {
             Ok(Value::PermanentTypesAmong(resolve_it_tag(filter, refs)?))
@@ -2695,6 +2702,15 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                         filter: resolve_it_tag(filter, refs)?,
                     }
                 }
+                TurnHistoryCount::SacrificedDistinct {
+                    characteristic,
+                    player,
+                    filter,
+                } => TurnHistoryCount::SacrificedDistinct {
+                    characteristic: *characteristic,
+                    player: resolve_contextual_player_filter(player, refs)?,
+                    filter: resolve_it_tag(filter, refs)?,
+                },
                 TurnHistoryCount::CountersPutOn {
                     source_controller,
                     counter_type,

@@ -11,8 +11,14 @@ pub(super) fn parse_timed_draw_replacement_sentence(tokens: &[OwnedLexToken]) ->
         return Ok(None);
     }
     let (player, player_target) = match words.as_slice() {
-        ["you"] => (PlayerFilter::You, None),
-        ["they"] | ["that", "player"] => (PlayerFilter::IteratedPlayer, None),
+        ["you"] => {
+            crate::word_claims::claim_tokens(shape.player);
+            (PlayerFilter::You, None)
+        }
+        ["they"] | ["that", "player"] => {
+            crate::word_claims::claim_tokens(shape.player);
+            (PlayerFilter::IteratedPlayer, None)
+        }
         ["target", "player"] | ["target", "opponent"] => (PlayerFilter::Any, Some(crate::util::parse_target_phrase(shape.player)?)),
         _ => return Err(CardTextError::ParseError("unsupported timed draw replacement player scope".into())),
     };

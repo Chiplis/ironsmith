@@ -421,9 +421,23 @@ impl OwnedLexToken {
                 if replacement != self.parser_text {
                     self.literal_surface = slice.clone();
                 }
+                // A one-word token rewritten to another one-word reading
+                // ("creature's" read as its stem "creature", "had" as
+                // "have") still stands for the whole authored word: its
+                // piece keeps the authored span, not one sized to the
+                // replacement's length.
+                let authored_single_piece = match &*self.parser_word_pieces {
+                    [piece] => Some(piece.span),
+                    _ => None,
+                };
                 self.parser_text = replacement;
                 self.slice = slice;
                 self.refresh_parser_word_pieces();
+                if let (Some(span), [piece]) =
+                    (authored_single_piece, &mut *self.parser_word_pieces)
+                {
+                    piece.span = span;
+                }
                 true
             }
             TokenKind::Tilde => {

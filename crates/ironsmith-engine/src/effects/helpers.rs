@@ -2578,6 +2578,26 @@ pub fn resolve_player_filter(
             }
             resolve_controller_of(game, ctx, &ObjectRef::Target)
         }
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(relation) => {
+            for target in &ctx.targets {
+                if let ResolvedTarget::Player(id) = target {
+                    return Ok(*id);
+                }
+            }
+            match relation {
+                ironsmith_core::TargetObjectPlayerRelation::Owner => {
+                    resolve_owner_of(game, ctx, &ObjectRef::Target)
+                }
+                ironsmith_core::TargetObjectPlayerRelation::Protector => {
+                    let battle = find_target_object(&ctx.targets)?;
+                    game.battle_protector(battle).ok_or_else(|| {
+                        ExecutionError::UnresolvableValue(
+                            "The target object has no protector".to_string(),
+                        )
+                    })
+                }
+            }
+        }
         PlayerFilter::Active => game
             .singular_active_player(ctx.combat.chosen_player)
             .ok_or_else(|| {
@@ -5053,6 +5073,9 @@ pub(crate) fn resolve_player_filter_to_list(
             &PlayerFilter::TargetPlayerOrControllerOfTarget,
             ctx,
         )?]),
+        PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_) => {
+            Ok(vec![resolve_player_filter(game, filter, ctx)?])
+        }
         PlayerFilter::Excluding { base, excluded } => {
             let mut base_players = resolve_player_filter_to_list(game, base, _filter_ctx, ctx)?;
             let excluded_players = resolve_player_filter_to_list(game, excluded, _filter_ctx, ctx)?;

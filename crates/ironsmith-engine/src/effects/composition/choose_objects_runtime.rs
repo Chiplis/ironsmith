@@ -170,6 +170,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::BasicLandTypesAmong(filter)
         | crate::effect::Value::CreatureTypesAmong(filter)
         | crate::effect::Value::PlaneswalkerTypesAmong(filter)
+        | crate::effect::Value::SubtypesAmong { filter, .. }
         | crate::effect::Value::PermanentTypesAmong(filter)
         | crate::effect::Value::CardTypesAmong(filter)
         | crate::effect::Value::ColorsAmong(filter)

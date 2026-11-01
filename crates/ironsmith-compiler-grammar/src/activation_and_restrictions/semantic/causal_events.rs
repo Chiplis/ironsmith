@@ -23,6 +23,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
             ["this", "card"] => (Some(ObjectFilter::source()), false),
             _ => return Ok(None),
         };
+        // The whole clause: cause, its controller, the discard and the card.
+        crate::word_claims::claim_words(&words);
         return Ok(Some(TriggerSpec::PlayerDiscardsCard {
             player: PlayerFilter::You, filter, cause_controller: Some(controller),
             effect_like_only: true, one_or_more,
@@ -38,6 +40,12 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
         if filter == ObjectFilter::default() { return Err(CardTextError::ParseError("unqualified destruction subject".into())); }
         TriggerSpec::PermanentDestroyed(filter)
     } else { return Ok(None); };
+    // The cause and its controller, and the verb (the countered spell or
+    // destroyed object's words are read above).
+    crate::word_claims::claim_words(&words[..=verb]);
+    if suffix.first() == Some(&"counters") {
+        crate::word_claims::claim_words(&words[verb..]);
+    }
     let actor = match controller { PlayerFilter::You => "you control", PlayerFilter::Opponent => "an opponent controls", _ => "a player controls" };
     Ok(Some(TriggerSpec::ConditionQualified {
         trigger: Box::new(trigger),

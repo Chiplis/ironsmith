@@ -57,6 +57,34 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
         return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
     }
+    // "the discarded creature", "the sacrificed land": the object paid for
+    // this spell's or ability's additional cost, which lowering binds
+    // through the additional-cost alias to that cost's own tag. "the
+    // sacrificed card" (above) and "the sacrificed creature" keep their
+    // established readers.
+    if let ["the", participle @ ("discarded" | "sacrificed"), noun] =
+        crate::lexer::parser_token_word_refs(tokens).as_slice()
+        && !(*participle == "sacrificed" && matches!(*noun, "card" | "creature"))
+        && matches!(
+            *noun,
+            "card"
+                | "creature"
+                | "artifact"
+                | "enchantment"
+                | "land"
+                | "planeswalker"
+                | "permanent"
+                | "battle"
+        )
+    {
+        crate::word_claims::claim_tokens(tokens);
+        let mut filter =
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::AdditionalCostObject.bind());
+        filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(format!(
+            "the {participle} {noun}"
+        )));
+        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+    }
     if matches!(
         crate::lexer::parser_token_word_refs(tokens).as_slice(),
         ["defending", "player"] | ["the", "defending", "player"]

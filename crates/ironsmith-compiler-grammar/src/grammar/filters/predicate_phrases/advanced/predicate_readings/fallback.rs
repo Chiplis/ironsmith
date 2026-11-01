@@ -34,6 +34,16 @@ pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
         .map(|word| word.replace(['\'', '’'], ""))
         .collect();
     let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    // A whole-clause comparison the word copies can't claim themselves.
+    if let Some(predicate) = more_cards_in_hand_than_each_opponent(&words) {
+        crate::word_claims::claim_tokens(input.predicate_tokens);
+        return Some(predicate);
+    }
+    // "it escaped" / "this creature escaped": an exact whole-clause shape.
+    if let Some(predicate) = source_escaped(&words) {
+        crate::word_claims::claim_tokens(input.predicate_tokens);
+        return Some(predicate);
+    }
     read_words(&words)
 }
 

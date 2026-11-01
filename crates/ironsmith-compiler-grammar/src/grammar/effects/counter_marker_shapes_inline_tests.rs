@@ -159,7 +159,7 @@ fn parses_typed_counter_sequences_and_followups() {
         .unwrap();
     let three_placements = parse_counter_placement_sequence_tokens(&three_placements).unwrap();
     assert_eq!(three_placements.len(), 3);
-    assert_eq!(three_placements[2].descriptor.count, 3);
+    assert_eq!(three_placements[2].descriptor.amount, leaf::LeafNumber::Fixed(3));
     assert_eq!(
         render_token_slice(three_placements[2].target_tokens),
         "a third target creature"

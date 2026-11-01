@@ -357,6 +357,12 @@ impl StaticAbility {
             Some(StaticAbilityId::LegendRuleDoesntApplyToControllerTokens) => {
                 Self::legend_rule_doesnt_apply_to_tokens_you_control()
             }
+            Some(StaticAbilityId::LegendRuleDoesntApplyToMatching) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "cross-controller legend-rule exemption needs its filter payload"
+                        .to_string(),
+                });
+            }
             Some(StaticAbilityId::ShuffleIntoLibraryFromGraveyard) => {
                 Self::shuffle_into_library_from_graveyard()
             }

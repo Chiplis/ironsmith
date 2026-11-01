@@ -1000,16 +1000,20 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
             "untap clause missing target".to_string(),
         ));
     }
-    // "untap up to one target creature and up to one target land" names two
-    // independently counted target slots (the optional-companion fanout's).
-    // One target phrase would fold them into a single "creature or land"
-    // choice.
-    let words: Vec<&str> = tokens.iter().filter_map(OwnedLexToken::as_word).collect();
-    if words.windows(3).any(|window| window == ["and", "up", "to"])
-        && words.iter().filter(|word| **word == "target").count() == 2
+    // "untap up to one target creature and up to two target lands" names
+    // independently counted target slots, which the leading target-slot
+    // fanout owns (`parse_leading_optional_companion_shape`). One target
+    // phrase would fold them into a single "creature or land" choice.
+    let mut untap_clause = Vec::with_capacity(tokens.len() + 1);
+    untap_clause.push(OwnedLexToken::word("untap", crate::cards::builders::TextSpan::synthetic()));
+    untap_clause.extend_from_slice(tokens);
+    if crate::grammar::effects::optional_companion_shapes::parse_leading_optional_companion_shape(
+        &untap_clause,
+    )
+    .is_some()
     {
         return Err(CardTextError::ParseError(
-            "untap of two independently counted target slots".to_string(),
+            "untap of independently counted target slots is the target-slot fanout's".to_string(),
         ));
     }
     if let Some(choice) = parse_inline_creature_type_choice_tokens(tokens) {
@@ -1121,6 +1125,7 @@ pub fn parse_scry(
             crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
+    let (count, trailing) = scale_counted_library_action_for_each(count, &tokens[used..])?;
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
@@ -1129,7 +1134,7 @@ pub fn parse_scry(
         player.clone(),
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count }),
     );
-    finish_counted_library_action(effect, &tokens[used..], player)
+    finish_counted_library_action(effect, trailing, player)
 }
 
 pub fn parse_surveil(
@@ -1142,6 +1147,7 @@ pub fn parse_surveil(
             crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
+    let (count, trailing) = scale_counted_library_action_for_each(count, &tokens[used..])?;
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
@@ -1150,7 +1156,7 @@ pub fn parse_surveil(
         player.clone(),
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count }),
     );
-    finish_counted_library_action(effect, &tokens[used..], player)
+    finish_counted_library_action(effect, trailing, player)
 }
 
 /// "scry a number of cards equal to the result" (Boing!): the amount follows
@@ -1171,6 +1177,45 @@ fn parse_counted_library_action_amount(tokens: &[OwnedLexToken]) -> Option<(Valu
         ));
     }
     parse_value(tokens)
+}
+
+/// "scry 1 for each creature you control": a trailing "for each" scales
+/// the fixed amount by the counted occurrences. Returns the scaled amount
+/// and whatever follows the per-count phrase (", then ...").
+fn scale_counted_library_action_for_each(
+    count: Value,
+    trailing: &[OwnedLexToken],
+) -> Result<(Value, &[OwnedLexToken]), CardTextError> {
+    let body = crate::lexer::trim_lexed_commas(trailing);
+    if !(body.first().is_some_and(|token| token.is_word("for"))
+        && body
+            .get(1)
+            .is_some_and(|token| token.is_any_word(&["each", "every"])))
+    {
+        return Ok((count, trailing));
+    }
+    let end = body
+        .iter()
+        .position(OwnedLexToken::is_comma)
+        .unwrap_or(body.len());
+    let (per_count, rest) = body.split_at(end);
+    let Some(per) = misc_action_shapes::parse_trailing_for_each_count(per_count) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported per-count library action amount (clause: '{}')",
+            crate::lexer::token_word_refs(per_count).join(" ")
+        )));
+    };
+    let scaled = match count.unhinted() {
+        Value::Fixed(1) => per,
+        Value::Fixed(multiplier) if *multiplier > 1 => Value::Scaled(Box::new(per), *multiplier),
+        _ => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported per-count scaling of a non-fixed library action amount (clause: '{}')",
+                crate::lexer::token_word_refs(per_count).join(" ")
+            )));
+        }
+    };
+    Ok((scaled, rest))
 }
 
 fn finish_counted_library_action(

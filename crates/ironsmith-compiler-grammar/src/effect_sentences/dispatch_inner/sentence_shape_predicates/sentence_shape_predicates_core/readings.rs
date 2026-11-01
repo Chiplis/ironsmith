@@ -1831,6 +1831,9 @@ fn read_pay_to_end_this_effect(
     if cost.pips().is_empty() {
         return Ok(None);
     }
+    // "you may pay <cost> to end this effect" is read whole: the offer, its
+    // cost, and the effect it ends.
+    crate::word_claims::claim_tokens(&tokens);
     Ok(Some(vec![EffectAst::PayToEndThisEffect { cost }]))
 }
 

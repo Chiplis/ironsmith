@@ -358,10 +358,14 @@ fn parse_half_library_count(
     };
     let consumed_words = library_word + 3;
     let consumed = words.token_index_after_words(consumed_words)?;
+    // "half their library, rounded down": the whole count phrase.
+    crate::word_claims::claim_words(&refs[..consumed_words]);
     Some((value, consumed, true))
 }
 
-fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+/// "for each <counted thing>" after a fixed action amount ("mill a card
+/// for each ...", "scry 1 for each ..."): the per-occurrence count.
+pub fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = TokenWordView::new(tokens);
     let refs = words.word_refs();
     let mut start = usize::from(matches!(refs.first().copied(), Some("card" | "cards")));

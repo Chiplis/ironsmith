@@ -376,6 +376,17 @@ pub(crate) fn resolve_wide(
             });
             Ok(i64::from(seen.len() as i64))
         }
+        Value::SubtypesAmong { family, filter } => {
+            let mut seen = HashSet::new();
+            context.visit_current_subtypes(filter, |subtypes| {
+                for &subtype in subtypes {
+                    if family.is_none_or(|family| family.contains(subtype)) {
+                        seen.insert(subtype);
+                    }
+                }
+            });
+            Ok(i64::from(seen.len() as i64))
+        }
         Value::CardTypesAmong(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
@@ -1236,6 +1247,25 @@ pub(crate) fn resolve_wide(
             {
                 if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
                     seen.extend(snapshot.card_types.iter().copied());
+                }
+            }
+            Ok(seen.len() as i64)
+        }
+        Value::DistinctAmongSpellsCastThisTurn {
+            characteristic,
+            player,
+            filter,
+        } => {
+            let player_ids = context.player_ids(value, player)?;
+            let filter_ctx = context.filter_context(game);
+            let mut seen = HashSet::new();
+            for (_, snapshot) in game
+                .turn_store
+                .turn_history
+                .checked_spell_cast_history(&player_ids, None)?
+            {
+                if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
+                    seen.extend(snapshot.distinct_characteristic_keys(*characteristic));
                 }
             }
             Ok(seen.len() as i64)
