@@ -53,7 +53,7 @@ export function referencedSubtypes(draft, known = []) {
     ...(face.subtypes || []).map(key),
     ...(String(face.oracleText || '').replace(/\([^()]*\)/g, '').toLowerCase().match(/[a-z]+/g) || []),
   ]));
-  return definitions.filter(def => words.has(def.singular) || words.has(def.plural));
+  return definitions.filter(def => words.has(def.singular) || words.has(def.plural) || words.has(`non${def.singular}`) || words.has(`non${def.plural}`));
 }
 export function withDraftSubtypes(draft, known = []) {
   return { ...draft, customSubtypes: referencedSubtypes(draft, known) };

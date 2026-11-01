@@ -1,3 +1,4 @@
+import useUiText from '@/i18n/useUiText';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/context/GameContext';
@@ -5,6 +6,7 @@ import { SUBTYPE_FAMILIES, listCustomSubtypes, mergeSubtypes, storeCustomSubtype
 
 export default function SubtypesPanel() {
   const { game } = useGame();
+  const ui = useUiText();
   const [definitions, setDefinitions] = useState(() => { try { return listCustomSubtypes(); } catch { return []; } });
   const [singular, setSingular] = useState('');
   const [plural, setPlural] = useState('');
@@ -35,13 +37,13 @@ export default function SubtypesPanel() {
   return <div className="space-y-5 p-5">
     <p className="text-sm text-muted-foreground">Define subtype names for your cards. Only types referenced by cards in a game join that game’s type choices, changeling, and “every type” effects. Saved cards carry their definitions.</p>
     <form onSubmit={save} className="flex flex-wrap items-end gap-3">
-      <label className="grid gap-1 text-sm">Singular<input required maxLength={32} className="rounded border p-2" value={singular} onChange={event => { setSingular(event.target.value); setPlural(suggestSubtypePlural(event.target.value)); }} placeholder="Moonkin" /></label>
-      <label className="grid gap-1 text-sm">Plural<input required maxLength={32} className="rounded border p-2" value={plural} onChange={event => setPlural(event.target.value)} placeholder="Moonkin" /></label>
-      <label className="grid gap-1 text-sm">Family<select className="rounded border p-2" value={family} onChange={event => setFamily(event.target.value)}>{SUBTYPE_FAMILIES.map(value => <option key={value}>{value}</option>)}</select></label>
-      <Button disabled={busy || !game} type="submit">{busy ? 'Checking…' : 'Add subtype'}</Button>
+      <label className="grid gap-1 text-sm">{ui('Singular')}<input disabled={busy} required maxLength={32} className="rounded border p-2" value={singular} onChange={event => { setSingular(event.target.value); setPlural(suggestSubtypePlural(event.target.value)); }} placeholder="Moonkin" /></label>
+      <label className="grid gap-1 text-sm">{ui('Plural')}<input disabled={busy} required maxLength={32} className="rounded border p-2" value={plural} onChange={event => setPlural(event.target.value)} placeholder="Moonkin" /></label>
+      <label className="grid gap-1 text-sm">{ui('Family')}<select disabled={busy} className="rounded border p-2" value={family} onChange={event => setFamily(event.target.value)}>{SUBTYPE_FAMILIES.map(value => <option className="bg-background" key={value} value={value}>{ui(value)}</option>)}</select></label>
+      <Button disabled={busy || !game} type="submit">{ui(busy ? 'Checking…' : 'Add subtype')}</Button>
     </form>
     <p className="text-xs text-muted-foreground">Use one word of up to 32 letters. Check the suggested plural; irregular and identical forms are supported. Subtypes do not grant inherent abilities.</p>
     {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
-    <ul className="space-y-2">{definitions.map(def => <li key={def.singular} className="flex items-center justify-between gap-3 border-b py-2"><span><strong className="capitalize">{def.singular}</strong> / {def.plural} · {def.family}</span><Button variant="outline" size="sm" onClick={() => remove(def)}>Remove</Button></li>)}</ul>
+    <ul className="space-y-2">{definitions.map(def => <li key={def.singular} className="flex items-center justify-between gap-3 border-b py-2"><span><strong className="capitalize">{def.singular}</strong> / {def.plural} · {def.family}</span><Button disabled={busy} variant="outline" size="sm" onClick={() => remove(def)}>{ui('Remove')}</Button></li>)}</ul>
   </div>;
 }

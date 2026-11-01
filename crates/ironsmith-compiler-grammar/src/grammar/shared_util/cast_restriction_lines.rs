@@ -76,9 +76,15 @@ fn control_quantity_restriction(words: &[&str]) -> Option<(Restriction, String)>
     let count = parsed.strict_at_least_count()?;
     let count_text = parsed.quantity_text();
     let filter_text = parsed.object_text();
-    let subtype = single_subtype(&parsed.filter)?;
+    single_subtype(&parsed.filter)?;
     Some((
-        Restriction::if_you_control_subtype_or_more(subtype, count),
+        Restriction::only_if(ironsmith_core::Condition::ValueComparison {
+            left: ironsmith_core::Value::Count(
+                parsed.filter.clone().controlled_by(ironsmith_core::PlayerFilter::You),
+            ),
+            operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+            right: ironsmith_core::Value::Fixed(i32::try_from(count).ok()?),
+        }),
         format!(
             "Cast this spell only if you control {} {}.",
             count_text,
