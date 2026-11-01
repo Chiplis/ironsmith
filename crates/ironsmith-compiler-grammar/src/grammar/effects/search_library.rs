@@ -1853,6 +1853,8 @@ pub fn parse_search_library_object_filter_lexed(
         // "a card named Hellkite Overlord": the literal name is the filter's
         // name constraint, and a bare "card" selector is the default filter.
         crate::word_claims::claim_tokens(&filter_tokens[name_start..name_end]);
+        let named_token = parser_words[named_idx].0;
+        crate::word_claims::claim_tokens(&filter_tokens[named_token..=named_token]);
         if is_default_search_library_card_selector(&base_tokens) {
             crate::word_claims::claim_tokens(&base_tokens);
         }

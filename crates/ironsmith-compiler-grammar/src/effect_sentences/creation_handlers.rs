@@ -2493,6 +2493,27 @@ pub fn parse_create(
             token_definition_grammar::source_chosen_token_characteristics(&clause_words);
         shape.use_source_chosen_color |= use_source_chosen_color;
         shape.use_source_chosen_creature_type |= use_source_chosen_creature_type;
+        // "token of the chosen color and type": the source's choices read here.
+        if use_source_chosen_color || use_source_chosen_creature_type {
+            const CHOSEN_PHRASES: &[&[&str]] = &[
+                &["of", "the", "chosen", "color", "and", "creature", "type"],
+                &["of", "that", "color", "and", "creature", "type"],
+                &["of", "the", "chosen", "color", "and", "type"],
+                &["of", "that", "color", "and", "type"],
+                &["of", "the", "chosen", "color"],
+                &["of", "that", "color"],
+                &["of", "the", "chosen", "type"],
+                &["of", "that", "type"],
+            ];
+            if let Some((at, len)) = CHOSEN_PHRASES.iter().find_map(|phrase| {
+                clause_words
+                    .windows(phrase.len())
+                    .position(|window| window == *phrase)
+                    .map(|at| (at, phrase.len()))
+            }) {
+                crate::word_claims::claim_words(&clause_words[at..at + len]);
+            }
+        }
     }
     // The token-definition slice is intentionally reconstructed and may omit
     // quoted suffixes that are not needed to identify the token blueprint.

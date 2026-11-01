@@ -752,6 +752,16 @@ pub fn parse_get(
             })
             .or_else(|| parse_value(tokens).map(|(value, _)| value))
             .unwrap_or(Value::Fixed(energy_count as i32));
+        // "an amount of {E} equal to ...": the counted quantity's frame.
+        if let [an, amount, of, symbol, ..] = tokens
+            && an.is_word("an")
+            && amount.is_word("amount")
+            && of.is_word("of")
+            && energy_symbol_token(symbol)
+            && grammar::find_prefix(tokens, || grammar::phrase(&["equal", "to"])).is_some()
+        {
+            crate::word_claims::claim_tokens(&tokens[..3]);
+        }
         return Ok(EffectAst::subject_verb_energy_counters(player, count));
     }
 

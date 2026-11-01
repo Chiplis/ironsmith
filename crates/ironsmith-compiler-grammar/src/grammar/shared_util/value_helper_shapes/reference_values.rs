@@ -95,6 +95,13 @@ pub fn parse_commander_cast_count_value(words: &[&str]) -> Option<crate::effect:
 pub fn parse_cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter> {
     // A whole-hand scalar must consume its entire noun phrase. Qualified
     // cards are counted by the object-filter reader, preserving color/type.
+    let player = cards_in_hand_player(words)?;
+    // The whole counted noun phrase is read.
+    crate::word_claims::claim_words(words);
+    Some(player)
+}
+
+fn cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter> {
     match words {
         ["cards", "in", "your", "hand"] => Some(PlayerFilter::You),
         ["cards", "in", "their", "hand" | "hands"]

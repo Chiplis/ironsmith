@@ -521,7 +521,11 @@ pub fn parse_add_mana(
         ));
     }
     if let Some(tail_tokens) = facts.one_that_color_tail {
+        // "[add] [an additional] one mana of that color": the chosen-color
+        // output read here.
+        let lead_in = &tokens[..tokens.len().saturating_sub(tail_tokens.len())];
         if tail_tokens.is_empty() || is_mana_pool_tail_tokens(tail_tokens) {
+            crate::word_claims::claim_tokens(lead_in);
             return Ok(EffectAst::subject_verb_add_mana_chosen_color(
                 player,
                 Value::Fixed(1),
@@ -529,6 +533,7 @@ pub fn parse_add_mana(
             ));
         }
         if let Some(amount) = parse_dynamic_cost_modifier_value(tail_tokens)? {
+            crate::word_claims::claim_tokens(lead_in);
             let amount = bind_revealed_this_way_count_to_last_object(amount);
             return Ok(EffectAst::subject_verb_add_mana_chosen_color(
                 player, amount, None,

@@ -225,6 +225,9 @@ fn read_known_spell_cost_fact(
     let tokens = input.tokens;
     let words = input.words;
     if let Some(fact) = static_mid_facts::parse_known_spell_cost_condition(tokens) {
+        let descriptor_filter = matches!(fact, Fact::CastThisTurn { .. })
+            .then(|| cast_this_turn_descriptor_filter(tokens))
+            .flatten();
         let condition = match fact {
             Fact::LifeTotalLessThanStarting => ThisSpellCostCondition::LifeTotalLessThanStarting,
             Fact::AttackedThisTurn => ThisSpellCostCondition::ConditionExpr {
@@ -247,6 +250,26 @@ fn read_known_spell_cost_fact(
             Fact::CreatureLeftBattlefieldUnderYourControlThisTurn => {
                 ThisSpellCostCondition::CreatureLeftBattlefieldUnderYourControlThisTurn
             }
+            // "if you've cast another creature spell this turn": any other
+            // descriptor is a full spell filter over the turn's cast history.
+            Fact::CastThisTurn { another, .. } if descriptor_filter.is_some() => {
+                let filter = descriptor_filter.clone().expect("guarded descriptor filter");
+                ThisSpellCostCondition::ConditionExpr {
+                    condition: crate::ConditionExpr::ValueComparison {
+                        left: Value::SpellsCastThisTurnMatching {
+                            player: PlayerFilter::You,
+                            filter,
+                            exclude_source: another,
+                        },
+                        operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(1),
+                    },
+                    display: crate::lexer::render_token_slice(tokens)
+                        .trim()
+                        .trim_end_matches(['.', ','])
+                        .to_string(),
+                }
+            }
             // "If you've cast another white spell this turn" (Patrician's
             // Scorn): the color restricts which earlier spell counts, and
             // "another" excludes this spell itself.
@@ -255,6 +278,7 @@ fn read_known_spell_cost_fact(
                     .iter()
                     .any(|word| crate::util::parse_color(word).is_some()) =>
             {
+                claim_plain_cast_this_turn_descriptor(tokens);
                 let mut filter = ObjectFilter::spell();
                 for word in words.iter() {
                     if let Some(color) = crate::util::parse_color(word) {
@@ -279,6 +303,9 @@ fn read_known_spell_cost_fact(
                 }
             }
             Fact::CastThisTurn { card_types, .. } => {
+                // "another spell" / "an instant or sorcery spell": the typed
+                // count of spells cast; those words are this reading's.
+                claim_plain_cast_this_turn_descriptor(tokens);
                 ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
                     count: 1,
                     card_types,
@@ -405,4 +432,65 @@ pub(super) fn read_bound_static_condition(
         });
     }
     None
+}
+
+
+/// The descriptor tokens of "you('ve) cast [another | a | an] <descriptor>
+/// this turn" and whether "another" introduced them.
+fn cast_this_turn_descriptor(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], Option<&OwnedLexToken>)> {
+    let cast = tokens.iter().position(|token| token.is_word("cast"))?;
+    let this = tokens
+        .windows(2)
+        .rposition(|pair| pair[0].is_word("this") && pair[1].is_word("turn"))?;
+    let mut start = cast + 1;
+    let another = tokens.get(start).filter(|token| token.is_word("another"));
+    if another.is_some() || tokens.get(start).is_some_and(|token| token.is_any_word(&["a", "an"])) {
+        start += 1;
+    }
+    (start < this).then(|| (&tokens[start..this], another))
+}
+
+/// A descriptor of only "spell(s)", instant/sorcery and connectives, or
+/// colors: the typed readings above already model these.
+fn is_plain_cast_this_turn_descriptor(descriptor: &[OwnedLexToken]) -> bool {
+    descriptor.iter().filter_map(OwnedLexToken::as_word).all(|word| {
+        matches!(word, "spell" | "spells" | "instant" | "sorcery" | "or" | "and")
+            || crate::util::parse_color(word).is_some()
+    })
+}
+
+/// Any other spell descriptor, read by the ordinary spell-filter grammar
+/// ("creature spell", "Dragon spell", "spell with mana value 4 or greater").
+fn cast_this_turn_descriptor_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let (descriptor, another) = cast_this_turn_descriptor(tokens)?;
+    let ends_in_spell = descriptor
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .last()
+        .is_some_and(|word| matches!(word, "spell" | "spells"));
+    if !ends_in_spell || is_plain_cast_this_turn_descriptor(descriptor) {
+        return None;
+    }
+    let mut filter =
+        crate::grammar::filters::parse_spell_filter_with_grammar_entrypoint(descriptor);
+    // "another" excludes this spell through `exclude_source`, not `other`.
+    filter.other = false;
+    if let Some(another) = another {
+        crate::word_claims::claim_tokens(std::slice::from_ref(another));
+    }
+    Some(filter)
+}
+
+/// Claim the typed plain descriptor ("another [instant or sorcery] spell").
+fn claim_plain_cast_this_turn_descriptor(tokens: &[OwnedLexToken]) {
+    if let Some((descriptor, another)) = cast_this_turn_descriptor(tokens)
+        && is_plain_cast_this_turn_descriptor(descriptor)
+    {
+        crate::word_claims::claim_tokens(descriptor);
+        if let Some(another) = another {
+            crate::word_claims::claim_tokens(std::slice::from_ref(another));
+        }
+    }
 }

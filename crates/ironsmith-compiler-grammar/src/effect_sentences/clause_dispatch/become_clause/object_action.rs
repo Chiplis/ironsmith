@@ -749,6 +749,13 @@ pub fn parse_become_clause(
             set_quantifier_surface,
         )?
     {
+        // "<object>'s base power [and toughness]": the characteristic
+        // destination named by the subject, assigned here.
+        for token in subject_tokens {
+            if token.is_any_word(&["base", "power", "toughness", "and"]) {
+                crate::word_claims::claim_tokens(std::slice::from_ref(token));
+            }
+        }
         return Ok(effect);
     }
 

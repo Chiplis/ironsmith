@@ -256,6 +256,20 @@ pub fn parse_you_choose_objects_clause_with_count_value(
             });
     }
 
+    // "you choose one of them" / "... two of those cards": the count and the
+    // anaphoric pool the choice draws from, both read into this choice.
+    if references_it
+        && let Some(verb) = clause_words
+            .iter()
+            .position(|word| matches!(*word, "choose" | "chooses"))
+        && matches!(
+            &clause_words[verb + 1..],
+            [_, "of", "them"] | [_, "of", "those", "cards" | "creatures" | "permanents"]
+        )
+    {
+        crate::word_claims::claim_words(&clause_words[verb + 1..]);
+    }
+
     // A pool named by a prior instruction ("a card revealed this way" after
     // "Target player reveals their hand", Psychotic Episode) is exactly that
     // instruction's objects; "you choose" names the chooser, not whose cards.

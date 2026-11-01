@@ -334,6 +334,19 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         let mut counters = crate::effect_sentences::zone_counter_helpers::parse_put_counters(
             &entry_counter_tokens,
         )?;
+        // "with X additional +1/+1 counters on it" (Abuelo's Awakening): the
+        // entry counters add to any it would otherwise enter with, which is
+        // what an entry put already does.
+        if let Some(counter_noun) = entry_counter_tokens
+            .iter()
+            .position(|token| matches!(token.as_word(), Some("counter" | "counters")))
+        {
+            for token in &entry_counter_tokens[..counter_noun] {
+                if token.as_word() == Some("additional") {
+                    crate::word_claims::claim_tokens(std::slice::from_ref(token));
+                }
+            }
+        }
         fn mark_entry(effect: &mut EffectAst) {
             if let EffectAst::SubjectVerb(subject) = effect
                 && let SubjectVerbActionAst::Counters(

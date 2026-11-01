@@ -288,6 +288,8 @@ fn read_players_with_cards_in_hand_at_least(input: &CountedPhrase<'_>) -> Option
 fn read_cards_in_hand_player(input: &CountedPhrase<'_>) -> Option<Value> {
     let filter_words = input.filter_words;
     if let Some(player) = value_helper_shapes::parse_cards_in_hand_player(&filter_words) {
+        // "cards in your hand": the counted noun phrase.
+        crate::word_claims::claim_tokens(&input.filter_tokens);
         let mut value = Value::CardsInHand(player).with_surface_hint(ValueSurfaceHint::EqualTo);
         if value_helper_shapes::has_that_player_possessive(&filter_words) {
             value = value.with_surface_hint(ValueSurfaceHint::ThatPlayerPossessive);

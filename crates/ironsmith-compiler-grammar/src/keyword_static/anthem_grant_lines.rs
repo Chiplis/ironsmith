@@ -4000,6 +4000,9 @@ pub fn parse_static_condition_clause(
         ) {
             control.filter.controller =
                 Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+            // "its controller controls": the affected object's controller,
+            // substituted above for the synthetic "you control".
+            crate::word_claims::claim_tokens(&tokens[..3]);
             return Ok(PredicateAst::CountComparison {
                 count: AnthemCountExpression::MatchingFilter(control.filter),
                 comparison: control.comparison,

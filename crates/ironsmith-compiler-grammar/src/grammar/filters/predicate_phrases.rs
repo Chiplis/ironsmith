@@ -5312,6 +5312,8 @@ fn parse_or_predicate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
                 }
             }
         };
+        // The disjunction joining the two predicates.
+        crate::word_claims::claim_tokens(&tokens[or_idx..=or_idx]);
         return Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))));
     }
 

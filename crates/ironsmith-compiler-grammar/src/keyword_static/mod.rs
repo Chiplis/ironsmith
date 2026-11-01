@@ -8957,12 +8957,12 @@ pub fn parse_choose_player_as_enters_line(
     // "choose two players" (Bitter Feud, Sower of Discord): that many
     // different players, recorded together for "the chosen players".
     if let ["choose", count, "players"] = tail_words.as_slice()
-        && let Some(count) = match *count {
-            "two" => Some(2u32),
-            "three" => Some(3),
-            _ => None,
-        }
+        && let Some(count) = parse_number_word_i32(count)
+            .and_then(|count| u32::try_from(count).ok())
+            .filter(|count| *count >= 2)
     {
+        // The whole choice ("choose two players") is read into the count.
+        crate::word_claims::claim_tokens(tail_tokens);
         return Ok(Some(StaticAbility::choose_players_as_enters(
             PlayerFilter::Any,
             count,
@@ -10171,6 +10171,7 @@ pub fn parse_trailing_this_spell_cost_condition(
     // condition.
     if crate::word_primitives::parse_sequence_suffix(&remaining_words, &["during", "your", "turn"])
     {
+        crate::word_claims::claim_words(&remaining_words[remaining_words.len() - 3..]);
         return Ok(Some(
             crate::static_abilities::ThisSpellCostCondition::YourTurn,
         ));

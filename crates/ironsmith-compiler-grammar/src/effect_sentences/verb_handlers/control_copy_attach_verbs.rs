@@ -897,6 +897,9 @@ fn parse_put_destination_choice(
     let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. }) = &left_subject_verb.action else {
         return Ok(None);
     };
+    // "or [both] on the bottom of your library": the alternative
+    // destination, read whole by the exact match above.
+    crate::word_claims::claim_tokens(&tokens[or_idx..]);
     let mut right_effect = left_effect.clone();
     if let EffectAst::SubjectVerb(subject_verb) = &mut right_effect
         && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { zone, to_top, .. }) = &mut subject_verb.action

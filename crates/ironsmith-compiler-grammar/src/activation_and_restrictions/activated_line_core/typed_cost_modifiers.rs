@@ -183,6 +183,8 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
             predicate = Some(parse_static_condition_clause(condition)?);
         }
     } else if words_are(tail, &["during", "your", "turn"]) {
+        // The whole condition tail is the your-turn predicate.
+        crate::word_claims::claim_tokens(tail);
         predicate = Some(PredicateAst::YourTurn);
     } else if tail.len() >= 2 && words_are(&tail[..2], &["for", "each"]) {
         multiplier = parse_dynamic_cost_modifier_value(tail)?;

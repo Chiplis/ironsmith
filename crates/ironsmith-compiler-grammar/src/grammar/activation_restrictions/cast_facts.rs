@@ -324,8 +324,11 @@ fn parse_cast_spells_from_zones_words(words: &[&str]) -> Option<ObjectFilter> {
         ],
     ) {
         base.excluded_cast_origin_zone = Some(Zone::Hand);
+        crate::word_claims::claim_words(&after_cast[from..]);
         return Some(base);
     }
+    // "from [your|their] graveyards or libraries": the origin list.
+    let origin_words = &after_cast[from..];
     let mut filters = Vec::new();
     if matches!(zones.first(), Some(&"your")) { base.owner = Some(PlayerFilter::You); }
     if matches!(zones.first(), Some(&"their")) { base.owner = Some(PlayerFilter::IteratedPlayer); }
@@ -341,6 +344,9 @@ fn parse_cast_spells_from_zones_words(words: &[&str]) -> Option<ObjectFilter> {
         let mut filter = ObjectFilter::default();
         filter.zone = Some(zone);
         filters.push(filter);
+    }
+    if !filters.is_empty() {
+        crate::word_claims::claim_words(origin_words);
     }
     match filters.len() {
         0 => None,

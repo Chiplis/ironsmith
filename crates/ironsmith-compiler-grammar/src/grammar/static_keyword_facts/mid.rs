@@ -388,7 +388,12 @@ pub fn parse_known_spell_cost_condition(
             ],
         ) {
             let card_types = mentioned_instant_sorcery_types(&words);
-            if !card_types.is_empty() {
+            // "you've cast a <descriptor> spell this turn": any spell
+            // descriptor; the caller reads it as a spell filter.
+            let names_spell = words[..words.len() - 2]
+                .last()
+                .is_some_and(|word| matches!(*word, "spell" | "spells"));
+            if !card_types.is_empty() || names_spell {
                 return Some(KnownSpellCostConditionFact::CastThisTurn {
                     another: false,
                     card_types,

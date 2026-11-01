@@ -202,6 +202,7 @@ fn parse_turn_history_intervening_predicate(
             .or_else(|_| parse_object_filter_lexed(subject_tokens, false))
             && filter != ObjectFilter::default()
         {
+            crate::word_claims::claim_tokens(tokens);
             return Ok(Some(PredicateAst::ValueComparison {
                 left: Value::TurnHistoryCount(
                     ironsmith_core::TurnHistoryCount::DealtExcessDamage(filter),
@@ -680,6 +681,8 @@ fn parse_turn_history_intervening_predicate(
                     PlayerAst::You,
                 ),
             );
+            // An exact whole-predicate match.
+            crate::word_claims::claim_tokens(tokens);
             return Ok(Some(if negated {
                 PredicateAst::Not(Box::new(predicate))
             } else {
@@ -2194,8 +2197,9 @@ pub(super) fn parse_value_reference_comparison_predicate(
         bind_other_aggregate_to_compared_object(&left, &mut right);
         let mut left = left;
         mark_demonstrative_characteristic_subject(&mut left, &tokens[..comparison_start]);
-        // The compared value ("that spell's mana value") was parsed whole.
-        crate::word_claims::claim_tokens(&tokens[..comparison_start]);
+        // Both compared values ("that spell's mana value", "your starting
+        // life total") and the comparison between them were parsed whole.
+        crate::word_claims::claim_tokens(tokens);
         // A singular card predicate requires the referenced card to exist.
         // Numeric evaluation alone would turn an empty selection into zero
         // and incorrectly satisfy "the card's mana value is 1 or less".
@@ -6859,6 +6863,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         ["it" | "that", "has", "single", "target"]
             | ["that", "spell" | "ability", "has", "single", "target"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::ItMatches(
             ObjectFilter::default().target_count_exact(1),
         ));
@@ -7215,6 +7220,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     if let ["that", "creature" | "permanent", "was", "dealt", "excess", "damage", "this", "turn"] =
         monarch_words.as_slice()
     {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::ValueComparison {
             left: crate::effect::Value::EventValue(crate::effect::EventValueSpec::ExcessDamage),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -7226,6 +7232,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     if let ["one", "or", "more", "permanents", "were", "sacrificed", "to", "activate", "it"]
     | ["a", "permanent", "was", "sacrificed", "to", "activate", "it"] = monarch_words.as_slice()
     {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::ValueComparison {
             left: crate::effect::Value::EventValue(
                 crate::effect::EventValueSpec::PermanentsSacrificedToActivate,
@@ -7282,6 +7289,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     if let ["it", "isnt" | "isn't", "being", "declared", "as", "attacker"]
     | ["it", "is", "not", "being", "declared", "as", "attacker"] = monarch_words.as_slice()
     {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::Not(Box::new(PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectTappedForAttack,
         ))));

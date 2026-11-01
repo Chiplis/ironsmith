@@ -291,6 +291,8 @@ pub fn parse_object_filter_with_grammar_entrypoint(
             let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[..index], other)?;
             if filter.colors.is_none() {
                 filter.colors = Some(colors);
+                // "that's red or green": the copula and the color list.
+                crate::word_claims::claim_tokens(&tokens[index..]);
                 return Ok(filter);
             }
         }

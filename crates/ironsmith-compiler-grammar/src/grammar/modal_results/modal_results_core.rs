@@ -74,6 +74,9 @@ pub(super) fn parse_direct_prior_effect_result_surface(
                 PriorEffectResultQuantifier::One,
             );
             surface.negated = negated;
+            // "you [didn't] put a card into your hand this way": every word
+            // of the restated hand move is read by this exact arm.
+            crate::word_claims::claim_tokens(tokens);
             return Some(surface);
         }
     }

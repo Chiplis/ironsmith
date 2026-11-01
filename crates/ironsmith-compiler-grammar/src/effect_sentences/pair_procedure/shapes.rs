@@ -168,6 +168,15 @@ pub(super) fn search_two_disposition_then_shuffle(
     {
         return Ok(None);
     }
+    // "Put one [of them] into your hand and the other into your graveyard."
+    // read whole as the two-way partition below.
+    if matches!(
+        crate::lexer::parser_token_word_refs(&second_tokens).as_slice(),
+        ["put", "one", "into", "your", "hand", "and", "the", "other", "into", "your" | "their", "graveyard"]
+            | ["put", "one", "of", "them", "into", "your", "hand", "and", "the", "other", "into", "your" | "their", "graveyard"]
+    ) {
+        crate::word_claims::claim_tokens(&second_tokens);
+    }
 
     search_filter.zone = Some(Zone::Library);
     let searched_tag = helper_tag_for_tokens(&first_tokens, "searched");

@@ -3148,8 +3148,11 @@ fn try_parse_labeled_line_dispatch(
 /// them, so they are never presentation-only.
 fn is_meaningful_line_label(label: &str, label_tokens: &[OwnedLexToken]) -> bool {
     let lower = label.to_ascii_lowercase();
+    // Named-ability labels ("Stunning Strike", "Bigby's Hand") only route
+    // their line to the activation reader; they carry no rules meaning of
+    // their own, so they are not listed here. The keyword-like members of
+    // that routing list are named below.
     document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some()
-        || is_named_ability_label(&lower)
         || is_case_ability_label(label_tokens)
         || crate::keyword_forms::official(&lower).is_some()
         || matches!(
@@ -3172,6 +3175,7 @@ fn is_meaningful_line_label(label: &str, label_tokens: &[OwnedLexToken]) -> bool
                 | "renew"
                 | "channel"
                 | "cohort"
+                | "waterbend"
                 | "∞"
         )
 }
@@ -3198,9 +3202,10 @@ fn claim_presentation_only_label(
         || label_tokens
             .first()
             .is_some_and(|token| token.kind == TokenKind::Bullet)
+        // The first word, not a leading number ("10,000 Needles").
         || !label_tokens
             .iter()
-            .find(|token| token.as_word().is_some())
+            .find(|token| token.kind == TokenKind::Word)
             .is_some_and(|token| token.slice.chars().next().is_some_and(char::is_uppercase))
         || is_meaningful_line_label(&label, label_tokens)
     {

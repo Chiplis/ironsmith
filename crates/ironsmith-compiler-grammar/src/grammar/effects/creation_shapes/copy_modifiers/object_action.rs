@@ -90,7 +90,10 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             .max_by_key(|phrase| phrase.len())
         {
             let mut start = if location > 0
-                && matches!(modifier_words[location - 1], "it" | "they" | "tokens" | "token")
+                && matches!(
+                    modifier_words[location - 1],
+                    "it" | "they" | "tokens" | "token" | "copy" | "copies"
+                )
             {
                 location - 1
             } else {
@@ -99,7 +102,7 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             // "except the token isn't legendary": the article of the subject.
             if start + 1 == location
                 && start > 0
-                && matches!(modifier_words[start], "token" | "tokens")
+                && matches!(modifier_words[start], "token" | "tokens" | "copy" | "copies")
                 && matches!(modifier_words[start - 1], "the" | "that" | "those" | "this" | "these")
             {
                 start -= 1;

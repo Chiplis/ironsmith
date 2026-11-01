@@ -352,8 +352,25 @@ fn player_negated_restriction_from_tail(
         Some(Restriction::cast_spells_matching(player, spell_filter))
     } else {
         use restriction_grammar::PlayerRestrictionTailKind;
+        let kind = restriction_grammar::parse_player_restriction_tail_words(words)?;
+        // A tail that is exactly its restriction's phrase ("gain life",
+        // "search libraries", "draw cards", ...) is read word for word.
+        let exact_phrase: Option<&[&str]> = match kind {
+            PlayerRestrictionTailKind::GainLife => Some(&["gain", "life"]),
+            PlayerRestrictionTailKind::SearchLibraries => Some(&["search", "libraries"]),
+            PlayerRestrictionTailKind::LoseLife => Some(&["lose", "life"]),
+            PlayerRestrictionTailKind::WinGame => Some(&["win", "the", "game"]),
+            PlayerRestrictionTailKind::DrawCards => Some(&["draw", "cards"]),
+            PlayerRestrictionTailKind::DrawExtraCards => {
+                Some(&["draw", "more", "than", "one", "card"])
+            }
+            _ => None,
+        };
+        if exact_phrase.is_some_and(|phrase| words == phrase) {
+            crate::word_claims::claim_words(words);
+        }
         Some(
-            match restriction_grammar::parse_player_restriction_tail_words(words)? {
+            match kind {
                 PlayerRestrictionTailKind::GainLife => Restriction::gain_life(player),
                 PlayerRestrictionTailKind::SearchLibraries => Restriction::search_libraries(player),
                 PlayerRestrictionTailKind::LoseGame => {

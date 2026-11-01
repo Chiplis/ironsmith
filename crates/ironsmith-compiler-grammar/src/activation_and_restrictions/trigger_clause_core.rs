@@ -2872,6 +2872,8 @@ fn try_parse_passive_sacrificed_or_destroyed_lexed(
             words.join(" ")
         ))
     })?;
+    // The indefinite article: each matching permanent is its own event.
+    crate::word_claims::claim_tokens(&tokens[..1]);
     Ok(Some(apply_leading_trigger_intro_surface(
         TriggerSpec::AnyOf(vec![
             TriggerSpec::PermanentSacrificed(filter.clone()),

@@ -383,6 +383,9 @@ fn parse_created_token_exile_tail_lexed(input: &mut LexStream<'_>) -> WResult<Cr
         Some(TokenDefinitionSpec::Creature(shape))
             if shape.rules == CreatureTokenRulesShape::default() =>
         {
+            // "a 2/2 black Zombie creature token": the whole blueprint is
+            // the typed token definition.
+            crate::word_claims::claim_tokens(definition_tokens);
             Ok(shape)
         }
         _ => Err(primitives::backtrack_err(

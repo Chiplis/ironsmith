@@ -78,7 +78,14 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
             during_turn,
         }
     };
+    // The player subject, the verb and its exact tail are read into the
+    // trigger above.
+    let claim_event = || {
+        crate::word_claims::claim_words(who.map_or(subject, |index| &subject[..index]));
+        crate::word_claims::claim_words(&words[verb..]);
+    };
     let Some(who) = who else {
+        claim_event();
         return Ok(Some(trigger));
     };
     let positions = crate::lexer::parser_token_word_positions(tokens);
@@ -90,6 +97,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, Car
         return Ok(None);
     }
     let filter = parse_object_filter_lexed(&tokens[start..end], false)?;
+    claim_event();
+    crate::word_claims::claim_words(&words[who..who + 2]);
     let surface = format!("that player controls {}", filter.description());
     Ok(Some(TriggerSpec::ConditionQualified {
         trigger: Box::new(trigger),

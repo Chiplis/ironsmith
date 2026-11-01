@@ -4623,6 +4623,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             };
             if let Some(player) = player {
                 let source = ObjectFilter::default();
+                // Recipient group, passive event and turn qualifier: all read.
+                crate::word_claims::claim_words(&words);
                 return Ok(TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                     source,
                     player,
@@ -6552,8 +6554,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
             let subject_words = subject_word_view.to_word_refs();
             if trigger_pattern_accepts(&subject_words, THE_CREATURE_HAUNTS_PATTERN) {
-                // "the creature it haunts": "it" is the haunting source.
-                if subject_words == ["the", "creature", "it", "haunts"] {
+                // "the creature it haunts" / "the creature this card haunts":
+                // the haunter is the source.
+                let haunter = subject_words
+                    .get(2..subject_words.len().saturating_sub(1))
+                    .unwrap_or_default();
+                if matches!(haunter, ["it"])
+                    || (!haunter.is_empty()
+                        && (source_reference_surface_for_words(haunter).is_some()
+                            || this_source_surface_for_words(haunter).is_some()))
+                {
                     crate::word_claims::claim_words(&subject_words);
                 }
                 return Ok(TriggerSpec::HauntedCreatureDies);

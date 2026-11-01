@@ -2240,6 +2240,12 @@ pub fn parse_as_enters_reveal_from_hand_line(
     let mut filter = parse_object_filter(&filter_tokens, false)?;
     filter.zone = Some(Zone::Hand);
 
+    // "As this land enters": the kind noun names the source itself.
+    if let [kind] = crate::lexer::token_word_refs(parsed.source_kind_tokens).as_slice()
+        && (crate::util::parse_card_type(kind).is_some() || matches!(*kind, "permanent" | "card"))
+    {
+        crate::word_claims::claim_tokens(parsed.source_kind_tokens);
+    }
     let source_subject = if !parsed.source_kind_tokens.is_empty() {
         {
             let words = crate::lexer::token_word_refs(parsed.source_kind_tokens);

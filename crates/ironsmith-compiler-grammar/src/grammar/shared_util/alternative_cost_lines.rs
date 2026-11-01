@@ -383,6 +383,18 @@ pub fn parse_self_zone_alternative_cost(
     }
     let total_cost = parse_payment_clause_as_total_cost(&cost_tokens)?.ok_or_else(||
         CardTextError::ParseError("unsupported intrinsic graveyard alternative price".into()))?;
+    // "you may cast this card from your graveyard by <price> rather than
+    // paying its mana cost [if you cast this card this way ... exile it
+    // instead]": the permission frame, the replaced mana cost and the exact
+    // exile rider are read here.
+    let frame_start = view.token_start_indices()[subject_start];
+    crate::word_claims::claim_tokens(&tokens[frame_start..cost_start]);
+    let rider_end = if exiles_after_resolution {
+        tokens.len()
+    } else {
+        view.token_start_indices().get(after_cost_word).copied().unwrap_or(tokens.len())
+    };
+    crate::word_claims::claim_tokens(&tokens[cost_end..rider_end]);
     Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
         "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard,
         total_cost, condition, exiles_after_resolution,
