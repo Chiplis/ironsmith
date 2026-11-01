@@ -154,6 +154,7 @@ fn parse_activation_cost_segment_tokens(
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
     if matches!(render_token_slice(tokens).trim().to_ascii_lowercase().as_str(),
         "return an unblocked attacker you control to hand" | "return an unblocked attacker you control to its owner's hand") {
+        crate::word_claims::claim_tokens(tokens);
         return Some(Ok(ActivationCostSegmentCst::ReturnUnblockedAttacker));
     }
     match parse_artifact_creature_tap_price(tokens) {

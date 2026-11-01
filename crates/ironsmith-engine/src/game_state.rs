@@ -5121,6 +5121,8 @@ impl StackEntry {
 /// Complete game state.
 #[derive(Debug, Clone)]
 pub struct GameState {
+    /// Monotonic, game-local vocabulary from admitted card definitions.
+    custom_subtypes: Vec<Subtype>,
     // Players
     pub players: crate::incremental::TrackedValue<Vec<Player>>,
 
@@ -5779,6 +5781,7 @@ impl GameState {
             .unwrap_or(PlayerId::from_index(0));
 
         Self {
+            custom_subtypes: Vec::new(),
             players: players.into(),
             object_store: ObjectStore::default(),
             stack: Vec::new().into(),
@@ -10691,6 +10694,10 @@ impl GameState {
 
     /// Adds an object to the game.
     pub fn add_object(&mut self, object: Object) {
+        for subtype in object.subtypes.iter().copied().filter(|ty| ty.is_custom_vocabulary()) {
+            if !self.custom_subtypes.contains(&subtype) { self.custom_subtypes.push(subtype); }
+        }
+        self.custom_subtypes.sort_by_key(|ty| format!("{ty:?}"));
         self.mark_continuous_state_dirty();
         self.bump_mutation_revision();
         let zone = object.zone;
@@ -10757,6 +10764,7 @@ impl GameState {
         owner: PlayerId,
         zone: Zone,
     ) -> ObjectId {
+        self.register_card_subtypes(card);
         // Retain the physical definition at creation, before overlays or copies
         // change the live object's characteristics. Raw Card creation has no
         // authored program, so this is the exact original native definition.
@@ -10782,6 +10790,29 @@ impl GameState {
         id
     }
 
+    /// Official vocabulary plus this game's referenced custom types, in stable order.
+    pub fn subtypes_in_family(&self, family: crate::types::SubtypeFamily) -> Vec<Subtype> {
+        let mut result: Vec<_> = family.all_subtypes().iter().copied()
+            .filter(|ty| !ty.is_custom_vocabulary()).collect();
+        result.extend(self.custom_subtypes.iter().copied().filter(|ty| ty.belongs_to_family(family)));
+        result
+    }
+
+    pub fn register_card_subtypes(&mut self, card: &crate::card::Card) {
+        let mut changed = false;
+        for subtype in card.custom_subtypes.iter().chain(&card.subtypes).copied() {
+            if subtype.is_custom_vocabulary() && !self.custom_subtypes.contains(&subtype) {
+                self.custom_subtypes.push(subtype);
+                changed = true;
+            }
+        }
+        if changed {
+            self.custom_subtypes.sort_by_key(|ty| (format!("{:?}", ty), ty.to_string()));
+            self.mark_continuous_state_dirty();
+            self.bump_mutation_revision();
+        }
+    }
+
     /// Creates an object from a CardDefinition (includes abilities and spell effects).
     pub fn create_object_from_definition(
         &mut self,
@@ -10789,6 +10820,7 @@ impl GameState {
         owner: PlayerId,
         zone: Zone,
     ) -> ObjectId {
+        self.register_card_subtypes(&def.card);
         self.prime_linked_face_definitions(def);
         let id = self.new_object_id();
         let handles = self.object_store.shared_handles_for_definition(def);
@@ -10875,6 +10907,7 @@ impl GameState {
         def: &crate::cards::CardDefinition,
         controller: PlayerId,
     ) -> Object {
+        self.register_card_subtypes(&def.card);
         self.prime_linked_face_definitions(def);
         let handles = self.object_store.shared_handles_for_definition(def);
         Object::from_token_definition_with_shared(id, def, controller, &handles)
@@ -10906,6 +10939,7 @@ impl GameState {
             .linked_face_definition(def.card.other_face_name.as_deref(), def.card.other_face)
             .cloned()
         {
+            self.register_card_subtypes(&other_def.card);
             self.cache_linked_face_definition(&other_def);
         }
     }
@@ -11023,6 +11057,7 @@ impl GameState {
             // symmetric across peers; see `HiddenIdentityObligation`).
             return Some(info);
         }
+        self.register_card_subtypes(&def.card);
         self.prime_linked_face_definitions(def);
         let handles = self.object_store.shared_handles_for_definition(def);
         let object = self.object_mut(id)?;
@@ -11255,11 +11290,13 @@ impl GameState {
         }
 
         if let Some(other_def) = self.load_linked_face_definition(name, id) {
+            self.register_card_subtypes(&other_def.card);
             self.cache_linked_face_definition(&other_def);
         }
     }
 
     fn prime_linked_face_definitions(&mut self, def: &crate::cards::CardDefinition) {
+        self.register_card_subtypes(&def.card);
         if def.card.other_face.is_none() && def.card.other_face_name.is_none() {
             return;
         }

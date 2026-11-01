@@ -57,7 +57,7 @@ pub use compound_shapes::{
 };
 pub use condition_shapes::{
     DevotionConditionError, DevotionPlayerKind, ExistentialConditionTail, FixedStaticConditionKind,
-    SourceCounterConditionError, parse_blocking_source_condition, parse_conjoined_condition_splits,
+    SourceCounterConditionError, parse_source_blocked_by_filter, parse_blocking_source_condition, parse_conjoined_condition_splits,
     parse_devotion_condition_shape, parse_entered_count_condition,
     parse_existential_condition_shape, parse_fixed_static_condition_kind,
     parse_life_total_or_less_condition, parse_source_counter_condition,

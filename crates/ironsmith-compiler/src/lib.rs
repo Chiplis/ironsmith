@@ -96,3 +96,5 @@ impl ParseCardText for CardDefinitionBuilder {
         parse_card_text_allow_unsupported(self, text)
     }
 }
+
+pub use ironsmith_grammar_common::custom_subtypes::with_custom_subtypes;

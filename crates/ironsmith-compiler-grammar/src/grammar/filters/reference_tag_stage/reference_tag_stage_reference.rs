@@ -372,6 +372,12 @@ fn parse_object_filter_inner_unchecked(
                 ))
             } else {
                 let mut attached = parse_object_filter_permissive(&attached_to_tokens, false)?;
+                // A target nested inside a characteristic/value filter still
+                // declares a target. Lowering binds this semantic marker to a
+                // concrete target-result tag before evaluating the value.
+                if attached_to_tokens.first().is_some_and(|token| token.is_word("target")) {
+                    attached.is_target_object = true;
+                }
                 attached.set_plural_object_noun_surface(has_plural_object_noun_surface(
                     &attached_to_tokens,
                 ));

@@ -1270,7 +1270,13 @@ impl WasmGame {
         ironsmith_dynamic_compile::with_enforcement_options(
             draft.enforce_filter_claims,
             draft.enforce_line_claims,
-            || self.compile_custom_card_faces_inner(draft),
+            || ironsmith_dynamic_compile::with_custom_subtypes(&draft.custom_subtypes, || {
+                let mut faces = self.compile_custom_card_faces_inner(draft)?;
+                let used = ironsmith_core::custom_subtypes::used_subtypes();
+                for face in &mut faces { face.card.custom_subtypes = used.clone(); }
+                Ok(faces)
+            })
+                .map_err(|error| JsValue::from_str(&error))?,
         )
     }
 

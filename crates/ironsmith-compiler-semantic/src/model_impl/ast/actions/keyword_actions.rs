@@ -29,7 +29,7 @@ pub enum KeywordActionAst {
     PairUnpairedCreatures,
     ExileResolvedSpellForCombatCopies,
     CopiesAssignedToOpponents,
-    SetPermanentDesignation { designation: ironsmith_core::PermanentDesignation },
+    SetPermanentDesignation { target: TargetAst, designation: ironsmith_core::PermanentDesignation },
     EmitKeywordAction {
         action: crate::events::KeywordActionKind,
         amount: u32,

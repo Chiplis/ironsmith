@@ -62,12 +62,14 @@ pub(crate) fn source_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
         (subject, false)
     } else if let Some(subject) = prefix.strip_suffix(&["does", "not", "have"]) {
         (subject, true)
+    } else if let Some(subject) = prefix.strip_suffix(&["doesn't", "have"]).or_else(|| prefix.strip_suffix(&["doesnt", "have"])) {
+        (subject, true)
     } else {
         return None;
     };
     if !matches!(
         subject,
-        ["this"]
+        ["this"] | ["it"]
             | [
                 "this",
                 "creature"
@@ -86,7 +88,11 @@ pub(crate) fn source_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
     let mut filter = ObjectFilter::default();
     filter.custom_statuses.push(name);
     crate::word_claims::claim_tokens(tokens);
-    let condition = PredicateAst::Source(SourcePredicateAst::SourceMatches(filter));
+    let condition = if subject == ["it"] {
+        PredicateAst::ItMatches(filter)
+    } else {
+        PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
+    };
     Some(if negative {
         PredicateAst::Not(Box::new(condition))
     } else {
@@ -106,23 +112,9 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let at = tokens
         .iter()
         .position(|t| words(std::slice::from_ref(t)) == ["the"])?;
-    if !matches!(
-        words(&tokens[..at]).as_slice(),
-        [
-            "give",
-            "this",
-            "creature"
-                | "permanent"
-                | "artifact"
-                | "enchantment"
-                | "land"
-                | "planeswalker"
-                | "battle"
-                | "card"
-        ] | ["give", "this"]
-    ) {
-        return None;
-    }
+    // The ordinary target reader owns target/non-target/reference distinctions.
+    // Never infer Source from an arbitrary recipient phrase.
+    let target = crate::util::parse_target_phrase(&tokens[1..at]).ok()?;
     if tokens[..at]
         .iter()
         .chain(tokens[end + 1..].iter())
@@ -142,6 +134,7 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         SubjectVerbRoleAst::Actor,
         PlayerAst::You,
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation {
+            target,
             designation: ironsmith_core::PermanentDesignation::CustomStatus {
                 name,
                 until_end_of_turn,

@@ -2270,8 +2270,7 @@ pub(super) fn apply_creature_type_announcement_response(
         .ok_or_else(|| {
             GameLoopError::InvalidState("No pending creature-type announcement".into())
         })?;
-    let subtype = crate::types::SubtypeFamily::Creature
-        .all_subtypes()
+    let subtype = game.subtypes_in_family(crate::types::SubtypeFamily::Creature)
         .get(choice)
         .copied()
         .filter(|subtype| {

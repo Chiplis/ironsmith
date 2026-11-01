@@ -738,10 +738,7 @@ fn check_selection_cost_with_context(
     let candidate_count = cost_candidate_count_with_context(effect, game, ctx)?;
 
     if candidate_count < required {
-        return Err(CostValidationError::Other(format!(
-            "Not enough objects to choose ({} needed, {} available)",
-            required, candidate_count
-        )));
+        return Err(CostValidationError::NotEnoughObjects);
     }
 
     Ok(())

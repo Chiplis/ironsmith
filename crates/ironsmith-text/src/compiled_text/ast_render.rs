@@ -38172,6 +38172,21 @@ pub(super) fn describe_alternative_cast_line(
             {
                 line = format!("As long as {text}, {}", lowercase_first(&line));
             }
+            for redirect in &instructions.departure_replacements {
+                let subject = if redirect.from_zone == Zone::Battlefield { "the permanent this spell becomes" } else { "this spell" };
+                line.push_str(&format!(". If {subject} would leave the {}", redirect.from_zone.name()));
+                for excluded in &redirect.excluded_to_zones {
+                    line.push_str(&format!(" other than being put onto the {}", excluded.name()));
+                }
+                if let Some(to) = redirect.to_zone {
+                    line.push_str(&format!(" for the {}", to.name()));
+                }
+                if redirect.destination == Zone::Exile {
+                    line.push_str(", exile it instead");
+                } else {
+                    line.push_str(&format!(", put it into the {} instead", redirect.destination.name()));
+                }
+            }
             if instructions.exile_on_stack_exit {
                 line.push_str(". If you cast this card this way, exile it instead of putting it anywhere else any time it would leave the stack");
             } else if *exiles_after_resolution {

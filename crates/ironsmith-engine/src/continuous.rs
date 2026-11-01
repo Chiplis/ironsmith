@@ -7345,7 +7345,7 @@ fn apply_modification_to_chars(
             chars.supertypes.retain(|st| !supertypes.contains(st));
         }
         Modification::AddAllSubtypesOfFamily(family) => {
-            for subtype in family.all_subtypes() {
+            for subtype in &game.subtypes_in_family(*family) {
                 if !chars.subtypes.contains(subtype) {
                     chars.subtypes.push(*subtype);
                 }

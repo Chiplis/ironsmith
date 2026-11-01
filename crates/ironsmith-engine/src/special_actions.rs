@@ -2874,6 +2874,8 @@ fn cost_error_to_action_error(err: CostPaymentError, source: ObjectId) -> Action
         CostPaymentError::InsufficientLife => ActionError::CantPayCost,
         CostPaymentError::SourceNotOnBattlefield => ActionError::CantPayCost,
         CostPaymentError::NoValidSacrificeTarget => ActionError::CantPayCost,
+        CostPaymentError::NotEnoughLegalModes => ActionError::CantPayCost,
+        CostPaymentError::NotEnoughObjects => ActionError::CantPayCost,
         CostPaymentError::InsufficientCardsInHand => ActionError::CantPayCost,
         CostPaymentError::InsufficientCounters => ActionError::CantPayCost,
         CostPaymentError::InsufficientEnergy => ActionError::CantPayCost,

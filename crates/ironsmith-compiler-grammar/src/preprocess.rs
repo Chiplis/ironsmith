@@ -574,6 +574,18 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
     let (price, _) = crate::word_claims::speculative(||
         crate::grammar::shared_util::alternative_cost_lines::parse_composed_zone_price(line_tokens));
     if matches!(price, Ok(Some(_))) { return vec![line.to_owned()]; }
+    // Independently parsed payment + modifier clauses share a reference scope.
+    // Splitting them here would discard that link before semantic recognition.
+    let (program, _) = crate::word_claims::speculative(||
+        crate::semantic_line_parsing::parse_optional_payment_modifier_program(line_tokens));
+    if matches!(program, Ok(Some(_))) { return vec![line.to_owned()]; }
+    // An optional casting payment and its cast-trigger consequence retain
+    // one scope for permanent and nonpermanent spells alike. This recognizes
+    // only the existing structural envelope; semantic cost/effect readers
+    // still validate each clause independently later.
+    let (payment_trigger, _) = crate::word_claims::speculative(||
+        crate::grammar::keyword_special_lines::parse_optional_cost_with_cast_trigger_tokens(line_tokens));
+    if payment_trigger.is_some() { return vec![line.to_owned()]; }
     let prose = line.to_ascii_lowercase();
     if (prose.starts_with("as an additional cost to cast this spell, you may ")
         && prose.contains("any number of times."))

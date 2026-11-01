@@ -12,12 +12,12 @@ pub use ironsmith_core::ChangeTextEffect;
 #[derive(Clone, Copy)]
 enum Family { Color, BasicLand, Creature }
 
-fn words(family: Family) -> Vec<TextWord> {
+fn words(game: &GameState, family: Family) -> Vec<TextWord> {
     match family {
         Family::Color => Color::ALL.into_iter().map(TextWord::Color).collect(),
         Family::BasicLand => [Subtype::Plains, Subtype::Island, Subtype::Swamp, Subtype::Mountain, Subtype::Forest]
             .into_iter().map(TextWord::BasicLandType).collect(),
-        Family::Creature => Subtype::all_creature_types().iter().copied().map(TextWord::CreatureType).collect(),
+        Family::Creature => game.subtypes_in_family(ironsmith_core::SubtypeFamily::Creature).into_iter().map(TextWord::CreatureType).collect(),
     }
 }
 
@@ -51,7 +51,7 @@ impl EffectExecutor for ChangeTextEffect {
                 [Family::Color, Family::BasicLand][choice]
             }
         };
-        let choices = words(family);
+        let choices = words(game, family);
         let Some(from_index) = choose_index(game, ctx, "Choose the word to replace",
             choices.iter().copied().map(word_label).collect())? else { return Ok(EffectOutcome::count(0)); };
         let from = choices[from_index];

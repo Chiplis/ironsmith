@@ -12,8 +12,8 @@ use crate::types::{Subtype, SubtypeFamily};
 /// Effect: target object(s) become a chosen creature type.
 pub type BecomeCreatureTypeChoiceEffect = ironsmith_core::BecomeCreatureTypeChoiceEffect;
 
-fn creature_type_options(effect: &BecomeCreatureTypeChoiceEffect) -> Vec<Subtype> {
-    all_creature_types()
+fn creature_type_options(game: &GameState, effect: &BecomeCreatureTypeChoiceEffect) -> Vec<Subtype> {
+    game.subtypes_in_family(SubtypeFamily::Creature)
         .iter()
         .copied()
         .filter(|subtype| !effect.excluded_subtypes.contains(subtype))
@@ -40,7 +40,7 @@ impl EffectExecutor for BecomeCreatureTypeChoiceEffect {
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let options = creature_type_options(self)
+        let options = creature_type_options(game, self)
             .into_iter()
             .map(|kind| (kind, kind.to_string()))
             .collect::<Vec<_>>();

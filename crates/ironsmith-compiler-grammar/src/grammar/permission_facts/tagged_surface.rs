@@ -50,6 +50,7 @@ pub enum TaggedPermissionReference {
     SourceExiled,
     LastRevealed,
     SourceExiledSelf,
+    PriorExiledCard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -504,6 +505,15 @@ fn parse_permission_verb_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Permiss
     .parse_next(input)
 }
 
+/// Copying a referenced card is an operand modifier, independent of the
+/// actor, payment, surrounding trigger and lifetime of the cast instruction.
+fn parse_copy_of_tagged_permission_target<'a>(input: &mut LexStream<'a>) -> WResult<(TaggedPermissionReference,bool,TaggedPermissionTargetSurface,Option<u32>)> {
+    primitives::phrase(&["a","copy","of"]).parse_next(input)?;
+    let (reference,as_copy,surface,max_plays)=parse_tagged_permission_target_lexed.parse_next(input)?;
+    if as_copy || max_plays.is_some() {return Err(primitives::backtrack_err("copy of tagged card","one card reference"));}
+    Ok((reference,true,surface,None))
+}
+
 fn parse_tagged_permission_target_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<(
@@ -513,6 +523,8 @@ fn parse_tagged_permission_target_lexed<'a>(
     Option<u32>,
 )> {
     alt((
+        parse_copy_of_tagged_permission_target,
+        primitives::phrase(&["the","exiled","card"]).value((TaggedPermissionReference::PriorExiledCard,false,TaggedPermissionTargetSurface::ThatCard,None)),
         alt((
         primitives::phrase(&["the", "card", "exiled", "this", "way"])
             .value((TaggedPermissionReference::LastTagged, false,

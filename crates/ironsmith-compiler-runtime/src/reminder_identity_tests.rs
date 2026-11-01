@@ -1232,7 +1232,7 @@ fn reminder_identity_cast_linked_face_uses_back_face_characteristics() {
             back.card.linked_face_layout = ironsmith::card::LinkedFaceLayout::TransformLike;
             back.card.transforming_dfc = true;
             assert!(front.alternative_casts[0].casts_transformed());
-            if !native { assert_eq!(front.alternative_casts[0].name(), if origin == Zone::Hand { "Parsed zone alternative cost" } else { "Parsed graveyard alternative cost" }); }
+            if !native { assert_eq!(front.alternative_casts[0].name(), ironsmith_core::definition_model::GENERIC_ALTERNATIVE_COST_NAME); }
             let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
             let a = PlayerId::from_index(0);
             game.register_linked_face_definition(&back);

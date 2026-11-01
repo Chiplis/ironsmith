@@ -129,6 +129,7 @@ pub mod util {
 }
 
 pub mod recognition;
+pub mod custom_subtypes;
 
 pub mod grammar;
 pub use grammar::{leaf, lexical, primitives, targets};

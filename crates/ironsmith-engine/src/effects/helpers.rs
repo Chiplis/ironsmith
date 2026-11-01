@@ -2320,6 +2320,22 @@ pub fn resolve_player_filter(
     spec: &PlayerFilter,
     ctx: &ExecutionContext,
 ) -> Result<PlayerId, ExecutionError> {
+    // Aliases in a payment still refer to the resolving spell's targets,
+    // while ordinary cost choices remain local to the payer.
+    if ctx.targets_are_cost_choices
+        && matches!(spec, PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))
+        && let Some(reference) = &ctx.payment_target_reference
+    {
+        let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut decisions = crate::decision::SelectFirstDecisionMaker;
+        let mut target_ctx = checkpoint.reborrow(&mut decisions);
+        target_ctx.controller = reference.controller;
+        target_ctx.targets = reference.targets.clone();
+        target_ctx.target_assignments = reference.assignments.clone();
+        target_ctx.announced_targets = None;
+        target_ctx.targets_are_cost_choices = false;
+        return resolve_player_filter(game, spec, &target_ctx);
+    }
     let player = (|| match spec {
         PlayerFilter::You => Ok(ctx.controller),
         PlayerFilter::EffectController => Ok(ctx.controller),
@@ -2782,7 +2798,17 @@ fn resolve_controller_of(
                         ExecutionError::IncompleteEvidence(
                             "attacking creature's controller requires its exact live incarnation or departure receipt".into()));
                 }
+                // Zone movement exports a successor under the public tag so
+                // later operations can find that card. Outside the battlefield
+                // and stack, that successor's nominal controller is its owner;
+                // "its controller" still reads the departing object's scoped
+                // last-known information (CR 608.2h), not that new card's owner.
+                let scoped_departure_controller = ctx
+                    .get_tagged_all(format!("__pre_move_history__{}", tag.as_str()))
+                    .and_then(|history| history.iter().find(|before| before.stable_id == snapshot.stable_id))
+                    .map(|before| before.controller);
                 Ok(live_controller
+                    .or(scoped_departure_controller)
                     .or(departure_controller)
                     .unwrap_or(snapshot.controller))
             } else if matches!(tag.as_str(), "triggering" | "it" | "__it__")

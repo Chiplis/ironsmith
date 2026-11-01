@@ -178,6 +178,10 @@ pub enum ContinuousDurationObject {
     AffectedObject,
     Tagged(TagKey),
     Specific(crate::ObjectId),
+    /// Exact current source in this zone, or its explicitly recorded own
+    /// exile arrival from this resolution. Materialized once to Specific;
+    /// never follows a later unrelated incarnation or searches by stable ID.
+    SourceInZone(crate::Zone),
 }
 
 /// Player identity used by a predicate-bearing resolution duration.

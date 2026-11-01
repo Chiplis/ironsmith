@@ -737,17 +737,30 @@ pub fn parse_type_line_with(
     let (left_words, right_words) =
         finish_lexed_parse(&tokens, parse_type_line_tokens, "type-line")?;
 
-    let (supertypes, card_types) =
-        left_words
-            .iter()
-            .fold((Vec::new(), Vec::new()), |(mut supers, mut types), word| {
-                if let Some(supertype) = parse_supertype(word) {
-                    supers.push(supertype);
-                } else if let Some(card_type) = parse_card_type(word) {
-                    types.push(card_type);
-                }
-                (supers, types)
-            });
+    let mut supertypes = Vec::new();
+    let mut card_types = Vec::new();
+    for word in &left_words {
+        if let Some(supertype) = parse_supertype(word) {
+            supertypes.push(supertype);
+        } else if let Some(card_type) = parse_card_type(word) {
+            card_types.push(card_type);
+        } else {
+            return Err(CardTextError::ParseError(format!("unrecognized type-line word: {word}")));
+        }
+    }
+
+    // Planar types are one collective name, not a list of subtype words.
+    // Recognize that complete name before validating ordinary subtype atoms.
+    if card_types.contains(&CardType::Plane) && !right_words.is_empty() {
+        let name = right_words.join(" ");
+        let subtype = Subtype::planar_type_from_name(&name).ok_or_else(||
+            CardTextError::ParseError(format!("unrecognized planar subtype: {name}")))?;
+        return Ok((supertypes, card_types, vec![subtype]));
+    }
+    if card_types.contains(&CardType::Dungeon)
+        && right_words.len() == 1 && right_words[0].eq_ignore_ascii_case("Undercity") {
+        return Ok((supertypes, card_types, vec![Subtype::Undercity]));
+    }
 
     let mut subtypes = Vec::new();
     let mut index = 0;
@@ -761,6 +774,8 @@ pub fn parse_type_line_with(
         }
         if let Some(subtype) = parse_subtype(right_words[index]) {
             subtypes.push(subtype);
+        } else {
+            return Err(CardTextError::ParseError(format!("unrecognized subtype in type line: {}", right_words[index])));
         }
         index += 1;
     }

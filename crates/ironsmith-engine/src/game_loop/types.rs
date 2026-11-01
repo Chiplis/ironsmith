@@ -45,6 +45,8 @@ pub(super) fn cost_payment_failure(
         | CostPaymentError::InsufficientLife
         | CostPaymentError::SourceNotOnBattlefield
         | CostPaymentError::NoValidSacrificeTarget
+        | CostPaymentError::NotEnoughLegalModes
+        | CostPaymentError::NotEnoughObjects
         | CostPaymentError::InsufficientCardsInHand
         | CostPaymentError::InsufficientCounters
         | CostPaymentError::InsufficientEnergy

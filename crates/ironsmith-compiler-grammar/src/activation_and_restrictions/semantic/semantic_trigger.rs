@@ -1352,6 +1352,51 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // A serial list of complete bare event verbs shares its initial subject.
+    // Each arm remains owned by the ordinary single-event reader; no entry,
+    // attack or death approximation is allowed to swallow its neighbours.
+    if let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && comma > 1
+        && tokens.iter().any(|token| token.is_word("or"))
+    {
+        let verb = |token: &OwnedLexToken| token.is_any_word(&[
+            "enters", "enter", "attacks", "attack", "blocks", "block", "dies", "die",
+        ]);
+        let start = comma - 1;
+        if verb(&tokens[start]) {
+            let mut arms = vec![start];
+            let mut index = comma;
+            let mut complete = true;
+            while index < tokens.len() {
+                if tokens[index].is_comma() { index += 1; }
+                if index < tokens.len() && tokens[index].is_word("or") { index += 1; }
+                if index >= tokens.len() || !verb(&tokens[index]) { complete = false; break; }
+                arms.push(index);
+                index += 1;
+                if index < tokens.len() && !tokens[index].is_comma() && !tokens[index].is_word("or") {
+                    complete = false; break;
+                }
+            }
+            if complete && arms.len() >= 3 {
+                let mut parsed = Vec::new();
+                for arm in arms {
+                    let mut clause = tokens[..start].to_vec();
+                    clause.push(tokens[arm].clone());
+                    match parse_trigger_clause_lexed(&clause) {
+                        Ok(trigger) => parsed.push(trigger),
+                        Err(_) => { complete = false; break; }
+                    }
+                }
+                if complete {
+                    crate::word_claims::claim_tokens(&tokens[start..]);
+                    let mut parsed = parsed.into_iter();
+                    let first = parsed.next().expect("serial list has at least three arms");
+                    return Ok(parsed.fold(first, |left, right| TriggerSpec::Either(Box::new(left), Box::new(right))));
+                }
+            }
+        }
+    }
+
     // "this creature attacks, blocks, or becomes the target of a spell": a
     // three-item verb list sharing one subject. Split the leading verb off
     // and union it with the remaining two-item "or" clause.

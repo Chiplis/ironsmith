@@ -1431,7 +1431,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
             chars.supertypes.retain(|t| !types.contains(t));
         }
         Modification::AddAllSubtypesOfFamily(family) => {
-            for subtype in family.all_subtypes() {
+            for subtype in &game.subtypes_in_family(*family) {
                 if !chars.subtypes.contains(subtype) {
                     chars.subtypes.push(*subtype);
                 }

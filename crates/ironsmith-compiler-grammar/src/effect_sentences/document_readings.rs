@@ -437,14 +437,27 @@ fn read_repeat_following_process(
     if rest.is_empty() {
         return Ok(None);
     }
-    let words = crate::lexer::parser_token_word_refs(first);
+    if first.iter().any(|token| !matches!(token.kind, TokenKind::Word | TokenKind::Comma | TokenKind::Period)) {
+        return Ok(None);
+    }
+    let binding_start = first.iter().position(|token| token.is_word("where"));
+    let header = binding_start.map_or(*first, |index| &first[..index]);
+    let words = crate::lexer::parser_token_word_refs(header);
     let count_word = match words.as_slice() {
         ["repeat", "the", "following", "process", count, "times"] => *count,
         _ => return Ok(None),
     };
     let count = if count_word == "x" {
-        crate::effect::Value::X
+        if let Some(index) = binding_start {
+            let Some(value) = super::dispatch_entry::parse_exact_where_x_value_expression(&first[index..]) else {
+                return Ok(None);
+            };
+            value
+        } else {
+            crate::effect::Value::X
+        }
     } else if let Some(count) = crate::util::parse_number_word_u32(count_word) {
+        if binding_start.is_some() { return Ok(None); }
         crate::effect::Value::Fixed(count as i32)
     } else {
         return Ok(None);
@@ -458,6 +471,9 @@ fn read_repeat_following_process(
     if effects.is_empty() {
         return Ok(None);
     }
+    // Only the independently validated repeat header belongs to this reader.
+    // The expression and body retain their own readers and token ownership.
+    crate::word_claims::claim_for_line(header);
     Ok(Some(vec![EffectAst::ForEach(
         ForEachEffectAst::RepeatEffects { count, effects },
     )]))
@@ -497,6 +513,28 @@ fn read_conditional_put_counters(
 #[cfg(test)]
 mod conditional_counter_ownership_tests {
     use super::*;
+
+    #[test]
+    fn repeat_header_composes_an_exact_value_binding_with_independent_actions() {
+        let tokens = crate::lexer::lex_line(
+            "Repeat the following process X times, where X is this creature's power. Draw a card. You gain 1 life.", 0).unwrap();
+        let effects = read_repeat_following_process(&Document::new(&tokens)).unwrap().unwrap();
+        let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })] = effects.as_slice() else {
+            panic!("missing complete repeat program: {effects:?}");
+        };
+        assert!(matches!(count.unhinted(), crate::effect::Value::PowerOf(source)
+            if matches!(source.unhinted(), crate::target::ChooseSpec::Source)));
+        assert_eq!(effects.len(), 2);
+        for header in [
+            "Repeat the following process X times, where Y is this creature's power",
+            "Repeat the following process 3 times, where X is this creature's power",
+            "Repeat the following process X times, where X is this creature's power unless you pay",
+            "Repeat the following process X times {2}",
+        ] {
+            let tokens = crate::lexer::lex_line(&format!("{header}. Draw a card."), 0).unwrap();
+            assert!(read_repeat_following_process(&Document::new(&tokens)).unwrap().is_none(), "{header}");
+        }
+    }
 
     #[test]
     fn conditional_counter_reader_owns_only_counter_consequences() {

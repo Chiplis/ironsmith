@@ -319,7 +319,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::PairUnpairedCreatures) => f.write_str("PairUnpairedCreatures"),
             Self::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender) => f.write_str("EnterAttackingReturnedDefender"),
             Self::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent) => f.write_str("OptionalSourceCopiesForControllerAndOpponent"),
-            Self::KeywordActions(KeywordActionAst::SetPermanentDesignation { designation }) => f.debug_tuple("SetPermanentDesignation").field(designation).finish(),
+            Self::KeywordActions(KeywordActionAst::SetPermanentDesignation { target, designation }) => f.debug_tuple("SetPermanentDesignation").field(target).field(designation).finish(),
             Self::KeywordActions(KeywordActionAst::EmitKeywordAction { action, amount }) => f
                 .debug_struct("EmitKeywordAction")
                 .field("action", action)

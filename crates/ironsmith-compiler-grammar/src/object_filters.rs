@@ -1309,7 +1309,46 @@ fn finalize_public_object_filter(
     preserve_terminal_characteristic_union_domain(&mut filter, tokens);
     share_terminal_card_type_union_zone(&mut filter, tokens);
     preserve_chosen_object_reference_noun(&mut filter, tokens);
-    deduplicate_tagged_constraints(filter)
+    expand_scoped_subtype_filter_atoms(deduplicate_tagged_constraints(filter))
+}
+
+/// Operate only on semantic subtype atoms already consumed by a reader.
+/// Names, quoted text and ordinary nouns are never rewritten.
+fn expand_scoped_subtype_filter_atoms(mut filter: ObjectFilter) -> ObjectFilter {
+    filter.any_of = filter.any_of.into_iter().map(expand_scoped_subtype_filter_atoms).collect();
+    for field in [&mut filter.mana_from_source_spent_to_cast, &mut filter.targets_object,
+        &mut filter.targets_only_object, &mut filter.not_targeted_by_ability_from,
+        &mut filter.would_destroy_object, &mut filter.attached_to_object,
+        &mut filter.with_attached_object, &mut filter.without_attached_object,
+        &mut filter.could_enchant_object, &mut filter.controller_controls,
+        &mut filter.blocked_or_was_blocked_by_this_turn] {
+        if let Some(inner) = field.take() { *field = Some(Box::new(expand_scoped_subtype_filter_atoms(*inner))); }
+    }
+    // Positive disjunction and negative exclusion are both idempotent: a
+    // repeated finalization only encounters members already in the vector.
+    for subtype in filter.subtypes.clone() {
+        for variant in crate::grammar::leaf::ambiguous_subtype_spellings(&subtype.to_string()) {
+            if !filter.subtypes.contains(&variant) { filter.subtypes.push(variant); }
+        }
+    }
+    for subtype in filter.excluded_subtypes.clone() {
+        for variant in crate::grammar::leaf::ambiguous_subtype_spellings(&subtype.to_string()) {
+            if !filter.excluded_subtypes.contains(&variant) { filter.excluded_subtypes.push(variant); }
+        }
+    }
+    // Each required printed subtype is a separate conjunction. A wrapper's
+    // positive OR tests that name's family alternatives while its single
+    // nested arm retains every other original constraint. No ambiguous
+    // conjunction atoms remain, so nested re-finalization is idempotent.
+    let required: Vec<_> = filter.all_subtypes.iter().filter_map(|subtype| {
+        let choices = crate::grammar::leaf::ambiguous_subtype_spellings(&subtype.to_string());
+        (!choices.is_empty()).then_some((*subtype, choices))
+    }).collect();
+    filter.all_subtypes.retain(|subtype| !required.iter().any(|(original, _)| original == subtype));
+    for (_, choices) in required {
+        filter = ObjectFilter { subtypes: choices, any_of: vec![filter], ..Default::default() };
+    }
+    filter
 }
 
 /// Preserve a shared-terminal combat-role union as alternatives rather than

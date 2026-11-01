@@ -1680,3 +1680,25 @@ fn copular_base_assignment_recipient_is_the_source_not_a_creature_set() {
             || matches!(&target, TargetAst::Object(filter, _, _) if filter.source), "{target:?}");
     }
 }
+
+#[test]
+fn standalone_quoted_attack_body_keeps_independently_read_outer_turn_duration() {
+    let text="Target creature gains \"Whenever this creature attacks, you gain 1 life.\" until end of turn.";
+    let effect=parse_simple_gain_ability_clause_lexed(&lex_line(text,0).unwrap()).unwrap().unwrap();
+    let debug=format!("{effect:?}");
+    assert!(debug.contains("Triggered")&&debug.contains("GainLife")&&debug.contains("EndOfTurn"),"{debug}");
+}
+
+#[test]
+fn grant_recipient_demonstrative_preserves_noun_without_new_current_type_constraint() {
+    for (noun,kind) in [("creature",crate::types::CardType::Creature),("artifact",crate::types::CardType::Artifact),("land",crate::types::CardType::Land)] {
+        let TargetAst::Object(filter,explicit_target,_)=tagged_subject_target(&lex_line(&format!("that {noun}"),0).unwrap()).unwrap() else {panic!("noun-bearing identity operand expected")};
+        assert_eq!(explicit_target,None);assert!(filter.card_types.is_empty());assert_eq!(filter.zone,None);
+        assert_eq!(filter.explicit_card_type_noun(),Some(kind));
+        assert_eq!(filter.tagged_constraints.len(),1);
+        assert_eq!(filter.tagged_constraints[0].tag,crate::tag::CompilerReferenceTag::It.key());
+    }
+    for malformed in ["{R} that creature", "that {R} creature", "that creature {R}"] {
+        assert!(tagged_subject_target(&lex_line(malformed,0).unwrap()).is_err(), "{malformed}");
+    }
+}

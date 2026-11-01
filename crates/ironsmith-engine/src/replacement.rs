@@ -575,6 +575,7 @@ pub struct ZoneReplacementSpec {
     pub filter: ObjectFilter,
     pub from_zone: Option<Zone>,
     pub to_zone: Option<Zone>,
+    pub excluded_to_zones: Vec<Zone>,
     pub replacement_zone: Zone,
     pub follow_up_effects: Vec<Effect>,
 }
@@ -585,8 +586,18 @@ impl ZoneReplacementSpec {
             filter,
             from_zone: None,
             to_zone: None,
+            excluded_to_zones: Vec::new(),
             replacement_zone,
             follow_up_effects: Vec::new(),
+        }
+    }
+
+    /// Share the same redirect semantics with selected casting instructions.
+    pub fn from_redirect(filter: ObjectFilter, spec: &ironsmith_core::ZoneChangeRedirectSpec) -> Self {
+        Self {
+            filter, from_zone: Some(spec.from_zone), to_zone: spec.to_zone,
+            excluded_to_zones: spec.excluded_to_zones.clone(),
+            replacement_zone: spec.destination, follow_up_effects: Vec::new(),
         }
     }
 
@@ -622,7 +633,7 @@ impl ZoneReplacementSpec {
         ReplacementEffect::with_matcher(
             source,
             controller,
-            WouldChangeZoneMatcher::new(self.filter, self.from_zone, self.to_zone),
+            WouldChangeZoneMatcher::new(self.filter, self.from_zone, self.to_zone).excluding_destinations(self.excluded_to_zones),
             replacement,
         )
     }

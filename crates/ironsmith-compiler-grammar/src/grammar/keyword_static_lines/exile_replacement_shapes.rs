@@ -57,7 +57,7 @@ pub struct ExileToGraveyardReplacementSpec<'a> {
     pub exclude_cycled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExileWouldDieSpec {
     NontokenCreature {
         controller: ReplacementPlayerKind,

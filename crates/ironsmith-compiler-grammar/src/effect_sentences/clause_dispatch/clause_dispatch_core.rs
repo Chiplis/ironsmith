@@ -199,11 +199,11 @@ pub(crate) fn parse_inline_loyalty_symbol_clause(tokens: &[OwnedLexToken]) -> Op
 pub(super) fn parse_effect_clause_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
-    if let Some(effect) = crate::custom_status::source_effect(tokens) {
-        return Ok(effect);
-    }
     if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
         return Ok(EffectAst::Sequence { effects });
+    }
+    if let Some(effect) = crate::effect_sentences::quality_choice::parse_choice(tokens) {
+        return Ok(effect);
     }
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -243,6 +243,9 @@ pub(super) fn parse_effect_clause_unstacked(
     } else {
         tokens
     };
+    if let Some(effect) = crate::custom_status::source_effect(tokens) {
+        return Ok(effect);
+    }
     // "That creature phases out until you roll a 3 or less while rolling to
     // visit your Attractions" (Ferris Wheel): the duration names a roll, so
     // the generic verb search would otherwise read "roll" as the action.

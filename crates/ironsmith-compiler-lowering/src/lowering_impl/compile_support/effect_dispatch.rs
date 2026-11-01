@@ -4258,3 +4258,61 @@ fn merge_search_destination_alternatives(
     merged[first_index] = Effect::new(search).tag(tagged.tag.clone());
     Some(merged)
 }
+
+/// Bind object target atoms occurring inside numeric values to ordinary
+/// target declarations and stable result tags. A presentation-only `target`
+/// marker must never widen a value's filter to every matching object.
+pub(super) fn bind_value_object_targets(
+    value: &mut Value,
+    ctx: &mut EffectLoweringContext,
+    prelude: &mut Vec<Effect>,
+    choices: &mut Vec<ChooseSpec>,
+) {
+    fn bind_filter(filter: &mut ObjectFilter, ctx: &mut EffectLoweringContext,
+        prelude: &mut Vec<Effect>, choices: &mut Vec<ChooseSpec>) {
+        if filter.is_target_object {
+            let mut selected = filter.clone();
+            selected.is_target_object = false;
+            let choice = ChooseSpec::target(ChooseSpec::Object(selected));
+            let tag = ctx.next_tag("targeted_value");
+            prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(choice.clone())).tag(tag.clone()));
+            choices.push(choice);
+            filter.is_target_object = false;
+            filter.tagged_constraints.push(TaggedObjectConstraint { tag,
+                relation: TaggedOpbjectRelation::IsTaggedObject });
+            return;
+        }
+        for nested in &mut filter.any_of { bind_filter(nested, ctx, prelude, choices); }
+        for field in [&mut filter.mana_from_source_spent_to_cast, &mut filter.targets_object,
+            &mut filter.targets_only_object, &mut filter.not_targeted_by_ability_from,
+            &mut filter.would_destroy_object, &mut filter.attached_to_object,
+            &mut filter.with_attached_object, &mut filter.without_attached_object,
+            &mut filter.could_enchant_object, &mut filter.controller_controls,
+            &mut filter.blocked_or_was_blocked_by_this_turn] {
+            if let Some(nested) = field.as_mut() { bind_filter(nested, ctx, prelude, choices); }
+        }
+    }
+    match value {
+        Value::SurfaceHinted { value, .. } | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) =>
+            bind_value_object_targets(value, ctx, prelude, choices),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            bind_value_object_targets(left, ctx, prelude, choices);
+            bind_value_object_targets(right, ctx, prelude, choices);
+        }
+        Value::Count(filter) | Value::CountScaled(filter, _) | Value::GreatestCount(filter)
+        | Value::LeastCount(filter) | Value::GreatestSharedCreatureTypeCount(filter)
+        | Value::GreatestSharedNameCount(filter) | Value::TotalPower(filter)
+        | Value::TotalToughness(filter) | Value::TotalManaValue(filter)
+        | Value::GreatestPower(filter) | Value::GreatestToughness(filter)
+        | Value::GreatestManaValue(filter) | Value::LeastPower(filter)
+        | Value::LeastToughness(filter) | Value::LeastManaValue(filter)
+        | Value::BasicLandTypesAmong(filter) | Value::CreatureTypesAmong(filter)
+        | Value::PermanentTypesAmong(filter) | Value::CardTypesAmong(filter)
+        | Value::ColorsAmong(filter) | Value::ColorPairsAmong(filter)
+        | Value::DistinctCounterTypesAmong(filter) | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter) | Value::DistinctManaCosts(filter)
+        | Value::UnlockedDoorsAmong(filter) | Value::DistinctPowers(filter) => bind_filter(filter, ctx, prelude, choices),
+        _ => {}
+    }
+}

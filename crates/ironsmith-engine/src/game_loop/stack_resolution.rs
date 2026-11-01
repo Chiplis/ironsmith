@@ -2180,6 +2180,15 @@ fn resolve_stack_entry_full_inner(
                     _ => false,
                 };
                 let instructions = battlefield_method.as_ref().map(|method| method.battlefield_instructions()).unwrap_or_default();
+                for redirect in &instructions.departure_replacements {
+                    if redirect.from_zone != Zone::Battlefield { continue; }
+                    let replacement = crate::replacement::ZoneReplacementSpec::from_redirect(
+                        crate::target::ObjectFilter::specific(new_id), redirect,
+                    ).build(new_id, entry.controller);
+                    let effect = Effect::new(crate::effects::ApplyReplacementEffect::resolution(replacement));
+                    let annotation = execute_resolved_permanent_annotation(game, &mut ctx, new_id, entry.controller, &effect)?;
+                    root_outputs.retain_published_children([annotation]);
+                }
                 if cast_with_dash || instructions.return_at_next_end_step {
                     let return_to_hand = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),

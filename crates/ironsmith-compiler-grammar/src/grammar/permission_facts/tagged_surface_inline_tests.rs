@@ -285,3 +285,12 @@ fn temporary_additional_land_cap_consumes_optional_up_to_only() {
         assert!(parse_additional_land_play_tokens(&lex(text)).is_none(), "{text}");
     }
 }
+
+#[test]
+fn copy_operand_modifies_an_independently_read_tagged_card_reference() {
+    for (text,expected) in [("a copy of the exiled card without paying its mana cost",TaggedPermissionReference::PriorExiledCard),("a copy of that card without paying its mana cost",TaggedPermissionReference::LastTagged)] {
+        let tokens=lex(text);let fact=parse_tagged_permission_target_tokens(&tokens).unwrap();
+        assert_eq!(fact.reference,expected);assert!(fact.as_copy);assert_eq!(fact.max_plays,None);
+        assert_eq!(crate::lexer::parser_token_word_refs(fact.rest_tokens),["without","paying","its","mana","cost"]);
+    }
+}

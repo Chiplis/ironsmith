@@ -366,3 +366,157 @@ fn custom_statuses_and_official_designations_do_not_alias_or_clear_each_other() 
     assert!(game.is_harnessed(source));
     assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 3);
 }
+
+// MSEM 702.233: the designation, rather than current counters, gates Defiance.
+const DEFIANCE_BODY: &str = "Type: Creature\nPower/Toughness: 2/8\nWhenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.";
+
+#[test]
+fn defiance_damage_triggers_recheck_status_and_preserve_zone_identity() {
+    use ironsmith::game_loop::{put_triggers_on_stack_with_dm, resolve_stack_entry_with};
+    use ironsmith::object::CounterType;
+    use ironsmith::triggers::TriggerQueue;
+    for leave_before_resolution in [false, true] {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let definition = compile("Defiance witness", DEFIANCE_BODY);
+        let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let mut queue = TriggerQueue::new();
+        // Two real damage events precede either trigger's resolution.
+        for expected in 1..=2 {
+            execute_effect(&mut game,
+                &Effect::new(ironsmith::effects::DealDamageEffect::new(1, ChooseSpec::SpecificObject(source))),
+                &mut EffectContext::new_default(source, A)).unwrap();
+            ironsmith::game_loop::drain_pending_trigger_events_with_dm(&mut game, &mut queue, &mut Answers(true)).unwrap();
+            assert_eq!(queue.entries.len(), expected);
+        }
+        let mut answers = Answers(true);
+        put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut answers).unwrap();
+        assert_eq!(game.stack.len(), 2);
+        let returned = if leave_before_resolution {
+            let hand = game.move_object(source, Zone::Hand, ironsmith::events::EventCause::effect()).unwrap();
+            Some(game.move_object(hand, Zone::Battlefield, ironsmith::events::EventCause::effect()).unwrap())
+        } else { None };
+        while !game.stack.is_empty() { resolve_stack_entry_with(&mut game, &mut answers).unwrap(); }
+        let current = returned.unwrap_or(source);
+        assert_eq!(game.has_custom_status(current, "defiant"), !leave_before_resolution);
+        assert_eq!(game.counter_count(current, CounterType::PlusOnePlusOne), if leave_before_resolution {0} else {1});
+        if !leave_before_resolution {
+            game.cleanup_custom_statuses_end_of_turn();
+            assert!(game.has_custom_status(source, "defiant"));
+            execute_effect(&mut game,
+                &Effect::new(ironsmith::effects::DealDamageEffect::new(1, ChooseSpec::SpecificObject(source))),
+                &mut EffectContext::new_default(source, A)).unwrap();
+            ironsmith::game_loop::drain_pending_trigger_events_with_dm(&mut game, &mut queue, &mut Answers(true)).unwrap();
+            assert!(queue.entries.is_empty(), "intervening-if also gates creation");
+        }
+    }
+}
+
+#[test]
+fn mark_instances_are_three_independent_targeted_attack_triggers() {
+    use ironsmith::events::{AttackEventTarget, CreatureAttackedEvent};
+    let body = "Whenever this creature attacks, give target creature the marked status until end of turn.";
+    let definition = compile("Compulsive Accuser status core", &format!("Type: Creature\nPower/Toughness: 3/2\nMenace\n{body}\n{body}\n{body}"));
+    let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+    let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+    let event = TriggerEvent::new(CreatureAttackedEvent::new(source, AttackEventTarget::Player(B)), Default::default());
+    let entries = check_triggers(&game, &event);
+    assert_eq!(entries.len(), 3, "source reminder's up-to-three summary must not collapse independent instances");
+    assert!(entries.iter().all(|entry| entry.source == source));
+    let mut queue = ironsmith::triggers::TriggerQueue::new();
+    for entry in entries { queue.add(entry); }
+    let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+    assert_eq!(game.stack.len(), 3);
+    while !game.stack.is_empty() {
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+    }
+    assert!(game.has_custom_status(source, "marked"));
+    game.cleanup_custom_statuses_end_of_turn();
+    assert!(!game.has_custom_status(source, "marked"));
+}
+
+#[test]
+fn targeted_status_announces_a_real_legal_target_and_resolves() {
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_priority_response_with_dm, apply_decision_context_with_dm};
+    for action in [compile("Status target", "Mana cost: {0}\nType: Sorcery\nGive target creature the marked status until end of turn.")] {
+        for shrouded in [false, true] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            game.turn.active_player = A;
+            game.turn.priority_player = Some(A);
+            game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            game.turn.step = None;
+            let creature = ironsmith_compiler_runtime::compile_to_runtime_definition("Count recipient", if shrouded {"Type: Creature\nPower/Toughness: 2/2\nShroud"} else {"Type: Creature\nPower/Toughness: 2/2"}, false).unwrap();
+            let host = game.create_object_from_definition(&creature, A, Zone::Battlefield);
+            let spell = game.create_object_from_definition(&action, A, Zone::Hand);
+            let offered = compute_legal_actions(&game, A).unwrap().into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell));
+            if shrouded {
+                assert!(offered.is_none(), "a status target respects shroud");
+                continue;
+            }
+            let mut dm = Answers(true);
+            let mut queue = ironsmith::triggers::TriggerQueue::new();
+            let mut state = PriorityLoopState::new(2);
+            let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::PriorityAction(offered.expect("a legal creature target makes status application castable")), &mut dm).unwrap();
+            for _ in 0..64 {
+                if !state.has_pending_action() { break; }
+                let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else { panic!("{progress:?}") };
+                progress = apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &context, &mut dm).unwrap();
+            }
+            assert!(!state.has_pending_action());
+            assert_eq!(game.stack.len(), 1);
+            assert_eq!(game.stack[0].targets, vec![ironsmith::game_state::Target::Object(host)]);
+            ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+            assert!(game.has_custom_status(host, "marked"));
+            game.cleanup_custom_statuses_end_of_turn();
+            assert!(!game.has_custom_status(host, "marked"));
+        }
+    }
+}
+
+#[test]
+fn status_condition_on_it_checks_the_chosen_recipient_not_the_source() {
+    let action = compile("Reference observer", "Type: Sorcery\nChoose target creature. If it doesn't have the marked status, put a +1/+1 counter on it.");
+    let body = compile("Status participant", "Type: Creature\nPower/Toughness: 2/2");
+    for marked_target in [false, true] {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = game.create_object_from_definition(&body, A, Zone::Battlefield);
+        let target = game.create_object_from_definition(&body, B, Zone::Battlefield);
+        apply(&mut game, if marked_target { target } else { source }, "marked", false);
+        let mut context = EffectContext::new_default(source, A)
+            .with_targets(vec![ironsmith::effects::ResolvedTarget::Object(target)]);
+        for effect in action.spell_effect.as_ref().unwrap().all_effects() {
+            execute_effect(&mut game, effect, &mut context).unwrap();
+        }
+        assert_eq!(game.counter_count(target, ironsmith::object::CounterType::PlusOnePlusOne), u32::from(!marked_target));
+        assert_eq!(game.counter_count(source, ironsmith::object::CounterType::PlusOnePlusOne), 0);
+    }
+}
+
+#[test]
+fn blocked_by_status_condition_uses_current_blockers_of_its_source() {
+    use ironsmith::combat_state::{CombatState, AttackerInfo, AttackTarget};
+    use ironsmith::static_abilities::StaticAbilityId;
+    let definition = compile("Hunter", "Type: Creature\nPower/Toughness: 2/2\nHunter has lifelink as long as it's blocked by a creature with the marked status.");
+    let body = compile("Participant", "Type: Creature\nPower/Toughness: 2/2");
+    for marked_blocker in [false, true] {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let other_attacker = game.create_object_from_definition(&body, A, Zone::Battlefield);
+        let blocker = game.create_object_from_definition(&body, B, Zone::Battlefield);
+        let unrelated = game.create_object_from_definition(&body, B, Zone::Battlefield);
+        apply(&mut game, unrelated, "marked", true);
+        if marked_blocker { apply(&mut game, blocker, "marked", true); }
+        let mut combat = CombatState::default();
+        combat.attackers = vec![AttackerInfo { creature:source, target:AttackTarget::Player(B) }, AttackerInfo { creature:other_attacker, target:AttackTarget::Player(B) }];
+        combat.blockers.insert(source, vec![blocker]);
+        combat.blockers.insert(other_attacker, vec![unrelated]);
+        combat.block_declaration_complete = true;
+        game.combat = Some(combat);
+        game.invalidate_continuous_state_public();
+        assert_eq!(game.current_has_static_ability_id(source, StaticAbilityId::Lifelink), marked_blocker);
+        game.combat = None;
+        game.invalidate_continuous_state_public();
+        assert!(!game.current_has_static_ability_id(source, StaticAbilityId::Lifelink), "a past block never satisfies the current condition");
+    }
+}

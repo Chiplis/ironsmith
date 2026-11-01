@@ -1569,7 +1569,7 @@ fn grant_exploit_for_anthem_subject(
     }
 }
 
-fn parse_triggered_granted_ability(
+pub(crate) fn parse_triggered_granted_ability(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let trigger_tokens = trim_edge_punctuation(tokens);

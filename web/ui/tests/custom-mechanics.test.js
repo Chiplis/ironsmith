@@ -262,3 +262,31 @@ test('"you may pay {Cost} to <effect>" keeps the effect as an "If you do" conseq
   // An alternative way to cast is not a purchased effect.
   assert.equal(validateMechanic({ keyword: 'rush', reminder: 'You may pay {Cost} to cast this spell.' }).expansion, 'You may pay {Cost} to cast this spell.');
 });
+
+
+test('quoted granted actions expand in the recipient ability without marking the grantor', () => {
+  const defs = mergeMechanics([], [{ keyword: 'Flourish', reminder: 'Draw a card.' }]);
+  const original = 'Other creatures you control have “Whenever this creature attacks, flourish.”';
+  const compiled = compileDraftInput({ faces: [{ name: 'Teacher', oracleText: original }] }, defs).faces[0];
+  assert.equal(compiled.oracleText, 'Other creatures you control have “Whenever this creature attacks, Draw a card.”');
+  assert.equal(compiled.customKeywordIdentities, undefined);
+  assert.equal(compiled.displayOracleText, original);
+  const named = 'Choose a card named “Whenever this creature attacks, flourish.”';
+  assert.equal(compileDraftInput({ faces: [{ name: 'Names', oracleText: named }] }, defs).faces[0].oracleText, named);
+  const both = compileDraftInput({ faces: [{ name: 'Both', oracleText: original + '\nFlourish.' }] }, defs).faces[0];
+  assert.deepEqual(both.customKeywordIdentities, ['flourish']);
+  assert.ok(both.oracleText.endsWith("\nDraw a card."));
+});
+
+
+test('alternative price expansion preserves its named selected-payment predicate and metadata', () => {
+  const reminder = "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.";
+  const def = validateMechanic({keyword: 'Multitude {Cost}', reminder});
+  const original = 'Multitude {2}{U}';
+  const face = compileDraftInput({faces: [{name: 'Selected price', oracleText: original}]}, [def]).faces[0];
+  assert.match(face.oracleText, /pay \{2\}\{U\} rather than/);
+  assert.match(face.oracleText, /if its Multitude cost was paid/);
+  assert.deepEqual(face.customKeywordPayments.map(word => word.toLowerCase()), ['multitude']);
+  assert.deepEqual(face.customKeywordIdentities.map(word => word.toLowerCase()), ['multitude']);
+  assert.equal(face.displayOracleText, original);
+});

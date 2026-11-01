@@ -439,7 +439,7 @@ fn choose_creature_card_name_and_type_as_becomes_attached(
         }
     }
 
-    let types = crate::types::Subtype::all_creature_types();
+    let types = game.subtypes_in_family(crate::types::SubtypeFamily::Creature);
     let selectable = types
         .iter()
         .enumerate()

@@ -376,6 +376,26 @@ fn bind_unless_player_context(effect: &mut EffectAst, player: PlayerAst) {
     }
 }
 
+// Removing the explicit subject before parsing an unless action leaves the
+// first imperative with the default actor. In a choice it is inside the first
+// mode; later modes retain their independently parsed actors.
+fn bind_leading_unless_actor(effect: &mut EffectAst, player: PlayerAst) {
+    match effect {
+        EffectAst::SubjectVerb(effect) if effect.subject.player == PlayerAst::You => {
+            effect.subject.player = player;
+        }
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf { chooser, modes }) => {
+            if *chooser == PlayerFilter::You {
+                if let Some(bound) = causative_recipient_filter(player) { *chooser = bound; }
+            }
+            if let Some(first) = modes.first_mut().and_then(|mode| mode.effects.first_mut()) {
+                bind_leading_unless_actor(first, player);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn causative_recipient_filter(player: PlayerAst) -> Option<PlayerFilter> {
     Some(match player {
         PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
@@ -1179,11 +1199,7 @@ pub fn try_build_unless(
         let causative = matches!(action_words.first().copied(), Some("have" | "has"));
         if !causative && !matches!(player, PlayerAst::You | PlayerAst::Implicit) {
             for effect in &mut alternative {
-                if let EffectAst::SubjectVerb(subject_verb) = effect
-                    && subject_verb.subject.player == PlayerAst::You
-                {
-                    subject_verb.subject.player = player;
-                }
+                bind_leading_unless_actor(effect, player);
             }
         }
         for effect in &mut alternative {

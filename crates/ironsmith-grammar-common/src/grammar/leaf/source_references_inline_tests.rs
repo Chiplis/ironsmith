@@ -219,3 +219,14 @@ fn titled_name_alias_survives_comma_epithet() {
     assert!(exact(&aliases, &["ensign"]).is_none());
     assert!(exact(&aliases, &["operations"]).is_none());
 }
+
+
+#[test]
+fn possessive_source_word_pieces_preserve_generic_noun_and_reject_trailing_text() {
+    for (piece, noun) in [("cards", "card"), ("spells", "spell"), ("sources", "source"), ("permanents", "permanent"), ("creatures", "creature")] {
+        assert_eq!(parse_leaf_this_source_reference_words(&["this", piece]),
+            Some(SourceReferenceSurface::ThisPermanentType(format!("this {noun}"))));
+        assert!(parse_leaf_this_source_reference_words(&["this", piece, "unread"]).is_none());
+    }
+    assert!(parse_leaf_this_source_reference_words(&["this", "bananas"]).is_none());
+}

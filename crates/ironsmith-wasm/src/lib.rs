@@ -5255,6 +5255,8 @@ fn default_claim_enforcement() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CustomCardInput {
+    #[serde(default)]
+    custom_subtypes: Vec<ironsmith_core::custom_subtypes::CustomSubtypeDefinition>,
     #[serde(default = "default_claim_enforcement")]
     enforce_filter_claims: bool,
     #[serde(default = "default_claim_enforcement")]

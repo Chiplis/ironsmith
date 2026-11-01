@@ -3,6 +3,27 @@ import assert from 'node:assert/strict';
 import { validateMechanic, compileDraftInput, draftMechanics } from '../src/lib/custom-mechanics.js';
 import { REMINDER_TEMPLATES } from '../src/lib/mechanics-catalog.js';
 const definition = keyword => validateMechanic({ keyword: `${keyword} {Cost}`, reminder: `Whenever you cast a spell, you may pay {Cost} to ${keyword} this creature until end of turn.` });
+test('explicit status definitions expand temporary grants and status references', () => {
+  const def = validateMechanic({keyword:'Resilience', reminder:"Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status."});
+  const source = 'It gains haste and resilience until end of turn.';
+  const face = compileDraftInput({faces:[{oracleText:source}]}, [def]).faces[0];
+  assert.equal(face.displayOracleText, source);
+  assert.match(face.oracleText, /haste and "Whenever this creature is dealt damage,/);
+  assert.match(face.oracleText, /status\." until end of turn\./);
+  const watcher = compileDraftInput({faces:[{oracleText:'Whenever a creature becomes defiant, draw a card.'}]}, [def]).faces[0];
+  assert.match(watcher.oracleText, /gains the defiant status/);
+});
+test('repeated bare keyword declarations remain separate abilities beside official keywords', () => {
+  const def = validateMechanic({keyword:'Witness', reminder:'Whenever this creature attacks, draw a card.'});
+  const original = 'Menace, Witness, Witness, Witness';
+  const face = compileDraftInput({faces:[{oracleText:original}]}, [def]).faces[0];
+  assert.equal(face.displayOracleText, original);
+  assert.equal(face.oracleText.split('\n').length, 4);
+  assert.equal(face.oracleText.match(/Whenever this creature attacks/g).length, 3);
+  assert.equal(face.oracleText.split('\n')[0], 'Menace');
+  const grant = 'Other creatures have "Menace, Witness, Witness".';
+  assert.ok(!compileDraftInput({faces:[{oracleText:grant}]}, [def]).faces[0].oracleText.includes('\n'));
+});
 for (const [keyword, status] of [['bribe','bribed'], ['enchantify','enchantified'], ['moon bless','moon blessed']]) {
   test(`named status ${keyword} expands applications, grants and references without changing source text`, () => {
     const def = validateMechanic({...definition(keyword), forms: { designation: status }});

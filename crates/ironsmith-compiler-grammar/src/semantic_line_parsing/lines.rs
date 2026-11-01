@@ -2689,7 +2689,7 @@ use lines_trigger_programs::{
 };
 pub use lines_trigger_programs::{
     exact_each_other_player_copies_triggering_spell_bundle,
-    conditional_life_total_set, is_exact_correlated_trigger_effect_bundle,
+    conditional_life_total_set, conditional_fallback_effects, is_exact_correlated_trigger_effect_bundle,
     parse_special_triggered_line, parse_triggered_line, try_parse_optional_cost_with_cast_trigger,
 };
 use lines_trigger_programs::{
@@ -2731,7 +2731,7 @@ use lines_ability_programs::{
     try_lower_partner_variant_keyword,
 };
 pub use lines_ability_programs::{parse_keyword_special_cases, parse_static_line};
-pub(crate) use lines_ability_programs::parse_descriptive_static_program;
+pub(crate) use lines_ability_programs::{parse_descriptive_static_program, parse_optional_payment_modifier_program};
 #[cfg(test)]
 use lines_ability_programs::{
     standard_flanking_reminder_is_typed_without_broad_keyword_expansion,

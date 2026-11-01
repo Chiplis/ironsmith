@@ -1408,6 +1408,15 @@ fn is_would_enter_replacement_clause(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_or_action_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // "Either" scopes a resolution-time choice over the two action arms.
+    // Leave each arm to the ordinary recursive readers; this modifier must
+    // not become part of the first action's object or be silently discarded
+    // when no complete alternative action exists.
+    let tokens = if tokens.first().is_some_and(|token| token.is_word("either")) {
+        &tokens[1..]
+    } else {
+        tokens
+    };
     if chain_grammar::parse_tap_or_untap_all_choice_tokens(tokens) {
         return Ok(None);
     }

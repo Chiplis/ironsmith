@@ -1779,7 +1779,12 @@ pub fn parse_create(
         }
     }
     let mut attached_to_target: Option<TargetAst> = None;
-    if let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens) {
+    // Copy-source selectors and where-value expressions own their nested
+    // attachment predicates. They are not residual token-entry modifiers.
+    let copy_source_owns_tail = creation_grammar::parse_copy_source_clause_tokens(&tail_tokens).is_some();
+    let value_binding_owns_tail = crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(&tail_tokens).is_some();
+    if !copy_source_owns_tail && !value_binding_owns_tail
+        && let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens) {
         crate::word_claims::claim_tokens(attached.marker_tokens);
         attached_to_target = Some(match parse_target_phrase(attached.target_tokens) {
             Ok(target) => {

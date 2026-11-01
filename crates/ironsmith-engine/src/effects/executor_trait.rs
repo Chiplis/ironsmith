@@ -1812,6 +1812,10 @@ pub enum CostValidationError {
     NotEnoughCards,
     /// Cannot sacrifice required permanent
     CannotSacrifice,
+    /// Fewer payable modal alternatives than the required selection count.
+    NotEnoughLegalModes,
+    /// Fewer eligible objects than a mandatory cost selection requires.
+    NotEnoughObjects,
     /// Checked execution failure retains its typed rollback contract.
     ExecutionFailed(ExecutionError),
     /// Generic error with message

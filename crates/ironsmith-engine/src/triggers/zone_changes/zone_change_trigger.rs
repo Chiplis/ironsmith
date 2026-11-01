@@ -347,7 +347,7 @@ impl ZoneChangeTrigger {
                 && filter
                     .subtypes
                     .iter()
-                    .all(|subtype| crate::types::Subtype::all_creature_types().contains(subtype))
+                    .all(|subtype| subtype.is_creature_type())
         }
 
         fn subject_is_always_creature(filter: &ObjectFilter) -> bool {

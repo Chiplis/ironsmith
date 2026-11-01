@@ -307,7 +307,7 @@ pub fn parse_token_rules_surfaces_tokens(tokens: &[OwnedLexToken]) -> TokenRules
     parse_token_rules_surfaces_for_named_token(tokens, None)
 }
 
-pub fn parse_token_rules_surfaces_for_named_token(
+fn parse_legacy_token_rules_surfaces_for_named_token(
     tokens: &[OwnedLexToken],
     named_token: Option<&str>,
 ) -> TokenRulesSurfaces {
@@ -341,7 +341,7 @@ pub fn parse_token_rules_surfaces_for_named_token(
         })
         .into_iter()
         .collect();
-    TokenRulesSurfaces { embedded_rules }
+    TokenRulesSurfaces { embedded_rules, ..Default::default() }
 }
 
 pub(super) fn cumulative_upkeep_mana_symbols(words: &[&str]) -> Option<Vec<ManaSymbol>> {
@@ -390,3 +390,56 @@ pub(super) fn toxic_amount(words: &[&str]) -> Option<u32> {
 #[cfg(test)]
 #[path = "rules/tests.rs"]
 mod tests;
+
+/// Quoted token rules share the ordinary ability readers. Keep every clause:
+/// accepting the first quoted ability must never discard later unknown rules.
+pub fn parse_token_rules_surfaces_for_named_token(
+    tokens: &[OwnedLexToken],
+    named_token: Option<&str>,
+) -> TokenRulesSurfaces {
+    let quotes: Vec<_> = tokens.iter().enumerate()
+        .filter_map(|(index, token)| (token.kind == TokenKind::Quote).then_some(index)).collect();
+    if quotes.is_empty() {
+        return parse_legacy_token_rules_surfaces_for_named_token(tokens, named_token);
+    }
+    let mut rules = TokenRulesSurfaces::default();
+    for pair in quotes.chunks(2) {
+        let [open, close] = pair else {
+            rules.unread_rules.push("unclosed quoted token ability".into());
+            break;
+        };
+        let quoted = &tokens[*open + 1..*close];
+        // Only complete legacy grammars may own a quoted rule. The older
+        // unquoted reminder fallback has presence-based recognizers which
+        // cannot prove complete consumption of a quote with a later clause.
+        if let Some(rule) = parse_embedded_token_rule_tokens(quoted, named_token) {
+            rules.embedded_rules.push(rule);
+            continue;
+        }
+        let quoted = crate::util::trim_edge_punctuation(quoted);
+        if let Ok(Some(parsed)) = crate::keyword_static::parse_triggered_granted_ability(&quoted) {
+            rules.generic_rule_spans.push((tokens[*open].span.start, tokens[*close].span.end));
+            rules.parsed_abilities.push(parsed);
+            continue;
+        }
+        if let Ok(Some(parsed)) = crate::activation_and_restrictions::activated_line_core::parse_activated_line(&quoted) {
+            rules.generic_rule_spans.push((tokens[*open].span.start, tokens[*close].span.end));
+            rules.parsed_abilities.push(parsed);
+            continue;
+        }
+        if let Ok(Some(parsed)) = crate::keyword_static::parse_static_ability_ast_line_lexed(&quoted) {
+            rules.generic_rule_spans.push((tokens[*open].span.start, tokens[*close].span.end));
+            rules.static_abilities.extend(parsed);
+            continue;
+        }
+        rules.unread_rules.push(render_token_slice(&quoted));
+    }
+    rules
+}
+
+/// Preserve all intrinsic and legacy-only rules while removing just the quoted
+/// rules already read by ordinary ability parsers.
+pub(super) fn legacy_rule_tokens(tokens: &[OwnedLexToken], rules: &TokenRulesSurfaces) -> Vec<OwnedLexToken> {
+    tokens.iter().filter(|token| !rules.generic_rule_spans.iter().any(|(start, end)|
+        token.span.start >= *start && token.span.end <= *end)).cloned().collect()
+}

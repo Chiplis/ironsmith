@@ -1825,21 +1825,37 @@ fn is_definite_singular_object_subject(words: &[&str]) -> bool {
     )
 }
 
-fn tagged_subject_target(tokens: &[OwnedLexToken]) -> TargetAst {
-    // The whole pronoun or demonstrative subject ("that creature") names the
-    // referenced object.
+fn tagged_subject_target(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    // Preserve a demonstrative's noun using the ordinary target operand
+    // reader. Its existing bare-reference rule does not add a fresh type or
+    // battlefield requirement, but the noun can select an earlier creature
+    // after a later card was exiled (instead of blindly rebinding bare it).
+    if words.first() == Some(&"that")
+        && let Some(kind) = words.get(1).and_then(|word| parse_card_type(word))
+    {
+        if words.len() == 2 && tokens.iter().any(|token| token.kind != TokenKind::Word) {
+            return Err(CardTextError::ParseError("unexpected symbol in grant recipient reference".into()));
+        }
+        let mut target = parse_target_phrase(tokens)?;
+        if let TargetAst::Object(filter, None, _) = &mut target
+            && filter.tagged_constraints.iter().any(|constraint|
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+        {
+            filter.set_explicit_card_type_noun(Some(kind));
+            return Ok(target);
+        }
+        return Err(CardTextError::ParseError("grant recipient noun has no typed identity binding".into()));
+    }
     crate::word_claims::claim_tokens(tokens);
-    let words = crate::lexer::parser_token_word_refs(tokens);
-    if words.first() == Some(&"those") {
+    Ok(if words.first() == Some(&"those") {
         let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
         filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(words.join(" ")));
         TargetAst::Object(filter, None, span_from_tokens(tokens))
     } else {
-        TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
-            span_from_tokens(tokens),
-        )
-    }
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens))
+    })
 }
 
 fn pronoun_set_quantifier_surface(words: &[&str]) -> Option<ironsmith_core::SetQuantifierSurface> {
@@ -2098,14 +2114,14 @@ fn named_source_target_from_granted_ability_surface(
 /// A complete base-P/T assignment is a characteristic effect, not a keyword
 /// grant named "base power and toughness X/X". Keep the announced X and the
 /// absence of a duration (a lasting layer-7b assignment).
-fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let shape = gain_shapes::parse_simple_gain_ability_shape(tokens)?;
+fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(shape) = gain_shapes::parse_simple_gain_ability_shape(tokens) else {return Ok(None);};
     if !shape.complete {
-        return None;
+        return Ok(None);
     }
     let ability_tokens = trim_edge_punctuation(shape.ability_tokens);
     let words = GainAbilityWordView::new(&ability_tokens).to_word_refs();
-    let base = gain_shapes::parse_gain_base_pt_after_has_shape(&words).ok()??;
+    let Some(base) = gain_shapes::parse_gain_base_pt_after_has_shape(&words).ok().flatten() else {return Ok(None);};
     let subject = trim_commas(shape.subject_tokens);
     // A preceding transformation is a separate instruction on the same
     // subject; do not swallow it as part of a size assignment's noun phrase.
@@ -2113,19 +2129,20 @@ fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Option<
         .iter()
         .any(|token| token.is_any_word(&["become", "becomes"]))
     {
-        return None;
+        return Ok(None);
     }
     let words = GainAbilityWordView::new(&subject).to_word_refs();
-    let target = source_target_from_subject_tokens(&subject).or_else(|| {
+    let target = if let Some(target) = source_target_from_subject_tokens(&subject) { target } else {
         let facts = gain_shapes::classify_gain_subject(&words);
-        (facts.pronoun || facts.demonstrative_object).then(|| tagged_subject_target(&subject))
-    })?;
-    Some(EffectAst::subject_verb_set_base_power_toughness(
+        if !facts.pronoun && !facts.demonstrative_object {return Ok(None);}
+        tagged_subject_target(&subject)?
+    };
+    Ok(Some(EffectAst::subject_verb_set_base_power_toughness(
         base.power,
         base.toughness,
         target,
         shape.duration,
-    ))
+    )))
 }
 
 /// Copular scalar/dynamic base characteristics use the same value and
@@ -2347,7 +2364,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     {
         return Ok(effects.pop());
     }
-    if !losing && let Some(effect) = parse_complete_source_base_pt_assignment(tokens) {
+    if !losing && let Some(effect) = parse_complete_source_base_pt_assignment(tokens)? {
         return Ok(Some(effect));
     }
     if !losing && let Some(effect) = parse_copular_base_characteristic_assignment(tokens)? {
@@ -2438,7 +2455,12 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(None);
     }
 
-    let duration_phrase = if words_start_nested_triggered_ability(words_after_verb) {
+    let duration_phrase = if let Some((close_quote, duration)) = quoted_nested_ability_end_and_duration(tokens, verb_token_idx) {
+        // A complete outer duration establishes the quoted body's boundary;
+        // its own nested triggered-ability reader keeps the entire body.
+        let start = GainAbilityWordView::new(&tokens[..=close_quote]).to_word_refs().len() - (verb_idx + 1);
+        Some((start, words_after_verb.len() - start, duration))
+    } else if words_start_nested_triggered_ability(words_after_verb) {
         None
     } else {
         parse_simple_ability_duration(words_after_verb)
@@ -2484,9 +2506,19 @@ fn parse_simple_ability_modifier_clause_lexed(
     let ability_end_token_idx = clause_word_view
         .map_word_or_end_to_token_boundary(ability_end_word_idx)
         .unwrap_or(tokens.len());
-    let ability_tokens = trim_edge_punctuation(trim_lexed_commas(
-        &tokens[verb_token_idx + 1..ability_end_token_idx],
-    ));
+    // The list splitter owns quoted component boundaries. Removing edge
+    // quotes here exposes a trigger's internal comma as a list separator.
+    let mut ability_start_token = verb_token_idx + 1;
+    let mut ability_end_token = ability_end_token_idx;
+    while ability_start_token < ability_end_token
+        && matches!(tokens[ability_start_token].kind, TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon) {
+        ability_start_token += 1;
+    }
+    while ability_end_token > ability_start_token
+        && matches!(tokens[ability_end_token - 1].kind, TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon) {
+        ability_end_token -= 1;
+    }
+    let ability_tokens = tokens[ability_start_token..ability_end_token].to_vec();
     if ability_tokens.is_empty() {
         return Ok(None);
     }
@@ -2625,7 +2657,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_pronoun_subject = implied_it_subject || subject_shape.tagged_pronoun;
     if is_pronoun_subject {
         let set_quantifier_surface = pronoun_set_quantifier_surface(&subject_word_refs);
-        let target = tagged_subject_target(subject_tokens);
+        let target = tagged_subject_target(subject_tokens)?;
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
                 target, abilities, duration,
@@ -2899,7 +2931,7 @@ fn parse_gain_then_lose_other_abilities(tokens: &[OwnedLexToken]) -> Result<Opti
             let words = GainAbilityWordView::new(subject).to_word_refs();
             let shape = gain_shapes::classify_gain_subject(&words);
             if !shape.pronoun && !shape.demonstrative_object { return Ok(None); }
-            tagged_subject_target(subject)
+            tagged_subject_target(subject)?
         };
     let Some(mut grants) = parse_gain_ability_sentence_inner(prefix)? else { return Ok(None); };
     let mut effects = vec![EffectAst::subject_verb_remove_abilities_from_target(target, Vec::new(), Until::Forever)];
@@ -3078,7 +3110,7 @@ pub(crate) fn parse_keyword_loss_with_prohibition(tokens: &[OwnedLexToken]) -> R
 fn parse_complete_simple_source_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if let Some(effect) = parse_complete_source_base_pt_assignment(tokens) {
+    if let Some(effect) = parse_complete_source_base_pt_assignment(tokens)? {
         return Ok(Some(vec![effect]));
     }
     if tokens
@@ -3146,7 +3178,7 @@ fn parse_complete_simple_source_gain_ability_sentence(
         if !subject_shape.pronoun && !subject_shape.demonstrative_object {
             return Ok(None);
         }
-        tagged_subject_target(&subject_tokens)
+        tagged_subject_target(&subject_tokens)?
     };
     // A quoted restriction ("gains \"This creature can't be blocked.\"",
     // Surge Engine) is an ability the object gains (CR 113.1a), not a
@@ -3450,7 +3482,7 @@ mod lasting_base_pt_assignment_tests {
             ),
         ] {
             let tokens = crate::lexer::lex_line(line, 0).unwrap();
-            let effect = parse_complete_source_base_pt_assignment(&tokens).expect(line);
+            let effect = parse_complete_source_base_pt_assignment(&tokens).expect(line).expect(line);
             let debug = format!("{effect:?}");
             assert!(debug.contains("SetBasePowerToughness"), "{debug}");
             assert!(debug.contains(duration), "{debug}");
@@ -3462,6 +3494,7 @@ mod lasting_base_pt_assignment_tests {
         ] {
             assert!(
                 parse_complete_source_base_pt_assignment(&crate::lexer::lex_line(line, 0).unwrap())
+                    .expect("base-PT shape probe")
                     .is_none(),
                 "{line}"
             );

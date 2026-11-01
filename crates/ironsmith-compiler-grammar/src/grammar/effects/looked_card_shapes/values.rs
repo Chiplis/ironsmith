@@ -137,6 +137,14 @@ pub fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<TopCardsVi
         });
     }
     let (revealed, count_tokens) = primitives::parse_prefix(tokens, top_cards_view_head)?;
+    // A singular top card has an implicit count of one. The plural still
+    // requires an explicit count, and the entire library phrase must end here.
+    if primitives::probe_all(count_tokens,
+        primitives::phrase(&["card", "of", "your", "library"]),
+        "singular top card view").is_some()
+    {
+        return Some(TopCardsViewShape { revealed, count: Value::Fixed(1) });
+    }
     let (count, used) = parse_value_prefix_lexed(count_tokens)?;
     let library_tokens = trim_lexed_commas(count_tokens.get(used..)?);
     let (_, remainder) = primitives::parse_prefix(library_tokens, card_of_your_library)?;

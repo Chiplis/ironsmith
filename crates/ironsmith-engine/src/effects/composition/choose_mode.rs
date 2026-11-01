@@ -220,6 +220,7 @@ impl CostExecutableEffect for ChooseModeEffect {
             );
         }
         let mut legal_mode_count = 0;
+        let mut unknown_mode_count = 0;
         for mode in &self.modes {
             let program = self
                 .common_prefix_effects
@@ -229,17 +230,21 @@ impl CostExecutableEffect for ChooseModeEffect {
                 .collect::<Vec<_>>();
             // The shared cost query owner isolates speculative bindings.
             let result = crate::costs::check_effect_cost_program(&program, game, ctx, reason);
-            if result.is_ok() {
-                legal_mode_count += 1;
+            match result {
+                Ok(()) => legal_mode_count += 1,
+                Err(CostValidationError::Other(_)) => unknown_mode_count += 1,
+                Err(_) => {}
             }
         }
 
         if legal_mode_count >= min_modes {
             Ok(())
-        } else {
+        } else if legal_mode_count + unknown_mode_count >= min_modes {
             Err(CostValidationError::Other(
-                "not enough legal cost options available".to_string(),
+                "modal cost feasibility is unresolved".to_string(),
             ))
+        } else {
+            Err(CostValidationError::NotEnoughLegalModes)
         }
     }
 }

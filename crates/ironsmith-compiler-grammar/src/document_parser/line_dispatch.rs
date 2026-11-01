@@ -1,5 +1,5 @@
 use super::line_family_handlers::{
-    run_activation_line_family, run_additional_combat_after_this_phase_line_family,
+    run_alternative_then_trigger_line_family, run_activation_line_family, run_additional_combat_after_this_phase_line_family,
     run_assign_damage_as_unblocked_enchanted_creature_controller_line_family,
     run_champion_line_family, run_championed_with_this_trigger_line_family,
     run_colon_nonactivation_statement_line_family, run_combined_static_line_family,
@@ -63,7 +63,12 @@ struct LineFamilyRuleDef {
     run: StructuredLineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 33] = [
+    LineFamilyRuleDef {
+        id: RuleId::new("alternative-then-trigger-abilities"),
+        head: HeadDiscriminator::words(&["you"]),
+        run: run_alternative_then_trigger_line_family,
+    },
     LineFamilyRuleDef {
         id: RuleId::new("trailing-keyword-activation"),
         head: HeadDiscriminator::words(&[]),

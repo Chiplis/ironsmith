@@ -809,7 +809,7 @@ fn remember_explicit_object_target_binding(target: &TargetAst, frame: &mut Refer
 /// whose head noun cannot name it ("that creature", "that Equipment") can
 /// skip it for the earlier object it does name.
 fn remember_object_kind_binding(frame: &mut ReferenceFrame, tag: &TagKey, filter: &ObjectFilter) {
-    if filter.source
+    if (filter.source && !matches!(filter.zone, Some(crate::zone::Zone::Hand | crate::zone::Zone::Library | crate::zone::Zone::Graveyard | crate::zone::Zone::Exile)))
         || !filter.tagged_constraints.is_empty()
         || (crate::model::reference_state::filter_implied_card_types(filter).is_empty()
             && filter
@@ -3474,36 +3474,42 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
+            count,
             tag,
             player,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             filter,
+            count,
             tag,
             player,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             filter,
+            count,
             tag,
             player,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
+            count,
             tag,
             player,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             filter,
+            count,
             tag,
             player,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             filter,
+            count,
             tag,
             player,
             ..
@@ -3557,6 +3563,19 @@ fn advance_reference_frame_for_effect(
                 frame.last_player_filter = Some(player_filter);
             }
             let chosen_tag = tag.clone();
+            // A fixed singular choice is an independently typed object
+            // antecedent, just like a declared target. Keep its exact tag;
+            // later results (such as exiling a card) cannot erase its kind.
+            // Collections/dynamic counts are not proof of one object.
+            let value_counted = matches!(effect,
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count_value: Some(_), .. }
+                    | ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { count_value: Some(_), .. }
+                    | ObjectChoiceEffectAst::ChooseObjectsTopOfZone { count_value: Some(_), .. }));
+            if count.max == Some(1) && !count.dynamic_x && !value_counted {
+                remember_object_kind_binding(frame, &chosen_tag.key,
+                    resolved_filter.as_ref().unwrap_or(filter));
+            }
+
             if resolved_filter.as_ref().is_some_and(|resolved_filter| {
                 should_alias_followup_player_to_chosen_owner(
                     resolved_filter,
@@ -4858,6 +4877,7 @@ fn annotate_effect_sequence_with_env_internal(
         if let Some(values) = effect_comparison_operands(&effect, &resolution_env) {
             resolution_env.last_value_comparison = RefState::Known(values);
         }
+        bind_contextual_grant_duration(&mut effect, &resolution_env)?;
         let mut resolution_state = effect_reference_resolution_state(&resolution_env);
         resolution_state.last_sacrifice_cost_tag_index = resolution_state
             .last_sacrifice_cost_tag_index
@@ -9408,6 +9428,27 @@ fn bind_unresolved_it_in_effect(effect: &mut EffectAst, seed_tag: &TagKey) -> us
 fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey) -> usize {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount }) => {
+                bind_unresolved_it_in_value(amount, seed_tag)
+            }
+            SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { filter }) => {
+                bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { cost, .. }) => {
+                use ironsmith_core::tag::TagKeyWalk;
+                let mut replacements = 0;
+                cost.map_tag_keys(&mut |tag| {
+                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                        *tag = seed_tag.clone();
+                        replacements += 1;
+                    }
+                });
+                replacements
+            }
+            // These operations carry no object/value reference fields.
+            SubjectVerbActionAst::Counters(CounterActionAst::GrowCountersOnChosenHolders
+                | CounterActionAst::PutCountersThenBecomeRenowned { .. }) => 0,
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
             | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count })
@@ -14085,4 +14126,149 @@ mod optional_and_investigate_result_tests {
         assert!(matches!(count, Value::PriorEffectMetric { effect_id, query: found } if *effect_id == producer_id && found == &query), "{count:?}");
     }
 
+}
+
+fn contextual_duration_reference(tag: &TagKey, env: &ReferenceEnv) -> Result<Option<TagKey>, CardTextError> {
+            use crate::tag::CompilerReferenceTag as Reference;
+            let noun: Vec<crate::types::CardType> = if Reference::DurationReferencedCreature.matches(tag) {vec![crate::types::CardType::Creature]}
+                else if Reference::DurationReferencedArtifact.matches(tag) {vec![crate::types::CardType::Artifact]}
+                else if Reference::DurationReferencedPermanent.matches(tag) {vec![crate::types::CardType::Creature,crate::types::CardType::Artifact,crate::types::CardType::Enchantment,crate::types::CardType::Land,crate::types::CardType::Planeswalker,crate::types::CardType::Battle]}
+                else {return Ok(None);};
+            let matches = |binding: &&ObjectTargetBinding| {
+                binding.discriminator.zone().is_none_or(|zone|zone==crate::zone::Zone::Battlefield)
+                    && binding.discriminator.implied_card_types().iter().any(|kind|noun.contains(kind))
+            };
+            // The latest antecedent wins only when its known kind fits. A
+            // more recent exiled card cannot displace a prior chosen creature.
+            let latest = env.known_last_object_tag().and_then(|last|env.recent_object_target_bindings.iter().find(|binding|&binding.tag==last).filter(matches));
+            let selected=latest.or_else(|| {
+                let mut candidates=env.recent_object_target_bindings.iter().filter(matches);
+                let first=candidates.next()?;
+                candidates.next().is_none().then_some(first)
+            });
+    selected.map(|binding|Some(binding.tag.clone())).ok_or_else(||CardTextError::ParseError("duration object reference has no unique typed antecedent".into()))
+}
+
+/// Resolve duration antecedents from the incoming reference environment,
+/// before this grant's recipient can introduce a newer target binding.
+fn bind_contextual_grant_duration(effect: &mut EffectAst, env: &ReferenceEnv) -> Result<(), CardTextError> {
+    use ironsmith_core::tag::TagKeyWalk;
+    let duration = match effect {
+        EffectAst::SubjectVerb(subject) => match &mut subject.action {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {duration,..}
+                |GrantActionAst::GrantAbilitiesAll{duration,..}|GrantActionAst::GrantAbilitiesChoiceAll{duration,..}
+                |GrantActionAst::GrantAbilitiesChoiceToTarget{duration,..}|GrantActionAst::GrantAbilityToSource{duration,..}
+                |GrantActionAst::GrantActivatedAbilitiesFrom{duration,..}) => Some(duration),
+            _ => None,
+        },
+        _ => None,
+    };
+    if let Some(duration) = duration {
+        let mut error=None;
+        duration.map_tag_keys(&mut |tag| {
+            match contextual_duration_reference(tag,env) {
+                Ok(Some(bound))=>*tag=bound,
+                Ok(None)=>{},
+                Err(problem)=>error=Some(problem),
+            }
+        });
+        if let Some(error)=error{return Err(error);}
+    }
+    // These wrappers begin their first instruction in the incoming frame.
+    // Do not walk into gained/delayed abilities with a different reference scope.
+    if let EffectAst::ControlFlow(control)=effect {
+        for program in &mut control.programs {
+            if let Some(first)=program.effects.first_mut() {bind_contextual_grant_duration(first,env)?;}
+        }
+    }
+    if matches!(effect,EffectAst::Conditionals(ConditionalEffectAst::IfResult{..}|ConditionalEffectAst::ResolvedIfResult{..})|EffectAst::Permissions(_)) {
+        let mut result=Ok(());
+        for_each_nested_effects_mut(effect,false,|nested| {
+            if result.is_ok() && let Some(first)=nested.first_mut() {result=bind_contextual_grant_duration(first,env);}
+        });
+        result?;
+    }
+    // A newly recognized contextual duration in any unsupported nested
+    // scope must reject explicitly rather than reach runtime as an unbound
+    // tag which would silently install no grant.
+    let mut unbound=false;
+    effect.map_tag_keys(&mut |tag| {
+        use crate::tag::CompilerReferenceTag as Reference;
+        if Reference::DurationReferencedCreature.matches(tag)||Reference::DurationReferencedArtifact.matches(tag)||Reference::DurationReferencedPermanent.matches(tag) {unbound=true;}
+    });
+    if unbound {return Err(CardTextError::ParseError("duration reference scope is not bound to a proven antecedent".into()));}
+    Ok(())
+}
+
+#[cfg(test)]
+mod contextual_duration_binding_tests {
+    use super::*;
+    fn env(bindings:Vec<ObjectTargetBinding>,last:&str)->ReferenceEnv {
+        ReferenceEnv {last_object_tag:RefState::Known(last.into()),recent_object_target_bindings:std::sync::Arc::new(bindings),..Default::default()}
+    }
+    #[test]
+    fn typed_duration_antecedent_is_not_a_new_recipient_or_recent_exiled_card() {
+        let chosen=ObjectTargetBinding::new("chosen_creature".into(),&ObjectFilter::creature().in_zone(crate::zone::Zone::Battlefield));
+        let exiled=ObjectTargetBinding::new("recent_exile".into(),&ObjectFilter::default().in_zone(crate::zone::Zone::Exile));
+        let scope=env(vec![chosen,exiled],"recent_exile");
+        assert_eq!(contextual_duration_reference(&crate::tag::CompilerReferenceTag::DurationReferencedCreature.key(),&scope).unwrap(),Some("chosen_creature".into()));
+        assert!(contextual_duration_reference(&crate::tag::CompilerReferenceTag::DurationReferencedCreature.key(),&ReferenceEnv::default()).is_err());
+    }
+    #[test]
+    fn actual_singleton_choice_exports_typed_identity_but_collections_do_not() {
+        for count in [1, 2] {
+            let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: ObjectFilter::creature().you_control(),
+                count: crate::effect::ChoiceCount::exactly(count), count_value: None,
+                player: PlayerAst::You,
+                tag: crate::tag::TagRef::of("actual_chosen_creature"),
+            });
+            let mut frame = ReferenceFrame::default();
+            let mut ids = IdGenContext::default();
+            advance_reference_frame_for_effect(&choice, &mut ids, &mut frame).unwrap();
+            let scope = ReferenceEnv::from_frame(&frame);
+            let result = contextual_duration_reference(&crate::tag::CompilerReferenceTag::DurationReferencedCreature.key(), &scope);
+            if count == 1 { assert_eq!(result.unwrap(), Some("actual_chosen_creature".into())); }
+            else { assert!(result.is_err(), "a collection cannot be silently narrowed to its first member"); }
+        }
+    }
+    #[test]
+    fn ambiguous_typed_duration_reference_fails_instead_of_using_grant_target() {
+        let scope=env(vec![ObjectTargetBinding::new("first".into(),&ObjectFilter::creature()),ObjectTargetBinding::new("second".into(),&ObjectFilter::creature()),ObjectTargetBinding::new("exile".into(),&ObjectFilter::default().in_zone(crate::zone::Zone::Exile))],"exile");
+        assert!(contextual_duration_reference(&crate::tag::CompilerReferenceTag::DurationReferencedCreature.key(),&scope).is_err());
+    }
+}
+
+#[cfg(test)]
+mod source_hand_antecedent_kind_tests {
+ use super::*;
+ use crate::cards::builders::SubjectVerbRoleAst;
+ use crate::effect::Until;
+ #[test]
+ fn selected_source_card_keeps_off_battlefield_kind_for_prior_creature_recipient() {
+  let mut frame=ReferenceFrame::default();let mut ids=IdGenContext::default();
+  for (name,filter) in [("chosen_host",ObjectFilter::creature().you_control()),("chosen_source",ObjectFilter{source:true,zone:Some(crate::zone::Zone::Hand),..Default::default()})] {
+   let effect=EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects{filter,count:crate::effect::ChoiceCount::exactly(1),count_value:None,player:PlayerAst::You,tag:crate::tag::TagRef::of(name)});
+   advance_reference_frame_for_effect(&effect,&mut ids,&mut frame).unwrap();
+  }
+  frame.auto_tag_object_targets=true;
+  let exile=EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
+   SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile{target:TargetAst::Tagged(crate::tag::TagRef::of("chosen_source"),None),face_down:false,source_controller_may_look:false,source_top_only:false,source_bottom_only:false,target_plural_surface:false}));
+  advance_reference_frame_for_effect(&exile,&mut ids,&mut frame).unwrap();
+  let scope=ReferenceEnv::from_frame(&frame);
+  assert_eq!(scope.known_last_object_tag(),Some(&crate::tag::TagKey::from("chosen_source")));
+  let mut recipient=ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+  recipient.set_explicit_card_type_noun(Some(crate::types::CardType::Creature));
+  let mut grant=EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
+   SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget{target:TargetAst::Object(recipient,None,None),abilities:vec![],duration:Until::EndOfTurn,condition:None,set_quantifier_surface:None,only_if_absent:false}));
+  rebind_noun_excluded_antecedent_references(&mut grant,&scope);
+  let EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget{target:TargetAst::Object(recipient,..),..}),..})=grant else{panic!("expected typed grant")};
+  assert_eq!(recipient.tagged_constraints[0].tag,crate::tag::TagKey::from("chosen_host"),"actual source+Hand selection cannot erase the earlier chosen creature");
+  let mut ambiguous=frame.clone();
+  remember_object_kind_binding(&mut ambiguous,&"another_host".into(),&ObjectFilter::creature());
+  assert!(noun_excluded_antecedent_replacement(&[crate::types::CardType::Creature],&ReferenceEnv::from_frame(&ambiguous)).is_none(),"multiple earlier creatures cannot be guessed");
+  let mut unknown=ReferenceFrame::default();
+  remember_object_kind_binding(&mut unknown,&"source_without_zone".into(),&ObjectFilter{source:true,..Default::default()});
+  assert!(unknown.recent_object_target_bindings.is_empty(),"source identity alone supplies no kind/zone proof");
+ }
 }

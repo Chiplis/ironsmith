@@ -522,6 +522,7 @@ pub struct WouldChangeZoneMatcher {
     pub filter: ObjectFilter,
     pub from_zone: Option<Zone>,
     pub to_zone: Option<Zone>,
+    pub excluded_to_zones: Vec<Zone>,
     pub cause_filter: Option<CauseFilter>,
     pub require_cause_source_match: bool,
     /// Tagged-object snapshots captured when a delayed matcher is registered.
@@ -537,10 +538,16 @@ impl WouldChangeZoneMatcher {
             filter,
             from_zone,
             to_zone,
+            excluded_to_zones: Vec::new(),
             cause_filter: None,
             require_cause_source_match: false,
             frozen_tagged_objects: std::collections::HashMap::new(),
         }
+    }
+
+    pub fn excluding_destinations(mut self, zones: Vec<Zone>) -> Self {
+        self.excluded_to_zones = zones;
+        self
     }
 
     pub fn with_cause_filter(mut self, cause_filter: CauseFilter) -> Self {
@@ -584,6 +591,9 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             return false;
         }
         if self.to_zone.is_some_and(|zone| zone_change.to != zone) {
+            return false;
+        }
+        if self.excluded_to_zones.contains(&zone_change.to) {
             return false;
         }
         if let Some(cause_filter) = &self.cause_filter

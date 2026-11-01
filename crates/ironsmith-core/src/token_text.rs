@@ -129,7 +129,7 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
         Desert=>"Desert", Urzas=>"Urza's", Cave=>"Cave", Gate=>"Gate", Locus=>"Locus", Town=>"Town",
         Lair=>"Lair", Mine=>"Mine", Planet=>"Planet", PowerPlant=>"Power-Plant", Sphere=>"Sphere", Tower=>"Tower",
         Attraction=>"Attraction", Bobblehead=>"Bobblehead", Book=>"Book", Clue=>"Clue", Contraption=>"Contraption",
-        Equipment=>"Equipment", Food=>"Food", Fortification=>"Fortification", Gold=>"Gold", Incubator=>"Incubator",
+        ArtifactOmen=>"Omen", ArtifactInscription=>"Inscription", Idol=>"Idol", Equipment=>"Equipment", Food=>"Food", Fortification=>"Fortification", Gold=>"Gold", Incubator=>"Incubator",
         Junk=>"Junk", Lander=>"Lander", Map=>"Map", Mutagen=>"Mutagen", Treasure=>"Treasure", Vehicle=>"Vehicle",
         Blood=>"Blood", Infinity=>"Infinity", Powerstone=>"Powerstone", Spacecraft=>"Spacecraft", Stone=>"Stone",
         Vibranium=>"Vibranium", Heartwood=>"Heartwood", Communicator=>"Communicator", Aura=>"Aura", Background=>"Background", Cartouche=>"Cartouche",

@@ -3,8 +3,14 @@ import { bindReminderParameters, parseParameterDeclaration, reminderParameters }
 
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const selfAction = def => new RegExp(`\\b${escape(def.keyword)}\\s+(this (?:creature|permanent|artifact|enchantment|land|planeswalker|battle|card))\\b`, 'gi');
-export function isStatusMechanic(def) { return selfAction(def).test(def.reminder); }
-export function statusName(def) { const forms = customKeywordForms(def); return forms.designation || forms.participle; }
+function explicitStatusName(def) {
+  const names = [...String(def.reminder).matchAll(/\bgive\s+(?:this (?:creature|permanent|artifact|enchantment|land|planeswalker|battle|card)|target (?:creature|permanent)|it)\s+the\s+([a-z][a-z '-]*?)\s+status\b/gi)]
+    .map(match => match[1].toLowerCase());
+  const unique = [...new Set(names)];
+  return unique.length === 1 ? unique[0] : null;
+}
+export function isStatusMechanic(def) { return selfAction(def).test(def.reminder) || explicitStatusName(def) !== null; }
+export function statusName(def) { const forms = customKeywordForms(def); return explicitStatusName(def) || forms.designation || forms.participle; }
 export function mentionsStatus(text, def) {
   return isStatusMechanic(def) && new RegExp(`\\b(?:${escape(def.keyword)}|${escape(statusName(def))})\\b`, 'i').test(text);
 }
@@ -17,9 +23,9 @@ export function expandStatusActions(text, def) {
 // The granted trigger retains "this creature", so it belongs to each recipient.
 export function expandStatusGrants(text, def, expand) {
   if (!isStatusMechanic(def)) return text;
-  const pattern = new RegExp(`\\b(has|have|gains?|and)\\s+${escape(def.keyword)}(?:\\s+((?:\\{[^{}]+\\})+|\\d+))?(?=\\s*(?:[.,]|and\\b|$))`, 'gi');
+  const pattern = new RegExp(`\\b(has|have|gains?|and)\\s+${escape(def.keyword)}(?:\\s+((?:\\{[^{}]+\\})+|\\d+))?(?=\\s*(?:[.,]|and\\b|until\\b|$))`, 'gi');
   return text.replace(pattern, (match, verb, cost) => {
-    const price = /^\d+$/.test(cost) ? `{${cost}}` : cost;
+    const price = /^\d+$/.test(cost) && reminderParameters(def.reminder).includes('cost') ? `{${cost}}` : cost;
     const values = !cost && !reminderParameters(def.reminder).length ? {}
       : parseParameterDeclaration(def.reminder, def.keyword, `${def.keyword} ${price || ''}`, def.template);
     if (!values) throw new Error(`"${def.keyword}" requires its declared parameters when granted.`);

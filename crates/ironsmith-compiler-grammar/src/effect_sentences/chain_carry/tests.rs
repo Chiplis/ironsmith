@@ -5150,3 +5150,23 @@ fn delayed_trailing_if_supports_other_steps_and_preserves_untimed_conditions() {
         EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
     ));
 }
+
+#[test]
+fn either_modifier_composes_existing_action_choice_readers() {
+    for text in [
+        "Either put two +1/+1 counters on this creature or create two Treasure tokens",
+        "Either draw two cards or gain 3 life",
+        "Either discard two cards or sacrifice a creature or planeswalker of your choice",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let parsed = super::parse_or_action_clause_lexed(&tokens).unwrap().unwrap();
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { chooser, modes }) = parsed else {
+            panic!("expected a structured action choice for {text}");
+        };
+        assert_eq!(chooser, PlayerFilter::You);
+        assert_eq!(modes.len(), 2, "{text}");
+        assert!(modes.iter().all(|mode| !mode.effects.is_empty()), "{text}");
+    }
+    let incomplete = lex_line("Either put a +1/+1 counter on this creature", 0).unwrap();
+    assert!(super::parse_or_action_clause_lexed(&incomplete).unwrap().is_none());
+}

@@ -1686,37 +1686,39 @@ pub fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let append_outer_where_x_tail = |stripped: &mut Vec<OwnedLexToken>| {
-        // Inline token rules are parsed separately and attached to the token
-        // blueprint, but an outer value binding after the closing quote still
-        // belongs to the create action:
-        //
-        // `Create X ... tokens with "...," where X is ...`
-        //
-        // Keep that typed tail while removing only the embedded rule. Counting
-        // quotes before the marker prevents a `where X is` inside the granted
-        // ability itself from being promoted to the outer create effect.
-        if let Some(where_shape) =
-            crate::grammar::effects::sentence_predicate_shapes::parse_where_x_sentence_tokens(
-                tokens,
-            )
-        {
-            let quote_count = where_shape
-                .stripped_tokens
-                .iter()
-                .filter(|token| token.kind == crate::lexer::TokenKind::Quote)
-                .count();
-            if quote_count >= 2 && quote_count % 2 == 0 {
-                stripped.extend(where_shape.where_tokens.iter().cloned());
+    let append_outer_token_tail = |stripped: &mut Vec<OwnedLexToken>| {
+        // The projection hides only embedded abilities from outer dispatch.
+        // Residual outer modifiers (attachment, count/value tails and token
+        // keyword declarations) must remain owned by the creation reader.
+        let quotes: Vec<_> = tokens.iter().enumerate().filter_map(|(index, token)|
+            (token.kind == crate::lexer::TokenKind::Quote).then_some(index)).collect();
+        if quotes.len() < 2 || quotes.len() % 2 != 0 { return; }
+        let tail = crate::lexer::trim_lexed_commas(&tokens[quotes[quotes.len() - 1] + 1..]);
+        if tail.is_empty() { return; }
+        if tail.first().is_some_and(|token| token.is_word("and")) {
+            let keyword_tail = &tail[1..];
+            let declaration = crate::grammar::effects::parse_attachment_clause_tokens(keyword_tail)
+                .map(|shape| shape.prefix_tokens).unwrap_or(keyword_tail);
+            if !stripped.iter().any(|token| token.is_word("with"))
+                && crate::word_claims::probe_only(|| crate::clause_support::parse_ability_line_lexed(declaration)).is_some()
+            {
+                // `with "rule" and equip {N}` has one blueprint modifier
+                // list. The quoted member is attached later; retain the
+                // ordinary keyword member under that same `with` owner.
+                crate::word_claims::claim_tokens(&tail[..1]);
+                stripped.push(OwnedLexToken::word("with", tail[0].span));
+                stripped.extend_from_slice(keyword_tail);
+                return;
             }
         }
+        stripped.extend_from_slice(tail);
     };
 
     if let Some(with_idx) =
         trigger_subject_grammar::parse_embedded_token_rules_boundary_tokens(tokens)
     {
         let mut stripped = tokens[..with_idx].to_vec();
-        append_outer_where_x_tail(&mut stripped);
+        append_outer_token_tail(&mut stripped);
         return stripped;
     }
 
@@ -1761,7 +1763,7 @@ pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLex
             prefix_end -= 1;
         }
         let mut stripped = tokens[..prefix_end].to_vec();
-        append_outer_where_x_tail(&mut stripped);
+        append_outer_token_tail(&mut stripped);
         return stripped;
     }
     if let Some(opening_quote) = opening_quote
@@ -1797,7 +1799,7 @@ pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLex
             prefix_end -= 1;
         }
         let mut stripped = tokens[..prefix_end].to_vec();
-        append_outer_where_x_tail(&mut stripped);
+        append_outer_token_tail(&mut stripped);
         return stripped;
     }
     tokens.to_vec()

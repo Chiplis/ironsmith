@@ -126,7 +126,7 @@ export async function saveCustomToken(draft, { compile } = {}) {
   if (!draft?.token || draft.faces?.length !== 1) throw new Error("A custom token is a single-face card marked as a token.");
   await database();
   const prepared = await prepareCustomDraftForCreation(draft, compile);
-  const token = validateToken({ face: prepared.draft.faces[0], input: prepared.input.faces[0] });
+  const token = validateToken({ face: prepared.draft.faces[0], input: prepared.input.faces[0], customSubtypes: prepared.input.customSubtypes });
   const db = await database();
   await new Promise((resolve, reject) => {
     const tx = db.transaction("tokens", "readwrite");

@@ -64,7 +64,10 @@ use scaled_grants::scaled_equipment_grant_tokens;
 
 pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<EquipmentRulesShape> {
     let words = parser_token_word_refs(tokens);
-    if !common::phrase_present(&words, &["equipped", "creature"]) {
+    let outer = common::token_description_projection(tokens).outer;
+    let outer_words = parser_token_word_refs(&outer);
+    let equip = rules::parse_token_equip_shape_words(&outer_words);
+    if !common::phrase_present(&words, &["equipped", "creature"]) && equip.is_none() {
         return None;
     }
 
@@ -86,7 +89,16 @@ pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<Equipmen
     }
 
     if lines.is_empty() {
-        let has_plus_one = common::phrase_present(&words, &["gets", "+1/+1"]);
+        // Read the stat grant independently of the token name and equip cost.
+        // All fixed signed power/toughness pairs share this grammar.
+        let fixed_power_toughness = words.windows(4).find_map(|window| {
+            if window[..3] != ["equipped", "creature", "gets"] { return None; }
+            let parsed = leaf::parse_leaf_power_toughness_complete(window[3]).ok()?;
+            match (parsed.power, parsed.toughness) {
+                (PtValue::Fixed(power), PtValue::Fixed(toughness)) => Some((power, toughness)),
+                _ => None,
+            }
+        });
         let scaled_power_toughness = scaled_equipment_grant_tokens(tokens);
         let mut granted_keywords = Vec::new();
         for keyword in [
@@ -121,24 +133,24 @@ pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<Equipmen
                 keywords: token_keywords(&words),
             });
             lines.push(display_text);
-        } else if has_plus_one {
+        } else if let Some((power, toughness)) = fixed_power_toughness {
             if granted_keywords.is_empty() {
-                let display_text = "Equipped creature gets +1/+1.".to_string();
+                let display_text = format!("Equipped creature gets {power:+}/{toughness:+}.");
                 typed_lines.push(EquipmentRuleLineShape::StaticGrant {
                     display_text: display_text.clone(),
-                    power_toughness: Some((1, 1)),
+                    power_toughness: Some((power, toughness)),
                     scaled_power_toughness: None,
                     keywords: Vec::new(),
                 });
                 lines.push(display_text);
             } else {
                 let display_text = format!(
-                    "Equipped creature gets +1/+1 and has {}.",
+                    "Equipped creature gets {power:+}/{toughness:+} and has {}.",
                     join_and_list(&granted_keywords)
                 );
                 typed_lines.push(EquipmentRuleLineShape::StaticGrant {
                     display_text: display_text.clone(),
-                    power_toughness: Some((1, 1)),
+                    power_toughness: Some((power, toughness)),
                     scaled_power_toughness: None,
                     keywords: token_keywords(&words),
                 });
@@ -159,7 +171,7 @@ pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<Equipmen
         }
     }
 
-    if let Some(equip) = rules::parse_token_equip_shape_words(&words) {
+    if let Some(equip) = equip {
         lines.push(format!("Equip {{{}}}", equip.amount));
         typed_lines.push(EquipmentRuleLineShape::Equip(equip));
     }

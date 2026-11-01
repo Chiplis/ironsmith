@@ -4104,8 +4104,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
                 "No creature type permits the required targets".into(),
             ));
         }
-        let options = crate::types::SubtypeFamily::Creature
-            .all_subtypes()
+        let options = game.subtypes_in_family(crate::types::SubtypeFamily::Creature)
             .iter()
             .enumerate()
             .filter(|(_, subtype)| types.contains(subtype))
@@ -4520,6 +4519,7 @@ pub(super) fn continue_spell_next_cost_or_finalize(
                 pending.caster,
                 spell,
                 &pending.completed_outputs,
+                &pending.tagged_objects,
             )
         });
         if reduction > 0
@@ -4527,6 +4527,11 @@ pub(super) fn continue_spell_next_cost_or_finalize(
         {
             let reduced =
                 crate::decision::mana_cost_with_locked_x_and_generic_reduction(&cost, 0, reduction);
+            // A payment-linked reduction is still a reduction of the total
+            // cost (CR 601.2f), so the minimum-total floor applies afterwards.
+            let reduced = crate::decision::apply_minimum_spell_total_mana_with_view(
+                &crate::derived_view::DerivedGameView::new(game), &reduced,
+            );
             pending.mana_cost_to_pay = Some(reduced).filter(|cost| !cost.is_empty());
             if pending.mana_cost_to_pay.is_none() {
                 return continue_spell_next_cost_or_finalize(

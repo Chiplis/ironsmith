@@ -355,6 +355,13 @@ pub(super) fn continue_with(
         return Ok(true);
     }
     if group.selected.is_some()
+        && let Some(remainder) = selections::optional_remainder_shape(sentence)?
+    {
+        selections::spell_optional_remainder(group, sentence, remainder);
+        group.consumed += 1;
+        return Ok(true);
+    }
+    if group.selected.is_some()
         && let Some(remainder) = triple_grammar::parse_looked_remainder_shape(sentence.lexed())
     {
         selections::spell_remainder(group, sentence, remainder);
@@ -406,5 +413,32 @@ pub(super) fn finish(mut group: ViewedGroup) -> Vec<EffectAst> {
         })]
     } else {
         effects
+    }
+}
+
+#[cfg(test)]
+mod optional_filtered_remainder_tests {
+    use super::*;
+    #[test]
+    fn independent_look_selection_remainder_keeps_real_quality_noun_claim() {
+        let tokens = [
+            crate::lexer::lex_line("Look at the top card of your library", 0).unwrap(),
+            crate::lexer::lex_line("You may reveal a Pirate or Rogue card from among them and put it into your hand", 1).unwrap(),
+            crate::lexer::lex_line("You may put the rest into your graveyard", 2).unwrap(),
+        ];
+        let sentences: Vec<_> = tokens.iter().map(|line| SentenceInput::from_lexed(line)).collect();
+        let noun = tokens[1].iter().find(|token| token.is_word("card")).unwrap();
+        let (effects, claims) = crate::word_claims::with_enforcement_options(true, true, || crate::word_claims::scoped(|| {
+            let mut group = open(&sentences, 0).expect("look opens a viewed group");
+            assert!(continue_with(&mut group, &sentences[1], &sentences[2..]).unwrap());
+            assert!(group.selected.is_some());
+            assert!(continue_with(&mut group, &sentences[2], &[]).unwrap());
+            assert_eq!(group.consumed, 3);
+            finish(group)
+        }));
+        assert!(claims.contains(noun.span), "the real selected card noun must be claimed: {noun:?}");
+        assert!(matches!(effects.last(), Some(EffectAst::Permissions(PermissionEffectAst::May { .. }))));
+        let invalid = crate::lexer::lex_line("You may put the rest into your graveyard {2}", 3).unwrap();
+        assert!(selections::optional_remainder_shape(&SentenceInput::from_lexed(&invalid)).is_err());
     }
 }

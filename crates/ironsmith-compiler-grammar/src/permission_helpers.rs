@@ -706,6 +706,9 @@ fn parse_tagged_cast_or_play_target_tokens(
         permission_tagged_facts::TaggedPermissionReference::SourceExiledSelf => {
             crate::tag::CompilerReferenceTag::SourceExiledSelf.bind()
         }
+        permission_tagged_facts::TaggedPermissionReference::PriorExiledCard => {
+            crate::tag::CompilerReferenceTag::PriorExiledCard.bind()
+        }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
         }
@@ -768,6 +771,9 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         }
         permission_tagged_facts::TaggedPermissionReference::SourceExiledSelf => {
             crate::tag::CompilerReferenceTag::SourceExiledSelf.bind()
+        }
+        permission_tagged_facts::TaggedPermissionReference::PriorExiledCard => {
+            crate::tag::CompilerReferenceTag::PriorExiledCard.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
@@ -3710,4 +3716,21 @@ pub(crate) fn parse_bounded_filtered_exile_free_cast(tokens: &[OwnedLexToken]) -
         count,
         effects: vec![EffectAst::may_cast_matching_spell_without_paying_mana_cost(PlayerAst::You, filter, Zone::Exile)],
     })))
+}
+
+#[cfg(test)]
+mod referenced_copy_cast_tests {
+    use super::*;
+    #[test]
+    fn free_cast_of_explicit_exiled_card_copy_keeps_operation_and_reference() {
+        let tokens=crate::lexer::lex_line("You may cast a copy of the exiled card without paying its mana cost.",0).unwrap();
+        let effect=parse_cast_or_play_tagged_clause(&tokens).unwrap().expect("independent tagged cast reader");
+        let debug=format!("{effect:?}");
+        assert!(debug.contains("as_copy: true")&&debug.contains("without_paying_mana_cost: true"), "{debug}");
+        assert!(debug.contains(crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()), "explicit exiled reference cannot become source/recipient: {debug}");
+        for suffix in ["{R}","except draw a card"] {
+            let text=format!("You may cast a copy of the exiled card without paying its mana cost {suffix}.");
+            assert!(!matches!(parse_cast_or_play_tagged_clause(&crate::lexer::lex_line(&text,0).unwrap()),Ok(Some(_))), "unread cast-copy suffix accepted: {text}");
+        }
+    }
 }

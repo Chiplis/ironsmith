@@ -2883,3 +2883,104 @@ mod ticket_marker_tests {
         );
     }
 }
+
+/// Two independent abilities may share a reminder paragraph. Split only at
+/// an outer sentence boundary whose prefix is a complete casting permission
+/// and whose suffix independently opens a triggered ability. The trigger
+/// keeps all of its continuation sentences (including optional retargeting).
+pub(super) fn run_alternative_then_trigger_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> ParseOutcome<LineDispatchResult> {
+    let rule = RuleId::new("alternative-then-trigger-abilities");
+    let result = crate::word_claims::speculative_keep_if(|| {
+        for index in alternative_trigger_boundaries(&ctx.line.tokens) {
+            let prefix = &ctx.line.tokens[..=index];
+            let suffix = &ctx.line.tokens[index + 1..];
+            let complete_permission = crate::word_claims::speculative_keep_if(|| {
+                let zone = super::super::grammar::shared_util::alternative_cost_lines::parse_self_zone_alternative_cost(prefix)?;
+                if zone.is_some() { return Ok(true); }
+                Ok(super::super::grammar::shared_util::alternative_cost_lines::parse_you_may_rather_than_spell_cost(prefix, &render_token_slice(prefix))?.is_some())
+            }, |result: &Result<bool, CardTextError>| matches!(result, Ok(true)));
+            // A failed prefix probe does not own any tokens. The unsplit
+            // line retains its normal diagnostics if no complete prefix fits.
+            if !matches!(complete_permission, Ok(true)) { continue; }
+            let prefix_line = rewrite_line_tokens(ctx.line, prefix);
+            let Some(keyword) = recognize_keyword_line(&prefix_line)? else { continue; };
+            let suffix_line = rewrite_line_tokens(ctx.line, suffix);
+            let Some(mut triggered) = try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, &suffix_line, ctx.allow_unsupported)? else { continue; };
+            triggered.lines.insert(0, RecognizedLine::Keyword(keyword));
+            return Ok(Some(triggered));
+        }
+        Ok(None)
+    }, |result: &Result<Option<LineDispatchResult>, CardTextError>| matches!(result, Ok(Some(_))));
+    match result {
+        Ok(Some(result)) => line_family_match(ctx, result),
+        Ok(None) => ParseOutcome::NoMatch,
+        Err(error) => line_family_error(ctx, rule, error),
+    }
+}
+
+fn alternative_trigger_boundaries(tokens: &[OwnedLexToken]) -> Vec<usize> {
+    let mut quoted = false;
+    let mut boundaries = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote { quoted = !quoted; }
+        if !quoted && token.kind == TokenKind::Period
+            && line_starts_with_trigger_intro_tokens(&tokens[index + 1..]) {
+            boundaries.push(index);
+        }
+    }
+    boundaries
+}
+
+#[cfg(test)]
+mod alternative_trigger_boundary_tests {
+    use super::*;
+    const BODY: &str = "You may pay {2}{U} rather than pay this spell's mana cost. When you cast this spell, if its Echo cost was paid, copy this spell. You may choose new targets for the copy.";
+    #[test]
+    fn complete_permission_and_trigger_keep_their_independent_ability_boundaries() {
+        for body in [BODY.to_string(), BODY.replace(". When", ".\nWhen")] {
+            let doc = preprocess_document(CardBuilder::new(crate::CardId::new(), "Independent abilities").card_types(vec![crate::types::CardType::Instant]), &body).unwrap();
+            let result = recognize_document(&doc, false).unwrap();
+            assert!(matches!(&result.lines[..], [RecognizedLine::Keyword(_), RecognizedLine::Triggered(_)]));
+            let (compiled, loss) = crate::parse_loss::capture(|| crate::word_claims::with_enforcement_options(true, true, || crate::compile_card_text(ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::CardId::new(), "Independent abilities"), format!("Type: Instant\n{body}\nYou gain 1 life."), false)));
+            assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+            let compiled = compiled.unwrap();
+            assert_eq!(compiled.definition.alternative_casts.len(), 1);
+            assert_eq!(compiled.definition.abilities.len(), 1);
+            let debug = format!("{:?}", compiled.definition.abilities);
+            assert!(debug.contains("RetargetStackObjectEffect"), "retarget continuation must belong to cast trigger: {debug}");
+        }
+    }
+    #[test]
+    fn unread_permission_or_trigger_tokens_cannot_be_rescued_by_splitting() {
+        for body in [BODY.replace("mana cost.", "mana cost {R}."), BODY.replace("copy this spell.", "copy this spell {R}."), format!("{BODY} Flibber its mana.")] {
+            let (compiled, _) = crate::parse_loss::capture(|| crate::word_claims::with_enforcement_options(true, true, || crate::compile_card_text(ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::CardId::new(), "Bad independent abilities"), format!("Type: Instant\n{body}"), false)));
+            assert!(compiled.is_err(), "unread outer program accepted: {body}");
+        }
+    }
+    #[test]
+    fn graveyard_permission_and_noncopy_trigger_are_independently_composed() {
+        let text = "You may cast this card from your graveyard for {1}{U}. When you cast this spell, you gain 1 life.";
+        let doc = preprocess_document(CardBuilder::new(crate::CardId::new(), "Independent graveyard price").card_types(vec![crate::types::CardType::Sorcery]), text).unwrap();
+        let result = recognize_document(&doc, false).unwrap();
+        assert!(matches!(&result.lines[..], [RecognizedLine::Keyword(_), RecognizedLine::Triggered(_)]));
+        let compiled = crate::word_claims::with_enforcement_options(true, true, || crate::compile_card_text(ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::CardId::new(), "Independent graveyard price"), format!("Type: Sorcery\n{text}\nYou gain 2 life."), false)).unwrap();
+        assert_eq!(compiled.definition.alternative_casts.len(), 1);
+        assert_eq!(compiled.definition.abilities.len(), 1);
+        assert!(format!("{:?}", compiled.definition.abilities).contains("GainLife"));
+    }
+    #[test]
+    fn quoted_trigger_introductions_are_not_outer_ability_boundaries() {
+        for text in [
+            "You may pay {2} rather than pay this spell's mana cost. \"When you cast this spell, you gain 1 life.\"",
+            "You may pay {2} rather than pay this spell's mana cost \"A sentence. When you cast this spell, you gain 1 life.\"",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(alternative_trigger_boundaries(&tokens).is_empty());
+        }
+        let tokens = crate::lexer::lex_line("You may pay {2} rather than pay this spell's mana cost. When you cast this spell, create a 1/1 white Spirit creature token with \"Flying. When this creature dies, you gain 1 life.\"", 0).unwrap();
+        assert_eq!(alternative_trigger_boundaries(&tokens).len(), 1);
+    }
+
+}

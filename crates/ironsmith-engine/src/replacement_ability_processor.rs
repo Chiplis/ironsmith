@@ -77,6 +77,19 @@ pub fn generate_replacement_effects_from_abilities(
                 effects.push(spec.build(object_id, controller));
             }
 
+            // Only the chosen method creates these spell-bound replacements.
+            if zone == crate::zone::Zone::Stack {
+                if let Some(method) = object.cast_alternative_method.as_deref() {
+                    for spec in method.battlefield_instructions().departure_replacements {
+                        if spec.from_zone == zone {
+                            effects.push(crate::replacement::ZoneReplacementSpec::from_redirect(
+                                crate::target::ObjectFilter::specific(object_id), &spec,
+                            ).build(object_id, controller));
+                        }
+                    }
+                }
+            }
+
             // Carry calculated occurrence origins, not just static value ids.
             // Printed, layer-granted and registered temporary abilities can
             // contain equal/cloned values while remaining independent effects.

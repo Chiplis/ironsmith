@@ -77,6 +77,7 @@ pub(crate) struct PreparedEtbEntry {
 }
 
 fn named_color_creature_type_option(
+    game: &GameState,
     option: &str,
 ) -> Option<(crate::color::Color, crate::types::Subtype)> {
     let mut words = option.split_whitespace();
@@ -85,7 +86,7 @@ fn named_color_creature_type_option(
     if subtype_name.is_empty() {
         return None;
     }
-    let subtype = crate::types::Subtype::all_creature_types()
+    let subtype = game.subtypes_in_family(crate::types::SubtypeFamily::Creature)
         .iter()
         .copied()
         .find(|subtype| subtype.to_string().eq_ignore_ascii_case(&subtype_name))?;
@@ -93,7 +94,7 @@ fn named_color_creature_type_option(
 }
 
 /// A named as-enters option that is exactly one creature or land subtype.
-fn named_subtype_option(option: &str) -> Option<crate::types::Subtype> {
+fn named_subtype_option(game: &GameState, option: &str) -> Option<crate::types::Subtype> {
     let name = option.trim();
     if name.is_empty() {
         return None;
@@ -103,7 +104,7 @@ fn named_subtype_option(option: &str) -> Option<crate::types::Subtype> {
         crate::types::SubtypeFamily::Land,
     ]
     .into_iter()
-    .flat_map(|family| family.all_subtypes().iter().copied())
+    .flat_map(|family| game.subtypes_in_family(family))
     .find(|subtype| subtype.to_string().eq_ignore_ascii_case(name))
 }
 
@@ -2680,7 +2681,7 @@ impl GameState {
                 }
             }
             if static_ability.land_type_choice_as_enters().is_some() {
-                let options = crate::types::Subtype::all_land_types();
+                let options = self.subtypes_in_family(crate::types::SubtypeFamily::Land);
                 let display_options = options
                     .iter()
                     .enumerate()
@@ -2706,7 +2707,7 @@ impl GameState {
                     .map(|idx| options[idx]);
             }
             if static_ability.creature_type_choice_as_enters().is_some() {
-                let options = crate::effects::BecomeCreatureTypeChoiceEffect::all_creature_types();
+                let options = self.subtypes_in_family(crate::types::SubtypeFamily::Creature);
                 let display_options = options
                     .iter()
                     .enumerate()
@@ -3144,10 +3145,10 @@ impl GameState {
                         "land" => Some(crate::types::CardType::Land),
                         _ => None,
                     };
-                    if let Some((color, subtype)) = named_color_creature_type_option(&option) {
+                    if let Some((color, subtype)) = named_color_creature_type_option(self, &option) {
                         choices.chosen_color = Some(color);
                         choices.chosen_creature_type = Some(subtype);
-                    } else if let Some(subtype) = named_subtype_option(&option) {
+                    } else if let Some(subtype) = named_subtype_option(self, &option) {
                         // "choose Elemental, Elf, ... or Treefolk" / "choose
                         // Island or Swamp": the option is itself the chosen
                         // type that "of the chosen type" filters read.
@@ -5776,12 +5777,13 @@ impl GameState {
         if chars.validate_numeric_range().is_err() {
             return None;
         }
-        Self::normalize_current_characteristic_subtypes(object, &mut chars);
+        self.normalize_current_characteristic_subtypes(object, &mut chars);
 
         Some(chars)
     }
 
     fn normalize_current_characteristic_subtypes(
+        &self,
         object: &Object,
         chars: &mut CalculatedCharacteristics,
     ) {
@@ -5799,7 +5801,7 @@ impl GameState {
             && has_changeling
             && can_have_creature_subtypes
         {
-            for subtype in crate::types::Subtype::all_creature_types() {
+            for subtype in &self.subtypes_in_family(crate::types::SubtypeFamily::Creature) {
                 if !chars.subtypes.contains(subtype) {
                     chars.subtypes.push(*subtype);
                 }
@@ -5827,7 +5829,7 @@ impl GameState {
         }
         if let Some(mut chars) = crate::continuous::in_progress_characteristics(self, id) {
             chars.validate_numeric_range()?;
-            Self::normalize_current_characteristic_subtypes(object, &mut chars);
+            self.normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
         let effects = self.try_all_continuous_effects_arc()?;
@@ -5847,7 +5849,7 @@ impl GameState {
                 .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
                 .as_ref().clone();
             chars.validate_numeric_range()?;
-            Self::normalize_current_characteristic_subtypes(object, &mut chars);
+            self.normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
         self.try_current_characteristics_with_effects(id, &effects)
@@ -5896,7 +5898,7 @@ impl GameState {
             let chars = calculated.get_mut(&id).ok_or(
                 crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
             chars.validate_numeric_range()?;
-            Self::normalize_current_characteristic_subtypes(
+            self.normalize_current_characteristic_subtypes(
                 self.object(id).expect("immutable existing object"),
                 chars,
             );
@@ -5924,7 +5926,7 @@ impl GameState {
         let mut chars = self.calculated_characteristics_with_effects(id, effects)
             .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
         chars.validate_numeric_range()?;
-        Self::normalize_current_characteristic_subtypes(object, &mut chars);
+        self.normalize_current_characteristic_subtypes(object, &mut chars);
         Ok(Some(chars))
     }
 
@@ -7062,10 +7064,10 @@ mod chosen_option_tests {
     #[test]
     fn named_color_creature_type_option_preserves_the_pair() {
         assert_eq!(
-            named_color_creature_type_option("blue Camarid"),
+            named_color_creature_type_option(&GameState::new(vec![], 20), "blue Camarid"),
             Some((crate::color::Color::Blue, crate::types::Subtype::Camarid))
         );
-        assert_eq!(named_color_creature_type_option("blue artifact"), None);
+        assert_eq!(named_color_creature_type_option(&GameState::new(vec![], 20), "blue artifact"), None);
     }
 
     #[test]

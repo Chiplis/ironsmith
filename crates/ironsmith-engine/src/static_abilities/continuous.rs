@@ -4325,7 +4325,7 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
                 .filter_map(|id| game.object(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
             {
-                for subtype in SubtypeFamily::Creature.all_subtypes() {
+                for subtype in &game.subtypes_in_family(SubtypeFamily::Creature) {
                     if obj.has_subtype(*subtype) {
                         seen.insert(*subtype);
                     }
