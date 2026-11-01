@@ -1790,6 +1790,7 @@ impl Object {
                 supertypes: self.supertypes.to_vec(),
                 card_types: self.card_types.to_vec(),
                 subtypes: self.subtypes.to_vec(),
+                custom_subtypes: self.subtypes.iter().copied().filter(|ty| ty.is_custom_vocabulary()).collect(),
                 rules_text_color_identity: self.rules_text_color_identity,
                 power_toughness,
                 loyalty: self.base_loyalty,

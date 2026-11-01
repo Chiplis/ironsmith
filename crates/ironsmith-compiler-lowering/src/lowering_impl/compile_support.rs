@@ -8,7 +8,7 @@ use crate::cards::builders::{
     ObjectRefAst, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
     PreventNextTimeDamageTargetAst, RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
-    TurnHistoryPredicateAst, ZoneMoveActionAst,
+    TurnHistoryPredicateAst, ZoneMoveActionAst, StaticAbilityAst,
 };
 use crate::color::{Color, ColorSet};
 use crate::cost::TotalCost;
@@ -2625,7 +2625,17 @@ fn build_equipment_token_from_rules_shape(
 fn apply_embedded_token_rules(
     mut builder: CardDefinitionBuilder,
     rules: &token_grammar::TokenRulesSurfaces,
-) -> CardDefinitionBuilder {
+) -> Option<CardDefinitionBuilder> {
+    if !rules.unread_rules.is_empty() { return None; }
+    for parsed in &rules.parsed_abilities {
+        builder = builder.with_ability(lower_parsed_ability(parsed.clone()).ok()?);
+    }
+    for parsed in &rules.static_abilities {
+        builder = match parsed {
+            StaticAbilityAst::AttachmentRestriction { filter, .. } => builder.enchants(filter.clone()),
+            _ => builder.with_ability(Ability::static_ability(lower_static_ability_ast(parsed.clone()).ok()?)),
+        };
+    }
     for rule in &rules.embedded_rules {
         builder = match rule {
             token_grammar::TokenEmbeddedRuleShape::MaximumBlockers { maximum } => {
@@ -2890,7 +2900,7 @@ fn apply_embedded_token_rules(
             }
         };
     }
-    builder
+    Some(builder)
 }
 
 pub fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
@@ -3393,6 +3403,7 @@ fn build_artifact_token_definition(
             ObjectFilter::source(),
         )));
     }
+    builder = apply_embedded_token_rules(builder, &shape.token_rules)?;
     if let Some(rules) = shape.equipment_rules.as_ref()
         && let Some(def) =
             build_equipment_token_from_rules_shape(builder.clone(), rules, &shape.name)
@@ -3402,7 +3413,7 @@ fn build_artifact_token_definition(
     for keyword in shape.keywords.iter().copied() {
         builder = apply_standard_token_keyword(builder, keyword);
     }
-    builder = apply_embedded_token_rules(builder, &shape.token_rules);
+
     if let Some(amount) = shape.leaves_damage_any_target {
         builder = builder.with_ability(token_leaves_deals_damage_any_target_ability(amount));
     }
@@ -3470,7 +3481,7 @@ fn build_creature_token_definition(
     }
 
     let rules = shape.rules;
-    builder = apply_embedded_token_rules(builder, &rules.token_rules);
+    builder = apply_embedded_token_rules(builder, &rules.token_rules)?;
     if let Some(symbols) = rules.cumulative_upkeep_mana_symbols.as_ref() {
         let total_cost = if symbols.is_empty() {
             TotalCost::free()
@@ -3804,7 +3815,7 @@ fn lower_token_definition_shape_inner(shape: TokenDefinitionSpec) -> Option<Card
             if shape.legendary {
                 builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
             }
-            Some(apply_embedded_token_rules(builder, &shape.token_rules).build())
+            Some(apply_embedded_token_rules(builder, &shape.token_rules)?.build())
         }
         TokenDefinitionSpec::Planeswalker(shape) => {
             let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)

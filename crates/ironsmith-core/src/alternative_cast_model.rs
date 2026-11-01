@@ -45,6 +45,18 @@ pub enum ExilePreparation {
 
 fn is_false(value: &bool) -> bool { !*value }
 
+/// A destination-aware zone redirect, independent of the permission that
+/// created it. The selected spell/permanent incarnation supplies the filter.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct ZoneChangeRedirectSpec {
+    pub from_zone: Zone,
+    pub to_zone: Option<Zone>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub excluded_to_zones: Vec<Zone>,
+    pub destination: Zone,
+}
+
 /// Instructions belonging to a casting permission, independent of its name.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, PartialEq, TagKeyWalk)]
@@ -67,6 +79,10 @@ pub struct ZoneCastInstructions {
     pub transformed: bool,
     /// Replace every move off the stack with exile, including a return to hand.
     pub exile_on_stack_exit: bool,
+    /// Selected-method replacement clauses. Stack clauses apply to this spell;
+    /// battlefield clauses bind only to the permanent this spell becomes.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub departure_replacements: Vec<ZoneChangeRedirectSpec>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub haste_on_battlefield: bool,
     #[cfg_attr(feature = "serde", serde(default))]

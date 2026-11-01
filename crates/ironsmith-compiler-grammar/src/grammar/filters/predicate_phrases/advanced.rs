@@ -6779,14 +6779,26 @@ pub(super) fn parse_counter_placement_result_count(tokens: &[OwnedLexToken]) -> 
     } else { tokens };
     let ((), rest) = crate::grammar::primitives::parse_prefix(tokens,
         crate::grammar::primitives::phrase(&["you", "put"]))?;
-    let count = crate::util::parse_number_word_i32(rest.first()?.as_word()?)?;
-    let ((), descriptor) = crate::grammar::primitives::parse_prefix(&rest[1..],
-        crate::grammar::primitives::phrase(&["or", "more"]))?;
+    let (count, descriptor, singular) = if rest.first()?.is_any_word(&["a", "an"]) {
+        (1, &rest[1..], true)
+    } else if let Some(count) = rest.first().and_then(OwnedLexToken::as_word)
+        .and_then(crate::util::parse_number_word_i32)
+    {
+        let ((), descriptor) = crate::grammar::primitives::parse_prefix(&rest[1..],
+            crate::grammar::primitives::phrase(&["or", "more"]))?;
+        (count, descriptor, false)
+    } else {
+        // Article normalization may leave "put +1/+1 counter ...".
+        // A singular marker asks whether any such placement actually
+        // occurred, including a replacement increasing its quantity.
+        (1, rest, true)
+    };
     let on = descriptor.iter().position(|token| token.is_word("on"))?;
     let kind_tokens = &descriptor[..on];
     if !kind_tokens.last()?.is_any_word(&["counter", "counters"]) {
         return None;
     }
+    if singular && !kind_tokens.last()?.is_word("counter") { return None; }
     let counter_type = parse_counter_type_from_tokens(kind_tokens)?;
     let recipients = &descriptor[on + 1..];
     if recipients.len() < 3
@@ -6809,6 +6821,7 @@ pub(super) fn parse_counter_placement_result_count(tokens: &[OwnedLexToken]) -> 
 }
 
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    if let Some(condition) = crate::effect_sentences::quality_choice::parse_condition(tokens) { return Ok(condition); }
     if let Some(condition) = crate::custom_status::source_condition(tokens) { return Ok(condition); }
     let clean = crate::util::trim_edge_punctuation_tokens(tokens);
     let control_words = crate::lexer::token_word_refs(clean);
@@ -7197,6 +7210,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     if let ["it", "wasnt" | "wasn't", "sacrificed"] | ["it", "was", "not", "sacrificed"] =
         monarch_words.as_slice()
     {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::Not(Box::new(PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectWasSacrificed,
         ))));

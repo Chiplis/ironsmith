@@ -90,3 +90,46 @@ fn demonstrative_heads_are_typed() {
         LeafObjectReferenceHead::Subtype(Subtype::Goblin)
     );
 }
+
+#[test]
+fn printed_subtype_collision_keeps_official_default_and_explicit_family_identity() {
+    for spelling in ["Omen", "Omens"] {
+        assert_eq!(classify_token_definition_subtype(spelling), Some(Subtype::Omen));
+        assert_eq!(classify_token_definition_subtype_slow(spelling), Some(Subtype::Omen));
+        assert_eq!(classify_token_definition_subtype_in_family(spelling, SubtypeFamily::Spell), Some(Subtype::Omen));
+        assert_eq!(classify_token_definition_subtype_in_family(spelling, SubtypeFamily::Artifact), Some(Subtype::ArtifactOmen));
+        let alternatives = ambiguous_subtype_spellings(spelling);
+        assert_eq!(alternatives.len(), 2);
+        assert!(alternatives.contains(&Subtype::Omen));
+        assert!(alternatives.contains(&Subtype::ArtifactOmen));
+    }
+    assert!(ambiguous_subtype_spellings("Omen of the Sea").is_empty());
+    assert_eq!(classify_token_definition_subtype_in_family("Mantra", SubtypeFamily::Spell), Some(Subtype::Mantra));
+    assert_eq!(classify_token_definition_subtype_in_family("Mantra", SubtypeFamily::Artifact), None);
+}
+
+#[test]
+fn primary_official_collision_keeps_existing_family_precedence() {
+    // Urza's is a land type; it must not be replaced by the plural of the
+    // planeswalker type Urza when the cached vocabulary encounters that later.
+    assert_eq!(classify_token_definition_subtype("Urza's"), Some(Subtype::Urzas));
+    assert_eq!(classify_token_definition_subtype("Urzas"), Some(Subtype::Urzas));
+    assert_eq!(classify_token_definition_subtype("Urza"), Some(Subtype::Urza));
+    assert_eq!(classify_token_definition_subtype_in_family("Urzas", SubtypeFamily::Planeswalker), Some(Subtype::Urza));
+    assert_eq!(classify_token_definition_subtype_in_family("Urzas", SubtypeFamily::Creature), None);
+}
+
+#[test]
+fn inscription_vocabulary_keeps_source_families_out_of_creature_choices() {
+    for spelling in ["Inscription", "Inscriptions"] {
+        assert_eq!(classify_token_definition_subtype_in_family(spelling, SubtypeFamily::Spell), Some(Subtype::Inscription));
+        assert_eq!(classify_token_definition_subtype_in_family(spelling, SubtypeFamily::Artifact), Some(Subtype::ArtifactInscription));
+        assert_eq!(classify_token_definition_subtype_in_family(spelling, SubtypeFamily::Creature), None);
+        let meanings=ambiguous_subtype_spellings(spelling);
+        assert_eq!(meanings.len(),2);
+        assert!(meanings.contains(&Subtype::Inscription));
+        assert!(meanings.contains(&Subtype::ArtifactInscription));
+    }
+    assert!(!Subtype::all_creature_types().contains(&Subtype::Inscription));
+    assert!(!Subtype::all_creature_types().contains(&Subtype::ArtifactInscription));
+}

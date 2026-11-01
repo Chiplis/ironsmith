@@ -393,7 +393,60 @@ fn feature_tag(procedure: &Procedure) -> Option<&'static str> {
 /// registry kept the rule consuming the longest complete program; a tie keeps
 /// the higher-ranked one. A candidate whose continuation errs is dropped, and
 /// its error stands only when no candidate completes.
+/// A leading state predicate decorates an independently recognized complete
+/// procedure. Its optional alternative is another complete procedure, not a
+/// fixed number or arrangement of library statements.
 pub(super) fn recognize(
+    sentences: &[SentenceInput], sentence_idx: usize,
+) -> Result<Option<super::sequence_rules::DocumentProgramMatch>, CardTextError> {
+    if let Some(matched) = crate::word_claims::speculative_keep_if(
+        || recognize_conditional_program(sentences, sentence_idx),
+        |result| matches!(result, Ok(Some(_))),
+    )? { return Ok(Some(matched)); }
+    recognize_unconditioned(sentences, sentence_idx)
+}
+
+fn recognize_conditional_program(
+    sentences: &[SentenceInput], start: usize,
+) -> Result<Option<super::sequence_rules::DocumentProgramMatch>, CardTextError> {
+    use crate::grammar::effects::control_flow::{recognize_control_flow, RecognizedControlFlowAst};
+    use crate::model::{ControlFlowNodeAst, NestedProgramAst, NestedProgramKindAst};
+    let Some(first) = sentences.get(start) else { return Ok(None); };
+    if !first.lowered().first().is_some_and(|token| token.is_word("if")) { return Ok(None); }
+    let crate::recognition::ParseOutcome::Match(plan) = recognize_control_flow(first.lowered()) else { return Ok(None); };
+    let plan = plan.value;
+    if !matches!(&plan.structure, RecognizedControlFlowAst::Condition { reflexive: false, .. }) { return Ok(None); }
+    let mut nested = vec![SentenceInput::from_lexed(plan.body_tokens)];
+    nested.extend(sentences[start + 1..].iter().map(|sentence| SentenceInput::from_lexed(sentence.lexed())));
+    let Some(consequence) = recognize(&nested, 0)? else { return Ok(None); };
+    if consequence.consumed_sentences < 2 { return Ok(None); }
+    let mut consumed = consequence.consumed_sentences;
+    let Some(mut control) = plan.into_ast(consequence.effects) else { return Ok(None); };
+    if let Some(otherwise) = sentences.get(start + consumed) {
+        if let Some(((), tail)) = crate::grammar::primitives::parse_prefix(
+            otherwise.lowered(), crate::grammar::primitives::phrase(&["otherwise"]))
+        {
+            let mut alternative = vec![SentenceInput::from_lexed(crate::lexer::trim_lexed_commas(tail))];
+            alternative.extend(sentences[start + consumed + 1..].iter().map(|sentence| SentenceInput::from_lexed(sentence.lexed())));
+            if let Some(branch) = recognize(&alternative, 0)? {
+                if branch.consumed_sentences >= 2 {
+                    let ControlFlowNodeAst::Condition { condition, consequence_program, reflexive, .. } = control.node else { unreachable!() };
+                    let alternative_program = control.programs.len();
+                    control.programs.push(NestedProgramAst::new(NestedProgramKindAst::Alternative, branch.effects));
+                    control = crate::model::CompilerControlFlowAst::new(control.semantic,
+                        ControlFlowNodeAst::Condition { condition, consequence_program, alternative_program: Some(alternative_program), reflexive }, control.programs, control.provenance).map_err(|error| CardTextError::ParseError(format!("invalid conditional procedure scope: {error:?}")))?;
+                    consumed += branch.consumed_sentences;
+                }
+            }
+        }
+    }
+    Ok(Some(super::sequence_rules::DocumentProgramMatch {
+        name: "conditional-document-program", feature_tag: None,
+        consumed_sentences: consumed, effects: vec![crate::cards::builders::EffectAst::ControlFlow(Box::new(control))],
+    }))
+}
+
+fn recognize_unconditioned(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<super::sequence_rules::DocumentProgramMatch>, CardTextError> {
@@ -475,3 +528,7 @@ pub(super) fn recognize(
         (None, None) => Ok(None),
     }
 }
+
+#[cfg(test)]
+#[path = "procedures/chosen_quality_scope_tests.rs"]
+mod chosen_quality_scope_tests;

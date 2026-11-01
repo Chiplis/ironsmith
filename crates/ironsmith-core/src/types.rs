@@ -781,9 +781,25 @@ pub enum Subtype {
     // Artifact subtype (Starfleet Communicator); appended to preserve
     // serialized variant ordinals.
     Communicator,
+    /// Scoped custom vocabulary; append to preserve serialized ordinals.
+    ArtifactOmen,
+    Idol,
+    Mantra,
+    /// MSEM 205.3m land-type vocabulary; no inherent abilities.
+    Satrapy,
+    /// MSEM 205.3h artifact-type vocabulary; no inherent abilities.
+    Monument,
+    /// MSEM205.3r spell vocabulary and source-backed artifact spelling.
+    Inscription,
+    ArtifactInscription,
+    /// Explicit custom vocabulary, serialized by value rather than process-local IDs.
+    Custom(crate::custom_subtypes::CustomSubtype),
 }
 
 impl Subtype {
+    pub fn is_custom_vocabulary(self) -> bool {
+        matches!(self, Self::Custom(_) | Self::ArtifactOmen | Self::Idol | Self::Mantra | Self::Satrapy | Self::Monument | Self::Inscription | Self::ArtifactInscription)
+    }
     pub const fn all_land_types() -> &'static [Subtype] {
         &[
             Subtype::Plains,
@@ -803,6 +819,7 @@ impl Subtype {
             Subtype::PowerPlant,
             Subtype::Sphere,
             Subtype::Tower,
+            Subtype::Satrapy,
         ]
     }
 
@@ -1169,6 +1186,10 @@ impl Subtype {
             Subtype::Vibranium,
             Subtype::Heartwood,
             Subtype::Communicator,
+            Subtype::ArtifactOmen,
+            Subtype::Idol,
+            Subtype::Monument,
+            Subtype::ArtifactInscription,
         ]
     }
 
@@ -1197,6 +1218,8 @@ impl Subtype {
             Subtype::Lesson,
             Subtype::Trap,
             Subtype::Omen,
+            Subtype::Mantra,
+            Subtype::Inscription,
         ]
     }
 
@@ -1482,6 +1505,9 @@ impl Subtype {
 
     pub fn display_name(self) -> String {
         match self {
+            Subtype::Custom(value) => value.display_name(),
+            Subtype::ArtifactOmen => "Omen".to_string(),
+            Subtype::ArtifactInscription => "Inscription".to_string(),
             Subtype::Urzas => "Urza's".to_string(),
             Subtype::AssemblyWorker => "Assembly-Worker".to_string(),
             Subtype::Ctan => "C'tan".to_string(),
@@ -1522,6 +1548,7 @@ impl Subtype {
             Subtype::Tower,
             Subtype::Town,
             Subtype::Urzas,
+            Subtype::Satrapy,
         ]
     }
 
@@ -1531,28 +1558,28 @@ impl Subtype {
     /// to replace. Non-land subtypes (Saga, Aura, creature types, etc.)
     /// are preserved.
     pub fn is_land_subtype(&self) -> bool {
-        self.is_basic_land_type() || Self::nonbasic_land_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Land) || self.is_basic_land_type() || Self::nonbasic_land_types().contains(self)
     }
 
     /// Returns true if this is a creature type.
     pub fn is_creature_type(&self) -> bool {
-        Self::all_creature_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Creature) || Self::all_creature_types().contains(self)
     }
 
     pub fn is_artifact_subtype(&self) -> bool {
-        Self::all_artifact_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Artifact) || Self::all_artifact_types().contains(self)
     }
 
     pub fn is_enchantment_subtype(&self) -> bool {
-        Self::all_enchantment_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Enchantment) || Self::all_enchantment_types().contains(self)
     }
 
     pub fn is_spell_subtype(&self) -> bool {
-        Self::all_spell_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Spell) || Self::all_spell_types().contains(self)
     }
 
     pub fn is_planeswalker_subtype(&self) -> bool {
-        Self::all_planeswalker_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Planeswalker) || Self::all_planeswalker_types().contains(self)
     }
 
     pub fn belongs_to_family(&self, family: SubtypeFamily) -> bool {
@@ -1568,7 +1595,7 @@ impl Subtype {
     }
 
     pub fn is_battle_subtype(&self) -> bool {
-        matches!(self, Subtype::Siege)
+        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Battle) || matches!(self, Subtype::Siege)
     }
 }
 

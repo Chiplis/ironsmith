@@ -243,7 +243,7 @@ pub(crate) fn sacrificed_cost_land_types(ctx: &ExecutionContext) -> Vec<crate::t
     let mut land_types = Vec::new();
     for snapshot in &sacrificed {
         for subtype in &snapshot.subtypes {
-            if crate::types::Subtype::all_land_types().contains(subtype)
+            if subtype.is_land_subtype()
                 && !land_types.contains(subtype)
             {
                 land_types.push(*subtype);
@@ -748,12 +748,26 @@ fn materialize_duration_object(
     reference: &ironsmith_core::ContinuousDurationObject,
     target: &EffectTarget,
     source_type: &Option<EffectSourceType>,
+    game: &GameState,
     ctx: &ExecutionContext,
 ) -> Option<ironsmith_core::ContinuousDurationObject> {
     use ironsmith_core::ContinuousDurationObject as ObjectRef;
 
     let id = match reference {
         ObjectRef::Source => ctx.source,
+        ObjectRef::SourceInZone(zone) => {
+            if let Some(source)=game.object(ctx.source).filter(|source|source.zone==*zone) {
+                source.id
+            } else {
+                let origin=ctx.source_snapshot.as_ref()?;
+                let arrivals=ctx.get_tagged_all(crate::tag::SOURCE_EXILED_SELF_TAG)?;
+                let [arrival]=arrivals.as_slice() else {return None;};
+                if arrival.stable_id!=origin.stable_id || arrival.zone!=*zone {return None;}
+                let live=game.object(arrival.object_id)?;
+                if live.stable_id!=origin.stable_id || live.zone!=*zone {return None;}
+                live.id
+            }
+        },
         ObjectRef::AffectedObject => {
             let affected = target_object_ids(target, source_type);
             if affected.len() != 1 {
@@ -783,7 +797,7 @@ fn materialize_duration_player(
     let id = match reference {
         PlayerRef::EffectController => ctx.controller,
         PlayerRef::ControllerOf(object) => {
-            let object = materialize_duration_object(object, target, source_type, ctx)?;
+            let object = materialize_duration_object(object, target, source_type, game, ctx)?;
             let ironsmith_core::ContinuousDurationObject::Specific(object) = object else {
                 return None;
             };
@@ -814,20 +828,21 @@ pub(crate) fn materialize_duration_predicate(
                 .collect::<Option<Vec<_>>>()?,
         ),
         Predicate::ObjectOnBattlefield(object) => Predicate::ObjectOnBattlefield(
-            materialize_duration_object(object, target, source_type, ctx)?,
+            materialize_duration_object(object, target, source_type, game, ctx)?,
         ),
         Predicate::ObjectInZone { object, zone } => Predicate::ObjectInZone {
-            object: materialize_duration_object(object, target, source_type, ctx)?,
+            object: materialize_duration_object(object, target, source_type, game, ctx)?,
             zone: *zone,
         },
         Predicate::ObjectTapped(object) => Predicate::ObjectTapped(materialize_duration_object(
             object,
             target,
             source_type,
+            game,
             ctx,
         )?),
         Predicate::ObjectControlledBy { object, player } => Predicate::ObjectControlledBy {
-            object: materialize_duration_object(object, target, source_type, ctx)?,
+            object: materialize_duration_object(object, target, source_type, game, ctx)?,
             player: materialize_duration_player(player, target, source_type, game, ctx)?,
         },
         Predicate::ObjectHasCounter {
@@ -835,7 +850,7 @@ pub(crate) fn materialize_duration_predicate(
             counter_type,
             minimum,
         } => Predicate::ObjectHasCounter {
-            object: materialize_duration_object(object, target, source_type, ctx)?,
+            object: materialize_duration_object(object, target, source_type, game, ctx)?,
             counter_type: *counter_type,
             minimum: *minimum,
         },
@@ -843,22 +858,22 @@ pub(crate) fn materialize_duration_predicate(
             attachment,
             attached_to,
         } => Predicate::ObjectAttachedTo {
-            attachment: materialize_duration_object(attachment, target, source_type, ctx)?,
-            attached_to: materialize_duration_object(attached_to, target, source_type, ctx)?,
+            attachment: materialize_duration_object(attachment, target, source_type, game, ctx)?,
+            attached_to: materialize_duration_object(attached_to, target, source_type, game, ctx)?,
         },
         Predicate::ObjectIsEnchanted(object) => Predicate::ObjectIsEnchanted(
-            materialize_duration_object(object, target, source_type, ctx)?,
+            materialize_duration_object(object, target, source_type, game, ctx)?,
         ),
         Predicate::ObjectFaceUp(object) => Predicate::ObjectFaceUp(
-            materialize_duration_object(object, target, source_type, ctx)?,
+            materialize_duration_object(object, target, source_type, game, ctx)?,
         ),
         Predicate::PlayerIsMonarch(player) => Predicate::PlayerIsMonarch(
             materialize_duration_player(player, target, source_type, game, ctx)?,
         ),
         Predicate::ObjectPowerAtMostObject { lesser, greater } => {
             Predicate::ObjectPowerAtMostObject {
-                lesser: materialize_duration_object(lesser, target, source_type, ctx)?,
-                greater: materialize_duration_object(greater, target, source_type, ctx)?,
+                lesser: materialize_duration_object(lesser, target, source_type, game, ctx)?,
+                greater: materialize_duration_object(greater, target, source_type, game, ctx)?,
             }
         }
     })
@@ -1242,7 +1257,7 @@ fn acquire_continuous_action(
 
     let materialized_until = match &definition.until {
         Until::UntilControllersNextUntapStep { object } => {
-            let object = materialize_duration_object(object, &target, &source_type, ctx)
+            let object = materialize_duration_object(object, &target, &source_type, game, ctx)
                 .ok_or_else(|| {
                     ExecutionError::UnresolvableValue(
                         "next-untap beginning duration must identify one object".into(),
@@ -1251,7 +1266,7 @@ fn acquire_continuous_action(
             Until::UntilControllersNextUntapStep { object }
         }
         Until::ObjectIsCast { object, from_zone } => {
-            let object = materialize_duration_object(object, &target, &source_type, ctx)
+            let object = materialize_duration_object(object, &target, &source_type, game, ctx)
                 .ok_or_else(|| match object {
                     ironsmith_core::ContinuousDurationObject::Tagged(tag) => {
                         ExecutionError::TagNotFound(tag.as_str().to_string())

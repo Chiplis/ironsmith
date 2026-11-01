@@ -82,6 +82,27 @@ pub fn parse_type_line(
             subtypes = vec![Subtype::Undercity];
         }
     }
+    // Resolve same-spelling subtype vocabulary using the explicitly printed
+    // card types, without reclassifying the official subtype globally.
+    for subtype in &mut subtypes {
+        let printed = subtype.to_string();
+        for family in [crate::types::SubtypeFamily::Land, crate::types::SubtypeFamily::Creature,
+            crate::types::SubtypeFamily::Artifact, crate::types::SubtypeFamily::Enchantment,
+            crate::types::SubtypeFamily::Spell, crate::types::SubtypeFamily::Planeswalker, crate::types::SubtypeFamily::Battle] {
+            let belongs = card_types.iter().any(|kind| matches!((family, kind),
+                (crate::types::SubtypeFamily::Land, CardType::Land) |
+                (crate::types::SubtypeFamily::Creature, CardType::Creature) |
+                (crate::types::SubtypeFamily::Artifact, CardType::Artifact) |
+                (crate::types::SubtypeFamily::Enchantment, CardType::Enchantment) |
+                (crate::types::SubtypeFamily::Spell, CardType::Instant | CardType::Sorcery) |
+                (crate::types::SubtypeFamily::Planeswalker, CardType::Planeswalker) |
+                (crate::types::SubtypeFamily::Battle, CardType::Battle)));
+            if belongs && let Some(typed) = super::super::grammar::leaf::classify_token_definition_subtype_in_family(&printed, family) {
+                *subtype = typed;
+                break;
+            }
+        }
+    }
     Ok((supertypes, card_types, subtypes))
 }
 

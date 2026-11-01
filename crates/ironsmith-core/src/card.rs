@@ -97,6 +97,9 @@ pub struct Card {
     pub supertypes: Vec<Supertype>,
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
+    /// Referenced custom vocabulary, including rules text and token definitions.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub custom_subtypes: Vec<Subtype>,
     /// Colors contributed by rules text, computed before source text is stripped
     /// from the runtime card definition.
     pub rules_text_color_identity: ColorSet,
@@ -480,6 +483,7 @@ impl CardBuilder {
             supertypes: self.supertypes,
             card_types: self.card_types,
             subtypes: self.subtypes,
+            custom_subtypes: Vec::new(),
             rules_text_color_identity: Card::parse_colors_from_text(&self.oracle_text),
             power_toughness: self.power_toughness,
             loyalty: self.loyalty,

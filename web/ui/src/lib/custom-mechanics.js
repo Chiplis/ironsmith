@@ -1,9 +1,14 @@
+import { listCustomSubtypes, withDraftSubtypes } from './custom-subtypes.js';
 import { expandKnownReminderDefinition } from './official-reminder-definitions.js';
 import { hasReminderMaterialParameter, bindReminderMaterials, hasExileCastDefinition, bindExileCastObject, hasNextUntapCostDefinition, nextUntapCostText, hasReminderCardParameter, bindReminderCard, isActivationReminder, bindActivationReminder, bindReminderCost, hasReminderCostReference, bindReminderActivationLabel, bindReminderValueFromDeclaration, hasRepeatedCopyPayment, expandRepeatedCopyPayment, bindReminderCostFromDeclaration, hasReminderParameters, parseParameterDeclaration, bindReminderParameters, parameterExample, reminderParameters, templateParameters } from './reminder-costs.js';
 import { MTG_KEYWORD_RULES } from './mtg-keyword-rules.generated.js';
 import { OFFICIAL_KEYWORD_FORMS, officialSurfaceForms, customKeywordForms, normalizeFormOverrides, surfaceForms } from './keyword-forms.js';
 import { applyCustomTokens, draftTokens } from './custom-tokens.js';
 import { mentionsStatus, expandStatusActions, expandStatusGrants, expandStatusReferences } from './custom-status-mechanics.js';
+import { hasActionParameters, validateActionTemplate, actionParameterPattern, expandActionParameterDeclarations } from './reminder-action-parameters.js';
+import { hasInlineParameters, inlineParameterPattern, hasControlFlowOperand, repeatedActionPattern, expandRepeatedActionDeclarations, isSinglePlayerAction, playerActionPattern, expandSimplePlayerActionDeclarations } from './reminder-inline-parameters.js';
+import { hasLiteralTemplate, literalTemplatePattern, hasLiteralDeclaration, expandLiteralDeclarations } from './reminder-literal-templates.js';
+import { expandTypeParameterPrograms, hasTypeParameterProgram } from './reminder-parameter-programs.js';
 
 export const mechanicKey = value => String(value || '').normalize('NFKC').replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
 export const reminderKey = value => mechanicKey(value).replace(/[“”]/g, '"');
@@ -12,6 +17,20 @@ const official = new Set([...MTG_KEYWORD_RULES.flatMap(rule => [rule.title, ...r
 // Words a custom form may not take: an official form would make a reference
 // such as "if it was kicked" ambiguous between the two keywords.
 const reservedForms = new Set([...official, ...OFFICIAL_KEYWORD_FORMS.map(forms => forms.costNoun).filter(Boolean), 'mana', 'additional', 'alternative']);
+
+function separateKeywordDeclarations(text, definitions) {
+  const bare = new Set(definitions.filter(def => !def.template
+    && !hasReminderParameters(def.reminder, def.template)
+    && !hasActionParameters(def)).map(def => mechanicKey(def.keyword)));
+  return text.split('\n').map(line => {
+    const parts = line.split(',').map(part => part.trim());
+    // Only a complete list of bare declarations is a keyword line. Commas
+    // inside prose, quoted grants, parameters and trigger heads stay intact.
+    if (parts.length < 2 || !parts.some(part => bare.has(mechanicKey(part)))
+      || !parts.every(part => bare.has(mechanicKey(part)) || official.has(mechanicKey(part)))) return line;
+    return parts.join('\n');
+  }).join('\n');
+}
 
 // Bounded, deterministic normalization only. Unsupported meanings still fail
 // strict compilation; this is not a general natural-language code generator.
@@ -40,6 +59,8 @@ export function splitMechanicName(name) {
 }
 
 function validateTemplate(keyword, template, reminder) {
+  if (hasLiteralTemplate({ template }) && /[\r\n]/.test(template)) throw new Error('A literal declaration layout must fit on one line.');
+  if (hasActionParameters({ template, reminder })) return validateActionTemplate(keyword, template, reminder);
   const named = templateParameters(template);
   const unknown = String(template).match(/\{(?!(?:cost|number|type)\})([^{}]*)\}/i);
   if (unknown) throw new Error(`"{${unknown[1]}}" is not a parameter. Use {Cost}, {Number} or {Type} in "${keyword}"'s layout.`);
@@ -68,9 +89,9 @@ export function validateMechanic(definition) {
     throw new Error(`"${keyword}" needs one unambiguous parenthetical reminder explaining its action.`);
   }
   // Braces hold mana symbols or the declaration parameters.
-  const unknown = reminder.match(/\{(?!(?:cost|number|type)\})([a-z][a-z ]{2,})\}/i);
+  const unknown = reminder.match(/\{(?!(?:cost|number|type|object|ability|name|player)\})([a-z][a-z ]{2,})\}/i);
   if (unknown) throw new Error(`"{${unknown[1]}}" is not a parameter. Use {Cost} for a price, {Number} for an amount and {Type} for a card type, as in "${keyword} 3—{1}{U}".`);
-  if (template) validateTemplate(keyword, template, reminder);
+  if (template || hasActionParameters({ reminder })) validateTemplate(keyword, template, reminder);
   const overrides = normalizeFormOverrides(definition.forms);
   const forms = customKeywordForms({ keyword, forms: overrides });
   for (const form of [forms.participle, forms.designation, forms.costNoun, ...forms.variants]) {
@@ -142,6 +163,9 @@ function selfCostPattern(keyword) {
 }
 
 function mechanicPattern(definition) {
+  if (hasLiteralTemplate(definition)) return literalTemplatePattern(definition);
+  if (hasActionParameters(definition)) return actionParameterPattern(definition);
+  if (hasInlineParameters(definition)) return inlineParameterPattern(definition);
   if (hasReminderParameters(definition.reminder, definition.template)) return costedPattern(definition.keyword);
   if (hasExileCastDefinition(definition.reminder)) return exileObjectPattern(definition.keyword);
   if (hasNextUntapCostDefinition(definition.reminder)) return selfCostPattern(definition.keyword);
@@ -190,19 +214,43 @@ export function draftMechanics(draft, known = []) {
   const declared = supplied.flatMap(def => draft.faces.flatMap(face => definingReminders(face, def.keyword)));
   return mergeMechanics(supplied, declared).filter(def => draft.faces.some(face => {
     const semantic = String(face.oracleText || '').replace(/\([^()]*\)/g, '');
-    return mechanicPattern(def).test(semantic) || designationPattern(def).test(semantic) || mentionsStatus(semantic, def);
+    return (hasLiteralTemplate(def) ? hasLiteralDeclaration(semantic, def) : mechanicPattern(def).test(semantic)) || hasTypeParameterProgram(semantic, def) || designationPattern(def).test(semantic) || mentionsStatus(semantic, def);
   }));
+}
+
+// Expand actions inside a quoted triggered ability only when the outer text
+// explicitly grants that ability. Names and other quoted text stay opaque.
+function expandGrantedTriggeredActions(text, definitions) {
+  const actions = definitions.filter(def => !def.template
+    && !hasReminderParameters(def.reminder, def.template)
+    && !hasActionParameters(def));
+  if (!actions.length) return text;
+  return text.replace(/"([^"\n]*)"|“([^”\n]*)”/g, (quoted, straight, curly, offset) => {
+    const body = straight ?? curly;
+    if (!/\b(?:has|have|gains?|gain)\s*$/i.test(text.slice(0, offset))
+      || !/^(?:When|Whenever|At)\b/i.test(body)) return quoted;
+    const expanded = compileDraftInput({ faces: [{ name: '', oracleText: body }] }, actions).faces[0].oracleText;
+    return straight === undefined ? `“${expanded}”` : `"${expanded}"`;
+  });
 }
 
 export function compileDraftInput(draft, definitions) {
   return { ...draft, customMechanics: definitions, faces: draft.faces.map(face => {
     let text = String(face.oracleText || '');
     const semantic = text.replace(/\([^()]*\)/g, '');
-    const used = definitions.filter(def => mechanicPattern(def).test(semantic) || valuePattern(def.keyword).test(semantic));
+    const directSemantic = semantic.replace(/"[^"\n]*"|“[^”\n]*”/g, '');
+    const sourceText = stripReminders(text).split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+    const grantedText = expandGrantedTriggeredActions(sourceText, definitions);
+    const used = definitions.filter(def => hasLiteralTemplate(def) ? hasLiteralDeclaration(directSemantic, def) : (hasActionParameters(def)
+      ? expandActionParameterDeclarations(directSemantic, def, face.name) !== directSemantic
+      : mechanicPattern(def).test(directSemantic)) || valuePattern(def.keyword).test(directSemantic) || repeatedActionPattern(def).test(directSemantic)
+      || (hasInlineParameters(def) && actionPattern(def.keyword).test(directSemantic))
+      || (isSinglePlayerAction(def) && playerActionPattern(def).test(directSemantic))
+      || hasTypeParameterProgram(directSemantic, def));
     // A card naming another card's keyword ("a blinked spell") reads its
     // receipts but never gains its identity.
     const referenced = definitions.filter(def => designationPattern(def).test(semantic) || mentionsStatus(semantic, def));
-    if (!used.length && !referenced.length) {
+    if (!used.length && !referenced.length && grantedText === sourceText) {
       const result = { ...face };
       delete result.customKeywordIdentities;
       delete result.customKeywordPayments;
@@ -210,16 +258,50 @@ export function compileDraftInput(draft, definitions) {
     }
     // Source presentation is carried explicitly, never reconstructed by
     // replacing coincidentally similar compiler output.
-    const displayOracleText = stripReminders(text).split('\n').map(line => line.trim()).filter(Boolean).join('\n');
-    text = displayOracleText;
+    const displayOracleText = sourceText;
+    text = separateKeywordDeclarations(grantedText, used);
     for (const def of used) {
+      if (hasLiteralTemplate(def)) {
+        text = expandLiteralDeclarations(text, def);
+        continue;
+      }
+      text = expandTypeParameterPrograms(text, def, mechanicExpansion);
       let before = text;
+      if (!hasReminderParameters(def.reminder, def.template) && !hasActionParameters(def)) {
+        text = expandRepeatedActionDeclarations(text, def);
+        text = expandSimplePlayerActionDeclarations(text, def);
+        before = text;
+      }
+      if (hasActionParameters(def)) {
+        text = expandActionParameterDeclarations(text, def, face.name);
+        continue;
+      }
       if (hasReminderParameters(def.reminder, def.template)) {
-        text = text.replace(costedPattern(def.keyword), (match, prefix, keyword, rest, offset) => {
+        const inline = hasInlineParameters(def);
+        const bare = inline && [...before.matchAll(actionPattern(def.keyword))].find(match => outsideQuotation(before, match.index));
+        if (bare) {
+          const keyword = bare[2];
+          throw new Error(`"${keyword}" needs its parameters, for example "${parameterExample(def.reminder, keyword, def.template)}".`);
+        }
+        const parameterPattern = inline ? inlineParameterPattern(def) : costedPattern(def.keyword);
+        text = text.replace(parameterPattern, (...args) => {
+          const [match, prefix, keyword, rest] = args;
+          const where = inline ? args[4] : null;
+          const then = inline ? args[5] : null;
+          const offset = inline ? args[6] : args[4];
           if (!outsideQuotation(before, offset)) return match;
           const values = parseParameterDeclaration(def.reminder, keyword, `${keyword} ${rest}`, def.template);
+          if (hasControlFlowOperand(values)) return match;
           if (!values) throw new Error(`"${keyword}" needs its parameters, for example "${parameterExample(def.reminder, keyword, def.template)}".`);
-          return prefix + mechanicExpansion(bindReminderParameters(def.reminder, keyword, values, customKeywordForms(def)));
+          let expanded = mechanicExpansion(bindReminderParameters(def.reminder, keyword, values, customKeywordForms(def)));
+          if (where) {
+            const bound = bindReminderValueFromDeclaration(expanded, `${keyword} ${rest}${where}`);
+            if (!bound.binding) throw new Error(`"${keyword}" requires a matching variable in its reminder and declaration.`);
+            expanded = bound.text;
+          }
+          if (then) return prefix + expanded.replace(/[.!?]+$/, '') + '. Then ';
+          const followedByPeriod = before[offset + match.length] === '.';
+          return prefix + (followedByPeriod ? expanded.replace(/[.!?]+$/, '') : expanded);
         });
         continue;
       }
@@ -451,19 +533,21 @@ function otherDeclarations(draft, definitions) {
   return candidates;
 }
 
-export async function prepareCustomCard(draft, compile, { known = [], reserve = async () => {}, knownTokens = [] } = {}) {
+export async function prepareCustomCard(draft, compile, { known = [], reserve = async () => {}, knownTokens = [], knownSubtypes } = {}) {
+  if (!knownSubtypes) { try { knownSubtypes = listCustomSubtypes(); } catch { knownSubtypes = []; } }
+  draft = withDraftSubtypes(draft, knownSubtypes);
   let definitions = draftMechanics(draft, known);
   // Custom tokens the card names travel with it, like its mechanics.
   const tokens = draftTokens(draft, knownTokens);
   const { customTokens: _carried, ...rest } = draft;
   const prepared = { ...rest, ...(tokens.length ? { customTokens: tokens } : {}) };
-  const compilerInput = defs => applyCustomTokens(compileDraftInput(prepared, defs), tokens);
+  const compilerInput = defs => withDraftSubtypes(applyCustomTokens(compileDraftInput(prepared, defs), tokens), knownSubtypes);
   await reserve(definitions);
   for (let attempts = 0; attempts < 16; attempts++) {
     try {
       const preview = await compile(compilerInput(definitions));
       if (!preview?.canCreate) throw new Error('This card must compile completely before it can be saved.');
-      return { draft: { ...prepared, customMechanics: definitions }, input: compilerInput(definitions), preview };
+      return { draft: { ...prepared, customMechanics: definitions, customSubtypes: compilerInput(definitions).customSubtypes }, input: compilerInput(definitions), preview };
     } catch (error) {
       const keyword = mechanicKey(String(error?.message || error).match(/could not find verb in effect clause \(clause: '([^']+)'/)?.[1]);
       if (!keyword || definitions.some(def => def.keyword === keyword) || official.has(keyword) || !/^[a-z][a-z '-]{0,63}$/.test(keyword)) {

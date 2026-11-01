@@ -240,6 +240,19 @@ pub fn parse_blocking_source_condition(
     })
 }
 
+/// Read the blocker relation independently of its ordinary object filter.
+pub fn parse_source_blocked_by_filter(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    let (relation, _, tail) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&["blocked", "by"])
+    })?;
+    let mut subject = &tokens[..relation];
+    if subject.last().is_some_and(|token| parse_complete_any_phrase(std::slice::from_ref(token), &[&["is"]])) {
+        subject = &subject[..subject.len() - 1];
+    }
+    (is_source_condition_subject(subject) && !tail.is_empty()).then_some(tail)
+}
+
 pub fn parse_source_in_graveyard_condition(tokens: &[OwnedLexToken]) -> bool {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let Some((relation_token, _, tail)) = primitives::find_prefix(tokens, || {
@@ -829,7 +842,7 @@ fn parse_counters_on_source_tail(tokens: &[OwnedLexToken]) -> Option<Option<Coun
 }
 
 fn is_source_condition_subject(tokens: &[OwnedLexToken]) -> bool {
-    if parse_complete_any_phrase(tokens, &[&["it"], &["its"]]) {
+    if parse_complete_any_phrase(tokens, &[&["it"], &["its"], &["it's"]]) {
         return true;
     }
     let view = TokenWordView::new(tokens);

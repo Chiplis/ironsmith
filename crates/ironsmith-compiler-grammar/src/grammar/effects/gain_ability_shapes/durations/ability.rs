@@ -52,8 +52,16 @@ pub fn parse_quoted_gain_duration_shape(
     if tail_tokens.is_empty() {
         return None;
     }
+    if tail_tokens.iter().any(|token| !matches!(token.kind, crate::lexer::TokenKind::Word | crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period)) { return None; }
     let tail_words = TokenWordView::new(tail_tokens).to_word_refs();
-    let parsed = parse_simple_ability_duration_shape(&tail_words)?;
+    // Contextual object-zone atoms are accepted only in this explicitly
+    // quoted grant owner. Other duration consumers do not receive unresolved
+    // antecedent placeholders merely because their word sequence matches.
+    let mut contextual_input=tail_words.as_slice();
+    let contextual=super::core_programs::object_zone_duration.parse_next(&mut contextual_input).ok()
+        .filter(|_|contextual_input.is_empty())
+        .map(|duration|GainAbilityDurationShape{start:0,len:tail_words.len(),duration,condition:None});
+    let parsed = contextual.or_else(||parse_simple_ability_duration_shape(&tail_words))?;
     if parsed.start != 0 || parsed.len != tail_words.len() {
         return None;
     }

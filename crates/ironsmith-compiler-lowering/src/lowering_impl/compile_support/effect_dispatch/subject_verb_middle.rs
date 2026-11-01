@@ -279,12 +279,13 @@ pub(super) fn compile_create_token_with_mods_action(
         && !token.card.name.is_empty())
     .then(|| token.card.name.clone());
     let player_filter = subject.clone_player_filter();
-    let count = per_player_partition_value_for_filter(count, &player_filter);
+    let mut count = per_player_partition_value_for_filter(count, &player_filter);
     let mut choices = subject.into_choices();
     // "equal to the number of counters among creatures target player
     // controls" (Ferrafor): a player named only inside the count is still a
     // target the ability must choose.
     let mut value_target_prelude = Vec::new();
+    super::bind_value_object_targets(&mut count, ctx, &mut value_target_prelude, &mut choices);
     {
         let mut value_target_choices = Vec::new();
         super::collect_value_player_target_choices(&count, &mut value_target_choices);

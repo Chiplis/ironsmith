@@ -4322,7 +4322,7 @@ pub(super) fn creature_type_announcement_options(
     }
     let mut preview = game.clone();
     let mut options = Vec::new();
-    for subtype in crate::types::SubtypeFamily::Creature.all_subtypes() {
+    for subtype in &game.subtypes_in_family(crate::types::SubtypeFamily::Creature) {
         preview.set_chosen_subtype(source, *subtype);
         if spell_has_legal_targets_with_modes(&preview, effects, caster, source_id, chosen_modes) {
             options.push(*subtype);

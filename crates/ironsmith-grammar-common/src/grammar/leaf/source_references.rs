@@ -258,7 +258,12 @@ pub fn parse_leaf_this_source_reference_surface(
 }
 
 pub fn parse_leaf_this_source_reference_words(words: &[&str]) -> Option<SourceReferenceSurface> {
-    let normalized = words.join(" ");
+    // Parser word pieces omit apostrophes ("card's" becomes "cards").
+    // Apply the existing source-noun canonicalization before recognition too,
+    // so generic nouns behave like card-type nouns such as "creatures".
+    let normalized = words.iter().enumerate()
+        .map(|(index, word)| canonical_this_source_word(index, word))
+        .collect::<Vec<_>>().join(" ");
     let mut input = normalized.as_str();
     let surface = crate::grammar::primitives::take_leaf(&mut input, |input: &mut &str| {
         parse_this_source_reference(input, words)

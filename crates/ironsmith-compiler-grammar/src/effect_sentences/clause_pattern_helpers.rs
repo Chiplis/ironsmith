@@ -603,6 +603,21 @@ pub fn parse_copy_spell_clause(
         }
     }
 
+    fn validated_copy_target(tokens: &[OwnedLexToken]) -> Result<(TargetAst, bool), CardTextError> {
+        if clause_shapes::copy_target_reference_has_unread_suffix(tokens) {
+            return Err(CardTextError::ParseError("unread symbol in copy identity reference".into()));
+        }
+        let shape = clause_shapes::parse_copy_target_shape_tokens(tokens);
+        let pronoun = matches!(shape, clause_shapes::CopyTargetShape::TaggedIt);
+        let target = if let Some(target) = target_from_shape(shape) {
+            target
+        } else if let clause_shapes::CopyTargetShape::Explicit(tokens) = shape {
+            if tokens.is_empty() {return Err(CardTextError::ParseError("missing copy operand".into()));}
+            parse_counter_target_phrase(tokens)?
+        } else {unreachable!("copy reference is direct or explicit")};
+        Ok((target, pronoun))
+    }
+
     fn target_reference_kind(tokens: &[OwnedLexToken]) -> Option<crate::filter::StackObjectKind> {
         let words = crate::lexer::token_word_refs(tokens);
         let mentions_spell = words.iter().any(|word| matches!(*word, "spell" | "spells"));
@@ -642,6 +657,17 @@ pub fn parse_copy_spell_clause(
     let copy_idx = copy_shape.copy_word;
     let tail = &tokens[copy_idx + 1..];
     let split_idx = copy_shape.tail.retarget_split;
+    // Validate a closed operand before spell/ability admission too: a
+    // leading symbol can hide an otherwise exact card reference from the
+    // imperative route. Independent count/exception/retarget riders own
+    // their suffixes and are not part of this identity operand.
+    let operand_end = [copy_shape.tail.retarget_split, copy_shape.tail.exception_split,
+        copy_shape.tail.then_split, copy_shape.tail.for_each_split]
+        .into_iter().flatten().min().unwrap_or(tail.len());
+    let (operand, _) = strip_copy_count_suffix(&tail[..operand_end]);
+    if clause_shapes::copy_target_reference_has_unread_suffix(operand) {
+        return Err(CardTextError::ParseError("unread symbol in copy identity reference".into()));
+    }
     if let Some(then_idx) = copy_shape.tail.then_split {
         let then_token_idx = copy_idx + 1 + then_idx;
         let first_clause = trim_lexed_commas(&tokens[..then_token_idx]);
@@ -815,14 +841,7 @@ pub fn parse_copy_spell_clause(
             count = parse_copy_for_each_count(count_filter_clause.tokens())?;
             copy_target_tail = &copy_target_tail[..for_each_idx];
         }
-        let target = target_from_shape(clause_shapes::parse_copy_target_shape_tokens(
-            copy_target_tail,
-        ))
-        .unwrap_or(TargetAst::Source(None));
-        let target_reference_pronoun = matches!(
-            clause_shapes::parse_copy_target_shape_tokens(copy_target_tail),
-            clause_shapes::CopyTargetShape::TaggedIt
-        );
+        let (target, target_reference_pronoun) = validated_copy_target(copy_target_tail)?;
         // The retarget permission ("and may choose a new target for the
         // copy") is this copy's may-choose-new-targets flag; its grammar
         // reads the permission's own words.
@@ -926,15 +945,7 @@ pub fn parse_copy_spell_clause(
         )));
     }
 
-    let target_shape = clause_shapes::parse_copy_target_shape_tokens(copy_target_clause.tokens());
-    let target_reference_pronoun = matches!(target_shape, clause_shapes::CopyTargetShape::TaggedIt);
-    let target = if let Some(target) = target_from_shape(target_shape) {
-        target
-    } else if let clause_shapes::CopyTargetShape::Explicit(target_tokens) = target_shape {
-        parse_counter_target_phrase(target_tokens)?
-    } else {
-        unreachable!("typed copy target reference is explicit or directly lowerable")
-    };
+    let (target, target_reference_pronoun) = validated_copy_target(copy_target_clause.tokens())?;
 
     let mut may_choose_new_targets = false;
     let mut choose_new_target_singular = false;
@@ -978,6 +989,11 @@ pub fn parse_copy_spell_clause(
 }
 
 fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<Value>) {
+    // A terminal sentence delimiter is outside both the count and operand.
+    // Keep every other original token for the operand's completeness check.
+    let tokens = if tokens.last().is_some_and(|token| token.kind == crate::lexer::TokenKind::Period) {
+        &tokens[..tokens.len() - 1]
+    } else { tokens };
     if token_slice_last_is(tokens, "twice") {
         return (
             &tokens[..tokens.len().saturating_sub(1)],
@@ -3513,4 +3529,38 @@ fn phase_source_surface(source: &[OwnedLexToken]) -> crate::target::SourceRefere
     crate::target::SourceReferenceSurface::ThisPermanentType(
         crate::lexer::token_word_refs(source).join(" "),
     )
+}
+
+#[cfg(test)]
+mod copy_reference_completeness_tests {
+    use super::*;
+    #[test]
+    fn copying_identity_references_rejects_nonword_suffix_at_owning_reader() {
+        for source in ["this spell", "that spell", "that ability", "that card", "it", "the exiled card"] {
+            let text=format!("Copy {source}.");
+            assert!(parse_copy_spell_clause(&crate::lexer::lex_line(&text,0).unwrap()).unwrap().is_some(), "{text}");
+            let mut malformed=vec![format!("Copy {source} {{R}}."),format!("Copy {{R}} {source}."),format!("Copy {source} ().")];
+            if let Some((first,rest))=source.split_once(' ') {malformed.push(format!("Copy {first} {{R}} {rest}."));}
+            for text in malformed {
+                assert!(parse_copy_spell_clause(&crate::lexer::lex_line(&text,0).unwrap()).is_err(), "copy owner silently accepted unread symbol: {text}");
+            }
+        }
+    }
+    #[test]
+    fn imperative_reference_does_not_default_unread_operands_to_source_or_lose_count() {
+        let effect = parse_copy_spell_clause(&crate::lexer::lex_line("Copy this spell twice.", 0).unwrap()).unwrap().unwrap();
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {target: TargetAst::Source(_), count, ..}), ..}) = effect else {panic!("source copy with explicit count expected")};
+        assert_eq!(count, Value::Fixed(2));
+        let effect = parse_copy_spell_clause(&crate::lexer::lex_line("Copy that card.", 0).unwrap()).unwrap().unwrap();
+        assert!(matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst {action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {target: TargetAst::Tagged(_, _), ..}), ..})), "a referenced card is never an omitted source operand");
+    }
+    #[test]
+    fn qualified_operands_and_independent_copy_riders_keep_their_existing_readers() {
+        for target in ["that creature", "that spell you control", "target spell with mana cost {U}"] {
+            assert!(!clause_shapes::copy_target_reference_has_unread_suffix(&crate::lexer::lex_line(target,0).unwrap()), "qualified operands are not closed-reference suffixes: {target}");
+        }
+        for text in ["Copy this spell twice.", "Copy target instant or sorcery spell, except that the copy is red.", "Copy target spell with mana value 2."] {
+            assert!(parse_copy_spell_clause(&crate::lexer::lex_line(text,0).unwrap()).unwrap().is_some(), "previously supported operand/rider must remain: {text}");
+        }
+    }
 }

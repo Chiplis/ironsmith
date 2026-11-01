@@ -1,3 +1,4 @@
+use ironsmith_core::definition_model::GENERIC_ALTERNATIVE_COST_NAME;
 use crate::word_primitives::WordWindows as _;
 use crate::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use crate::cards::builders::CardTextError;
@@ -8,6 +9,33 @@ use crate::mana::ManaCost;
 use crate::model::CompilerAlternativeCastingMethod as AlternativeCastingMethod;
 use crate::static_abilities::ThisSpellCostCondition;
 use crate::util::trim_edge_punctuation;
+
+/// A complete replacement clause bound to the selected spell or its resulting
+/// permanent. This reader owns only one clause; it never infers a permission.
+fn parse_selected_departure_redirect(tokens: &[OwnedLexToken]) -> Option<ironsmith_core::ZoneChangeRedirectSpec> {
+    if tokens.iter().any(|token| !matches!(token.kind, crate::lexer::TokenKind::Word | crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period)) { return None; }
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let words = words.strip_prefix(&["if"])?;
+    let (rest, required_from) = if let Some(rest) = words.strip_prefix(&["this", "spell"]) {
+        (rest, crate::zone::Zone::Stack)
+    } else if let Some(rest) = words.strip_prefix(&["the", "permanent", "this", "spell", "becomes"]) {
+        (rest, crate::zone::Zone::Battlefield)
+    } else { return None; };
+    let rest = rest.strip_prefix(&["would", "leave", "the"])?;
+    let from_zone = crate::util::parse_zone_word(rest.first()?)?;
+    if from_zone != required_from { return None; }
+    let rest = &rest[1..];
+    let (excluded_to_zones, rest) = if let Some(rest) = rest.strip_prefix(&["other", "than", "being", "put", "onto", "the"]) {
+        (vec![crate::util::parse_zone_word(rest.first()?)?], &rest[1..])
+    } else { (Vec::new(), rest) };
+    let destination = match rest {
+        ["exile", "it", "instead"] => crate::zone::Zone::Exile,
+        _ => return None,
+    };
+    crate::word_claims::claim_tokens(tokens);
+    Some(ironsmith_core::ZoneChangeRedirectSpec { from_zone, to_zone: None, excluded_to_zones, destination })
+}
 
 /// Explanatory prose may restate a paid cost, but must never add a different
 /// payment or silently change the eligible objects.
@@ -45,6 +73,25 @@ pub fn parse_self_zone_alternative_cost(
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let tokens = crate::util::trim_statement_separators(tokens).to_vec();
     let sentences = crate::lexer::split_lexed_sentences(&tokens);
+    // Peel complete trailing riders, then let the existing permission reader
+    // own the entire remaining prefix (including its other instructions).
+    if let Some(method) = crate::word_claims::speculative_keep_if(|| -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        let mut start = sentences.len();
+        let mut redirects = Vec::new();
+        while start > 1 {
+            let Some(redirect) = parse_selected_departure_redirect(&trim_edge_punctuation(sentences[start - 1])) else { break; };
+            redirects.push(redirect);
+            start -= 1;
+        }
+        if redirects.is_empty() { return Ok(None); }
+        let Some(first_rider) = sentences[start].first() else { return Ok(None); };
+        let Some(prefix_end) = tokens.iter().position(|token| std::ptr::eq(token, first_rider)) else { return Ok(None); };
+        let Some(mut method) = parse_self_zone_alternative_cost(&tokens[..prefix_end])? else { return Ok(None); };
+        let AlternativeCastingMethod::FromZone { instructions, .. } = &mut method else { return Ok(None); };
+        redirects.reverse();
+        instructions.departure_replacements.extend(redirects);
+        Ok(Some(method))
+    }, |result| matches!(result, Ok(Some(_))))? { return Ok(Some(method)); }
     let first = sentences.first().copied().unwrap_or(&tokens);
     let first = trim_edge_punctuation(first);
     let first_view = TokenWordView::new(&first);
@@ -200,7 +247,7 @@ pub fn parse_self_zone_alternative_cost(
             let end = view.token_start_indices()[words.len() - 6];
             let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&second[start..end])?;
             return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-                "Parsed discard exile price", crate::zone::Zone::Exile, total_cost, None, false,
+                GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Exile, total_cost, None, false,
             ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
                 cast_when_discarded_into_exile: true, ..Default::default()
             })));
@@ -213,7 +260,7 @@ pub fn parse_self_zone_alternative_cost(
         let start = first_view.token_start_indices()[8] + 1;
         let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..])?;
         return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-            "Parsed creature-assisted graveyard price", crate::zone::Zone::Graveyard, total_cost, None, false,
+            GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard, total_cost, None, false,
         ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
             tap_creature_reduces_generic: true, exile_on_stack_exit: true, ..Default::default()
         })));
@@ -236,7 +283,7 @@ pub fn parse_self_zone_alternative_cost(
             display: "you discarded this card this turn".into(),
         };
         return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-            "Parsed conditional graveyard price", crate::zone::Zone::Graveyard,
+            GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard,
             total_cost, Some(condition), false,
         )));
     }
@@ -249,7 +296,7 @@ pub fn parse_self_zone_alternative_cost(
             let start = first_view.token_start_indices()[6] + 1;
             let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..])?;
             return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-                "Parsed zone alternative cost", crate::zone::Zone::Hand, total_cost, None, false,
+                GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Hand, total_cost, None, false,
             ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
                 transformed: true, exile_on_stack_exit: exile_on_exit, ..Default::default()
             })));
@@ -273,13 +320,17 @@ pub fn parse_self_zone_alternative_cost(
             // An unreadable payment belongs to another owner, not an error here.
             let Ok(total_cost) = crate::activation_and_restrictions::parse_compiler_activation_cost(&payment) else { return Ok(None); };
             return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-                "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard, total_cost, None, false,
+                GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard, total_cost, None, false,
             ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
                 add_printed_mana_cost: true, exile_on_stack_exit: exile_on_exit, ..Default::default()
             })));
         }
         if matches!(first_words.get(..8), Some(["you", "may", "cast", "this", "card" | "spell", "from", "your", "graveyard"])) {
             let transformed = first_words.get(8) == Some(&"transformed");
+            if transformed {
+                let index = first_view.token_start_indices()[8];
+                crate::word_claims::claim_tokens(&first[index..index + 1]);
+            }
             let for_index = if transformed { 9 } else { 8 };
             if first_words.get(for_index) == Some(&"for") {
                 let start = first_view.token_start_indices()[for_index] + 1;
@@ -293,7 +344,7 @@ pub fn parse_self_zone_alternative_cost(
                     return Err(CardTextError::ParseError("alternative-cost explanation does not describe the bound payment".into()));
                 }
                 return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-                    "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard, total_cost, None, false,
+                    GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard, total_cost, None, false,
                 ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
                     transformed, exile_on_stack_exit: exile_on_exit, ..Default::default()
                 })));
@@ -309,7 +360,7 @@ pub fn parse_self_zone_alternative_cost(
         let cost_start = view.token_start_indices()[8] + 1;
         let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&tokens[cost_start..])?;
         return Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-            "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard,
+            GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard,
             total_cost, None, false,
         )));
     }
@@ -400,7 +451,7 @@ pub fn parse_self_zone_alternative_cost(
     };
     crate::word_claims::claim_tokens(&tokens[cost_end..rider_end]);
     Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-        "Parsed graveyard alternative cost", crate::zone::Zone::Graveyard,
+        GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Graveyard,
         total_cost, condition, exiles_after_resolution,
     ).with_entry_counters(entry_counters)))
 }
@@ -617,7 +668,7 @@ pub fn parse_you_may_rather_than_spell_cost(
         )
     } else if spending_rule.is_some() {
         None
-    } else if !TokenWordView::new(&trailing_tokens).word_refs().is_empty() {
+    } else if !trailing_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
             line,
@@ -1082,7 +1133,7 @@ fn parse_price_with_battlefield_instructions(tokens: &[OwnedLexToken]) -> Result
     let start = view.token_start_indices()[5] + 1;
     let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&first[start..cost_end])?;
     Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
-        "Parsed conditional battlefield price", crate::zone::Zone::Hand, total_cost, None, false,
+        GENERIC_ALTERNATIVE_COST_NAME, crate::zone::Zone::Hand, total_cost, None, false,
     ).with_zone_cast_instructions(instructions)))
 }
 

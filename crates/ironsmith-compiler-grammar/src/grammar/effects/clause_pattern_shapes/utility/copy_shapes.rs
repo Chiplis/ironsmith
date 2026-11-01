@@ -167,9 +167,9 @@ fn copy_target_reference<'a>(input: &mut LexStream<'a>) -> WResult<CopyTargetSha
             .value(CopyTargetShape::TriggeringSource),
         (
             alt((
+                primitives::phrase(&["that", "card"]),
                 primitives::kw("it").void(),
                 primitives::kw("that").void(),
-                primitives::phrase(&["that", "card"]),
             )),
             primitives::sentence_end(),
         )
@@ -266,4 +266,15 @@ pub fn parse_copy_retarget_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Copy
             single_target: has_target && !has_targets,
         })
     })
+}
+
+/// A recognized complete identity-reference word sequence is not a
+/// qualified object filter. Require its original token stream to satisfy
+/// that same reference grammar, including leading/internal/trailing symbols.
+/// Word-qualified operands keep the separate existing filter reader.
+pub fn copy_target_reference_has_unread_suffix(tokens: &[OwnedLexToken]) -> bool {
+    let tokens=trim_lexed_commas(tokens);
+    let words=tokens.iter().filter(|token| token.as_word().is_some()).cloned().collect::<Vec<_>>();
+    primitives::parse_all(&words,copy_target_reference,"closed copy reference words").is_ok()
+        && primitives::parse_all(tokens,copy_target_reference,"complete original copy reference").is_err()
 }

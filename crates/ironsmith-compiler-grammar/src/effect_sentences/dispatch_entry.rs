@@ -6314,7 +6314,9 @@ fn document_ends_in_program(document_sentences: &[SentenceInput]) -> Result<bool
         };
         if let Some(matched) = matched
             && (start + matched.consumed_sentences == document_sentences.len()
-                || (start == 0 && matched.name == super::procedures::RIDDEN_STATEMENT))
+                || (start == 0
+                    && (matched.name == super::procedures::RIDDEN_STATEMENT
+                        || matched.name == "conditional-document-program")))
         {
             return Ok(true);
         }
@@ -8063,6 +8065,7 @@ pub(crate) fn parse_described_effect_bundle(tokens: &[OwnedLexToken]) -> Result<
         "put this card onto the battlefield from your hand tapped and attacking" |
         "put this card onto the battlefield from your hand or the command zone tapped and attacking the same player, planeswalker, or battle as the returned creature" |
         "put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature") {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender))]));
     }
@@ -8083,7 +8086,7 @@ pub(crate) fn parse_described_effect_bundle(tokens: &[OwnedLexToken]) -> Result<
     }
     if body.trim_end_matches('.') == "if this permanent isn't harnessed, it becomes harnessed" {
         return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { designation: ironsmith_core::PermanentDesignation::Harnessed }))]));
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { target: TargetAst::Source(None), designation: ironsmith_core::PermanentDesignation::Harnessed }))]));
     }
     if body.trim_end_matches('.') == "return this card transformed under its owner's control" {
         return Ok(Some(vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
@@ -8155,6 +8158,7 @@ pub(crate) fn parse_described_effect_bundle(tokens: &[OwnedLexToken]) -> Result<
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::iterated_optional_program::parse(tokens)? { return Ok(effects); }
     if let Some(effects) = parse_described_effect_bundle(tokens)? { return Ok(effects); }
     if let Some(effects) = super::bundle_rules::parse_entry_type_rider(tokens)? {
         return Ok(effects);

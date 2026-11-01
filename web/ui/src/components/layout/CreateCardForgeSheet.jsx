@@ -6,6 +6,7 @@ import { emptyCommunityFormat, normalizeCommunityFormat } from '@/lib/community-
 import { normalizeDraftForApi } from "@/lib/custom-card-draft";
 import SandboxPanel from "./SandboxPanel";
 import MechanicsPanel from "./MechanicsPanel";
+import SubtypesPanel from "./SubtypesPanel";
 import CustomCardArtEditor from "./CustomCardArtEditor";
 import BuildCardSearch from "./BuildCardSearch";
 import CardPrintingStage from "./CardPrintingStage";
@@ -254,6 +255,7 @@ function cloneDraft(draft) {
     enforceFilterClaims: draft?.enforceFilterClaims !== false,
     enforceLineClaims: draft?.enforceLineClaims !== false,
     customMechanics: structuredClone(draft?.customMechanics || []),
+    customSubtypes: structuredClone(draft?.customSubtypes || []),
     ...(draft?.customTokens?.length ? { customTokens: structuredClone(draft.customTokens) } : {}),
     ...(draft?.token === true ? { token: true } : {}),
     layout: draft?.faces?.length === 2 && draft.faces[1]?.subtypes?.includes("Omen") ? "omen" : draft?.faces?.length === 2 && draft.faces[1]?.subtypes?.includes("Adventure") ? "adventure" : (draft?.layout === "transform_like" ? (["transform", "battle"].includes(draft.frameLayout) ? "transform" : "modal_dfc") : draft?.layout) || "single",
@@ -1171,6 +1173,7 @@ export default function CreateCardForgeSheet({
             <TabsList variant="line" className="w-full shrink-0 flex-wrap justify-start overflow-visible px-4 pb-2 group-data-[orientation=horizontal]/tabs:h-auto [&>[role=tab]]:h-auto [&>[role=tab]]:flex-none">
               <TabsTrigger value="card" disabled={sandboxBusy}>{ui("Card")}</TabsTrigger>
               <TabsTrigger value="mechanics" disabled={sandboxBusy}>{ui("Mechanics")}</TabsTrigger>
+              <TabsTrigger value="subtypes" disabled={sandboxBusy}>{ui("Subtypes")}</TabsTrigger>
               <TabsTrigger value="sets" disabled={sandboxBusy}>{ui("Sets")}</TabsTrigger>
               <TabsTrigger value="formats" disabled={sandboxBusy}>{ui("Formats")}</TabsTrigger>
               <TabsTrigger value="sandbox" disabled={submitting}>{ui("Sandbox")}</TabsTrigger>
@@ -1181,6 +1184,7 @@ export default function CreateCardForgeSheet({
             <TabsContent forceMount value="formats" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <CommunityFormatEditor active={open && workspaceTab === 'formats'} value={customFormatDraft} onChange={setCustomFormatDraft} />
             </TabsContent>
+            <TabsContent value="subtypes" className="min-h-0 flex-1 overflow-y-auto"><SubtypesPanel /></TabsContent>
             <TabsContent value="mechanics" className="min-h-0 flex-1 overflow-y-auto">
               <MechanicsPanel />
             </TabsContent>

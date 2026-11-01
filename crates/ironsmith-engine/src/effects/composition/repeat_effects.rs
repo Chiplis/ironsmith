@@ -300,7 +300,13 @@ impl crate::effects::ActionProgramCursor for RepetitionCursor {
                     }
                 }
             }
-            self.stopped = outcome.status.is_failure();
+            // A fixed-count instruction repeats even when an individual
+            // iteration's optional action was declined or could not happen.
+            // Only the enclosing resolution can terminate that schedule.
+            // Specialized choice plans retain their own failure termination.
+            if !matches!(self.plan, RepetitionPlan::Sequence { .. }) {
+                self.stopped = outcome.status.is_failure();
+            }
         }
         self.stopped |= ctx.resolution_stopped();
         if self.stopped || self.next >= self.plan.len() {

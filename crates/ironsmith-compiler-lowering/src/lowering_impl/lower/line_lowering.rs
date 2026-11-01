@@ -1761,9 +1761,15 @@ fn materialize_gift(
 
 fn materialize_optional_cost_trigger(
     mut builder: CardDefinitionBuilder,
-    cost: crate::cost::OptionalCost,
+    mut cost: crate::cost::OptionalCost,
     prepared: PreparedEffectsForLowering,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
+    // Identical authored prices can be separate optional payments. Bind each
+    // instance before constructing its trigger, without parsing its label or
+    // changing its independent custom-keyword attribution metadata.
+    if cost.reference.custom_keyword_attributable {
+        cost.reference.discriminator = Some(format!("optional-payment-{}", builder.optional_costs.len()));
+    }
     let reference = cost.cost_ref();
     builder = builder.optional_cost(cost);
     let trigger = TriggerSpec::YouCastThisSpell;

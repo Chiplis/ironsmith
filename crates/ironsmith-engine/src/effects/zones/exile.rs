@@ -326,9 +326,6 @@ impl ZoneMovementInstruction for ExileEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<SelectedZoneMovement, ExecutionError> {
-        let retained_self = matches!(self.spec.base(), ChooseSpec::Source)
-            .then(|| ObjectSnapshot::from_object_id(game, ctx.source))
-            .flatten();
         let objects = match super::resolve_zone_move_objects(game, ctx, &self.spec) {
             Ok(objects) => objects,
             Err(ExecutionError::InvalidTarget) => {
@@ -345,6 +342,13 @@ impl ZoneMovementInstruction for ExileEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(SelectedZoneMovement::Finished(EffectOutcome::count(0)));
         }
+        // Selection can name the exact source through an object filter or
+        // tagged choice as well as a bare Source operand. Its move receipt
+        // carries the same cross-zone identity; no other incarnation or
+        // same-name card qualifies. Keep context-source rebasing separate.
+        let retained_self = objects.contains(&ctx.source)
+            .then(|| ObjectSnapshot::from_object_id(game, ctx.source))
+            .flatten();
         // "Exile that many cards from your graveyard instead. If you can't,
         // you lose the game." (Nefarious Lich): exiling fewer than an exact
         // dynamic count isn't doing what the instruction says (CR 608.2c), so

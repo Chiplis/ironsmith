@@ -1274,7 +1274,19 @@ pub struct OptionalCostRef {
     /// Temporal qualification belongs to the typed query, not its label.
     #[cfg_attr(feature = "serde", serde(default))]
     pub payment_window: CostPaymentWindow,
+    /// Source attribution is independent of the exact payment instance. An
+    /// authored generic cost can retain its scoped discriminator while being
+    /// recognized as a custom keyword's payment. Official identity is unchanged.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub custom_keyword: Option<String>,
+    /// A generic payment explicitly created by a source definition may be
+    /// attributed without treating its opaque instance discriminator as a name.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "optional_cost_ref_false"))]
+    pub custom_keyword_attributable: bool,
 }
+
+#[cfg(feature = "serde")]
+fn optional_cost_ref_false(value: &bool) -> bool { !*value }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, TagKeyWalk)]
@@ -1290,6 +1302,8 @@ impl OptionalCostRef {
             kind,
             discriminator: None,
             payment_window: CostPaymentWindow::AnyTurn,
+            custom_keyword: None,
+            custom_keyword_attributable: false,
         }
     }
 
@@ -1299,6 +1313,8 @@ impl OptionalCostRef {
             kind,
             discriminator: (!discriminator.trim().is_empty()).then_some(discriminator),
             payment_window: CostPaymentWindow::AnyTurn,
+            custom_keyword: None,
+            custom_keyword_attributable: false,
         }
     }
 
@@ -1339,6 +1355,8 @@ impl OptionalCostRef {
             kind,
             discriminator,
             payment_window: CostPaymentWindow::AnyTurn,
+            custom_keyword: None,
+            custom_keyword_attributable: false,
         }
     }
 
@@ -1355,9 +1373,8 @@ impl OptionalCostRef {
     /// keyword's definition created carries that keyword's name.
     pub fn attributed_to_custom_keyword(&self, keyword: &str) -> bool {
         match &self.kind {
-            OptionalCostKind::Additional => self
-                .discriminator
-                .as_deref()
+            OptionalCostKind::Additional => self.custom_keyword.as_deref()
+                .or(self.discriminator.as_deref())
                 .is_some_and(|name| name.eq_ignore_ascii_case(keyword.trim())),
             OptionalCostKind::AlternativeCast(reference) => {
                 reference.method_name().eq_ignore_ascii_case(keyword.trim())

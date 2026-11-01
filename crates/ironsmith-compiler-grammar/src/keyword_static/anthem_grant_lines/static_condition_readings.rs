@@ -165,9 +165,15 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_subject_status_condition(input)),
     },
     Reading {
+        id: RuleId::new("blocking-source-condition"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_blocking_source_condition(input)),
+    },
+    Reading {
         id: RuleId::new("subject-descriptor-condition"),
         head: HeadDiscriminator::Any,
-        admits: |input| !input.read_by("subject-status-condition"),
+        admits: |input| !input.read_by("subject-status-condition") && !input.read_by("blocking-source-condition"),
         read: |input| input.outcome(read_subject_descriptor_condition(input)),
     },
     Reading {
@@ -193,12 +199,6 @@ const READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |_| true,
         read: |input| input.outcome(read_cards_drawn_this_turn_static_condition(input)),
-    },
-    Reading {
-        id: RuleId::new("blocking-source-condition"),
-        head: HeadDiscriminator::Any,
-        admits: |_| true,
-        read: |input| input.outcome(read_blocking_source_condition(input)),
     },
     Reading {
         id: RuleId::new("dice-rolled-this-turn-static-condition"),
@@ -493,6 +493,17 @@ fn read_blocking_source_condition(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let tokens = input.tokens;
     let display = input.display;
+    if let Some(blocker_tokens) = anthem_grant_grammar::parse_source_blocked_by_filter(&tokens) {
+        let mut filter = parse_object_filter_lexed(blocker_tokens, false)?;
+        filter.zone.get_or_insert(Zone::Battlefield);
+        filter.blocking = true;
+        filter.in_combat_with_source = true;
+        return Ok(Some(PredicateAst::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            display: Some(display.clone()),
+        }));
+    }
     if let Some(shape) = anthem_grant_grammar::parse_blocking_source_condition(&tokens) {
         return Ok(Some(PredicateAst::CountComparison {
             count: AnthemCountExpression::BlockingSource,

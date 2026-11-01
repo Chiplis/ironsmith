@@ -418,6 +418,10 @@ pub enum CompilerReferenceTag {
     /// The cards a surveil kept on top of its player's library (runtime
     /// `SURVEIL_KEPT_ON_TOP_TAG`): "for each card you put on top of your library".
     SurveilKeptOnTop,
+    /// Compiler-only typed duration references; bound before lowering.
+    DurationReferencedCreature,
+    DurationReferencedArtifact,
+    DurationReferencedPermanent,
 }
 
 impl CompilerReferenceTag {
@@ -529,6 +533,9 @@ impl CompilerReferenceTag {
             Self::WhereXCommanderManaValue => "__where_x_commander_mana_value",
             Self::SourceExiled => "__source_exiled__",
             Self::SourceExiledSelf => ironsmith_core::tag::SOURCE_EXILED_SELF_TAG,
+            Self::DurationReferencedCreature => "__duration_reference_creature__",
+            Self::DurationReferencedArtifact => "__duration_reference_artifact__",
+            Self::DurationReferencedPermanent => "__duration_reference_permanent__",
             Self::SourceDevoured => "__source_devoured__",
             Self::DiscardedCardReference => "__discarded_card__",
             Self::ThoseCardsReference => "__those_cards__",

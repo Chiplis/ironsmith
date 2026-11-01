@@ -139,3 +139,111 @@ path = "tests/custom_statuses.rs"
 [[test]]
 name = "custom_mechanic_word_coverage"
 path = "tests/custom_mechanic_word_coverage.rs"
+
+[[test]]
+name = "custom_casting_costs"
+path = "tests/custom_casting_costs.rs"
+
+[[test]]
+name = "custom_revolution_counter"
+path = "tests/custom_revolution_counter.rs"
+
+[[test]]
+name = "custom_token_actions"
+path = "tests/custom_token_actions.rs"
+
+[[test]]
+name = "custom_resource_tokens"
+path = "tests/custom_resource_tokens.rs"
+
+[[test]]
+name = "custom_revolution_standard_effects"
+path = "tests/custom_revolution_standard_effects.rs"
+
+[[test]]
+name = "custom_token_quote_dedup"
+path = "tests/custom_token_quote_dedup.rs"
+
+[[test]]
+name = "custom_revolution_gorge"
+path = "tests/custom_revolution_gorge.rs"
+
+[[test]]
+name = "custom_conditional_alternative_prices"
+path = "tests/custom_conditional_alternative_prices.rs"
+
+[[test]]
+name = "custom_player_actions"
+path = "tests/custom_player_actions.rs"
+
+[[test]]
+name = "custom_departure_actions"
+path = "tests/custom_departure_actions.rs"
+
+[[test]]
+name = "custom_serial_event_triggers"
+path = "tests/custom_serial_event_triggers.rs"
+
+[[test]]
+name = "custom_satrapy_activation"
+path = "tests/custom_satrapy_activation.rs"
+
+[[test]]
+name = "custom_deception"
+path = "tests/custom_deception.rs"
+
+[[test]]
+name = "custom_selected_cast_redirects"
+path = "tests/custom_selected_cast_redirects.rs"
+
+[[test]]
+name = "custom_abound"
+path = "tests/custom_abound.rs"
+
+[[test]]
+name = "custom_rediscover"
+path = "tests/custom_rediscover.rs"
+
+[[test]]
+name = "custom_metadata_fidelity"
+path = "tests/custom_metadata_fidelity.rs"
+
+[[test]]
+name = "custom_parameter_programs"
+path = "tests/custom_parameter_programs.rs"
+
+[[test]]
+name = "custom_revive"
+path = "tests/custom_revive.rs"
+
+[[test]]
+name = "custom_chosen_quality"
+path = "tests/custom_chosen_quality.rs"
+
+[[test]]
+name = "custom_multitude"
+path = "tests/custom_multitude.rs"
+
+[[test]]
+name = "custom_inscribe"
+path = "tests/custom_inscribe.rs"
+
+[[test]]
+name = "custom_contextual_durations"
+path = "tests/custom_contextual_durations.rs"
+
+[[test]]
+name = "custom_malign"
+path = "tests/custom_malign.rs"
+
+[[test]]
+name = "custom_colossal"
+path = "tests/custom_colossal.rs"
+
+[[test]]
+name = "custom_improve"
+path = "tests/custom_improve.rs"
+
+[[test]]
+name = "custom_subtypes"
+path = "tests/custom_subtypes.rs"

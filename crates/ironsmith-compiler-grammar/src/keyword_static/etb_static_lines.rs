@@ -1007,6 +1007,13 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
 mod where_x_binding_readings;
 
 pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
+    // Cost modifiers and effect sentences share the same typed tap-cost
+    // characteristic clause, rather than maintaining separate surface lists.
+    if let Some(shape @ crate::grammar::effects::sentence_predicate_shapes::WhereXValueShape::TapCostPower) =
+        crate::grammar::effects::sentence_predicate_shapes::parse_where_x_value_shape_tokens(tokens, false)
+    {
+        return crate::effect_sentences::lower_where_x_shape(shape).map(|(_, value)| value);
+    }
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
         return None;
     }

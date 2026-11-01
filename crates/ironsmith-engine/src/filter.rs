@@ -1522,7 +1522,7 @@ pub(crate) fn object_creature_subtypes_for_cost(object: &Object, game: &GameStat
         .iter()
         .any(|card_type| matches!(card_type, CardType::Creature | CardType::Kindred));
     if can_have_creature_types && object.has_changeling() {
-        return Subtype::all_creature_types().to_vec();
+        return game.subtypes_in_family(SubtypeFamily::Creature);
     }
     object_creature_subtypes(object, game)
 }
@@ -1573,7 +1573,7 @@ fn subject_subtypes_in_family(
         .subject_subtypes()
         .iter()
         .copied()
-        .filter(|subtype| family.all_subtypes().contains(subtype))
+        .filter(|subtype| subtype.belongs_to_family(family))
         .collect()
 }
 
@@ -1585,7 +1585,7 @@ fn object_subtypes_in_family(
     game.current_subtypes(object.id)
         .unwrap_or_else(|| object.subtypes.to_vec())
         .into_iter()
-        .filter(|subtype| family.all_subtypes().contains(subtype))
+        .filter(|subtype| subtype.belongs_to_family(family))
         .collect()
 }
 

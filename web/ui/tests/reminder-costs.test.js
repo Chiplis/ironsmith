@@ -234,3 +234,14 @@ test('price predicates retain their reference while payment slots bind', () => {
     'You may pay {3}{U}. This cost is reduced by {1} for each artifact you control.');
   assert.equal(bindReminderCost('Pay this cost.', 'arrival', '{3}{U}'), 'Pay {3}{U}.');
 });
+
+
+test('historical named payment subjects retain identity while payable cost slots bind', () => {
+  for (const keyword of ['Multitude', 'Echoed price', 'escape']) {
+    for (const past of ['was', "wasn't", 'was not']) {
+      const text = `You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its ${keyword} cost ${past} paid, copy this spell.`;
+      assert.equal(bindReminderCost(text, keyword, '{2}{U}'), text.replace('{Cost}', '{2}{U}'));
+    }
+    assert.equal(bindReminderCost(`Pay its ${keyword} cost. You may cast this for its ${keyword} cost.`, keyword, '{2}{U}'), 'Pay {2}{U}. You may cast this for {2}{U}.');
+  }
+});

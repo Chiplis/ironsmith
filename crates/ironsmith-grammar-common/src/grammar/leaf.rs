@@ -63,7 +63,7 @@ pub use durations::{
     strip_leaf_this_turn_tokens,
 };
 pub use filter_atoms::{
-    LeafDemonstrativeObjectHead, classify_token_definition_subtype, parse_leaf_card_type_complete,
+    LeafDemonstrativeObjectHead, classify_token_definition_subtype, classify_token_definition_subtype_in_family, ambiguous_subtype_spellings, parse_leaf_card_type_complete,
     parse_leaf_color_complete, parse_leaf_demonstrative_object_head_complete,
     parse_leaf_non_card_type_complete, parse_leaf_non_color_complete,
     parse_leaf_non_subtype_complete, parse_leaf_non_supertype_complete,

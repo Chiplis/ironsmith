@@ -147,6 +147,10 @@ pub enum CostPaymentError {
 
     /// No valid permanent to sacrifice.
     NoValidSacrificeTarget,
+    /// Fewer payable alternatives than the modal cost requires.
+    NotEnoughLegalModes,
+    /// Fewer eligible objects than a mandatory cost selection requires.
+    NotEnoughObjects,
 
     /// Not enough cards in hand to discard.
     InsufficientCardsInHand,
@@ -195,6 +199,8 @@ impl std::fmt::Display for CostPaymentError {
             CostPaymentError::NoValidSacrificeTarget => {
                 f.write_str("No valid permanent can be sacrificed")
             }
+            CostPaymentError::NotEnoughLegalModes => f.write_str("Not enough legal cost options available"),
+            CostPaymentError::NotEnoughObjects => f.write_str("Not enough eligible objects to pay cost"),
             CostPaymentError::InsufficientCardsInHand => f.write_str("Not enough cards in hand"),
             CostPaymentError::InsufficientCounters => {
                 f.write_str("Not enough counters on the source")

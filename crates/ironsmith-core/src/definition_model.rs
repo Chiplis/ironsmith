@@ -194,7 +194,9 @@ where
         let generic_additional = self
             .optional_costs
             .iter()
-            .filter(|cost| cost.reference.kind == crate::OptionalCostKind::Additional && cost.reference.discriminator.is_none())
+            .filter(|cost| cost.reference.kind == crate::OptionalCostKind::Additional
+                && cost.reference.custom_keyword.is_none()
+                && (cost.reference.custom_keyword_attributable || cost.reference.discriminator.is_none()))
             .count();
         match (generic_alternatives, generic_additional) {
             (1, 0) => {
@@ -213,9 +215,16 @@ where
                 let cost = self
                     .optional_costs
                     .iter_mut()
-                    .find(|cost| cost.reference.kind == crate::OptionalCostKind::Additional)
+                    .find(|cost| cost.reference.kind == crate::OptionalCostKind::Additional
+                        && cost.reference.custom_keyword.is_none()
+                        && (cost.reference.custom_keyword_attributable || cost.reference.discriminator.is_none()))
                     .expect("counted above");
-                cost.reference.discriminator = Some(keyword.to_string());
+                cost.reference.custom_keyword = Some(keyword.to_string());
+                // Preserve the legacy unscoped payment surface. A scoped
+                // trigger still refers to its exact original discriminator.
+                if cost.reference.discriminator.is_none() {
+                    cost.reference.discriminator = Some(keyword.to_string());
+                }
                 true
             }
             _ => false,

@@ -5692,6 +5692,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
 fn describe_duration_object(reference: &ironsmith_core::ContinuousDurationObject) -> &'static str {
     match reference {
         ironsmith_core::ContinuousDurationObject::Source => "this source",
+        ironsmith_core::ContinuousDurationObject::SourceInZone(_) => "this card",
         ironsmith_core::ContinuousDurationObject::AffectedObject => "it",
         ironsmith_core::ContinuousDurationObject::Tagged(_) => "that object",
         ironsmith_core::ContinuousDurationObject::Specific(_) => "that object",

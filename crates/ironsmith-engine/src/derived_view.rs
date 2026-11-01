@@ -679,7 +679,7 @@ impl<'a> DerivedGameView<'a> {
 
         let mut expanded = chars.as_ref().clone();
         let mut changed = false;
-        for subtype in Subtype::all_creature_types() {
+        for subtype in &self.game.subtypes_in_family(crate::types::SubtypeFamily::Creature) {
             if !expanded.subtypes.contains(subtype) {
                 expanded.subtypes.push(*subtype);
                 changed = true;

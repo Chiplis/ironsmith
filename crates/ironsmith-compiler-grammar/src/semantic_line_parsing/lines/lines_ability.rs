@@ -79,7 +79,15 @@ use crate::recognition::ParseOutcome;
 #[path = "lines_ability/static_line_readings.rs"]
 mod static_line_readings;
 
+#[path = "lines_ability/optional_tap_power_cost.rs"]
+mod optional_tap_power_cost;
+
+pub(crate) fn parse_optional_payment_modifier_program(tokens: &[OwnedLexToken]) -> Result<Option<LineAst>, CardTextError> {
+    optional_tap_power_cost::read(tokens)
+}
+
 pub(crate) fn parse_descriptive_static_program(parse_tokens: &[OwnedLexToken]) -> Result<Option<LineAst>, CardTextError> {
+    if let Some(parsed) = parse_optional_payment_modifier_program(parse_tokens)? { return Ok(Some(parsed)); }
     let prose = render_token_slice(parse_tokens).to_ascii_lowercase();
     if matches!(prose.trim_end_matches('.').trim(), "you may pair this creature with another unpaired creature when either enters. they remain paired for as long as you control both of them" | "you may pair creatures using this ability. whenever this creature or another creature enters under your control, if this creature and an eligible other creature are both unpaired creatures you control, you may pair them. if this creature entered, choose another unpaired creature you control; otherwise pair it only with the creature that entered. they remain paired until either leaves the battlefield, stops being a creature, or stops being under your control. pairing doesn't target") {
         let trigger = TriggerSpec::EntersBattlefield { filter: ObjectFilter::creature().you_control(), cause_filter: None, origin_condition: None, during_turn: None };

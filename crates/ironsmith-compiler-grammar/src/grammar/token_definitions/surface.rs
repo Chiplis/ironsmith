@@ -94,12 +94,10 @@ fn artifact_subtypes(words: &[&str]) -> Vec<Subtype> {
         // Only artifact-family subtypes belong on an artifact token's type
         // line; a leading proper-noun token name ("Tamiyo's Notebook") must
         // not match same-named subtypes from other families.
-        if let Ok(subtype) = leaf::parse_leaf_subtype_complete(word)
-            && ironsmith_core::SubtypeFamily::Artifact
-                .all_subtypes()
-                .contains(&subtype)
+        if let Some(subtype) = leaf::classify_token_definition_subtype_in_family(word, ironsmith_core::SubtypeFamily::Artifact)
             && !subtypes.contains(&subtype)
         {
+            crate::word_claims::claim_words(&[*word]);
             subtypes.push(subtype);
         }
     }
@@ -466,7 +464,12 @@ pub(super) fn creature_rules(
     words: &[&str],
     intrinsic_words: &[&str],
     named_card: Option<&str>,
-) -> CreatureTokenRulesShape {
+ ) -> CreatureTokenRulesShape {
+    let token_rules = rules::parse_token_rules_surfaces_for_named_token(source_tokens, named_card);
+    let legacy_tokens = rules::legacy_rule_tokens(source_tokens, &token_rules);
+    let legacy_words = parser_token_word_refs(&legacy_tokens);
+    let words = if token_rules.generic_rule_spans.is_empty() { words } else { &legacy_words };
+    let source_tokens = legacy_tokens.as_slice();
     let all = |expected: &[&str]| common::all_words_present(words, expected);
     let damage = rules::damage_amount(words);
     let sacrifice_return_pattern = all(&[
@@ -595,7 +598,6 @@ pub(super) fn creature_rules(
         .then(|| rules::parse_token_power_as_though_greater_shape_words(words))
         .flatten()
         .map(|TokenPowerAsThoughGreaterShape { amount }| amount);
-    let token_rules = rules::parse_token_rules_surfaces_for_named_token(source_tokens, named_card);
     let has_typed_poison_damage_rule = token_rules.embedded_rules.iter().any(|rule| {
         matches!(
             rule,

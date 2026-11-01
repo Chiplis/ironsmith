@@ -9,6 +9,7 @@ use crate::types::CardType;
 #[cfg(test)]
 mod analysis_probe;
 mod mechanics;
+mod payment_characteristic_preview;
 mod resumable;
 pub use resumable::ManaAnalysisSession;
 pub(super) use resumable::{
@@ -1898,6 +1899,7 @@ where
         }
         let combined_cost = (!combined.is_empty()).then_some(combined);
         let hypothetical_view = DerivedGameView::new(hypothetical);
+        let mut unreduced_effective_cost = None;
         let effective_cost = combined_cost.as_ref().map(|cost| {
             let effective = calculate_effective_mana_cost_with_view_for_casting_method(
                 hypothetical,
@@ -1907,6 +1909,7 @@ where
                 casting_method,
                 &hypothetical_view,
             );
+            unreduced_effective_cost = Some(effective.clone());
             // Target/restriction preflight also checks affordability. It must
             // account for the sacrifices offered by this announced optional
             // cost subset, before a full-price rejection hides the spell.
@@ -1955,7 +1958,10 @@ where
 
         for x_value in 0..=max_x {
             if effective_cost.as_ref().is_some_and(|cost| {
-                !mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
+                !payment_characteristic_preview::can_pay_scoped_tap(
+                    hypothetical, player, &proposal, casting_method,
+                    unreduced_effective_cost.as_ref().unwrap_or(cost), true, x_value,
+                ).unwrap_or_else(|| mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
                     hypothetical,
                     player,
                     spell.id,
@@ -1963,7 +1969,7 @@ where
                     x_value,
                     &hypothetical_view,
                     Some((&proposal, casting_method)),
-                )
+                ))
             }) {
                 continue;
             }
@@ -7588,8 +7594,10 @@ fn max_cost_payment_sacrifice_reduction_for_selection(
     let ctx = ExecutionContext::new(spell.id, player, &mut dm);
     let mut total = 0u32;
     for reduction in spell_cost_payment_sacrifice_reductions(spell) {
-        let best = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|_| {
-            crate::effect::Value::Fixed(sacrificable)
+        let best = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|query| {
+            crate::effect::Value::Fixed(payment_characteristic_preview::maximum(
+                game, player, spell.id, &choices, query,
+            ).unwrap_or(sacrificable))
         });
         let none = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|_| {
             crate::effect::Value::Fixed(0)
@@ -7615,6 +7623,9 @@ fn affordable_with_max_cost_payment_sacrifice_reduction(
     effective_cost: &crate::mana::ManaCost,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    if let Some(payable) = payment_characteristic_preview::can_pay_scoped_tap(
+        game, player, spell, casting_method, effective_cost, false, spell.x_value.unwrap_or(0),
+    ) { return payable; }
     let reduction = max_cost_payment_sacrifice_reduction(game, player, spell);
     reduction > 0
         && mana_cost_can_be_paid_by_caster_or_assist_with_view(
@@ -7638,6 +7649,7 @@ pub(crate) fn cost_payment_sacrifice_reduction(
     player: PlayerId,
     spell: &crate::object::Object,
     completed: &crate::effects::CompletedActionPrefix,
+    payment_tags: &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 ) -> u32 {
     // Cost actions need not have compiler-assigned effect IDs. Read the actual
     // completed payment producers; named bindings can omit them or alias them.
@@ -7662,6 +7674,7 @@ pub(crate) fn cost_payment_sacrifice_reduction(
     let mut dm = SelectFirstDecisionMaker;
     let mut ctx = ExecutionContext::new(spell.id, player, &mut dm);
     ctx.effect_outcomes = outcomes.clone();
+    ctx.tagged_objects = payment_tags.clone();
     let mut total = 0u32;
     for reduction in spell_cost_payment_sacrifice_reductions(spell) {
         let paid = substitute_cost_payment_sacrifice_metric(&reduction.reduction, &|query| {

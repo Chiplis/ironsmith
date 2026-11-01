@@ -1,5 +1,7 @@
 #[path = "life_total_references.rs"]
 mod life_total_references;
+#[path = "conditional_fallback.rs"]
+mod conditional_fallback;
 use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::DelayedEffectAst;
@@ -11,6 +13,12 @@ use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::StackActionAst;
 use crate::cards::builders::TurnEventPredicateAst;
 pub use life_total_references::conditional_life_total_set;
+pub fn conditional_fallback_effects(
+    predicate: Option<&PredicateAst>,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    conditional_fallback::parse(predicate, tokens)
+}
 
 pub fn parse_triggered_line(
     info: LineInfo,
@@ -48,6 +56,15 @@ pub(super) fn parse_triggered_line_impl(
     use crate::grammar::effects::delayed_sentence_shapes::{
         DelayedScheduleStep, parse_delayed_schedule_sentence_shape,
     };
+
+    let resolution_branches = conditional_fallback::parse(
+        line.intervening_if.as_ref(), effect_parse_tokens,
+    )?;
+    let branch_line;
+    let line = if resolution_branches.is_some() {
+        branch_line = RewriteTriggeredLine { intervening_if: None, ..line.clone() };
+        &branch_line
+    } else { line };
 
     // "When this creature enters, if it was cast, ..." (Doomsday
     // Excruciator): the intervening "it" is the triggering source itself.
@@ -113,6 +130,15 @@ pub(super) fn parse_triggered_line_impl(
         trigger_parse_tokens,
         effect_parse_tokens,
     )?;
+    if let Some(branches) = resolution_branches {
+        match &mut parsed {
+            LineAst::Triggered { effects, .. } => *effects = branches,
+            LineAst::Ability(ability) => ability.effects_ast = Some(branches),
+            _ => return Err(CardTextError::ParseError(
+                "conditional fallback requires one surrounding triggered ability".to_string(),
+            )),
+        }
+    }
     // "if you gained life this turn, distribute up to that many ..." (Lathiel):
     // "that many" is the intervening condition's life total gained.
     if let Some(predicate) = line.intervening_if.as_ref()
@@ -2793,6 +2819,9 @@ pub(super) fn triggered_line_source_text_keeps_labelled_raw_do_this_only_once_su
     assert_eq!(triggered_line_source_text(&line), raw_line);
 }
 
+#[path = "lines_trigger/optional_payment_cast_trigger.rs"]
+mod optional_payment_cast_trigger;
+
 pub fn try_parse_optional_cost_with_cast_trigger(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
@@ -2814,6 +2843,10 @@ pub fn try_parse_optional_cost_with_cast_trigger(
     }) else {
         return Ok(None);
     };
+
+    if let Some(parsed) = optional_payment_cast_trigger::read(&shape)? {
+        return Ok(Some(parsed));
+    }
 
     let head_effects = parse_effect_sentences_lexed(shape.optional_cost_effect_tokens)?;
     let head_effects = match head_effects.as_slice() {

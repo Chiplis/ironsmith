@@ -919,7 +919,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
 
     let is_demonstrative_subject = real_subject_shape.demonstrative_object;
     if is_demonstrative_subject {
-        let target = tagged_subject_target(real_subject_tokens);
+        let target = tagged_subject_target(real_subject_tokens)?;
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }

@@ -254,9 +254,18 @@ pub enum TokenEmbeddedRuleShape {
     TapSacrificeAddManaOrGainLife(TokenTapSacrificeManaLifeShape),
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, Default, PartialEq, TagKeyWalk)]
 pub struct TokenRulesSurfaces {
     pub embedded_rules: Vec<TokenEmbeddedRuleShape>,
+    /// Each quoted rule is recognized independently by the ordinary readers.
+    pub parsed_abilities: Vec<crate::model::ParsedAbility>,
+    pub static_abilities: Vec<crate::model::ast::StaticAbilityAst>,
+    /// Retain unrecognized quoted rules so lowering rejects rather than drops them.
+    pub unread_rules: Vec<String>,
+    /// Original token spans handled by ordinary ability readers, excluded from
+    /// legacy per-token flag readers so one authored ability is installed once.
+    #[tag_walk(skip)]
+    pub generic_rule_spans: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
@@ -385,7 +394,7 @@ pub struct PlaneswalkerTokenShape {
     pub loyalty: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct EnchantmentTokenShape {
     pub name: String,
     pub text_roles: Option<TokenDescriptionTextRoles>,
@@ -395,7 +404,7 @@ pub struct EnchantmentTokenShape {
     pub token_rules: TokenRulesSurfaces,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ArtifactTokenShape {
     pub name: String,
     pub text_roles: Option<TokenDescriptionTextRoles>,
@@ -424,7 +433,7 @@ pub struct AstartesWarriorTokenShape {
     pub vigilance: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, Default, PartialEq, TagKeyWalk)]
 pub struct CreatureTokenRulesShape {
     pub token_rules: TokenRulesSurfaces,
     pub authored_inline_rules: Vec<CreatureTokenInlineRulePresentation>,
@@ -463,7 +472,7 @@ pub struct CreatureTokenRulesShape {
     pub landfall_pump: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CreatureTokenShape {
     pub name: String,
     pub text_roles: Option<TokenDescriptionTextRoles>,
@@ -500,7 +509,7 @@ pub enum TokenPrototypeReference {
 }
 
 /// Parser-owned semantic token definition carried through preparation into lowering.
-#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TokenDefinitionSpec {
     PrototypeReference(TokenPrototypeReference),
     Builtin(BuiltinTokenShape),

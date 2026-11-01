@@ -115,3 +115,5 @@ mod tests {
         assert!(compile().is_ok(), "enforcement ends with the call");
     }
 }
+
+pub use ironsmith_compiler::with_custom_subtypes;

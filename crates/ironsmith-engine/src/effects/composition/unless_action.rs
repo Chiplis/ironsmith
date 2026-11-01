@@ -183,15 +183,15 @@ impl UnlessActionEffect {
                 // Existing unknown-shape policy keeps this alternative offerable.
                 return false;
             }
-            if let Some(cost_effect) = effect.0.as_cost_executable()
-                && definitely_unpayable(CostExecutableEffect::can_execute_as_cost(
-                    cost_effect,
-                    game,
-                    ctx.source,
-                    deciding_player,
-                ))
-            {
-                return true;
+            if let Some(cost_effect) = effect.0.as_cost_executable() {
+                // Keep announced targets and reference bindings in composed payments.
+                let snapshot = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+                let mut dm = crate::decision::SelectFirstDecisionMaker;
+                let mut query = snapshot.reborrow(&mut dm);
+                let result = CostExecutableEffect::can_execute_as_cost_with_context(
+                    cost_effect, game, &mut query, crate::costs::PaymentReason::Effect,
+                );
+                if definitely_unpayable(result) { return true; }
             }
         }
         false

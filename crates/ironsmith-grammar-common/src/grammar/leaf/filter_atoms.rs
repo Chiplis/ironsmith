@@ -214,6 +214,11 @@ fn classify_supertype(raw: &str) -> Option<Supertype> {
 }
 
 fn classify_subtype_word(raw: &str) -> Option<Subtype> {
+    if let Some(value) = ironsmith_core::custom_subtypes::lookup(raw) { return Some(value); }
+    classify_official_subtype_word(raw)
+}
+
+fn classify_official_subtype_word(raw: &str) -> Option<Subtype> {
     let candidate = normalized_atom_word(raw);
     if candidate.is_empty() {
         return None;
@@ -252,7 +257,6 @@ fn classify_subtype_word(raw: &str) -> Option<Subtype> {
                 | "eternal"
                 | "lord"
                 | "mine"
-                | "omen"
                 | "sand"
                 | "seal"
                 | "sphere"
@@ -268,17 +272,18 @@ fn classify_subtype_word(raw: &str) -> Option<Subtype> {
 }
 
 fn classify_flexible_subtype(raw: &str) -> Option<Subtype> {
+    if let Some(value) = ironsmith_core::custom_subtypes::lookup(raw) { return Some(value); }
     let candidate = normalized_atom_word(raw);
-    classify_subtype_word(candidate.as_str())
-        .or_else(|| stem_before_tail(candidate.as_str(), b"s").and_then(classify_subtype_word))
-        .or_else(|| stem_before_tail(candidate.as_str(), b"es").and_then(classify_subtype_word))
+    classify_official_subtype_word(candidate.as_str())
+        .or_else(|| stem_before_tail(candidate.as_str(), b"s").and_then(classify_official_subtype_word))
+        .or_else(|| stem_before_tail(candidate.as_str(), b"es").and_then(classify_official_subtype_word))
         .or_else(|| {
             stem_before_tail(candidate.as_str(), b"ves")
-                .and_then(|stem| classify_subtype_word(format!("{stem}f").as_str()))
+                .and_then(|stem| classify_official_subtype_word(format!("{stem}f").as_str()))
         })
         .or_else(|| {
             stem_before_tail(candidate.as_str(), b"ves")
-                .and_then(|stem| classify_subtype_word(format!("{stem}fe").as_str()))
+                .and_then(|stem| classify_official_subtype_word(format!("{stem}fe").as_str()))
         })
 }
 
@@ -286,7 +291,37 @@ fn classify_flexible_subtype(raw: &str) -> Option<Subtype> {
 /// such as "Sand" should retain their Magic subtype meaning there even though
 /// the broad rules-text filter parser intentionally rejects them as ordinary
 /// English nouns.
+/// Printed subtype spellings are resolved within an explicit family for
+/// definitions. This does not change the family's identity during type changes.
+pub fn classify_token_definition_subtype_in_family(raw: &str, family: SubtypeFamily) -> Option<Subtype> {
+    if let Some(value) = ironsmith_core::custom_subtypes::lookup(raw) { return value.belongs_to_family(family).then_some(value); }
+    let candidate = normalized_atom_word(raw);
+    family.all_subtypes().iter().copied().find(|subtype| subtype_surfaces(*subtype).contains(&candidate))
+}
+
+/// Return only ambiguous printed vocabulary. Internal identities never expand,
+/// so a filter can parse each alternative exactly once without recursion.
+pub fn ambiguous_subtype_spellings(raw: &str) -> Vec<Subtype> {
+    static AMBIGUOUS: OnceLock<HashMap<String, Vec<Subtype>>> = OnceLock::new();
+    let values = AMBIGUOUS.get_or_init(|| {
+        let mut values: HashMap<String, Vec<Subtype>> = HashMap::new();
+        for family in [SubtypeFamily::Land, SubtypeFamily::Creature, SubtypeFamily::Artifact,
+            SubtypeFamily::Enchantment, SubtypeFamily::Spell, SubtypeFamily::Planeswalker, SubtypeFamily::Battle] {
+            for subtype in family.all_subtypes() {
+                for surface in subtype_surfaces(*subtype) {
+                    let choices = values.entry(surface).or_default();
+                    if !choices.contains(subtype) { choices.push(*subtype); }
+                }
+            }
+        }
+        values.retain(|_, choices| choices.len() > 1);
+        values
+    });
+    values.get(&normalized_atom_word(raw)).cloned().unwrap_or_default()
+}
+
 pub fn classify_token_definition_subtype(raw: &str) -> Option<Subtype> {
+    if let Some(value) = ironsmith_core::custom_subtypes::lookup(raw) { return Some(value); }
     let candidate = normalized_atom_word(raw);
     subtype_surface_map().get(candidate.as_str()).copied()
 }
@@ -306,7 +341,15 @@ fn subtype_surface_map() -> &'static HashMap<String, Subtype> {
         ] {
             for subtype in family.all_subtypes() {
                 for surface in subtype_surfaces(*subtype) {
-                    surfaces.entry(surface).or_insert(*subtype);
+                    // Family-qualified labels may share a printed name with
+                    // an official subtype. Prefer its unqualified identity in
+                    // ordinary lexical lookup; typed contexts use the helper.
+                    let canonical = normalized_atom_word(&format!("{subtype:?}"));
+                    let printed = normalized_atom_word(&subtype.to_string());
+                    let existing = surfaces.entry(surface).or_insert(*subtype);
+                    let existing_is_scoped_alias = normalized_atom_word(&format!("{existing:?}"))
+                        != normalized_atom_word(&existing.to_string());
+                    if canonical == printed && existing_is_scoped_alias { *existing = *subtype; }
                 }
             }
         }
@@ -342,6 +385,7 @@ fn subtype_surfaces(subtype: Subtype) -> Vec<String> {
 #[cfg(test)]
 fn classify_token_definition_subtype_slow(raw: &str) -> Option<Subtype> {
     let candidate = normalized_atom_word(raw);
+    let mut scoped_fallback = None;
     for family in [
         SubtypeFamily::Land,
         SubtypeFamily::Creature,
@@ -353,11 +397,16 @@ fn classify_token_definition_subtype_slow(raw: &str) -> Option<Subtype> {
     ] {
         for subtype in family.all_subtypes() {
             if subtype_surface_matches(*subtype, candidate.as_str()) {
-                return Some(*subtype);
+                // Unqualified official vocabulary wins a shared spelling;
+                // explicitly typed definitions select a scoped family instead.
+                if normalized_atom_word(&format!("{subtype:?}")) == normalized_atom_word(&subtype.to_string()) {
+                    return Some(*subtype);
+                }
+                scoped_fallback.get_or_insert(*subtype);
             }
         }
     }
-    None
+    scoped_fallback
 }
 
 fn subtype_surface_matches(subtype: Subtype, candidate: &str) -> bool {

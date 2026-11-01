@@ -4653,3 +4653,26 @@ fn demonstrative_greater_power_than_source_preserves_the_comparison() -> Result<
     }
     Ok(())
 }
+
+#[test]
+fn singular_counter_placement_receipt_keeps_the_referenced_recipient() {
+    for text in [
+        "you put a +1/+1 counter on it this way",
+        "you put +1/+1 counter on it this way",
+        "you put a menace counter on that creature this way",
+    ] {
+        let predicate = parse_predicate(&lex_line(text, 0).unwrap()).unwrap();
+        let PredicateAst::ValueComparison {
+            left: Value::PendingPriorEffectMetric(query),
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        } = predicate else { panic!("{text}: {predicate:?}"); };
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::CountersPut);
+        assert_eq!(query.action, Some(ironsmith_core::PriorEffectAction::CountersPut));
+        assert_eq!(query.counter_type, Some(if text.contains("menace") { CounterType::Menace } else { CounterType::PlusOnePlusOne }));
+        let filter = query.filter.unwrap();
+        assert!(filter.tagged_constraints.iter().any(|constraint|
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()),
+            "the recipient must be an identity reference, not a broad creature filter: {filter:?}");
+    }
+}

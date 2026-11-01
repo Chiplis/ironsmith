@@ -47,9 +47,8 @@ impl ChooseCreatureTypeEffect {
         }
     }
 
-    fn subtype_options(&self, noted: &[Subtype]) -> Vec<Subtype> {
-        self.family
-            .all_subtypes()
+    fn subtype_options(&self, game: &GameState, noted: &[Subtype]) -> Vec<Subtype> {
+        game.subtypes_in_family(self.family)
             .iter()
             .copied()
             .filter(|subtype| !self.excluded_subtypes.contains(subtype))
@@ -72,7 +71,7 @@ impl ChooseCreatureTypeEffect {
         } else {
             Vec::new()
         };
-        let subtype_options = self.subtype_options(&noted);
+        let subtype_options = self.subtype_options(game, &noted);
         if subtype_options.is_empty() {
             return Ok(None);
         }

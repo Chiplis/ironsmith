@@ -31,7 +31,7 @@ export function validateToken(value) {
   if (RESERVED.has(tokenKey(name))) throw new Error(`"${name}" is a predefined token and cannot be redefined.`);
   if (tokenKey(input.name) !== tokenKey(name)) throw new Error(`The compiled token must keep the name "${name}".`);
   if (String(input.manaCost || '').trim()) throw new Error(`${name} is a token and cannot have a mana cost.`);
-  return { key: tokenKey(name), name, face: structuredClone(face), input: structuredClone(input), version: 1 };
+  return { customSubtypes: structuredClone(value.customSubtypes || []), key: tokenKey(name), name, face: structuredClone(face), input: structuredClone(input), version: 1 };
 }
 
 const outsideQuotation = (text, offset) => (text.slice(0, offset).match(/["“”]/g) || []).length % 2 === 0;

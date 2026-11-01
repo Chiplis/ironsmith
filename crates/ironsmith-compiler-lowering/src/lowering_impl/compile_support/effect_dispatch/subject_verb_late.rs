@@ -442,16 +442,12 @@ pub(super) fn compile_put_counters_action(
     if let Some(target_count) = target_count {
         spec = with_target_count_preserving_value(spec, *target_count);
     }
-    // "They put two +1/+1 counters on a creature they control": an untargeted
-    // object choice belongs to the clause's actor. When that actor is another
-    // player, make the selection theirs (as for "sacrifices a permanent of
-    // their choice"); the choice selects nothing when no object qualifies.
-    if !spec.is_target()
-        && !matches!(
-            subject_verb.subject.player,
-            PlayerAst::Implicit | PlayerAst::You
-        )
-    {
+    // An indefinite recipient is chosen at resolution by the clause's actor.
+    // Bare Object specs are legacy cast-time selections in target discovery,
+    // so expose the existing ChooseObjects + tagged-counter composition for
+    // "you" as well as other players. Existing bound object references do not
+    // introduce a new selection.
+    if !spec.is_target() {
         let chosen = match &spec {
             ChooseSpec::WithCount(inner, choice_count) => match inner.as_ref() {
                 ChooseSpec::Object(filter) => Some((filter.clone(), *choice_count)),
@@ -470,7 +466,11 @@ pub(super) fn compile_put_counters_action(
                 true,
             )?;
             let chooser = subject.clone_player_filter();
-            if !is_you_player_filter(&chooser) {
+            if !is_you_player_filter(&chooser)
+                || (filter.tagged_constraints.is_empty()
+                    && !filter.source
+                    && filter.specific.is_none())
+            {
                 subject.apply_player_refs_to_filter(&mut filter, ctx);
                 let tag = ctx.next_tag("counters");
                 let choose = crate::effects::ChooseObjectsEffect::new(

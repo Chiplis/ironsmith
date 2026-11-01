@@ -247,6 +247,9 @@ pub fn parse_token_definition_shape_tokens(
     let equipment_subject =
         has("equipment") && common::phrase_present(&rule_words, &["equipped", "creature"]);
     if has("artifact") && pt.is_none() && (!has("creature") || equipment_subject) {
+        let token_rules = rules::parse_token_rules_surfaces_tokens(&scope.rule_source);
+        let legacy_tokens = rules::legacy_rule_tokens(&scope.rule_source, &token_rules);
+        let rule_words = parser_token_word_refs(&legacy_tokens);
         let leaves_damage = common::all_words_present(&rule_words, &[
             "when",
             "token",
@@ -268,8 +271,8 @@ pub fn parse_token_definition_shape_tokens(
             snow: reads("snow"),
             colorless: reads("colorless"),
             colors: token_colors(&words),
-            equipment_rules: equipment::parse_equipment_rules_tokens(&scope.rule_source),
-            token_rules: rules::parse_token_rules_surfaces_tokens(&scope.rule_source),
+            equipment_rules: equipment::parse_equipment_rules_tokens(&legacy_tokens),
+            token_rules,
             leaves_damage_any_target: leaves_damage,
             keywords: token_keywords(&outer_words),
         }));

@@ -150,3 +150,35 @@ fn snc_quoted_mana_grant_has_exact_source_cast_duration() {
     assert!(parse_simple_ability_duration_shape(&["until", "that", "card", "is", "cast", "from", "exile"]).is_none(),
         "an unrelated object must not silently become this source");
 }
+
+#[test]
+fn quoted_trigger_boundary_uses_existing_durations_without_rebinding_source() {
+    for suffix in ["until end of turn", "for as long as this creature remains on the battlefield"] {
+        let text=format!("Target creature gains \"Whenever this creature attacks, you gain 1 life.\" {suffix}.");
+        let tokens=lex_line(&text,0).unwrap();
+        let parsed=parse_quoted_gain_duration_shape(&tokens,2).unwrap();
+        assert_eq!(tokens[parsed.close_quote_token].kind,crate::lexer::TokenKind::Quote);
+        assert!(tokens[..parsed.close_quote_token].iter().any(|token| token.is_word("gain")));
+        if suffix.starts_with("for as") {
+            assert_eq!(parsed.duration,Until::while_source_remains_on_battlefield(),"existing exact source duration must keep its prior identity");
+        }
+    }
+    for suffix in ["until end of turn {R}", "until end of turn and draw a card"] {
+        let text=format!("Target creature gains \"Whenever this creature attacks, you gain 1 life.\" {suffix}.");
+        assert!(parse_quoted_gain_duration_shape(&lex_line(&text,0).unwrap(),2).is_none());
+    }
+}
+
+#[test]
+fn quoted_duration_atoms_remain_typed_references_until_contextual_binding() {
+    for suffix in ["for as long as this card remains exiled","for as long as that creature remains on the battlefield","for as long as this card remains exiled and that creature remains on the battlefield","for as long as that creature remains on the battlefield and this card remains exiled"] {
+        let text=format!("Target artifact creature gains \"Flying\" {suffix}.");
+        let parsed=parse_quoted_gain_duration_shape(&lex_line(&text,0).unwrap(),3).unwrap();
+        let debug=format!("{:?}",parsed.duration);
+        if suffix.contains("this card") {assert!(debug.contains("SourceInZone(Exile)"));}
+        if suffix.contains("that creature") {assert!(debug.contains(crate::tag::CompilerReferenceTag::DurationReferencedCreature.as_str()));assert!(!debug.contains("AffectedObject"));}
+    }
+    for suffix in ["for as long as that card remains exiled","for as long as this card remains exiled {R}","for as long as that creature remains on the battlefield and draw a card"] {
+        let text=format!("Target creature gains \"Flying\" {suffix}.");assert!(parse_quoted_gain_duration_shape(&lex_line(&text,0).unwrap(),2).is_none());
+    }
+}

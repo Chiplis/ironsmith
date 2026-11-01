@@ -8,8 +8,8 @@ use crate::game_state::GameState;
 use crate::types::Subtype;
 pub use ironsmith_core::ChooseLandTypeEffect;
 
-fn land_type_options(exclude_basic: bool, basic_only: bool) -> Vec<Subtype> {
-    Subtype::all_land_types()
+fn land_type_options(game: &GameState, exclude_basic: bool, basic_only: bool) -> Vec<Subtype> {
+    game.subtypes_in_family(crate::types::SubtypeFamily::Land)
         .iter()
         .copied()
         .filter(|subtype| {
@@ -34,7 +34,7 @@ impl EffectExecutor for ChooseLandTypeEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let subtype_options = land_type_options(self.exclude_basic, self.basic_only);
+        let subtype_options = land_type_options(game, self.exclude_basic, self.basic_only);
         if subtype_options.is_empty() {
             return Ok(EffectOutcome::resolved());
         }

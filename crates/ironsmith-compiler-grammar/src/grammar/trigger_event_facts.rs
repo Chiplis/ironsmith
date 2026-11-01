@@ -39,6 +39,15 @@ pub fn build_compiler_triggered_ability(
     max_triggers_per_turn: Option<u32>,
     functional_zones: Vec<Zone>,
 ) -> Result<CompilerTriggeredAbilityAst, CardTextError> {
+    // Production CST dispatch can construct this typed trigger directly,
+    // bypassing the legacy triggered-line parser. An authored false arm must
+    // therefore be reconciled before either route creates its trigger gate.
+    let (effects, intervening_if) = match crate::semantic_line_parsing::conditional_fallback_effects(
+        intervening_if.as_ref(), result_tokens,
+    )? {
+        Some(branches) => (branches, None),
+        None => (effects, intervening_if),
+    };
     let intro =
         trigger_surface::parse_trigger_intro_surface_tokens(full_tokens).ok_or_else(|| {
             CardTextError::ParseError("typed trigger event is missing an introducer".to_string())

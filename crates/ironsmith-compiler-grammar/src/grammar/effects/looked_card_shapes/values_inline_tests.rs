@@ -121,3 +121,19 @@ fn looked_card_where_x_preserves_battlefield_and_graveyard_sum_terms() {
     assert_eq!(graveyard.owner, Some(crate::target::PlayerFilter::You));
     assert!(graveyard.subtypes.contains(&crate::Subtype::Cave));
 }
+
+#[test]
+fn singular_top_card_has_exact_implicit_one_with_complete_library_tail() {
+    for verb in ["Look at", "Reveal"] {
+        let singular = lex_line(&format!("{verb} the top card of your library"), 0).unwrap();
+        let explicit = lex_line(&format!("{verb} the top one card of your library"), 0).unwrap();
+        let shape = parse_top_cards_view_shape(&singular).unwrap();
+        assert_eq!(shape, parse_top_cards_view_shape(&explicit).unwrap());
+        assert_eq!(shape.count, Value::Fixed(1));
+        assert_eq!(shape.revealed, verb == "Reveal");
+        for tail in ["cards of your library", "card of your library plus nonsense", "card of your library {2}"] {
+            let tokens = lex_line(&format!("{verb} the top {tail}"), 0).unwrap();
+            assert!(parse_top_cards_view_shape(&tokens).is_none(), "unread count or tail accepted: {tail}");
+        }
+    }
+}

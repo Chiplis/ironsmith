@@ -23,6 +23,8 @@ fn convert_validation_error(err: CostValidationError) -> CostPaymentError {
         CostValidationError::NotEnoughEnergy => CostPaymentError::InsufficientEnergy,
         CostValidationError::NotEnoughCards => CostPaymentError::InsufficientCardsInHand,
         CostValidationError::CannotSacrifice => CostPaymentError::NoValidSacrificeTarget,
+        CostValidationError::NotEnoughLegalModes => CostPaymentError::NotEnoughLegalModes,
+        CostValidationError::NotEnoughObjects => CostPaymentError::NotEnoughObjects,
         CostValidationError::ExecutionFailed(error) => CostPaymentError::ExecutionFailed(error),
         CostValidationError::Other(msg) => CostPaymentError::Other(msg),
     }

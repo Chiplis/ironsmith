@@ -1379,7 +1379,7 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
                 if token.kind == TokenKind::Word
                     && matches!(
                         token.parser_text(),
-                        "and" | "during" | "for" | "until" | "where" | "with" | "without"
+                        "and" | "attached" | "during" | "for" | "until" | "where" | "with" | "without"
                     ) =>
             {
                 true

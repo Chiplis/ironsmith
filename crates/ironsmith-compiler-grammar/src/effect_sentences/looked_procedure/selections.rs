@@ -958,3 +958,31 @@ pub(super) fn conditional_instead_put(
     group.selected = Some(selected);
     Ok(true)
 }
+
+/// An independent optional complement disposition. Complete-token grammar is
+/// required: punctuation may terminate the clause, unrelated costs cannot.
+pub(super) fn optional_remainder_shape(sentence: &SentenceInput) -> Result<Option<LookedRemainderShape>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
+    let prefix = crate::grammar::primitives::parse_prefix(tokens,
+        crate::grammar::primitives::phrase(&["you", "may", "put", "the", "rest", "into", "your", "graveyard"]));
+    if prefix.is_none() { return Ok(None); }
+    // Once this exact viewed-complement destination is read, an unread suffix
+    // is an error, not permission for a looser standalone put reader to retry.
+    if crate::grammar::primitives::probe_all(tokens,
+        crate::grammar::primitives::phrase(&["you", "may", "put", "the", "rest", "into", "your", "graveyard"]),
+        "optional looked remainder").is_none()
+    {
+        return Err(CardTextError::ParseError("optional viewed remainder has an unread destination or suffix".into()));
+    }
+    Ok(Some(LookedRemainderShape::Graveyard))
+}
+
+pub(super) fn spell_optional_remainder(group: &mut ViewedGroup, sentence: &SentenceInput, remainder: LookedRemainderShape) {
+    // Finalize the already-read selection independently. Passing Graveyard to
+    // spell_pending would fold a mandatory disposal into the selection recipe.
+    spell_pending(group, None);
+    let start = group.effects.len();
+    dispose_remainder(group, sentence, remainder);
+    let effects = group.effects.split_off(start);
+    group.effects.push(EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May { effects }));
+}

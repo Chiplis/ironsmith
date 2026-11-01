@@ -176,6 +176,15 @@ pub(crate) fn check_effect_cost_program(
     )
     .map_err(|error| match error {
         CostPaymentError::ExecutionFailed(error) => crate::effects::CostValidationError::ExecutionFailed(error),
+        CostPaymentError::AlreadyTapped => crate::effects::CostValidationError::AlreadyTapped,
+        CostPaymentError::AlreadyUntapped => crate::effects::CostValidationError::AlreadyUntapped,
+        CostPaymentError::SummoningSickness => crate::effects::CostValidationError::SummoningSickness,
+        CostPaymentError::InsufficientLife => crate::effects::CostValidationError::NotEnoughLife,
+        CostPaymentError::InsufficientEnergy => crate::effects::CostValidationError::NotEnoughEnergy,
+        CostPaymentError::InsufficientCardsInHand => crate::effects::CostValidationError::NotEnoughCards,
+        CostPaymentError::NoValidSacrificeTarget => crate::effects::CostValidationError::CannotSacrifice,
+        CostPaymentError::NotEnoughLegalModes => crate::effects::CostValidationError::NotEnoughLegalModes,
+        CostPaymentError::NotEnoughObjects => crate::effects::CostValidationError::NotEnoughObjects,
         error => crate::effects::CostValidationError::Other(error.to_string()),
     })
 }

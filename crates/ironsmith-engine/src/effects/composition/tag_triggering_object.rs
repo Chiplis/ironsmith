@@ -767,6 +767,7 @@ mod tests {
                 Zone::Graveyard,
                 crate::events::cause::EventCause::from_sba(),
                 Some(ObjectSnapshot {
+                    custom_statuses: Vec::new(),
                     stack_kind: None,
                     ability_origins: None,
                     chosen_subtype: None,

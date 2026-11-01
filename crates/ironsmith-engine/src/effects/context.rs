@@ -1967,7 +1967,14 @@ impl<'a> ExecutionContext<'a> {
     /// Build a filter context for evaluating filters.
     pub fn filter_context(&self, game: &GameState) -> FilterContext {
         let mut target_players = if self.targets_are_cost_choices {
-            Vec::new()
+            // Cost object filters may refer to the spell's selected player.
+            // Use retained legal bindings, never the cost's own choices.
+            self.payment_target_reference.as_ref().map(|reference| {
+                reference.targets.iter().filter_map(|target| match target {
+                    ResolvedTarget::Player(player) => Some(*player),
+                    _ => None,
+                }).collect::<Vec<_>>()
+            }).unwrap_or_default()
         } else {
             self.targets
                 .iter()

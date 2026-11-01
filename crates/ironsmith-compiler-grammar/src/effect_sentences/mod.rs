@@ -23,6 +23,7 @@ mod graveyard_self_cast;
 mod temporary_mana_clause;
 mod conditional_protection_list;
 mod repeated_doubling;
+mod iterated_optional_program;
 pub(crate) mod guessed_free_cast;
 pub(crate) mod guessed_top_card_kind;
 pub(crate) mod guessed_card_name_in_hand;
@@ -263,3 +264,5 @@ pub(crate) fn parse_linked_card_copy_with_announced_x(
 }
 
 pub(crate) use dispatch_entry::parse_described_effect_bundle;
+
+pub(crate) mod quality_choice;

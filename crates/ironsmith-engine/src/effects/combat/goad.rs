@@ -214,6 +214,7 @@ mod tests {
         ctx.set_tagged_objects(
             "__chosen_name__",
             vec![ObjectSnapshot {
+                custom_statuses: Vec::new(),
                 ability_origins: None,
                 stack_kind: None,
                 chosen_subtype: None,

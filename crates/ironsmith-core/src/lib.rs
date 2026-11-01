@@ -59,6 +59,7 @@ pub mod token_text;
 pub use token_text::{TokenNameTextRole, TokenTextRoles, TokenWordRole, subtype_derived_token_name};
 pub mod trigger_model;
 pub mod types;
+pub mod custom_subtypes;
 pub mod value_model;
 pub mod zone;
 
@@ -74,7 +75,7 @@ pub use ability_model::{
     RestrictedManaUnit, TriggeredAbility,
 };
 pub use alternative_cast_model::{
-    AlternativeCastRequirements, AlternativeCastingMethod, ZoneCastInstructions, FREE_CAST_AS_THOUGH_FLASH_METHOD,
+    AlternativeCastRequirements, AlternativeCastingMethod, ZoneCastInstructions, ZoneChangeRedirectSpec, FREE_CAST_AS_THOUGH_FLASH_METHOD,
     TrapCondition,
 };
 pub use anthem_model::{AnthemCountExpression, AnthemValue, SourceCounterPronounSurface};
