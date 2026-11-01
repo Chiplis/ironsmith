@@ -203,7 +203,9 @@ fn compilation_scope_is_explicit_restored_and_rejects_collisions() {
 
 #[test]
 fn choices_use_only_the_game_vocabulary_and_respect_exclusions() {
-    use ironsmith::effects::{ChooseCreatureTypeEffect, EffectExecutor, EffectContext as ExecutionContext};
+    use ironsmith::effects::{
+        ChooseCreatureTypeEffect, EffectContext as ExecutionContext, EffectExecutor,
+    };
     use ironsmith::target::PlayerFilter;
     struct Choose {
         expected: bool,
@@ -435,6 +437,53 @@ fn creating_custom_subtype_tokens_executes_with_the_canonical_singular_name() {
                 token
                     .subtypes
                     .contains(&ty("skychild", SubtypeFamily::Creature))
+            );
+        }
+    }
+}
+
+#[test]
+fn subtype_count_cast_restrictions_keep_typed_identity_and_controller() {
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    for (singular, plural, definitions) in [
+        ("Skychild", "Skychildren", vocabulary()),
+        ("Elf", "Elves", vec![]),
+    ] {
+        let creatures = compile(
+            &format!("Type: Creature — {singular}\nPower/Toughness: 1/1"),
+            &definitions,
+        );
+        let spells = compile(
+            &format!(
+                "Mana Cost: {{0}}\nType: Sorcery\nCast this spell only if you control two or more {plural}.\nDraw a card."
+            ),
+            &definitions,
+        );
+        for index in 0..2 {
+            let mut game = game();
+            game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            game.turn.step = None;
+            game.turn.active_player = A;
+            game.turn.priority_player = Some(A);
+            let spell = game.create_object_from_definition(&spells[index], A, Zone::Hand);
+            let legal = |game: &GameState| {
+                compute_legal_actions(game, A).unwrap().iter().any(
+                    |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
+                )
+            };
+            assert!(!legal(&game));
+            game.create_object_from_definition(&creatures[index], PlayerId(1), Zone::Battlefield);
+            game.create_object_from_definition(&creatures[index], A, Zone::Hand);
+            game.create_object_from_definition(&creatures[index], A, Zone::Battlefield);
+            assert!(
+                !legal(&game),
+                "an opponent's creature and a card in hand must not count"
+            );
+            game.create_object_from_definition(&creatures[index], A, Zone::Battlefield);
+            assert!(legal(&game));
+            assert_eq!(
+                spells[index].card.custom_subtypes.is_empty(),
+                definitions.is_empty()
             );
         }
     }

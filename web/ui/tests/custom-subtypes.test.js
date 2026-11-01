@@ -7,7 +7,7 @@ const moon = { singular: 'moonkin', plural: 'moonkin', family: 'Creature' };
 const sky = { singular: 'skychild', plural: 'skychildren', family: 'Creature' };
 const land = { singular: 'cloudbank', plural: 'cloudbanks', family: 'Land' };
 test('singular, irregular and invariant plural references carry one definition', () => {
-  for (const oracleText of ['Destroy target Skychild.', 'Skychildren you control get +1/+1.']) {
+  for (const oracleText of ['Destroy target Skychild.', 'Skychildren you control get +1/+1.', 'Destroy target nonSkychild creature.', 'NonSkychildren you control get +1/+1.']) {
     assert.deepEqual(referencedSubtypes({ faces: [{ oracleText }] }, [moon, sky, land]), [sky]);
   }
   assert.deepEqual(referencedSubtypes({ faces: [{ subtypes: ['Moonkin'], oracleText: 'Moonkin you control have flying.' }] }, [moon, sky]), [moon]);
