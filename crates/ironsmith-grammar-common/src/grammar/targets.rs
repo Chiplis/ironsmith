@@ -1,6 +1,7 @@
 use std::ops::Range;
 
-use winnow::combinator::{alt, eof, opt, peek};
+use winnow::combinator::{alt, eof, opt};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 

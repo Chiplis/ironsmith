@@ -25,6 +25,9 @@ pub fn parse_scoped_damage_redirection_line(tokens: &[OwnedLexToken]) -> Result<
         Some(_) => return Ok(None),
         None => ObjectFilter::default(),
     };
+    // The destination phrase is read exactly above (a source reference,
+    // the attached permanent, or "its controller").
+    crate::word_claims::claim_tokens(shape.destination);
     Ok(Some(StaticAbility::redirect_matching_damage(ironsmith_core::StaticDamageRedirectionSpec {
         source_filter, target_player_filter, target_object_filter, combat_only: shape.combat_only,
         source_must_be_untapped: shape.untapped_source.is_some(), destination,

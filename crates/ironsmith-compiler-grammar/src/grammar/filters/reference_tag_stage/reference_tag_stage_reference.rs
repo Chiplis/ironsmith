@@ -1677,13 +1677,25 @@ fn parse_object_filter_inner_unchecked(
     {
         filter.power_greater_than_base_power = true;
     }
-    if parse_phrase_choice_anywhere(&clause_words, TOUGHNESS_GREATER_THAN_POWER_PHRASES).is_some() {
+    // "that each have toughness greater than their power": the distributive
+    // "each" applies the relation to every member.
+    let claim_distributive_each = |start: usize| {
+        if start >= 2
+            && matches!(clause_words[start - 1], "have" | "has")
+            && clause_words[start - 2] == "each"
+        {
+            crate::word_claims::claim_words(&clause_words[start - 2..start - 1]);
+        }
+    };
+    if let Some(fact) = parse_phrase_choice_anywhere(&clause_words, TOUGHNESS_GREATER_THAN_POWER_PHRASES) {
+        claim_distributive_each(fact.span.start);
         let relation = crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower;
         filter.power_toughness_relation = Some(relation);
         clear_redundant_power_toughness_axis_filter(&mut filter, relation);
-    } else if parse_phrase_choice_anywhere(&clause_words, POWER_GREATER_THAN_TOUGHNESS_PHRASES)
-        .is_some()
+    } else if let Some(fact) =
+        parse_phrase_choice_anywhere(&clause_words, POWER_GREATER_THAN_TOUGHNESS_PHRASES)
     {
+        claim_distributive_each(fact.span.start);
         let relation = crate::filter::PowerToughnessRelation::PowerGreaterThanToughness;
         filter.power_toughness_relation = Some(relation);
         clear_redundant_power_toughness_axis_filter(&mut filter, relation);
@@ -2303,11 +2315,11 @@ fn parse_object_filter_inner_unchecked(
             saw_subtype = true;
         }
     }
-    if crate::word_primitives::sequence_occurs(&all_words_with_articles, &["attacking", "alone"]) {
+    if crate::word_primitives::parse_sequence_start(&all_words_with_articles, &["attacking", "alone"]).is_some() {
         filter.attacking = true;
         filter.attacking_alone = true;
     }
-    if crate::word_primitives::sequence_occurs(&all_words_with_articles, &["blocking", "alone"]) {
+    if crate::word_primitives::parse_sequence_start(&all_words_with_articles, &["blocking", "alone"]).is_some() {
         filter.blocking = true;
         filter.blocking_alone = true;
     }

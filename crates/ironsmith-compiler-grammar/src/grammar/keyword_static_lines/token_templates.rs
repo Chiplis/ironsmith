@@ -1,6 +1,7 @@
 //! Complete active/passive token creation replacements. Token descriptions are
 //! retained as token slices for the ordinary typed create-token grammar.
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

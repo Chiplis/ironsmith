@@ -1,7 +1,8 @@
 use super::super::*;
 
 use crate::grammar::leaf;
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 

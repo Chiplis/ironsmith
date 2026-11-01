@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::{any, rest};

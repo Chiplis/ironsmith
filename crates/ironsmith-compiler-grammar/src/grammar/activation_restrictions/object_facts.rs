@@ -1,7 +1,8 @@
 use crate::word_primitives::WordWindows as _;
 use std::ops::Range;
 
-use winnow::combinator::{alt, opt, peek};
+use winnow::combinator::{alt, opt};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 

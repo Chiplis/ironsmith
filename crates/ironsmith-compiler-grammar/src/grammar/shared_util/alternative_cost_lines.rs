@@ -650,6 +650,15 @@ pub fn parse_you_may_rather_than_spell_cost(
         condition: None,
         prototype_power_toughness: None,
     };
+    // "rather than pay this spell's mana cost": the replaced cost, read by
+    // the tail check above.
+    if matches!(
+        TokenWordView::new(&tokens[rather_token..=cost_clause_end]).word_refs().as_slice(),
+        ["rather", "than", "pay", "this", "spell's" | "spells" | "spell", "mana", "cost"]
+            | ["rather", "than", "pay", "this", "spell", "s", "mana", "cost"]
+    ) {
+        crate::word_claims::claim_tokens(&tokens[rather_token..=cost_clause_end]);
+    }
     Ok(Some(match trailing_condition {
         Some(condition) => normalize_trap_method(method.with_cast_condition(condition)),
         None => method,

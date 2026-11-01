@@ -2871,6 +2871,8 @@ pub fn parse_lose_all_abilities_and_base_pt_line(
             words.join(" ")
         ))
     })?;
+    // The verb itself ("lose" / "loses").
+    crate::word_claims::claim_words(&words[shape.subject_word_end..=shape.subject_word_end]);
 
     let mut abilities = vec![if shape.except_mana_abilities {
         StaticAbility::remove_all_abilities_except_mana(filter.clone())
@@ -3386,6 +3388,8 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
             filter.controller = Some(PlayerFilter::TaggedPlayer(
                 ironsmith_core::player_option_choice_tag(option),
             ));
+            // "controlled by players who chose <option>".
+            crate::word_claims::claim_words(&words[controlled..]);
             return Ok(AnthemSubjectAst::Filter(filter));
         }
     }
@@ -3794,6 +3798,8 @@ fn parse_defending_player_counter_condition(words: &[&str]) -> Option<PredicateA
         return None;
     }
     let counter_type = crate::grammar::filters::parse_counter_type_words(&[*kind, "counter"])?;
+    // An exact whole-clause shape: every word is read above.
+    crate::word_claims::claim_words(words);
     Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasCountersOrMore {
         player: PlayerAst::Defending,
         counter_type,
@@ -3850,6 +3856,7 @@ pub fn parse_static_condition_clause(
     {
         let rewritten = crate::lexer::synthetic_word_tokens(["you", "control", *attached, *noun]);
         if let Ok(condition) = parse_static_condition_clause(&rewritten) {
+            crate::word_claims::claim_words(&clause_words);
             return Ok(PredicateAst::Not(Box::new(condition)));
         }
     }
@@ -4567,6 +4574,8 @@ fn repeated_modifier_for_each_sum(tail: &[OwnedLexToken], modifier: &str) -> Opt
             Some(previous) => Value::Add(Box::new(previous), Box::new(value.unhinted().clone())),
         });
     }
+    // "and <modifier>": the repeated modifier joining the two counted terms.
+    crate::word_claims::claim_tokens(&tail[and_idx..and_idx + 2]);
     total.map(|value| value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach))
 }
 

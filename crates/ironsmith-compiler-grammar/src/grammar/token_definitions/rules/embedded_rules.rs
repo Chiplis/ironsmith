@@ -351,9 +351,23 @@ pub fn parse_inline_noncreature_spell_damage_tokens(
     {
         return None;
     }
-    Some(InlineNoncreatureSpellDamageShape {
-        amount: damage_amount(&words)?,
-    })
+    let amount = damage_amount(&words)?;
+    // The recognized rule reads its cast trigger, damage subject and
+    // recipient; claim the phrases it located.
+    let _ = common::phrase_read(&words, &["whenever", "you", "cast", "a", "noncreature", "spell"])
+        || common::phrase_read(&words, &["whenever", "you", "cast", "noncreature", "spell"]);
+    let _ = [
+        &["this", "token", "deals"][..],
+        &["this", "creature", "deals"],
+        &["this", "token", "deal"],
+        &["this", "creature", "deal"],
+        &["it", "deals"],
+        &["it", "deal"],
+    ]
+    .iter()
+    .any(|phrase| common::phrase_read(&words, phrase));
+    let _ = common::phrase_read(&words, &["to", "each", "opponent"]);
+    Some(InlineNoncreatureSpellDamageShape { amount })
 }
 
 #[cfg(test)]

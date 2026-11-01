@@ -115,10 +115,28 @@ pub fn parse_bottom_order(tokens: &[OwnedLexToken]) -> Option<LibraryBottomOrder
     if !contains_sequence_word(tokens, "bottom") || !contains_sequence_word(tokens, "library") {
         return None;
     }
+    // "in a random order" / "in any order": the ordering phrase this reads.
+    let claim_order = |first: &str| {
+        if let Some(index) = tokens
+            .windows(2)
+            .position(|pair| pair[0].is_word(first) && pair[1].is_word("order"))
+        {
+            let mut start = index;
+            if start > 0 && tokens[start - 1].is_word("a") {
+                start -= 1;
+            }
+            if start > 0 && tokens[start - 1].is_word("in") {
+                start -= 1;
+            }
+            crate::word_claims::claim_tokens(&tokens[start..index + 2]);
+        }
+    };
     if contains_sequence_phrase(tokens, &[&["random", "order"]]) {
+        claim_order("random");
         return Some(LibraryBottomOrderAst::Random);
     }
     if contains_sequence_phrase(tokens, &[&["any", "order"]]) {
+        claim_order("any");
         return Some(LibraryBottomOrderAst::ChooserChooses);
     }
     None
@@ -370,7 +388,7 @@ fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartiti
         (
             leaf::parse_leaf_choice_count_prefix_lexed,
             primitives::kw("back"),
-            winnow::combinator::peek(primitives::kw("and")),
+            crate::grammar::primitives::peek(primitives::kw("and")),
         )
             .map(|(count, _, _)| {
                 (

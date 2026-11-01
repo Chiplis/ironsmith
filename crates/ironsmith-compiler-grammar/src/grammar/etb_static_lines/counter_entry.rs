@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, opt, peek, repeat_till, separated};
+use winnow::combinator::{alt, opt, repeat_till, separated};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
@@ -93,7 +94,12 @@ pub enum EntersWithCounterKnownForEachKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntersWithCounterPlusTail<'a> {
     Unsupported,
-    ForEach(&'a [OwnedLexToken]),
+    /// "plus <prefix> for each ...": the prefix names the extra counters per
+    /// counted object ("an additional +1/+1 counter on it").
+    ForEach {
+        prefix: &'a [OwnedLexToken],
+        for_each: &'a [OwnedLexToken],
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -716,7 +722,10 @@ fn parse_enters_with_counter_plus_tail_lexed<'a>(
     else {
         return Ok(EntersWithCounterPlusTail::Unsupported);
     };
-    Ok(EntersWithCounterPlusTail::ForEach(&body[first..]))
+    Ok(EntersWithCounterPlusTail::ForEach {
+        prefix: &body[..first],
+        for_each: &body[first..],
+    })
 }
 
 fn parse_enter_or_enters<'a>(input: &mut LexStream<'a>) -> WResult<()> {

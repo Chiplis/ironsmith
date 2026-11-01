@@ -20,8 +20,12 @@ pub(super) fn next_upkeep_end_duration_body(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
     let body = &tokens[view.token_span_for_words(0, words.len() - SUFFIX.len())?];
-    (body.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 == 0)
-        .then_some(body)
+    if body.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 != 0 {
+        return None;
+    }
+    // Its only caller commits to the next-upkeep-end duration on `Some`.
+    crate::word_claims::claim_words(&words[words.len() - SUFFIX.len()..]);
+    Some(body)
 }
 
 pub(super) fn subject(tokens: &[OwnedLexToken]) -> Option<(Axes, Vec<OwnedLexToken>)> {

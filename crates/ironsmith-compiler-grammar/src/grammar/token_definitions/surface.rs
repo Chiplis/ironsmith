@@ -291,6 +291,7 @@ pub fn parse_postnominal_token_color_words_tokens(tokens: &[OwnedLexToken]) -> O
         &words[color_start..],
         &[&["all", "colors"], &["all", "colours"]],
     ) {
+        crate::word_claims::claim_words(&words[..color_start + 2]);
         return Some((
             ColorSet::WHITE
                 .union(ColorSet::BLUE)
@@ -300,7 +301,8 @@ pub fn parse_postnominal_token_color_words_tokens(tokens: &[OwnedLexToken]) -> O
         ));
     }
     let mut colors = ColorSet::new();
-    for word in &words[color_start..] {
+    let mut read_end = color_start;
+    for (offset, word) in words[color_start..].iter().enumerate() {
         let color = match *word {
             "white" => ColorSet::WHITE,
             "blue" => ColorSet::BLUE,
@@ -311,8 +313,15 @@ pub fn parse_postnominal_token_color_words_tokens(tokens: &[OwnedLexToken]) -> O
             _ => break,
         };
         colors = colors.union(color);
+        read_end = color_start + offset + 1;
     }
-    (!colors.is_empty()).then_some((colors, ironsmith_core::TokenWordRole::Authored))
+    if colors.is_empty() {
+        return None;
+    }
+    // "that's red, green, and white": the relative head and every color
+    // word through the last one read.
+    crate::word_claims::claim_words(&words[..read_end]);
+    Some((colors, ironsmith_core::TokenWordRole::Authored))
 }
 
 pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
@@ -501,7 +510,17 @@ pub(super) fn creature_rules(
     .flatten()
     // The shape is damage to *any* target; a bag of words that names
     // "target creature" instead is not this rule.
-    .filter(|_| common::phrase_read(words, &["to", "any", "target"]));
+    .filter(|_| common::phrase_read(words, &["to", "any", "target"]))
+    // The trigger event of the recognized rule: "when this token dies".
+    .inspect(|_| {
+        let _ = common::phrase_read(words, &["when", "this", "token", "dies"])
+            || common::phrase_read(words, &["when", "token", "dies"]);
+        // The event verb also by token span: the word-level claim above can
+        // miss it when the word view's registration does not reach it.
+        if let Some(dies) = source_tokens.iter().position(|token| token.is_word("dies")) {
+            crate::word_claims::claim_tokens(&source_tokens[dies..=dies]);
+        }
+    });
     let leaves_damage = all(&[
         "when",
         "token",
@@ -591,6 +610,18 @@ pub(super) fn creature_rules(
         "whenever", "land", "control", "enters", "this", "token", "gets", "+1/+0",
     ]) && (common::phrase_present(words, &["until", "end", "of", "turn"])
         || common::phrase_present(words, &["until", "the", "end", "of", "turn"]));
+    if landfall_pump {
+        // "Whenever a land [you control] enters [under your control], this
+        // token gets +1/+0 until end of turn": the recognized rule's phrases.
+        let _ = common::phrase_read(words, &["whenever", "a", "land", "you", "control", "enters"])
+            || common::phrase_read(
+                words,
+                &["whenever", "a", "land", "enters", "under", "your", "control"],
+            );
+        let _ = common::phrase_read(words, &["this", "token", "gets", "+1/+0"]);
+        let _ = common::phrase_read(words, &["until", "end", "of", "turn"])
+            || common::phrase_read(words, &["until", "the", "end", "of", "turn"]);
+    }
     let power_bonus = all(&["saddles", "mounts", "crews", "vehicles", "power", "greater"])
         .then(|| rules::parse_token_power_as_though_greater_shape_words(words))
         .flatten()

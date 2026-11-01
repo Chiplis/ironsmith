@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
@@ -371,8 +372,12 @@ fn expected_any_word<'a, 'p>(
     input: &mut LexStream<'a>,
     expected: &'p [&'p str],
 ) -> WResult<&'a OwnedLexToken> {
-    any.verify(|token: &&OwnedLexToken| token.is_any_word(expected))
-        .parse_next(input)
+    let token = any
+        .verify(|token: &&OwnedLexToken| token.is_any_word(expected))
+        .parse_next(input)?;
+    // Consumed: read (a word test claims nothing).
+    crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    Ok(token)
 }
 
 fn take_remaining<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {

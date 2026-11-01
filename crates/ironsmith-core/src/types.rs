@@ -781,6 +781,9 @@ pub enum Subtype {
     // Artifact subtype (Starfleet Communicator); appended to preserve
     // serialized variant ordinals.
     Communicator,
+    // Creature type (Cloak and Phaser's Romulan tokens); appended to
+    // preserve serialized variant ordinals.
+    Romulan,
 }
 
 impl Subtype {
@@ -1140,6 +1143,7 @@ impl Subtype {
             Subtype::ElAurian,
             Subtype::Q,
             Subtype::Ferengi,
+            Subtype::Romulan,
         ]
     }
 

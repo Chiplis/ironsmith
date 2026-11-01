@@ -391,6 +391,8 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             (Some(&"cycled"), Some(&"discarded")) | (Some(&"discarded"), Some(&"cycled"))
         );
     if discarded_or_cycled_short || discarded_or_cycled_long {
+        // An exact whole-phrase shape.
+        crate::word_claims::claim_words(&words);
         return Some(Value::TurnHistoryCount(
             TurnHistoryCount::DiscardedOrCycled(PlayerFilter::You),
         ));

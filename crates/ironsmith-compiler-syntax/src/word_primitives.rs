@@ -257,8 +257,10 @@ pub fn contains_window_by(
     find_window_by(words, window_len, predicate).is_some()
 }
 
+/// Whether `expected` occurs in `words`. A test, not a read: it claims
+/// nothing (`parse_sequence_start` locates and claims for a reader).
 pub fn sequence_occurs(words: &[&str], expected: &[&str]) -> bool {
-    parse_sequence_start(words, expected).is_some()
+    crate::word_claims::speculative(|| parse_sequence_start(words, expected).is_some()).0
 }
 
 /// The current, symmetric combat-partner relation "blocking or blocked by"
@@ -445,8 +447,10 @@ pub fn strip_suffix_value<'w, 'a, T: Clone>(
     })
 }
 
+/// Whether `expected` occurs in `words`. A test, not a read: it claims
+/// nothing (`find_word` locates and claims for a reader).
 pub fn contains_word(words: &[&str], expected: &str) -> bool {
-    find_word(words, expected).is_some()
+    words.contains(&expected)
 }
 
 pub fn find_word(words: &[&str], expected: &str) -> Option<usize> {

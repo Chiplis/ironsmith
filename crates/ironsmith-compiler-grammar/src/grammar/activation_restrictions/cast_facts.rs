@@ -78,7 +78,7 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
             cant_tail,
             &[&["cast", "spells"], &["cast", "spells", "this", "turn"]],
         ) {
-            claim_cast_verb();
+            crate::word_claims::claim_words(cant_tail);
             return Some(CantCastRestrictionFact::CastSpells(subject.player));
         }
         if prefix(cant_tail, &["cast", "spells", "with"])
@@ -91,6 +91,8 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
                 _ => return None,
             };
             claim_cast_verb();
+            // The parity word read into the mana-value parity filter.
+            crate::word_claims::claim_words(&cant_tail[3..=3]);
             return Some(CantCastRestrictionFact::CastSpellsMatching {
                 player: subject.player,
                 filter: ObjectFilter::spell().with_mana_value_parity(parity),
@@ -103,7 +105,7 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
                 &["cast", "creature", "spells", "this", "turn"],
             ],
         ) {
-            claim_cast_verb();
+            crate::word_claims::claim_words(cant_tail);
             return Some(CantCastRestrictionFact::CastCreatureSpells(subject.player));
         }
         if let Some(mut cast_tail) = prefix_remainder(cant_tail, &["cast"])
@@ -117,7 +119,8 @@ pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCast
                     cast_tail = rest;
                 }
                 if cast_tail.is_empty() {
-                    claim_cast_verb();
+                    // "cast <qualifier> spells [this turn]", read whole.
+                    crate::word_claims::claim_words(cant_tail);
                     return Some(CantCastRestrictionFact::CastSpellsMatching {
                         player: subject.player,
                         filter,
@@ -189,6 +192,7 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
                 crate::types::CardType::Planeswalker,
                 crate::types::CardType::Battle,
             ]);
+            crate::word_claims::claim_words(&input[..1]);
             input = &input[1..];
         } else if let Ok(card_type) = leaf::parse_leaf_card_type_complete(term) {
             filter = filter.with_type(card_type);
@@ -202,8 +206,10 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
     if !matches!(input.first().copied(), Some("spell" | "spells")) {
         return None;
     }
-    // The spell noun is the restriction's object kind (`ObjectFilter::spell`).
-    crate::word_claims::claim_words(&input[..1]);
+    // The spell noun is the restriction's object kind (`ObjectFilter::spell`),
+    // and the color / noncreature / type adjectives before it were read into
+    // the filter above.
+    crate::word_claims::claim_words(&words[..words.len() - input.len() + 1]);
     input = &input[1..];
 
     if exact(input, &["of", "the", "chosen", "color"]) {
@@ -265,7 +271,12 @@ pub fn parse_cast_more_than_one_limit_filter_words(words: &[&str]) -> Option<Obj
         ObjectFilter::default()
     } else {
         let parsed = parse_activation_cast_limit_qualifier_words(input)?;
+        let qualifier = input.get(..parsed.consumed)?;
         input = input.get(parsed.consumed..)?;
+        if exact(input, &["spell", "each", "turn"]) {
+            // "noncreature" / "red": the limited spell's qualifier.
+            crate::word_claims::claim_words(qualifier);
+        }
         parsed.filter
     };
     exact(input, &["spell", "each", "turn"]).then_some(filter)
@@ -687,6 +698,8 @@ pub fn parse_compound_player_action_restriction_words(words: &[&str]) -> Option<
         let owner = match origin.first() { Some(&"your") => Some(PlayerFilter::You),
             Some(&"their") => Some(PlayerFilter::IteratedPlayer), _ => None };
         lands.owner = owner.clone(); spells.owner = owner;
+        // The shared origin ("your hand") is read whole above.
+        crate::word_claims::claim_words(origin);
         return Some(vec![PlayerActivationRestrictionTailFact::PlayLandsMatching(lands),
             PlayerActivationRestrictionTailFact::CastSpellsMatching(spells)]);
     }

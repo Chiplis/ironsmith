@@ -28,6 +28,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     if effects.is_empty() {
         return Ok(None);
     }
+    // "X times": the repetition count and its unit.
+    crate::word_claims::claim_tokens(&tokens[tokens.len() - 2..]);
     Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
         count,
         effects,

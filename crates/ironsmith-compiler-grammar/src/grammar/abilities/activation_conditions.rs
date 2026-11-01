@@ -138,6 +138,15 @@ const STEP_WINDOW_PREFIXES: &[(&[&[&str]], ActivationTiming)] = &[
     ),
     (
         &[
+            &[
+                "activate", "only", "during", "the", "end", "of", "combat", "step",
+            ],
+            &["activate", "only", "during", "end", "of", "combat", "step"],
+        ],
+        ActivationTiming::DuringEndOfCombatStep,
+    ),
+    (
+        &[
             &["activate", "only", "during", "your", "draw", "step"],
             &["activate", "only", "during", "their", "draw", "step"],
         ],
@@ -461,6 +470,10 @@ fn parse_repeated_or_if_activation_condition(tokens: &[OwnedLexToken]) -> Option
     ];
     prefixed_right.extend_from_slice(right_tokens);
     let right = parse_activation_condition_lexed(&prefixed_right)?;
+    // The "or if" joining the two gates.
+    if let Some(joiner) = token_slice_for_words(tokens, &view, split, split + 2) {
+        crate::word_claims::claim_tokens(joiner);
+    }
 
     Some(PredicateAst::Or(Box::new(left), Box::new(right)))
 }

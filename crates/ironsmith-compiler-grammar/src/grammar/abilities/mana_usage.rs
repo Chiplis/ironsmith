@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::prelude::*;
 use winnow::token::any;
 
@@ -765,9 +766,14 @@ fn parse_cast_or_activate_source(tokens: &[OwnedLexToken]) -> Option<ManaUsageRe
     {
         ability_source_filter.set_plural_object_noun_surface(true);
     }
+    let spell_filter = parse_mana_usage_spell_filter(spell_tokens)?;
+    // "or activate abilities of": the second permitted use, read here.
+    if let Some(separator_tokens) = token_slice_for_words(tokens, &view, separator_start, source_start) {
+        crate::word_claims::claim_tokens(separator_tokens);
+    }
     Some(
         ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
-            spell_filter: parse_mana_usage_spell_filter(spell_tokens)?,
+            spell_filter,
             ability_source_filter,
         },
     )
@@ -1003,7 +1009,10 @@ fn parse_filter_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestric
     let parsed = parse_filter_cast_shape(tokens)?;
     let spec_tokens = trim_lexed_commas(parsed.spec_tokens);
     let spec_shape = classify_spec(spec_tokens);
-    let special_filter = parse_special_spell_filter(spec_tokens);
+    // "an instant spell or a kicked spell": independent alternatives, each
+    // with its own predicates (never one spell that is both).
+    let special_filter = parse_repeated_spell_domain_union(spec_tokens)
+        .or_else(|| parse_special_spell_filter(spec_tokens));
     if special_filter.is_none() && spec_shape == ManaUsageSpecShape::Unsupported {
         return None;
     }
@@ -1012,6 +1021,24 @@ fn parse_filter_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestric
         (filter != ObjectFilter::default() || spec_shape == ManaUsageSpecShape::PlainSpell)
             .then_some(filter)
     })?;
+    // "instant and sorcery spells": the spell filter reads the card types
+    // as alternatives; the "and" joining two of them is that union.
+    if filter.card_types.len() > 1 {
+        let is_type = |token: &OwnedLexToken| {
+            token
+                .as_word()
+                .is_some_and(|word| crate::util::parse_card_type(word).is_some())
+        };
+        for (index, token) in spec_tokens.iter().enumerate() {
+            if crate::word_claims::probe_only(|| token.is_word("and"))
+                && index > 0
+                && is_type(&spec_tokens[index - 1])
+                && spec_tokens.get(index + 1).is_some_and(is_type)
+            {
+                crate::word_claims::claim_tokens(&spec_tokens[index..=index]);
+            }
+        }
+    }
     // The spend-only-to-cast prefix and the uncounterable grant are read
     // here; the spell filter reads its own words.
     let view = TokenWordView::new(tokens);
@@ -1059,7 +1086,8 @@ use mana_usage_counter_programs::{
 mod mana_usage_reference_programs;
 use mana_usage_reference_programs::{
     parse_ability_source_filter, parse_filter_cast_shape, parse_mana_usage_spell_filter,
-    parse_nondefault_spell_filter, parse_simple_subtype_spell_filter, parse_special_spell_filter,
+    parse_nondefault_spell_filter, parse_repeated_spell_domain_union,
+    parse_simple_subtype_spell_filter, parse_special_spell_filter,
 };
 #[path = "mana_usage/mana_usage_library.rs"]
 mod mana_usage_library_programs;

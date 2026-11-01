@@ -369,7 +369,8 @@ pub fn parse_sentence_sacrifice_one_or_more(
 fn may_cast_target_graveyard_card_lexed<'a>(
     input: &mut crate::lexer::LexStream<'a>,
 ) -> winnow::error::ModalResult<(bool, &'static str, &'a [OwnedLexToken], bool, bool)> {
-    use winnow::combinator::{alt, opt, peek, repeat_till};
+    use winnow::combinator::{alt, opt, repeat_till};
+    use crate::grammar::primitives::peek;
     use winnow::prelude::*;
     use winnow::token::any;
 

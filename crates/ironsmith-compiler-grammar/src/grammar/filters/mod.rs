@@ -117,5 +117,5 @@ pub use simple::{
 };
 pub use spell_filters::{
     parse_object_filter_with_grammar_entrypoint, parse_spell_filter_with_grammar_entrypoint,
-    parse_spell_filter_with_grammar_entrypoint_lexed,
+    parse_spell_filter_with_grammar_entrypoint_lexed, spell_filter_union,
 };

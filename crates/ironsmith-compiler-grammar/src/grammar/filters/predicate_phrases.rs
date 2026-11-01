@@ -359,11 +359,11 @@ fn token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
     token_word_is_any(token, &[expected])
 }
 
+/// A test, not a read: claims nothing.
 fn word_is_any(word: &str, expected: &[&str]) -> bool {
     let mut idx = 0usize;
     while idx < expected.len() {
         if expected[idx] == word {
-            crate::word_claims::claim_word(word);
             return true;
         }
         idx += 1;
@@ -1533,6 +1533,7 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     // "unless it has an even number of counters on it" (Sab-Sunen): the
     // parity of the total number of counters, not a counter kind.
     if let Some(parity) = total_counters_parity_phrase(counter_clause) {
+        crate::word_claims::claim_tokens(counter_clause.tokens());
         return Some(source_total_counters_parity_predicate(parity));
     }
     if predicate_quantity_prefix_tokens(counter_clause.tokens()).is_some() {
@@ -1544,6 +1545,7 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     // "if The Ozolith has counters on it" (The Ozolith): any counter of any
     // kind.
     if counter_clause.word_refs() == ["counters"] {
+        crate::word_claims::claim_tokens(counter_clause.tokens());
         return Some(PredicateAst::Source(
             SourcePredicateAst::SourceHasCountersAtLeast(1),
         ));
@@ -1866,6 +1868,8 @@ fn parse_triggering_object_source_stat_predicate(tokens: &[OwnedLexToken]) -> Op
     if !matches!(subject, ["it"] | ["that", "creature"]) {
         return None;
     }
+    // The demonstrative subject ("that creature") names the trigger's object.
+    crate::word_claims::claim_words(subject);
 
     Some(PredicateAst::Or(
         Box::new(triggering_stat_filter(true)),
@@ -2978,6 +2982,10 @@ fn parse_you_control_conjoined_predicate(
                         })),
                     );
                 }
+                // Every additional name segment and the final name are
+                // literal card names under the shared head.
+                crate::word_claims::claim_tokens(left_object.tokens());
+                crate::word_claims::claim_tokens(right_object.tokens());
                 Ok(predicate)
             });
         return Some(shared_named_result);
@@ -4942,11 +4950,16 @@ fn parse_demonstrative_mana_value_predicate(
         ));
     }
     let clause_words = clause.word_refs();
-    let Some((cmp, _consumed)) =
+    let Some((cmp, consumed)) =
         parse_filter_comparison_tokens("mana value", &comparison_words, &clause_words)?
     else {
         return Ok(None);
     };
+    // "4 or less": the comparison this predicate builds, when it reads the
+    // whole tail.
+    if consumed == comparison_words.len() {
+        crate::word_claims::claim_tokens(comparison.tokens());
+    }
     filter.mana_value = Some(cmp);
     let match_time = if clause
         .word_refs()
@@ -5572,6 +5585,14 @@ fn parse_completed_roll_against_value(words: &[&str]) -> Option<PredicateAst> {
 }
 
 fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let predicate = completed_die_result_predicate_reading(tokens)?;
+    // Every shape below reads its whole clause: the result subject, the
+    // bound and its comparison words ("the result is 3 or less").
+    crate::word_claims::claim_tokens(tokens);
+    Some(predicate)
+}
+
+fn completed_die_result_predicate_reading(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
     if words.iter().any(|word| *word == "damage")
         && let Some(predicate) = parse_roll_against_event_or_exact_predicate(&words)

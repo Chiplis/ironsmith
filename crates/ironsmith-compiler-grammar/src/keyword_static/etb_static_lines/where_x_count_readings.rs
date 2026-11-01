@@ -229,6 +229,20 @@ fn read_card_types_among_scope(input: &CountedFilter<'_>) -> Option<Value> {
                         Some(EtbGraveyardOwner::You) => Some(PlayerFilter::You),
                         None => None,
                     };
+                // "in all graveyards" / "in your graveyard" / "in your
+                // opponents' graveyards": the graveyard scope read above.
+                let scope = crate::lexer::token_word_refs(among.scope_tokens);
+                if let ["in", middle @ .., "graveyard" | "graveyards"] = scope.as_slice()
+                    && middle.iter().all(|word| {
+                        matches!(
+                            *word,
+                            "all" | "your" | "each" | "an" | "opponent's" | "opponents"
+                                | "opponents'" | "players" | "players'" | "player's"
+                        )
+                    })
+                {
+                    crate::word_claims::claim_tokens(among.scope_tokens);
+                }
                 Some(Value::CardTypesAmong(filter))
             }
             EtbAmongMetric::CardTypesAmong => {

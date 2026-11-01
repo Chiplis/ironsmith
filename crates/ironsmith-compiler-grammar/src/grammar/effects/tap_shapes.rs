@@ -1,6 +1,7 @@
 use super::*;
 
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 

@@ -86,6 +86,8 @@ fn read_player_owns_at_least(
     if !matches!(filter.zone, Some(zone) if zone != Zone::Battlefield) {
         return Ok(None);
     }
+    // The owning player subject and the "own(s)" verb.
+    crate::word_claims::claim_tokens(&tokens[..=subject_len]);
     Ok(Some(PredicateAst::Player(
         crate::cards::builders::PlayerPredicateAst::PlayerHasAtLeast { player, filter, count },
     )))

@@ -6,7 +6,8 @@
 
 use crate::types::CardType;
 
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;

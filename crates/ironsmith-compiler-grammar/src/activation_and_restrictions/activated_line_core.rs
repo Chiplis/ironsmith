@@ -1040,6 +1040,14 @@ fn parse_enters_tapped_turn_condition_line(tokens: &[OwnedLexToken]) -> Option<S
                 }
             }
         };
+    // "This <type> enters tapped": the head the enters-tapped shape matched
+    // (an exact source subject), as the plain enters-tapped line reads it.
+    let head_words = crate::lexer::token_word_refs(head);
+    if let [subject @ .., "enters", "tapped"] = head_words.as_slice()
+        && (subject == ["this"] || crate::util::this_source_surface_for_words(subject).is_some())
+    {
+        crate::word_claims::claim_words(&head_words);
+    }
     Some(StaticAbility::enters_tapped_unless_condition(
         condition,
         crate::lexer::render_token_slice(tokens),

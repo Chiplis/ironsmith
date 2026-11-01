@@ -584,6 +584,11 @@ pub(super) fn read_end_of_combat_remainder(
             .map(Some);
         }
         let effects = parse_effect_sentence_lexed_inner(&remainder)?;
+        // "at [this turn's next] end of combat": the delay header, read into
+        // the scheduled trigger and its this-turn expiry.
+        crate::word_claims::claim_tokens(
+            &tokens[..tokens.len().saturating_sub(remainder_tokens.len())],
+        );
         if this_turn {
             // "At this turn's next end of combat": a one-shot delayed
             // trigger that expires at end of turn, so an instruction made

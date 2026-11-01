@@ -60,6 +60,9 @@ pub(super) fn parse_regenerate_then_when_regenerates_bundle(
     if effects.is_empty() {
         return Ok(None);
     }
+    // "When it regenerates this way": the reflexive head, "it" being the
+    // regenerated object.
+    crate::word_claims::claim_tokens(&second[..body_start]);
     Ok(Some(vec![
         EffectAst::subject_verb_regenerate_with_follow_up_effects(
             target,

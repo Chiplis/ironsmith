@@ -3,7 +3,8 @@
 //! upkeep payment of each matching permanent (CR 118.9, 702.30a).
 use super::*;
 
-use winnow::combinator::{peek, repeat_till};
+use winnow::combinator::{repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::prelude::*;
 use winnow::token::any;
 

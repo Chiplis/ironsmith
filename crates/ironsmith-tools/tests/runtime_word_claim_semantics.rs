@@ -1798,3 +1798,31 @@ fn black_and_or_red_activation_rejects_other_colors() {
         "Forests can't pay"
     );
 }
+
+const DESERT: &str = "Type: Land — Desert\n{T}: Add {C}.\n{T}: This land deals 1 damage to target attacking creature. Activate only during the end of combat step.";
+
+/// The damage ability is offered only during the end of combat step, not
+/// while attackers are being declared or in a main phase.
+#[test]
+fn desert_activates_only_during_the_end_of_combat_step() {
+    let def = compile("Desert", DESERT);
+    let index = activated_index(&def, Zone::Battlefield);
+    let mut g = game(2);
+    let desert = put(&mut g, &def, ALICE, Zone::Battlefield);
+    let attacker = put(&mut g, &creature("Attacker", 2, 2), BOB, Zone::Battlefield);
+    let mut dm = Script::default();
+    declare_attackers(&mut g, BOB, &[(attacker, AttackTarget::Player(ALICE))], &mut dm);
+    g.turn.priority_player = Some(ALICE);
+    let offered = |g: &GameState| {
+        compute_legal_actions(g, ALICE).unwrap().into_iter().any(|action| {
+            matches!(action, LegalAction::ActivateAbility { source, ability_index }
+                if source == desert && ability_index == index)
+        })
+    };
+    assert!(!offered(&g), "not offered in the declare attackers step");
+    g.turn.step = Some(Step::EndCombat);
+    assert!(offered(&g), "offered during the end of combat step");
+    g.turn.phase = Phase::NextMain;
+    g.turn.step = None;
+    assert!(!offered(&g), "not offered after combat");
+}

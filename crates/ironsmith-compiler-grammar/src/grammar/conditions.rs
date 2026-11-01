@@ -2052,6 +2052,7 @@ fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFil
         clause.word_refs().as_slice(),
         ["youve"] | ["you've"] | ["you", "ve"] | ["you", "have"]
     ) {
+        crate::word_claims::claim_tokens(clause.tokens());
         return Some(PlayerFilter::You);
     }
     // "if a player other than you lost life this turn" (Ludevic): any one
@@ -2060,6 +2061,7 @@ fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFil
         clause.word_refs().as_slice(),
         ["a", "player", "other", "than", "you"] | ["another", "player"]
     ) {
+        crate::word_claims::claim_tokens(clause.tokens());
         return Some(PlayerFilter::NotYou);
     }
     let reference = parse_leaf_player_reference_tokens(

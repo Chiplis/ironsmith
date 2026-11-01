@@ -571,7 +571,11 @@ fn parse_draw_for_each_player_condition(
         right: Value::Fixed(1),
     });
     let predicate = match iterated_life_loss {
-        Some(predicate) => predicate,
+        Some(predicate) => {
+            // "lost life this turn": the exact iterated-player predicate.
+            crate::word_claims::claim_tokens(&predicate_tail);
+            predicate
+        }
         None => {
             // A player predicate this loop can't express ("who was dealt
             // combat damage this turn") may still be a turn-history count

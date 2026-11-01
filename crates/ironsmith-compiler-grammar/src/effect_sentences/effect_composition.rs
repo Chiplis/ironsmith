@@ -1019,6 +1019,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     }
 
     choose_filter.zone = None;
+    crate::word_claims::claim_tokens(shape.alternative_verb);
 
     let chosen_tag = crate::tag::CompilerReferenceTag::OutsideGameOrExileSelected.bind();
     let effects = vec![

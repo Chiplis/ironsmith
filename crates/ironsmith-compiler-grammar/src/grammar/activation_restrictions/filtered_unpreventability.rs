@@ -1,7 +1,8 @@
 //! Strict ownership of a source-filtered damage prevention prohibition.
 use super::super::primitives;
 use crate::lexer::{LexStream, OwnedLexToken};
-use winnow::combinator::{opt, peek, repeat_till};
+use winnow::combinator::{opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

@@ -1,6 +1,7 @@
 use super::*;
 
-use winnow::combinator::{alt, eof, peek, repeat, repeat_till};
+use winnow::combinator::{alt, eof, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

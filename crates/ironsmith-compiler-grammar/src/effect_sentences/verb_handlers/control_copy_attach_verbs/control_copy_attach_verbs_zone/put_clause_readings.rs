@@ -255,7 +255,7 @@ fn expand_source_zone_disjunction(
     let hand_or_command = [
         &["hand", "or", "from", "the", "command", "zone"][..],
         &["hand", "or", "the", "command", "zone"][..],
-    ].iter().any(|phrase| crate::word_primitives::sequence_occurs(&target_words, phrase));
+    ].iter().any(|phrase| crate::word_primitives::parse_sequence_start(&target_words, phrase).is_some());
     let zones = if hand_or_command {
         [Zone::Hand, Zone::Command]
     } else if cca_shapes::contains_graveyard_and_hand(target_tokens) {
@@ -335,20 +335,20 @@ fn apply_explicit_source_location(target: &mut TargetAst, tokens: &[OwnedLexToke
     }
     let words = crate::lexer::token_word_refs(tokens);
     let location = if ["owner's", "owners"].iter().any(|owner| {
-        crate::word_primitives::sequence_occurs(&words, &["from", "its", owner, "graveyard"])
+        crate::word_primitives::parse_sequence_start(&words, &["from", "its", owner, "graveyard"]).is_some()
     }) {
         // This possessive describes the moved card, independently of the
         // player instructed to move it or its new controller.
         Some((Zone::Graveyard, Some(PlayerFilter::OwnerOf(
             crate::target::ObjectRef::FilterCandidate,
         ))))
-    } else if crate::word_primitives::sequence_occurs(&words, &["from", "your", "hand"]) {
+    } else if crate::word_primitives::parse_sequence_start(&words, &["from", "your", "hand"]).is_some() {
         Some((Zone::Hand, Some(PlayerFilter::You)))
-    } else if crate::word_primitives::sequence_occurs(&words, &["from", "your", "graveyard"]) {
+    } else if crate::word_primitives::parse_sequence_start(&words, &["from", "your", "graveyard"]).is_some() {
         Some((Zone::Graveyard, Some(PlayerFilter::You)))
-    } else if crate::word_primitives::sequence_occurs(&words, &["from", "your", "library"]) {
+    } else if crate::word_primitives::parse_sequence_start(&words, &["from", "your", "library"]).is_some() {
         Some((Zone::Library, Some(PlayerFilter::You)))
-    } else if crate::word_primitives::sequence_occurs(&words, &["from", "the", "command", "zone"]) {
+    } else if crate::word_primitives::parse_sequence_start(&words, &["from", "the", "command", "zone"]).is_some() {
         Some((Zone::Command, Some(PlayerFilter::You)))
     } else {
         None

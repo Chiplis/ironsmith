@@ -215,6 +215,10 @@ pub fn parse_shared_subject_optional_companion_shape(
     {
         return None;
     }
+    // "each" / "both": the distributive join read into `join`.
+    if join != OptionalCompanionJoin::Plain {
+        crate::word_claims::claim_tokens(&companion_and_action[action_idx..action_idx + 1]);
+    }
 
     Some(SharedSubjectOptionalCompanionShape {
         first_subject_tokens,

@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, opt, peek};
+use winnow::combinator::{alt, opt};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 

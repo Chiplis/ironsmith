@@ -210,6 +210,11 @@ fn parse_finite_prevention_from_source(
     let Some((amount, used)) = parse_value(amount_tokens) else { return Ok(None); };
     if used != amount_tokens.len() { return Ok(None); }
     let source = parse_target_phrase(&tokens[starts[damage + 6]..starts[words.len() - 2]])?;
+    // "prevent the next ... [combat] damage that would be dealt by ... this
+    // turn": the shield frame around the amount and source read above.
+    crate::word_claims::claim_tokens(&tokens[..starts[3]]);
+    crate::word_claims::claim_tokens(&tokens[starts[amount_end]..starts[damage + 6]]);
+    crate::word_claims::claim_tokens(&tokens[starts[words.len() - 2]..]);
     let mut effect = EffectAst::subject_verb_prevent_damage(
         amount, TargetAst::Source(None), Until::EndOfTurn,
     );
@@ -3019,6 +3024,15 @@ pub fn parse_keyword_mechanic_clause(
                     &where_value,
                     &clause_text,
                 )?;
+            }
+            // "amass Zombies X": the Army's subtype, the word after "amass".
+            if subtype.is_some()
+                && let Some(subtype_token) = tokens
+                    .iter()
+                    .position(|token| token.is_word("amass"))
+                    .and_then(|index| tokens.get(index + 1..index + 2))
+            {
+                crate::word_claims::claim_tokens(subtype_token);
             }
             EffectAst::subject_verb_amass(subtype, amount)
         }

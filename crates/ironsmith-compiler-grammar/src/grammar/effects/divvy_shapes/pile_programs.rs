@@ -113,16 +113,25 @@ fn strip_then<'a, 'b>(words: &'a [&'b str]) -> &'a [&'b str] {
 fn number_prefix<'a, 'b>(words: &'a [&'b str]) -> Option<(u32, &'a [&'b str])> {
     let (count, used) =
         crate::grammar::leaf::parse_leaf_number_prefix_words(words)?.into_fixed()?;
+    crate::word_claims::claim_words(words.get(..used)?);
     Some((count, words.get(used..)?))
 }
 
+// Each program reads under its own speculative scope: the word matchers
+// claim as they go, and a program that fails after a partial match reads
+// nothing.
 pub(super) fn parse(sentences: &[Vec<&str>]) -> Option<PileProgramShape> {
-    parse_each_player_random_pile_sacrifice(sentences)
-        .or_else(|| parse_alternating_revealed_picks(sentences))
-        .or_else(|| parse_opponent_face_down_piles(sentences))
-        .or_else(|| parse_defending_labeled_piles(sentences))
-        .or_else(|| parse_face_down_face_up_exile_piles(sentences))
-        .or_else(|| parse_each_player_exiles_top_may_play(sentences))
+    let programs: [fn(&[Vec<&str>]) -> Option<PileProgramShape>; 6] = [
+        parse_each_player_random_pile_sacrifice,
+        parse_alternating_revealed_picks,
+        parse_opponent_face_down_piles,
+        parse_defending_labeled_piles,
+        parse_face_down_face_up_exile_piles,
+        parse_each_player_exiles_top_may_play,
+    ];
+    programs.into_iter().find_map(|program| {
+        crate::word_claims::speculative_keep_if(|| program(sentences), Option::is_some)
+    })
 }
 
 fn parse_kind(word: &str) -> Option<PileObjectKind> {
@@ -150,6 +159,7 @@ fn parse_each_player_random_pile_sacrifice(sentences: &[Vec<&str>]) -> Option<Pi
     let words = strip(words, &["all"])?;
     let (kind_word, words) = words.split_first()?;
     let kind = parse_kind(kind_word)?;
+    crate::word_claims::claim_word(kind_word);
     let words = strip(words, &["they", "control", "into"])?;
     let (piles, words) = number_prefix(words)?;
     if !(2..=u32::from(u8::MAX)).contains(&piles) || !exact(words, &["piles"]) {

@@ -1,5 +1,6 @@
 use crate::word_primitives::WordWindows as _;
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;

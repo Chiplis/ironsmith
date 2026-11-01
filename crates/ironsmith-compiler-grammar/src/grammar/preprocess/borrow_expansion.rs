@@ -1,6 +1,7 @@
 use std::ops::Range;
 
-use winnow::combinator::{alt, opt, peek, repeat_till, separated};
+use winnow::combinator::{alt, opt, repeat_till, separated};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::{any, take};

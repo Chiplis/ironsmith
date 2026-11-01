@@ -658,6 +658,7 @@ pub fn parse_get(
             if let Some(count) =
                 crate::effect_sentences::verb_handlers::parse_life_equal_to_value(&amount_tokens)?
             {
+                crate::word_claims::claim_tokens(count_tokens);
                 return Ok(EffectAst::subject_verb_rad_counters(player, count));
             }
         }

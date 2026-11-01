@@ -383,6 +383,7 @@ fn parse_turn_history_intervening_predicate(
         &words,
         &["you", "did", "not", "cast", "it", "from", "your", "hand"],
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(PredicateAst::Not(Box::new(
             PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(
                 Zone::Hand,
@@ -399,9 +400,13 @@ fn parse_turn_history_intervening_predicate(
             TurnHistoryPredicateAst::TriggeringObjectEnteredFromZone(entered_zone),
         );
         match rest {
-            [] => return Ok(Some(entered)),
+            [] => {
+                crate::word_claims::claim_tokens(tokens);
+                return Ok(Some(entered));
+            }
             ["or", "was", "cast", "from", "your", cast_zone] => {
                 if let Some(cast_zone) = crate::util::parse_zone_word(cast_zone) {
+                    crate::word_claims::claim_tokens(tokens);
                     return Ok(Some(PredicateAst::Or(
                         Box::new(entered),
                         Box::new(PredicateAst::TurnHistory(
@@ -419,6 +424,7 @@ fn parse_turn_history_intervening_predicate(
         words.as_slice(),
         ["casting", "a" | "an", "spell", "with", "emerge"] | ["casting", "spell", "with", "emerge"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(PredicateAst::TurnHistory(
             TurnHistoryPredicateAst::TriggeringSacrificePaidEmergeCost,
         )));
@@ -430,6 +436,7 @@ fn parse_turn_history_intervening_predicate(
         words.as_slice()
         && let Some(count) = crate::util::parse_number_word_i32(count)
     {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(PredicateAst::ValueComparison {
             left: crate::effect::Value::DistinctManaValues(ObjectFilter::tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
@@ -1302,6 +1309,8 @@ pub(super) fn parse_total_stat_threshold_predicate(
         .words()
         .map_word_or_end_to_token_boundary(have)?;
     let filter = parse_object_filter(&tokens[..filter_end], false).ok()?;
+    // "have total toughness 10 or greater": the verb, aggregate and bound.
+    crate::word_claims::claim_words(&words[have..]);
     let left = if stat == "power" {
         Value::TotalPower(filter)
     } else {
@@ -1459,6 +1468,10 @@ pub(super) fn parse_player_cards_in_hand_predicate(
 
     let condition =
         crate::grammar::conditions::parse_player_cards_in_hand_condition(&present_tokens)?;
+    if at_turn_start_suffix {
+        // "at the beginning of this turn": the at-turn-start window.
+        crate::word_claims::claim_tokens(tokens.get(base_tokens.len()..).unwrap_or_default());
+    }
     let player = condition.player;
     let player_filter = match player {
         PlayerAst::ItsController => PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
@@ -1696,6 +1709,8 @@ pub(super) fn parse_count_parity_predicate(tokens: &[OwnedLexToken]) -> Option<P
     };
     let captured_scope = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let scope_tokens = if captured_scope.token(0)?.parser_text() == "of" {
+        // "the number of <objects>": the counted scope's preposition.
+        crate::word_claims::claim_tokens(&captured_scope.tokens()[..1]);
         &captured_scope.tokens()[1..]
     } else {
         captured_scope.tokens()
@@ -2964,6 +2979,8 @@ pub(super) fn parse_source_dealt_combat_damage_this_turn_shape(
     if !is_this_turn_clause(window_clause) {
         return None;
     }
+    // A full-clause match: subject, action, recipient and window.
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::Source(
         SourcePredicateAst::SourceDealtCombatDamageToPlayerThisTurn,
     ))
@@ -2990,6 +3007,7 @@ pub(super) fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
     if !is_this_turn_clause(window_clause) {
         return None;
     }
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::Player(
         PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
     ))
@@ -4474,6 +4492,8 @@ fn parse_triggering_object_first_tap_this_turn_predicate(
     {
         return None;
     }
+    // The whole predicate, its demonstrative noun included, is read.
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::Triggering(
         TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn,
     ))
@@ -4515,6 +4535,7 @@ fn parse_triggering_object_first_counters_this_turn_predicate(
     {
         return None;
     }
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::Triggering(
         TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn,
     ))
@@ -4886,6 +4907,8 @@ pub(super) fn comparison_player_subject_clause(clause: LexedClause<'_>) -> Optio
             .token(0)
             .is_some_and(|token| token_word_is(token, YOU_WORD))
     {
+        // Read like the other subjects here (their surface matches claim).
+        crate::word_claims::claim_tokens(clause.tokens());
         Some(PlayerAst::You)
     } else if surface::exact_any(clause, AN_OR_THE_OPPONENT_SUBJECT_PHRASES)
         || (word_len == 1 && surface::exact_any(clause, OPPONENT_SUBJECT_PREFIXES))
@@ -5185,6 +5208,7 @@ pub(super) fn parse_keyword_subject_object_filter_tokens(
 ) -> Result<ObjectFilter, CardTextError> {
     let object_tokens = strip_leading_article_tokens(object_tokens);
     if non_article_token_words_eq_any(object_tokens, NONLAND_CARD_OBJECT_PHRASES) {
+        crate::word_claims::claim_tokens(object_tokens);
         let mut filter = ObjectFilter::default();
         filter.excluded_card_types.push(CardType::Land);
         return Ok(filter);
@@ -5524,6 +5548,7 @@ pub(super) fn parse_life_total_at_least_starting_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     if non_article_token_words_eq_phrase(tokens, LIFE_TOTAL_AT_LEAST_STARTING_PHRASE) {
+        crate::word_claims::claim_tokens(tokens);
         return Some(PredicateAst::ValueComparison {
             left: Value::LifeTotal(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -5539,6 +5564,8 @@ pub(super) fn parse_life_total_at_least_last_noted_predicate(
     if !non_article_token_words_eq_any(tokens, LIFE_TOTAL_AT_LEAST_LAST_NOTED_PHRASES) {
         return None;
     }
+    // An exact whole-clause match (articles aside).
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::ValueComparison {
         left: Value::LifeTotal(PlayerFilter::You),
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -6107,6 +6134,7 @@ pub(super) fn parse_object_on_battlefield_predicate(
     // "ten or more lands are on the battlefield" (Limited Resources): a
     // counted threshold over every matching permanent, not mere existence.
     let mut threshold = None;
+    let mut threshold_head: &[OwnedLexToken] = &[];
     {
         let leading = crate::lexer::token_word_refs(object_tokens);
         if let [amount, "or", bound @ ("more" | "fewer" | "less"), ..] = leading.as_slice()
@@ -6122,6 +6150,7 @@ pub(super) fn parse_object_on_battlefield_predicate(
                 crate::effect::ValueComparisonOperator::LessThanOrEqual
             };
             threshold = Some((operator, count as i32));
+            threshold_head = &object_tokens[..rest_start];
             object_tokens = &object_tokens[rest_start..];
         }
     }
@@ -6146,6 +6175,8 @@ pub(super) fn parse_object_on_battlefield_predicate(
     filter.zone = Some(Zone::Battlefield);
 
     if let Some((operator, count)) = threshold {
+        // "<N> or more|fewer": the counted threshold.
+        crate::word_claims::claim_tokens(threshold_head);
         return Ok(Some(PredicateAst::ValueComparison {
             left: Value::Count(filter),
             operator,
@@ -6767,6 +6798,8 @@ fn parse_indefinite_object_combat_state_predicate(
         _ => return None,
     }
     filter.zone = Some(Zone::Battlefield);
+    // The copula and present state ("is attacking") are the predicate.
+    crate::word_claims::claim_tokens(&tokens[subject_end..]);
     Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
         player: PlayerAst::Any,
         filter,

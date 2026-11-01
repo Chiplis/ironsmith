@@ -7,7 +7,8 @@ use crate::model::token_definition::{
 };
 use crate::object::CounterType;
 use crate::{effect::Value, filter::ObjectFilter};
-use winnow::combinator::{alt, opt, peek, repeat_till, separated};
+use winnow::combinator::{alt, opt, repeat_till, separated};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

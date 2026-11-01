@@ -128,19 +128,24 @@ pub fn parse_combat_damage_target_shape_lexed(
         target_tokens,
         primitives::any_phrase(&[&["each"], &["all"]]),
     );
-    let max_speed_players = each_or_all.is_some()
-        && one_of_words_occurs(target_tokens, &["player", "players"])
-        && phrase_occurs(target_tokens, &["max", "speed"]);
-    if max_speed_players {
-        let negated =
-            one_of_words_occurs(
-                target_tokens,
-                &["does", "doesnt", "doesn", "doesn't", "dont", "don't", "not"],
-            )
-                || phrase_occurs(target_tokens, &["does", "not"]);
-        return Ok(CombatDamageTargetShape::MaxSpeedPlayers {
-            has_max_speed: !negated,
-        });
+    // "each player who doesn't have max speed" (Outpace Oblivion): the
+    // complete player group, word for word, so no other qualifier is lost.
+    let max_speed_words = crate::lexer::parser_token_word_refs(target_tokens);
+    let max_speed_players = each_or_all.is_some().then(|| match max_speed_words.as_slice() {
+        ["each" | "all", "player" | "players", "who" | "that", status @ .., "max", "speed"] => {
+            match status {
+                ["has" | "have"] => Some(true),
+                ["doesnt" | "doesn't" | "dont" | "don't", "have"]
+                | ["does" | "do", "not", "have"]
+                | ["doesn", "t", "have"]
+                | ["don", "t", "have"] => Some(false),
+                _ => None,
+            }
+        }
+        _ => None,
+    }).flatten();
+    if let Some(has_max_speed) = max_speed_players {
+        return Ok(CombatDamageTargetShape::MaxSpeedPlayers { has_max_speed });
     }
 
     if primitives::parse_prefix(

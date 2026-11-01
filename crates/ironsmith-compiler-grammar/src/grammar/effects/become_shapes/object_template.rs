@@ -89,6 +89,9 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
     }
     if let Some(pt) = super::parse_become_base_pt_words(&normalized) {
         if base_power_toughness.is_some() || name_override.is_some() { return None; }
+        // "a Plant with base power and toughness 0/8": "with" attaches the
+        // stated base size read here.
+        if let Some(i) = with { crate::word_claims::claim_tokens(&tokens[i..=i]); }
         base_power_toughness = Some((pt.power, pt.toughness));
         descriptor_words = pt.descriptor_words.to_vec();
         ability_tokens = &[];

@@ -274,7 +274,15 @@ fn copy_next_spell_filter(
     }
     let middle = &tokens[HEAD.len()..tokens.len() - TAIL.len()];
     let middle_words = &words[HEAD.len()..words.len() - TAIL.len()];
+    // "copy the next ... you cast this turn when you cast it": the delayed
+    // copy trigger's frame.
+    let claim_frame = || {
+        crate::word_claims::claim_tokens(&tokens[..HEAD.len()]);
+        crate::word_claims::claim_tokens(&tokens[tokens.len() - TAIL.len()..]);
+    };
     if middle_words == ["spell"] {
+        claim_frame();
+        crate::word_claims::claim_tokens(middle);
         return Ok(Some(None));
     }
     if !middle_words.contains(&"spell") {
@@ -284,6 +292,7 @@ fn copy_next_spell_filter(
         return Ok(None);
     };
     filter.zone = None;
+    claim_frame();
     Ok(Some(Some(filter)))
 }
 

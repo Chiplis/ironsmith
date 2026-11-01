@@ -83,9 +83,11 @@ fn dynamic_phrase<'a, 'p>(
     move |input: &mut LexStream<'a>| {
         for word in words {
             let expected = *word;
-            any.verify(move |token: &&OwnedLexToken| token.is_word(expected))
-                .void()
+            let token = any
+                .verify(move |token: &&OwnedLexToken| token.is_word(expected))
                 .parse_next(input)?;
+            // Consumed: read (a word test claims nothing).
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
         }
         Ok(())
     }

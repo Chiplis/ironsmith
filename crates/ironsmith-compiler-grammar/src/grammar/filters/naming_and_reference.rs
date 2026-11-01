@@ -307,6 +307,7 @@ fn additional_cost_object_surface(
             Some("permanent" | "permanents") => ironsmith_core::SacrificedObjectKind::Permanent,
             _ => continue,
         };
+        crate::word_claims::claim_words(&words[idx..idx + 2]);
         return Some(ironsmith_core::AdditionalCostObjectSurface::new(
             action, kind,
         ));
@@ -1268,6 +1269,21 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
                 crate::word_claims::claim_word(word);
             }
         }
+        // "instant and/or sorcery": the lexer splits "and/or" into two word
+        // pieces; between two like atoms they are the same union.
+        if word == "and"
+            && idx > 0
+            && words.get(idx + 1) == Some(&"or")
+            && let Some(next) = words.get(idx + 2)
+        {
+            let prev = words[idx - 1];
+            let like = (parse_card_type(prev).is_some() && parse_card_type(next).is_some())
+                || (parse_subtype_flexible(prev).is_some() && parse_subtype_flexible(next).is_some())
+                || (crate::util::parse_color(prev).is_some() && crate::util::parse_color(next).is_some());
+            if like {
+                crate::word_claims::claim_words(&words[idx..idx + 2]);
+            }
+        }
         // The multi-word "Time Lord" creature type is one subtype atom.
         if words.get(idx..idx + 2) == Some(&["time", "lord"][..]) {
             push_unique_filter_value(&mut filter.subtypes, Subtype::TimeLord);
@@ -1295,6 +1311,7 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         // Adventure`; otherwise the qualifier survives while the permanent
         // restriction is silently discarded.
         if matches!(word, "permanent" | "permanents") {
+            crate::word_claims::claim_word(word);
             for card_type in [
                 CardType::Artifact,
                 CardType::Creature,

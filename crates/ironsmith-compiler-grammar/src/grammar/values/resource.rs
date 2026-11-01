@@ -100,6 +100,9 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
                 return Some(value);
             }
             if is_tagged_that_object_mana_value() {
+                // "that creature's mana value": the whole referenced-object
+                // mana value segment.
+                crate::word_claims::claim_words(segment);
                 return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                     (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 ))));

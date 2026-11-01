@@ -270,6 +270,29 @@ pub fn parse_you_choose_objects_clause_with_count_value(
         crate::word_claims::claim_words(&clause_words[verb + 1..]);
     }
 
+    // "choose two cards from it": a cardinal count right after the verb is
+    // the choice's exact count.
+    if let Some(verb) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "choose" | "chooses"))
+        && let Some(count_word) = clause_words.get(verb + 1)
+        && let Some(count) = crate::util::parse_number_word_u32(count_word)
+        && count > 1
+        && parsed.count.min == count as usize
+        && parsed.count.max == Some(count as usize)
+    {
+        crate::word_claims::claim_words(&clause_words[verb + 1..verb + 2]);
+    }
+    // "choose X cards": the announced X is the choice's exact count.
+    if let Some(verb) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "choose" | "chooses"))
+        && clause_words.get(verb + 1) == Some(&"x")
+        && parsed.count.dynamic_x
+    {
+        crate::word_claims::claim_words(&clause_words[verb + 1..verb + 2]);
+    }
+
     // A pool named by a prior instruction ("a card revealed this way" after
     // "Target player reveals their hand", Psychotic Episode) is exactly that
     // instruction's objects; "you choose" names the chooser, not whose cards.

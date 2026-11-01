@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
@@ -629,9 +630,11 @@ fn expected_any_phrase(input: &mut LexStream<'_>, phrases: &[&[&str]]) -> WResul
 
 fn expected_phrase(input: &mut LexStream<'_>, phrase: &[&str]) -> WResult<()> {
     for expected in phrase {
-        let _: &OwnedLexToken = any
+        let token: &OwnedLexToken = any
             .verify(|token: &&OwnedLexToken| token.is_word(expected))
             .parse_next(input)?;
+        // Consumed: read (a word test claims nothing).
+        crate::word_claims::claim_tokens(std::slice::from_ref(token));
     }
     Ok(())
 }

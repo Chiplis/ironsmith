@@ -243,7 +243,30 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
     if let Some(condition) = predicate {
         ability = ability.with_condition(condition);
     }
+    claim_price_frame(subject, &subject_words, &first[cost_index..=cost_index], &sentences);
     Ok(Some(ability))
+}
+
+/// The price frame every reading above shares: the subject's fixed head
+/// ("activated abilities of", "enchanted artifact's activated abilities",
+/// "this ability", "this equipment's equip ability"), the cost verb and the
+/// one-mana minimum sentence when it was read into `minimum`.
+fn claim_price_frame(
+    subject: &[OwnedLexToken],
+    subject_words: &[&str],
+    cost_verb: &[OwnedLexToken],
+    sentences: &[&[OwnedLexToken]],
+) {
+    let head_len = if subject_words.starts_with(&["activated", "abilities", "of"]) {
+        3
+    } else {
+        subject.len()
+    };
+    crate::word_claims::claim_tokens(&subject[..head_len.min(subject.len())]);
+    crate::word_claims::claim_tokens(cost_verb);
+    if let Some(minimum_sentence) = sentences.get(1) {
+        crate::word_claims::claim_tokens(minimum_sentence);
+    }
 }
 
 fn build_increase(

@@ -74,6 +74,8 @@ fn parse_postpositive_rounded_half_damage_head(
         Some("down") => false,
         _ => return None,
     };
+    // "rounded up|down": the rounding of the halved amount.
+    crate::word_claims::claim_tokens(&tokens[idx..idx + 2]);
     idx += 2;
     if tokens.get(idx).is_some_and(OwnedLexToken::is_comma) {
         idx += 1;

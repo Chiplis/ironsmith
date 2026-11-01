@@ -182,7 +182,12 @@ fn preserved_keyword_label(input: &mut LexStream<'_>) -> WResult<PreservedKeywor
         | "escape" | "escalate" | "eternalize" | "evoke" | "flashback" | "freerunning"
         | "kicker" | "multikicker" | "modular" | "morph" | "megamorph" | "prototype" | "recover"
         | "replicate" | "reinforce" | "splice" | "squad" | "spectacle" | "strive" | "surge"
-        | "suspend" | "ward" => Ok(PreservedKeywordLabelKind::CostOrCasting),
+        | "suspend" | "ward"
+        // Optional/alternative costs written with a dash ("Entwine—Sacrifice
+        // two lands.", CR 702.42): the keyword owns the line, not a label.
+        | "entwine" | "offspring" | "madness" | "harmonize" | "retrace" | "fortify" => {
+            Ok(PreservedKeywordLabelKind::CostOrCasting)
+        }
         "boast" | "renew" | "reconfigure" => Ok(PreservedKeywordLabelKind::Activated),
         _ => Err(primitives::backtrack_err(
             "keyword label",

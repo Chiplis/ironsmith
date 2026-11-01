@@ -2041,6 +2041,27 @@ pub fn parse_create(
                 && tail_surface.has(CreateWord::Toughness);
             let has_haste = tail_surface.has_phrase(CreatePhrase::HasteGrant)
                 || tail_surface.has(CreateWord::Haste);
+            // "..., except it has haste" / "except they have flying": the
+            // exception's subject is the copy, and its haste is read into the
+            // inline haste grant below.
+            crate::word_claims::claim_tokens(crate::word_claims::probe_only(|| {
+                let except_idx = tail_tokens.iter().position(|token| token.is_word("except"))?;
+                (tail_tokens
+                    .get(except_idx + 1)
+                    .is_some_and(|token| token.is_any_word(&["it", "they"]))
+                    && tail_tokens
+                        .get(except_idx + 2)
+                        .is_some_and(|token| token.is_any_word(&["has", "have"])))
+                .then(|| &tail_tokens[except_idx + 1..except_idx + 3])
+            }).unwrap_or_default());
+            if has_haste {
+                // Each "haste" of the exception is the inline haste grant.
+                for token in tail_tokens.iter() {
+                    if crate::word_claims::probe_only(|| token.is_word("haste")) {
+                        crate::word_claims::claim_tokens(std::slice::from_ref(token));
+                    }
+                }
+            }
             if has_haste {
                 // The dedicated inline haste flag already contributes this
                 // copiable ability; the generic quoted-rule reader can also
@@ -2846,6 +2867,8 @@ fn parse_direct_token_creation_alternative(
     };
     let first = parse_branch(&left_tokens)?;
     let second = parse_branch(&right_tokens)?;
+    // "a Food token or a Treasure token": the "or" that offers the choice.
+    crate::word_claims::claim_tokens(&tokens[separator..=separator]);
 
     Some(EffectAst::ObjectChoices(
         ObjectChoiceEffectAst::ChooseOneOf {
@@ -2936,6 +2959,10 @@ pub fn parse_investigate(
     let token_surface = creation_grammar::CreationTokens::new(tokens);
     let repetition_adverb = token_surface.token_is(0, CreateWord::Once)
         || token_surface.token_is(0, CreateWord::Twice);
+    if repetition_adverb {
+        // "investigate once / twice": the repetition count.
+        crate::word_claims::claim_tokens(&tokens[..1]);
+    }
     let (mut count, used) = if token_surface.token_is(0, CreateWord::Once) {
         (Value::Fixed(1), 1)
     } else if token_surface.token_is(0, CreateWord::Twice) {

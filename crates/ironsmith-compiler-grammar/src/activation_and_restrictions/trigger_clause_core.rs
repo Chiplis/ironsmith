@@ -2492,6 +2492,7 @@ fn try_parse_cast_or_cycle_this_trigger_lexed(tokens: &[OwnedLexToken]) -> Optio
     if source.is_empty() || !is_source_reference_words(source) {
         return None;
     }
+    crate::word_claims::claim_words(&words);
     Some(TriggerSpec::Either(
         Box::new(TriggerSpec::YouCastThisSpell),
         Box::new(TriggerSpec::KeywordActionFromSource {
@@ -2837,6 +2838,10 @@ fn try_parse_player_attack_with_aggregate_lexed(
         filter.controller = Some(player);
     }
     filter.set_union_one_or_more(true);
+    // "<player> attack(s) with <objects> with total power <comparison>":
+    // the verb, connective and aggregate head are read here.
+    crate::word_claims::claim_words(&words[..attack_word + 2]);
+    crate::word_claims::claim_words(&words[metric_word..metric_word + 3]);
     Ok(Some(TriggerSpec::AttacksOneOrMoreWithAggregate {
         filter,
         metric: crate::effect::ChoiceAggregateMetric::Power,
@@ -3163,6 +3168,7 @@ fn try_parse_relative_player_attack_branch(
         } else {
             return None;
         };
+    crate::word_claims::claim_words(&words[attacks_idx..=attacks_idx]);
     Some(apply_leading_trigger_intro_surface(trigger, raw_tokens))
 }
 
@@ -3388,6 +3394,9 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
                 }
             }
             if let Some(exile) = exile_arm(&left_spec) {
+                // "or is put into exile from the battlefield": the second
+                // arm, read here from the first arm's subject.
+                crate::word_claims::claim_tokens(&tokens[idx..]);
                 return Some(TriggerSpec::AnyOf(vec![left_spec, exile]));
             }
         }

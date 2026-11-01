@@ -791,6 +791,12 @@ pub fn parse_reveal(
                         && counter_grammar::find_word(&words, REVEAL_CARD_WORDS).is_some()
                         && counter_grammar::find_reveal_hand_source(tokens).is_some()
                     {
+                        // "reveals a number of cards from their hand equal to
+                        // ..." (Acquisitions Expert): the indefinite count head
+                        // is the dynamic X the equal-to value binds.
+                        if words.starts_with(&["a", "number", "of"]) {
+                            crate::word_claims::claim_words(&words[..3]);
+                        }
                         return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
                             player,
                             ChoiceCount::dynamic_x(),

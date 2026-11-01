@@ -773,6 +773,9 @@ fn read_delayed_schedule_sentence(
         if effects.is_empty() {
             return Ok(None);
         }
+        // "at [the] end of combat": the delay header read into the schedule.
+        let header_len = tokens.len() - body.len();
+        crate::word_claims::claim_tokens(&tokens[..header_len]);
         return Ok(Some(vec![EffectAst::Delayed(
             DelayedEffectAst::DelayedUntilEndOfCombat { effects },
         )]));

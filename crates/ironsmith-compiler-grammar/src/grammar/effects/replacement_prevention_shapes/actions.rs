@@ -106,6 +106,8 @@ pub fn parse_counter_removed_pump_shape(
     }
     let modifier_tokens = trim_lexed_commas(modifier_tokens);
     let (power, toughness) = fixed_modifier(modifier_tokens.first()?)?;
+    // The source subject ("this creature") the pump applies to.
+    crate::word_claims::claim_tokens(trim_lexed_commas(subject_tokens));
     Some(CounterRemovedPumpShape {
         power,
         toughness,

@@ -604,6 +604,13 @@ fn read_target_gets_clause(
             tokens,
         )?
     {
+        // The "get(s)" verb between the subject and the pump.
+        if let Some(verb) = tokens
+            .iter()
+            .position(|token| matches!(token.as_word(), Some("get" | "gets")))
+        {
+            crate::word_claims::claim_tokens(&tokens[verb..=verb]);
+        }
         return Ok(Some(vec![effect]));
     }
     Ok(None)

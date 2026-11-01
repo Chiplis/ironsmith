@@ -200,6 +200,12 @@ pub(super) fn parse_player_tap_state_trigger(
         return Ok(None);
     }
     let filter = parse_object_filter_lexed(&tokens[start..end], false)?;
+    // The verb, the "one or more" quantifier and the untap-step window.
+    crate::word_claims::claim_words(&words[verb..start_word]);
+    if during_untap_step.is_some() {
+        let full = view.to_word_refs();
+        crate::word_claims::claim_words(&full[words.len()..]);
+    }
     Ok(Some(TriggerSpec::PlayerChangesTapState {
         player,
         filter,

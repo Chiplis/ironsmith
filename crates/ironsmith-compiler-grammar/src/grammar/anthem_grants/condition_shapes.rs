@@ -681,7 +681,12 @@ fn parse_devotion_player(input: &mut LexStream<'_>) -> WResult<DevotionPlayerKin
 fn parse_devotion_colors(tokens: &[OwnedLexToken]) -> Result<Vec<Color>, DevotionConditionError> {
     let mut colors = Vec::new();
     for (index, token) in tokens.iter().enumerate() {
-        if token.is_comma() || token.is_word("and") {
+        if token.is_comma() {
+            continue;
+        }
+        if token.is_word("and") {
+            // "red and green": the colors' connector.
+            crate::word_claims::claim_tokens(&tokens[index..=index]);
             continue;
         }
         if token.as_word().is_none() {

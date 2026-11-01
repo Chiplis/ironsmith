@@ -323,8 +323,13 @@ fn parse_life_total_or_less_spell_cost_condition(
             "life total cost condition",
         ))
         .flatten()?;
-    (used == shape.quantity_words)
-        .then_some(ThisSpellCostCondition::YouLifeTotalOrLess(amount as i32))
+    if used != shape.quantity_words {
+        return None;
+    }
+    // "you have N or less life" / "your life total is N or less": the
+    // shape spans the whole clause.
+    crate::word_claims::claim_tokens(tokens);
+    Some(ThisSpellCostCondition::YouLifeTotalOrLess(amount as i32))
 }
 
 pub fn parse_can_be_attached_only_to_line(
@@ -6259,7 +6264,11 @@ pub fn parse_may_discard_source_any_time_line(
             "you", "may", "discard", "this", "card", "any", "time", "you", "could", "cast", "an",
             "instant",
         ])
-    .then(StaticAbility::may_discard_source_any_time_you_could_cast_instant))
+    .then(|| {
+        // An exact whole-line permission.
+        crate::word_claims::claim_tokens(tokens);
+        StaticAbility::may_discard_source_any_time_you_could_cast_instant()
+    }))
 }
 
 /// "You may plot nonland cards from the top of your library." (Fblthp, Lost
@@ -6274,7 +6283,11 @@ pub fn parse_may_plot_nonland_from_top_of_library_line(
             "you", "may", "plot", "nonland", "cards", "from", "the", "top", "of", "your",
             "library",
         ])
-    .then(StaticAbility::may_plot_nonland_cards_from_top_of_library))
+    .then(|| {
+        // An exact whole-line permission.
+        crate::word_claims::claim_tokens(tokens);
+        StaticAbility::may_plot_nonland_cards_from_top_of_library()
+    }))
 }
 
 /// "If a spell or ability you control would counter a spell, instead exile
@@ -6974,6 +6987,9 @@ pub fn parse_choose_named_options_as_enters_line(
         ))
         .trim()
         .to_string();
+        // "choose two abilities from among A, B, and C": every listed item
+        // is a verified keyword ability.
+        crate::word_claims::claim_tokens(tail_tokens);
         return Ok(Some(StaticAbility::choose_named_option_as_enters(
             combinations.into_iter().map(|(label, _)| label).collect(),
             format!("As {display_subject} enters, {choice}."),
@@ -7000,6 +7016,8 @@ pub fn parse_choose_named_options_as_enters_line(
                 [head @ .., last] => format!("{}, or {last}", head.join(", ")),
                 _ => return Ok(None),
             };
+            // The per-player chooser and every one-word option.
+            crate::word_claims::claim_tokens(tail_tokens);
             return Ok(Some(
                 StaticAbility::each_player_chooses_named_option_as_enters(
                     options,
@@ -7820,18 +7838,21 @@ fn damage_source_filter_from_shape(
     } else if !shape.source_noun && matches!(source_words.as_slice(),
         ["creatures", "it's", "blocking"] | ["creatures", "its", "blocking"])
     {
+        crate::word_claims::claim_tokens(shape.filter_tokens);
         let mut creatures = ObjectFilter::creature();
         creatures.blocked_by_source = true;
         creatures
     } else if shape.source_noun && shape.filter_tokens.is_empty()
         && trailing_words.as_slice() == ["of", "the", "chosen", "color"]
     {
+        crate::word_claims::claim_tokens(shape.trailing_filter_tokens);
         let mut sources = ObjectFilter::default();
         sources.chosen_color = true;
         sources
     } else if shape.source_noun && shape.filter_tokens.is_empty()
         && trailing_words.as_slice() == ["with", "the", "chosen", "name"]
     {
+        crate::word_claims::claim_tokens(shape.trailing_filter_tokens);
         let mut sources = ObjectFilter::default();
         sources.name = Some("{chosen name}".into());
         sources

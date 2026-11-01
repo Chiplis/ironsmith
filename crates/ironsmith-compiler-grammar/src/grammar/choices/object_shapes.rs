@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -232,7 +233,7 @@ fn parse_target_player_choice_head(input: &mut LexStream<'_>) -> WResult<TargetP
             .value(TargetPlayerChoiceActor::ObjectController),
         // "Choose an opponent. They choose a creature they control, then you
         // choose ..." (Tunnel of Love): the pronoun is the chosen player.
-        (primitives::kw("they"), winnow::combinator::peek(primitives::kw("choose")))
+        (primitives::kw("they"), crate::grammar::primitives::peek(primitives::kw("choose")))
             .value(TargetPlayerChoiceActor::ThatPlayer),
     ))
     .parse_next(input)?;

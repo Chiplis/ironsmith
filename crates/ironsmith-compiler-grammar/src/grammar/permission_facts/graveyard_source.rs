@@ -3,7 +3,8 @@
 use crate::types::CardType;
 use crate::zone::Zone;
 
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -422,6 +423,10 @@ fn parse_once_each_turn_top_library_shared_type_lexed<'a>(
         .void()
         .take()
         .parse_next(input)?;
+    // "with this creature": the source noun completing the reference.
+    if let Some(noun) = source_reference_tokens.last() {
+        crate::word_claims::claim_tokens(std::slice::from_ref(noun));
+    }
     Ok(OnceEachTurnTopLibrarySharedTypeFact {
         subject_tokens: trim_lexed_commas(subject_tokens),
         source_reference_tokens: trim_lexed_commas(source_reference_tokens),

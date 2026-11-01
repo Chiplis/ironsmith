@@ -10,7 +10,8 @@
 //! chose. Every choice joins one chosen set; the chosen set and the rest of
 //! the revealed group are then disposed of as stated.
 
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::prelude::*;
 use winnow::token::any;
 

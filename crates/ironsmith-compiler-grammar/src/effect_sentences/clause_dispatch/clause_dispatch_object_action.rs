@@ -81,6 +81,11 @@ pub(super) fn parse_conditional_become_pair_impl(
 
     let first_effect = parse_become_clause(shape.subject_tokens, first_body)?;
     let second_effect = parse_become_clause(shape.subject_tokens, second_body)?;
+    // "becomes X if P and becomes Y if Q": the two conditions' "if", the
+    // joining "and" and the repeated verb are the pair's frame.
+    for idx in [first_if_idx, and_idx, second_become_idx, second_if_idx] {
+        crate::word_claims::claim_tokens(&shape.action_tokens[idx..=idx]);
+    }
     Ok(Some(EffectAst::Sequence {
         effects: vec![
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {

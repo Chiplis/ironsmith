@@ -512,6 +512,8 @@ fn read_offering(
             "unknown offering permanent quality".into(),
         ));
     }
+    // The keyword word itself (CR 702.48).
+    crate::word_claims::claim_words(&words[1..2]);
     let cost = crate::model::CompilerCost::Sacrifice {
         count: ironsmith_core::ChoiceCount::exactly(1),
         filter,

@@ -201,6 +201,7 @@ pub fn parse_become_clause(
             parse_object_filter_lexed(&subject_tokens, false)
                 .map(|filter| TargetAst::Object(filter, None, None))
         })?;
+        crate::word_claims::claim_tokens(rest_tokens);
         return Ok(EffectAst::subject_verb_become_blocked(subject));
     }
 
@@ -396,6 +397,7 @@ pub fn parse_become_clause(
                     render_lower_words(&rest_tokens)
                 ))
             })?;
+        claim_life_total_noun(subject_tokens);
         return Ok(EffectAst::Sequence {
             effects: vec![
                 EffectAst::subject_verb_target_only(TargetAst::WithCount(
@@ -432,6 +434,7 @@ pub fn parse_become_clause(
                         render_lower_words(&rest_tokens)
                     ))
                 })?;
+            claim_life_total_noun(subject_tokens);
             return Ok(EffectAst::subject_verb_set_life_total(player, amount));
         }
     }
@@ -525,6 +528,9 @@ pub fn parse_become_clause(
     }
 
     if let Some(shape) = become_grammar::parse_basic_land_choice_template(become_words) {
+        // "a Plains or an Island" / "the basic land type of your choice": the
+        // whole body is the choice set, read by the template.
+        crate::word_claims::claim_tokens(become_body_tokens);
         let mut effect = EffectAst::subject_verb_become_basic_land_type_choice(target, duration);
         if let EffectAst::SubjectVerb(subject) = &mut effect
             && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
@@ -1174,6 +1180,13 @@ pub fn parse_become_clause(
         } else {
             Vec::new()
         };
+        // "a Rhino with base power and toughness 4/4": "with" attaches the
+        // stated base size.
+        if let Some(with) = base_pt_tokens.iter().position(|token| token.is_word("with"))
+            && base_pt_tokens.get(with + 1).is_some_and(|token| token.is_word("base"))
+        {
+            crate::word_claims::claim_tokens(&base_pt_tokens[with..=with]);
+        }
         return Ok(EffectAst::subject_verb_become_base_pt_creature(
             pt.power,
             pt.toughness,
@@ -1449,4 +1462,14 @@ pub fn parse_become_clause(
         "unsupported become clause (clause: '{}')",
         render_lower_words(&rest_tokens)
     )))
+}
+
+/// "<player's> life total becomes N": the characteristic the set-life-total
+/// reading changes.
+fn claim_life_total_noun(subject_tokens: &[OwnedLexToken]) {
+    for pair in subject_tokens.windows(2) {
+        if pair[0].as_word() == Some("life") && pair[1].as_word() == Some("total") {
+            crate::word_claims::claim_tokens(pair);
+        }
+    }
 }

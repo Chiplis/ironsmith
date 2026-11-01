@@ -9,7 +9,16 @@ fn tagged(tag: crate::tag::CompilerReferenceTag, surface: &str) -> Box<ChooseSpe
     ))
 }
 
+/// Each arm matches its referenced-object phrase word for word ("that
+/// spell's mana value", "the milled card's mana value"), so the words it
+/// used are read.
 pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
+    let (value, used) = parse_reference(words)?;
+    crate::word_claims::claim_words(&words[..used.min(words.len())]);
+    Some((value, used))
+}
+
+fn parse_reference(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
     // "draw cards equal to its total toxic value" (Goliath Hatchery): the
     // summed toxic N of the object the preceding choice named (CR 702.164c).

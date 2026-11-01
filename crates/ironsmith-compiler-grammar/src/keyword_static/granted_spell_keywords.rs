@@ -183,10 +183,12 @@ pub fn parse_granted_spell_keyword_line(
             filter.color_count = Some(crate::filter::Comparison::Equal(count));
         }
     }
-    if crate::word_primitives::sequence_occurs(
+    if crate::word_primitives::parse_sequence_start(
         subject_words,
         &["from", "anywhere", "other", "than", "your", "hand"],
-    ) {
+    )
+    .is_some()
+    {
         filter.other = false;
         filter.excluded_cast_origin_zone = Some(Zone::Hand);
     }

@@ -63,6 +63,14 @@ pub(super) fn parse_destroy_target_and_attached_shape(
         )?)
     };
 
+    // "attached to that creature" / "attached to it": the attachment
+    // relation to the tagged target and its back-reference.
+    if let Some(attached_at) = attached_tokens
+        .windows(2)
+        .position(|pair| pair[0].is_word("attached") && pair[1].is_word("to"))
+    {
+        crate::word_claims::claim_tokens(&attached_tokens[attached_at..]);
+    }
     Some(DestroyTargetAndAttachedShape {
         target_tokens,
         attachment_filter_tokens,

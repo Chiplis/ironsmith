@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, eof, peek, repeat_till};
+use winnow::combinator::{alt, eof, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
@@ -88,6 +89,8 @@ fn parse_instant_and_sorcery_spells(tokens: &[OwnedLexToken]) -> Option<ObjectFi
         ObjectFilter::default().with_type(second_type),
     ];
     filter.set_conjunctive_set_surface(true);
+    // "Instant and sorcery spells you control": the whole subject is read.
+    crate::word_claims::claim_tokens(trim_lexed_commas(tokens));
     Some(filter)
 }
 

@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, eof, peek};
+use winnow::combinator::{alt, eof};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};

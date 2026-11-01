@@ -197,6 +197,8 @@ pub fn parse_lose_life(
             crate::util::parse_number_word_u32(kept).or_else(|| crate::util::decimal_count(kept))
         && let Ok(kept) = i32::try_from(kept)
     {
+        // "all but N life": the complete amount phrase.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(EffectAst::Sequence {
             effects: vec![
                 subject_verb_player_resource_effect(

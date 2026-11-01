@@ -101,23 +101,30 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                 ["combat", "damage"] => true,
                 _ => return None,
             };
+            // "[combat] damage would be dealt to": the event head.
+            let claim_head = || crate::word_claims::claim_words(&rest[..would + 4]);
             if let Some(player) = player_subject(recipient) {
+                claim_head();
                 return Some(ReplacedEventSpec::DamageToPlayer {
                     player,
                     source_filter: None,
                     combat_only,
                 });
             }
+            let target = source_subject(recipient)?;
+            claim_head();
             Some(ReplacedEventSpec::DamageToObject {
-                target: source_subject(recipient)?,
+                target,
                 source_filter: None,
                 combat_only,
             })
         }
         // "If this creature would be dealt damage".
         ["be", "dealt", "damage"] | ["be", "dealt", "combat", "damage"] => {
+            let target = source_subject(subject)?;
+            claim_predicate();
             Some(ReplacedEventSpec::DamageToObject {
-                target: source_subject(subject)?,
+                target,
                 source_filter: None,
                 combat_only: predicate.len() == 4,
             })
@@ -176,16 +183,18 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
             })
         }
         // "If an opponent would gain life".
-        ["gain", "life"] => Some(ReplacedEventSpec::LifeGain {
-            player: player_subject(subject)?,
-            from_own_spell_or_ability: false,
-        }),
+        ["gain", "life"] => {
+            let player = player_subject(subject)?;
+            crate::word_claims::claim_words(rest);
+            Some(ReplacedEventSpec::LifeGain { player, from_own_spell_or_ability: false })
+        }
         // "If a spell or ability would cause its controller to gain life"
         // (Rain of Gore): the gain must be that spell or ability's effect,
         // gained by its own controller. "That player" is the gaining player.
         ["cause", "its", "controller", "to", "gain", "life"]
             if matches!(subject, ["a", "spell", "or", "ability"]) =>
         {
+            crate::word_claims::claim_words(rest);
             Some(ReplacedEventSpec::LifeGain {
                 player: PlayerFilter::Any,
                 from_own_spell_or_ability: true,
@@ -200,12 +209,15 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                 ["an", "opponent's" | "opponents", "life", "total"] => PlayerFilter::Opponent,
                 _ => return None,
             };
+            crate::word_claims::claim_words(rest);
             Some(ReplacedEventSpec::LifeReducedToZeroOrLess { player })
         }
         // "If you would lose life".
-        ["lose", "life"] => Some(ReplacedEventSpec::LifeLoss {
-            player: player_subject(subject)?,
-        }),
+        ["lose", "life"] => {
+            let player = player_subject(subject)?;
+            crate::word_claims::claim_words(rest);
+            Some(ReplacedEventSpec::LifeLoss { player })
+        }
         ["pay", "life", "while", "your", "library", "has", "at", "least", "that", "many", "cards", "in", "it"]
             if subject == ["you"] => Some(ReplacedEventSpec::LifePayment {
                 player: PlayerFilter::You,
@@ -519,6 +531,8 @@ pub fn parse_if_event_would_happen_instead_line(
         && words_of(crate::util::trim_edge_punctuation_tokens(&tokens[comma + 1..]))
             == ["regenerate", "it"]
     {
+        // "regenerate it": the replacement this reading builds.
+        crate::word_claims::claim_tokens(&tokens[comma + 1..]);
         return Ok(Some(StaticAbility::event_replacement_with_effects(
             ReplacedEventSpec::SourceDestructionRegenerates,
             Vec::new(),

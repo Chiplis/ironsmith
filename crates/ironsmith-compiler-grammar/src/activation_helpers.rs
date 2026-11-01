@@ -331,6 +331,12 @@ pub fn parse_add_mana(
                 crate::word_claims::claim_words(&clause_words[index..=index]);
             }
         }
+        // "one mana of any of the exiled card's colors": the whole choice.
+        if let [.., "one", "mana", "of", "any", "of", "the", "exiled", _, "color" | "colors"] =
+            clause_words.as_slice()
+        {
+            crate::word_claims::claim_words(&clause_words[clause_words.len() - 9..]);
+        }
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
     // "you add the mana lost this way" (Drain Power): the types of the mana

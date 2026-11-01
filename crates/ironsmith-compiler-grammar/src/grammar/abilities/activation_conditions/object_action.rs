@@ -40,7 +40,13 @@ pub(super) fn parse_controlled_creature_power_condition(
     let (comparison, used) = crate::grammar::primitives::probe_shape(
         parse_filter_comparison_tokens("power", &comparison_words, &clause_words),
     )??;
-    (used == comparison_words.len()).then_some(PredicateAst::YouControl(
+    if used != comparison_words.len() {
+        return None;
+    }
+    // "a creature with power 4 or greater": the "with" joining the creature
+    // to its power comparison (a matching word test reads it).
+    let _ = tokens.iter().any(|token| token.is_word("with"));
+    Some(PredicateAst::YouControl(
         ObjectFilter::creature().with_power(comparison),
     ))
 }

@@ -3,7 +3,8 @@ use super::*;
 use crate::grammar::{filters, leaf};
 use crate::object::CounterType;
 use crate::types::CardType;
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till, separated};
+use winnow::combinator::{alt, eof, opt, repeat, repeat_till, separated};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 

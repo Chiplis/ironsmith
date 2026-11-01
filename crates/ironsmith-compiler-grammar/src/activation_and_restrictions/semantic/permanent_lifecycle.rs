@@ -58,19 +58,22 @@ pub(super) fn parse_permanent_lifecycle_trigger(
         if source_reference_surface_for_trigger_subject(&tokens[..end]).is_some() {
             return Ok(None);
         }
-        return Ok(Some(TriggerSpec::PermanentMutates(subject(
-            &tokens[..end],
-        )?)));
+        let filter = subject(&tokens[..end])?;
+        crate::word_claims::claim_tokens(&tokens[end..]);
+        return Ok(Some(TriggerSpec::PermanentMutates(filter)));
     }
     if words.ends_with(&["becomes", "renowned"]) || words.ends_with(&["become", "renowned"]) {
         let end = trigger_word_token_start(tokens, words.len() - 2).unwrap_or(tokens.len());
         if end == 0 {
             return Ok(None);
         }
+        let filter = subject(&tokens[..end])?;
+        // "become(s) renowned": the keyword-action event.
+        crate::word_claims::claim_tokens(&tokens[end..]);
         return Ok(Some(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::Renown,
             player: PlayerFilter::Any,
-            source_filter: Some(subject(&tokens[..end])?),
+            source_filter: Some(filter),
             during_your_turn: false,
         }));
     }
@@ -89,10 +92,11 @@ pub(super) fn parse_permanent_lifecycle_trigger(
             if start >= end {
                 return Ok(None);
             }
-            return Ok(Some(TriggerSpec::PlayerTurnsFaceUp {
-                player,
-                filter: subject(&tokens[start..end])?,
-            }));
+            let filter = subject(&tokens[start..end])?;
+            // "turn(s) <object> face up": verb and the face-up result.
+            crate::word_claims::claim_words(&words[index..=index]);
+            crate::word_claims::claim_tokens(&tokens[end..]);
+            return Ok(Some(TriggerSpec::PlayerTurnsFaceUp { player, filter }));
         }
     }
     Ok(None)

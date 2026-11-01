@@ -81,6 +81,9 @@ pub enum ActivationTiming {
     /// grant resolves; the grant binds it to its controller. Appended for
     /// wire stability.
     AnyTimeByGrantingPlayer(Option<crate::ids::PlayerId>),
+    /// "Activate only during the end of combat step" (Desert): the game is in
+    /// the end of combat step (CR 511). Appended for wire stability.
+    DuringEndOfCombatStep,
 }
 
 impl ActivationTiming {
@@ -98,6 +101,7 @@ impl ActivationTiming {
             ActivationTiming::BeforeBlockersDeclared => "before blockers are declared",
             ActivationTiming::BeforeCombatDamageStep => "before the combat damage step",
             ActivationTiming::BeforeEndOfCombatStep => "before the end of combat step",
+            ActivationTiming::DuringEndOfCombatStep => "during the end of combat step",
             _ => return None,
         })
     }

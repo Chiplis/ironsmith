@@ -105,6 +105,8 @@ pub fn parse_mana_symbol_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
 
+    // The complete payment-count phrase is read.
+    crate::word_claims::claim_tokens(tokens);
     Some(Value::ManaSymbolSpentToCastThisSpell {
         symbol: *symbol,
         reference,
@@ -352,7 +354,7 @@ pub fn parse_prior_effect_aggregate_metric_value(
                 }
                 query = query.with_filter(filter);
             }
-            if crate::word_primitives::sequence_occurs(filter_words, &["they", "controlled"]) {
+            if crate::word_primitives::parse_sequence_start(filter_words, &["they", "controlled"]).is_some() {
                 // Inside a quantified-player program, `they controlled`
                 // partitions the producer's remembered objects by the
                 // current participant. Store that ownership on the metric

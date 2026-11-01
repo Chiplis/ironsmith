@@ -26,6 +26,9 @@ pub fn parse(tokens:&[OwnedLexToken])->Option<Assertion<'_>> {
     let verb=words.iter().position(|word|matches!(*word,"is"|"are"|"isn't"|"isnt"|"isn’t"|"aren't"|"arent"|"aren’t"))?;
     if verb==0 {return None;}
     let (property,remove)=copula_tail(&words[verb..])?;
+    // The copula, its negation ("isn't", "is no longer") and the property
+    // are the complete assertion.
+    crate::word_claims::claim_words(&words[verb..]);
     Some(Assertion{subject:&tokens[..positions[verb].0],property,remove})
 }
 pub fn color_then_remove_card_type(tokens:&[OwnedLexToken])->Option<(crate::color::ColorSet,CardType)> {

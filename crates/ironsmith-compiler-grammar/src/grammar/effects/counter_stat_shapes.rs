@@ -332,16 +332,20 @@ pub fn parse_reveal_full_hand(tokens: &[OwnedLexToken]) -> Option<CounterWordSpa
     )
 }
 
+/// "from their hand": the reveal-hand readers' source, read when found
+/// (each caller returns its reveal-from-hand effect on a match).
 pub fn find_reveal_hand_source(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
     let words = TokenWordView::new(tokens).word_refs();
-    find_phrase(
+    let span = find_phrase(
         &words,
         &[
             &["from", "your", "hand"],
             &["from", "their", "hand"],
             &["from", "his", "or", "her", "hand"],
         ],
-    )
+    )?;
+    crate::word_claims::claim_words(&words[span.start..span.end]);
+    Some(span)
 }
 
 pub fn find_from_preposition(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {

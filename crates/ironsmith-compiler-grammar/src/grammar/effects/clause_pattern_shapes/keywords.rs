@@ -1,7 +1,8 @@
 use super::super::*;
 
 use crate::grammar::leaf;
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
@@ -283,11 +284,15 @@ fn six_sided_dice<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
         primitives::phrase(&["six", "sided", "dice"]),
         (
+            // "six-sided": the die size, read as one hyphenated token.
             any.verify(|token: &&OwnedLexToken| {
                 matches!(
                     token.parser_word_pieces(),
                     [six, sided] if six.text == "six" && sided.text == "sided"
                 )
+            })
+            .map(|token: &OwnedLexToken| {
+                crate::word_claims::claim_tokens(std::slice::from_ref(token));
             }),
             primitives::kw("dice"),
         )

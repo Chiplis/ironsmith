@@ -1,4 +1,5 @@
-use winnow::combinator::{peek, repeat_till};
+use winnow::combinator::{repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::prelude::*;
 use winnow::token::any;
 
@@ -29,6 +30,94 @@ pub enum DivvyRestDestinationShape {
     BattlefieldTapped,
 }
 
+/// The zones a lead's pool occupies once the lead sentences resolve: the
+/// cards it searched for or revealed stay in the library, exiled cards are in
+/// exile, moved cards are wherever the lead put them, and so on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DivvyPoolZones {
+    pub library: bool,
+    pub graveyard: bool,
+    pub hand: bool,
+    pub exile: bool,
+    pub battlefield: bool,
+}
+
+impl DivvyPoolZones {
+    pub fn zones(self) -> Vec<crate::zone::Zone> {
+        use crate::zone::Zone;
+        [
+            (self.library, Zone::Library),
+            (self.graveyard, Zone::Graveyard),
+            (self.hand, Zone::Hand),
+            (self.exile, Zone::Exile),
+            (self.battlefield, Zone::Battlefield),
+        ]
+        .into_iter()
+        .filter_map(|(present, zone)| present.then_some(zone))
+        .collect()
+    }
+
+    fn is_empty(self) -> bool {
+        self == Self::default()
+    }
+
+    fn noun(word: &str) -> Self {
+        let mut zones = Self::default();
+        match word {
+            "library" | "libraries" => zones.library = true,
+            "graveyard" | "graveyards" => zones.graveyard = true,
+            "hand" | "hands" => zones.hand = true,
+            "exile" => zones.exile = true,
+            "battlefield" => zones.battlefield = true,
+            _ => {}
+        }
+        zones
+    }
+
+    /// Read where the pool made by `lead` ends up. The last lead sentence
+    /// that places cards decides: a destination ("into your graveyard",
+    /// "onto the battlefield") wins, then an exile verb, then the zones the
+    /// sentence draws its cards from; targets with no zone and no "cards"
+    /// are permanents on the battlefield.
+    fn from_lead(lead: &[Vec<&str>]) -> Option<Self> {
+        for words in lead.iter().rev() {
+            let destination = words
+                .iter()
+                .enumerate()
+                .filter(|(_, word)| matches!(**word, "into" | "onto"))
+                .filter_map(|(index, _)| {
+                    words[index + 1..]
+                        .iter()
+                        .take(3)
+                        .map(|word| Self::noun(word))
+                        .find(|zones| !zones.is_empty())
+                })
+                .last();
+            if let Some(zones) = destination {
+                return Some(zones);
+            }
+            if words.iter().any(|word| matches!(*word, "exile" | "exiles" | "exiled")) {
+                return Some(Self { exile: true, ..Self::default() });
+            }
+            let mut zones = Self::default();
+            for word in words {
+                let noun = Self::noun(word);
+                zones.library |= noun.library;
+                zones.graveyard |= noun.graveyard;
+                zones.hand |= noun.hand;
+                zones.battlefield |= noun.battlefield;
+            }
+            if !zones.is_empty() {
+                return Some(zones);
+            }
+            if words.contains(&"target") && !words.iter().any(|word| matches!(*word, "card" | "cards")) {
+                return Some(Self { battlefield: true, ..Self::default() });
+            }
+        }
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivvySequenceShape {
     BinaryCards(BinaryPileProgramShape),
@@ -49,7 +138,12 @@ pub enum DivvySequenceShape {
         count: i32,
         consumed_sentences: usize,
     },
-    SearchFourCreatureCards,
+    /// "Search your library and graveyard for up to four creature cards ...
+    /// An opponent chooses two of those cards. Shuffle the chosen cards into
+    /// your library and put the rest onto the battlefield." Every sentence
+    /// after the third compiles on its own. `fused` marks a program that
+    /// arrived as one input whose sentences the lowering splits itself.
+    SearchFourCreatureCards { fused: bool },
     SearchLibraryGraveyardExileRemainderToTop,
     ExchangeCreatureControl,
     DestroyChosenCreaturePile,
@@ -65,13 +159,27 @@ pub enum DivvySequenceShape {
     /// library in any order (Jace, Architect of Thought).
     RevealTopPilesOtherOnBottom,
     ExileCreatureCardsFromGraveyards,
-    ChooseOneOfThem,
+    /// "<lead sentences>. An opponent chooses one of them. Put the chosen
+    /// card into your hand and the other into your graveyard[, then
+    /// shuffle]." The lead sentences make the pool and compile on their own.
+    ChooseOneOfThem {
+        lead_sentences: usize,
+        pool: DivvyPoolZones,
+        shuffle: bool,
+    },
     SearchFourDifferentNames {
         chooser: DivvyChooserShape,
         rest: DivvyRestDestinationShape,
+        shuffle: bool,
     },
     SearchFourDifferentPowers,
-    TargetOpponentChoosesOne,
+    /// "<lead sentences>. Target opponent chooses one. Put that card into
+    /// your hand and the rest into your graveyard. [Then shuffle.]"
+    TargetOpponentChoosesOne {
+        lead_sentences: usize,
+        pool: DivvyPoolZones,
+        shuffle: bool,
+    },
 }
 
 pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<DivvySequenceShape> {
@@ -93,14 +201,25 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
         .collect::<Vec<_>>();
     let first = sentence_words.first().map(Vec::as_slice).unwrap_or(&[]);
 
-    if let Some(shape) = parse_fixed_exile_piles(&sentence_words) {
-        return Some(shape);
-    }
-    if let Some(shape) = parse_chosen_opponent_face_down_piles(&sentence_words) {
+    // Both fixed shapes match every word of the sentences they consume.
+    let fixed = crate::word_claims::speculative_keep_if(
+        || {
+            parse_fixed_exile_piles(&sentence_words)
+                .map(|shape| (shape, 6))
+                .or_else(|| {
+                    parse_chosen_opponent_face_down_piles(&sentence_words).map(|shape| (shape, 3))
+                })
+        },
+        Option::is_some,
+    );
+    if let Some((shape, consumed)) = fixed {
+        for tokens in sentences.get(..consumed).unwrap_or(&[]) {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(shape);
     }
 
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -123,35 +242,30 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
             ],
             &["you", "lose", "half", "your", "life", "rounded", "up"],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::SearchLibraryGraveyardExileRemainderToTop);
     }
 
-    if sentences.len() == 1
-        && prefix(
-            first,
-            &[
-                "search",
-                "your",
-                "library",
-                "and",
-                "graveyard",
-                "for",
-                "up",
-                "to",
-                "four",
-                "creature",
-                "cards",
-            ],
-        )
-        && phrase_anywhere(first, &["chooses", "two", "of", "those", "cards"])
-        && phrase_anywhere(first, &["shuffle", "the", "chosen", "cards"])
-        && phrase_anywhere(first, &["put", "the", "rest", "onto", "the", "battlefield"])
-    {
-        return Some(DivvySequenceShape::SearchFourCreatureCards);
+    // A program that arrives as one fused input reads its own sentences.
+    if let [fused] = sentences {
+        let parts = crate::lexer::split_lexed_sentences(fused);
+        if parts.len() > 1 {
+            let part_words = parts
+                .iter()
+                .map(|tokens| TokenWordView::new(tokens).to_word_refs())
+                .collect::<Vec<_>>();
+            if crate::word_claims::speculative_keep_if(
+                || parse_search_four_creature_cards(&part_words),
+                Option::is_some,
+            )
+            .is_some()
+            {
+                return Some(DivvySequenceShape::SearchFourCreatureCards { fused: true });
+            }
+        }
     }
 
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -186,11 +300,11 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
                 "creatures",
             ],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::ExchangeCreatureControl);
     }
 
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -218,11 +332,11 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
             ],
             &["they", "can't", "be", "regenerated"],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::DestroyChosenCreaturePile);
     }
 
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -254,76 +368,19 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
                 "battlefield",
             ],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::GraveyardCreaturePiles);
     }
 
-    if prefix(
-        first,
-        &[
-            "each",
-            "opponent",
-            "separates",
-            "the",
-            "creatures",
-            "they",
-            "control",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sequence_has_phrase(&sentence_words, &["for", "each", "opponent"])
-        && sequence_has_phrase(
-            &sentence_words,
-            &[
-                "each",
-                "opponent",
-                "sacrifices",
-                "the",
-                "creatures",
-                "in",
-                "their",
-                "chosen",
-                "pile",
-            ],
-        )
-    {
-        return Some(DivvySequenceShape::OpponentCreaturePilesSacrifice);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_opponent_creature_piles_sacrifice(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if prefix(
-        first,
-        &[
-            "separate",
-            "all",
-            "permanents",
-            "target",
-            "player",
-            "controls",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sequence_has_phrase(
-        &sentence_words,
-        &[
-            "that",
-            "player",
-            "sacrifices",
-            "all",
-            "permanents",
-            "in",
-            "the",
-            "pile",
-            "of",
-            "their",
-            "choice",
-        ],
-    ) {
-        return Some(DivvySequenceShape::PermanentPilesSacrifice);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_permanent_piles_sacrifice(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -359,44 +416,15 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
                 "turn",
             ],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::DefendingCreaturePilesBlock);
     }
 
-    if prefix(
-        first,
-        &[
-            "separate",
-            "all",
-            "creatures",
-            "that",
-            "player",
-            "controls",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sequence_has_phrase(
-        &sentence_words,
-        &[
-            "only",
-            "creatures",
-            "in",
-            "the",
-            "pile",
-            "of",
-            "their",
-            "choice",
-            "can",
-            "attack",
-            "this",
-            "turn",
-        ],
-    ) {
-        return Some(DivvySequenceShape::CreaturePilesAttack);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_creature_piles_attack(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -434,89 +462,19 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
             &["destroy", "all", "lands", "in", "the", "chosen", "piles"],
             &["tap", "all", "lands", "in", "the", "other", "piles"],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::LandPiles);
     }
 
-    if prefix(
-        first,
-        &[
-            "exile",
-            "up",
-            "to",
-            "five",
-            "target",
-            "permanent",
-            "cards",
-            "from",
-            "your",
-            "graveyard",
-            "and",
-            "separate",
-            "them",
-            "into",
-            "two",
-            "piles",
-        ],
-    ) && sequence_has_phrase(
-        &sentence_words,
-        &["an", "opponent", "chooses", "one", "of", "those", "piles"],
-    ) && sequence_has_phrase(
-        &sentence_words,
-        &["put", "that", "pile", "into", "your", "hand"],
-    ) && sequence_has_phrase(
-        &sentence_words,
-        &["the", "other", "into", "your", "graveyard"],
-    ) {
-        return Some(DivvySequenceShape::ExilePermanentCardsPile);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_exile_and_separate_piles(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if prefix(first, &["reveal", "the", "top"])
-        && sequence_has_phrase(&sentence_words, &["cards", "of", "your", "library"])
-        && sequence_has_phrase(
-            &sentence_words,
-            &[
-                "an",
-                "opponent",
-                "separates",
-                "those",
-                "cards",
-                "into",
-                "two",
-                "piles",
-            ],
-        )
-        && sequence_has_phrase(
-            &sentence_words,
-            &["put", "one", "pile", "into", "your", "hand"],
-        )
-        && sequence_has_phrase(
-            &sentence_words,
-            &["the", "other", "into", "your", "graveyard"],
-        )
-    {
-        return Some(DivvySequenceShape::RevealTopPiles);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_reveal_top_opponent_piles(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if prefix(first, &["reveal", "the", "top"])
-        && sequence_has_phrase(&sentence_words, &["cards", "of", "your", "library"])
-        && sequence_has_phrase(
-            &sentence_words,
-            &["an", "opponent", "separates", "those", "cards", "into", "two", "piles"],
-        )
-        && sequence_has_phrase(&sentence_words, &["put", "one", "pile", "into", "your", "hand"])
-        && sequence_has_phrase(
-            &sentence_words,
-            &[
-                "the", "other", "on", "the", "bottom", "of", "your", "library", "in", "any",
-                "order",
-            ],
-        )
-    {
-        return Some(DivvySequenceShape::RevealTopPilesOtherOnBottom);
-    }
-
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -565,104 +523,23 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
                 "graveyards",
             ],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::ExileCreatureCardsFromGraveyards);
     }
 
-    if prefix(
-        first,
-        &[
-            "search",
-            "your",
-            "library",
-            "and",
-            "graveyard",
-            "for",
-            "up",
-            "to",
-            "four",
-            "creature",
-            "cards",
-        ],
-    ) && sequence_has_phrase(&sentence_words, &["different", "names"])
-        && sequence_has_phrase(&sentence_words, &["mana", "value", "x", "or", "less"])
-        && sequence_has_phrase(&sentence_words, &["reveal", "them"])
-        && sequence_has_phrase(
-            &sentence_words,
-            &["an", "opponent", "chooses", "two", "of", "those", "cards"],
-        )
-        && sequence_has_phrase(
-            &sentence_words,
-            &[
-                "shuffle", "the", "chosen", "cards", "into", "your", "library",
-            ],
-        )
-        && sequence_has_phrase(
-            &sentence_words,
-            &["put", "the", "rest", "onto", "the", "battlefield"],
-        )
-    {
-        return Some(DivvySequenceShape::SearchFourCreatureCards);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_search_four_creature_cards(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if sentences.len() >= 2
-        && sequence_has_phrase(
-            &sentence_words,
-            &["an", "opponent", "chooses", "one", "of", "them"],
-        )
-        && sequence_has_phrase(
-            &sentence_words,
-            &["put", "the", "chosen", "card", "into", "your", "hand"],
-        )
-        && sequence_has_phrase(
-            &sentence_words,
-            &["the", "other", "into", "your", "graveyard"],
-        )
-    {
-        return Some(DivvySequenceShape::ChooseOneOfThem);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_choose_one_of_them(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if prefix(
-        first,
-        &["search", "your", "library", "for", "up", "to", "four"],
-    ) && sequence_has_phrase(&sentence_words, &["cards", "with", "different", "names"])
-        && sequence_has_phrase(&sentence_words, &["reveal", "them"])
-        && sequence_has_phrase(
-            &sentence_words,
-            &["put", "the", "chosen", "cards", "into", "your", "graveyard"],
-        )
-        && sequence_has_phrase(&sentence_words, &["shuffle"])
-    {
-        let chooser = if sequence_has_phrase(
-            &sentence_words,
-            &[
-                "target", "opponent", "chooses", "two", "of", "those", "cards",
-            ],
-        ) {
-            DivvyChooserShape::TargetOpponent
-        } else if sequence_has_phrase(
-            &sentence_words,
-            &["an", "opponent", "chooses", "two", "of", "those", "cards"],
-        ) {
-            DivvyChooserShape::Opponent
-        } else {
-            return None;
-        };
-        let rest = if sequence_has_phrase(&sentence_words, &["the", "rest", "into", "your", "hand"])
-        {
-            DivvyRestDestinationShape::Hand
-        } else if sequence_has_phrase(
-            &sentence_words,
-            &["the", "rest", "onto", "the", "battlefield", "tapped"],
-        ) {
-            DivvyRestDestinationShape::BattlefieldTapped
-        } else {
-            return None;
-        };
-        return Some(DivvySequenceShape::SearchFourDifferentNames { chooser, rest });
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_search_different_names(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
-    if exact_sequence(
+    if crate::word_claims::speculative_keep_if(|| exact_sequence(
         &sentence_words,
         &[
             &[
@@ -688,21 +565,12 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
                 "the", "rest", "into", "your", "hand",
             ],
         ],
-    ) {
+    ), |matched| *matched) {
         return Some(DivvySequenceShape::SearchFourDifferentPowers);
     }
 
-    if sequence_has_phrase(&sentence_words, &["target", "opponent", "chooses", "one"])
-        && sequence_has_phrase(
-            &sentence_words,
-            &["put", "that", "card", "into", "your", "hand"],
-        )
-        && sequence_has_phrase(
-            &sentence_words,
-            &["the", "rest", "into", "your", "graveyard"],
-        )
-    {
-        return Some(DivvySequenceShape::TargetOpponentChoosesOne);
+    if let Some(shape) = crate::word_claims::speculative_keep_if(|| parse_target_opponent_chooses_one(&sentence_words), Option::is_some) {
+        return Some(shape);
     }
 
     None
@@ -844,4 +712,251 @@ mod fixed_pile_tests {
             );
         }
     }
+}
+
+// Each reader below matches every word of the sentences it models; lead
+// sentences that the lowering compiles on its own are read there.
+
+/// "Each opponent separates the creatures they control into two piles. For
+/// each opponent, you choose one of their piles. Each opponent sacrifices the
+/// creatures in their chosen pile." (Make an Example)
+fn parse_opponent_creature_piles_sacrifice(
+    sentence_words: &[Vec<&str>],
+) -> Option<DivvySequenceShape> {
+    exact_sequence(
+        without_piles_reminder(sentence_words),
+        &[
+            &[
+                "each", "opponent", "separates", "the", "creatures", "they", "control", "into",
+                "two", "piles",
+            ],
+            &["for", "each", "opponent", "you", "choose", "one", "of", "their", "piles"],
+            &[
+                "each", "opponent", "sacrifices", "the", "creatures", "in", "their", "chosen",
+                "pile",
+            ],
+        ],
+    )
+    .then_some(DivvySequenceShape::OpponentCreaturePilesSacrifice)
+}
+
+/// "Separate all permanents target player controls into two piles. That
+/// player sacrifices all permanents in the pile of their choice." (Liliana of
+/// the Veil)
+fn parse_permanent_piles_sacrifice(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    exact_sequence(
+        without_piles_reminder(sentence_words),
+        &[
+            &[
+                "separate", "all", "permanents", "target", "player", "controls", "into", "two",
+                "piles",
+            ],
+            &[
+                "that", "player", "sacrifices", "all", "permanents", "in", "the", "pile", "of",
+                "their", "choice",
+            ],
+        ],
+    )
+    .then_some(DivvySequenceShape::PermanentPilesSacrifice)
+}
+
+/// "Separate all creatures that player controls into two piles. Only
+/// creatures in the pile of their choice can attack this turn." (Fight or
+/// Flight)
+fn parse_creature_piles_attack(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    exact_sequence(
+        without_piles_reminder(sentence_words),
+        &[
+            &[
+                "separate", "all", "creatures", "that", "player", "controls", "into", "two",
+                "piles",
+            ],
+            &[
+                "only", "creatures", "in", "the", "pile", "of", "their", "choice", "can",
+                "attack", "this", "turn",
+            ],
+        ],
+    )
+    .then_some(DivvySequenceShape::CreaturePilesAttack)
+}
+
+/// "<Exile ...> and separate them into two piles. An opponent chooses one of
+/// those piles. Put that pile into your hand and the other into your
+/// graveyard." (Split the Spoils). The exile clause is compiled on its own,
+/// so any exile wording makes the pool.
+fn parse_exile_and_separate_piles(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    const SEPARATE: &[&str] = &["and", "separate", "them", "into", "two", "piles"];
+    let [exile, choose, put] = without_piles_reminder(sentence_words) else {
+        return None;
+    };
+    let head_len = exile.len().checked_sub(SEPARATE.len())?;
+    (head_len > 1
+        && prefix(exile, &["exile"])
+        && exact(&exile[head_len..], SEPARATE)
+        && exact(choose, &["an", "opponent", "chooses", "one", "of", "those", "piles"])
+        && exact(
+            put,
+            &[
+                "put", "that", "pile", "into", "your", "hand", "and", "the", "other", "into",
+                "your", "graveyard",
+            ],
+        ))
+    .then_some(DivvySequenceShape::ExilePermanentCardsPile)
+}
+
+/// "Reveal the top N cards of your library. An opponent separates those cards
+/// into two piles. Put one pile into your hand and the other into your
+/// graveyard | on the bottom of your library in any order." The reveal is
+/// compiled on its own.
+fn parse_reveal_top_opponent_piles(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    let [reveal, separate, put] = without_piles_reminder(sentence_words) else {
+        return None;
+    };
+    if !(prefix(reveal, &["reveal", "the", "top"])
+        && phrase_anywhere(reveal, &["cards", "of", "your", "library"])
+        && exact(
+            separate,
+            &["an", "opponent", "separates", "those", "cards", "into", "two", "piles"],
+        ))
+    {
+        return None;
+    }
+    if exact(
+        put,
+        &[
+            "put", "one", "pile", "into", "your", "hand", "and", "the", "other", "into", "your",
+            "graveyard",
+        ],
+    ) {
+        Some(DivvySequenceShape::RevealTopPiles)
+    } else if exact(
+        put,
+        &[
+            "put", "one", "pile", "into", "your", "hand", "and", "the", "other", "on", "the",
+            "bottom", "of", "your", "library", "in", "any", "order",
+        ],
+    ) {
+        Some(DivvySequenceShape::RevealTopPilesOtherOnBottom)
+    } else {
+        None
+    }
+}
+
+/// "Search your library and graveyard for up to four creature cards with
+/// different names that each have mana value X or less and reveal them. An
+/// opponent chooses two of those cards. Shuffle the chosen cards into your
+/// library and put the rest onto the battlefield." (Ecological Appreciation).
+/// The search is compiled on its own, as is every following sentence.
+fn parse_search_four_creature_cards(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    let [search, choose, put, ..] = sentence_words else {
+        return None;
+    };
+    (prefix(
+        search,
+        &[
+            "search", "your", "library", "and", "graveyard", "for", "up", "to", "four",
+            "creature", "cards",
+        ],
+    ) && phrase_anywhere(search, &["different", "names"])
+        && phrase_anywhere(search, &["mana", "value", "x", "or", "less"])
+        && phrase_anywhere(search, &["reveal", "them"])
+        && exact(choose, &["an", "opponent", "chooses", "two", "of", "those", "cards"])
+        && exact(
+            put,
+            &[
+                "shuffle", "the", "chosen", "cards", "into", "your", "library", "and", "put",
+                "the", "rest", "onto", "the", "battlefield",
+            ],
+        ))
+    .then_some(DivvySequenceShape::SearchFourCreatureCards { fused: false })
+}
+
+/// "<lead>. An opponent chooses one of them. Put the chosen card into your
+/// hand and the other into your graveyard[, then shuffle]." (Burning-Rune
+/// Demon)
+fn parse_choose_one_of_them(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    let lead_sentences =
+        find_exact_sentence(sentence_words, 1, &["an", "opponent", "chooses", "one", "of", "them"])?;
+    let shuffle = disposition_then_shuffle(
+        &sentence_words[lead_sentences + 1..],
+        &[
+            "put", "the", "chosen", "card", "into", "your", "hand", "and", "the", "other", "into",
+            "your", "graveyard",
+        ],
+    )?;
+    let pool = DivvyPoolZones::from_lead(&sentence_words[..lead_sentences])?;
+    Some(DivvySequenceShape::ChooseOneOfThem {
+        lead_sentences,
+        pool,
+        shuffle,
+    })
+}
+
+/// "Search your library for up to four ... cards with different names and
+/// reveal them. (Target) opponent chooses two of those cards. Put the chosen
+/// cards into your graveyard and the rest into your hand | onto the
+/// battlefield tapped[, then shuffle | . Then shuffle.]" (Gifts Ungiven,
+/// Realms Uncharted, Elemental Teachings). The search is compiled on its own.
+fn parse_search_different_names(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    let [search, choose, rest @ ..] = sentence_words else {
+        return None;
+    };
+    if !(prefix(search, &["search", "your", "library", "for", "up", "to", "four"])
+        && phrase_anywhere(search, &["cards", "with", "different", "names"])
+        && phrase_anywhere(search, &["reveal", "them"]))
+    {
+        return None;
+    }
+    let chooser = if exact(
+        choose,
+        &["target", "opponent", "chooses", "two", "of", "those", "cards"],
+    ) {
+        DivvyChooserShape::TargetOpponent
+    } else if exact(choose, &["an", "opponent", "chooses", "two", "of", "those", "cards"]) {
+        DivvyChooserShape::Opponent
+    } else {
+        return None;
+    };
+    const TO_GRAVEYARD: &[&str] = &[
+        "put", "the", "chosen", "cards", "into", "your", "graveyard", "and", "the", "rest",
+    ];
+    let destinations: [(&[&str], DivvyRestDestinationShape); 2] = [
+        (&["into", "your", "hand"], DivvyRestDestinationShape::Hand),
+        (
+            &["onto", "the", "battlefield", "tapped"],
+            DivvyRestDestinationShape::BattlefieldTapped,
+        ),
+    ];
+    destinations.into_iter().find_map(|(destination, rest_shape)| {
+        let expected = [TO_GRAVEYARD, destination].concat();
+        crate::word_claims::speculative_keep_if(
+            || disposition_then_shuffle(rest, &expected),
+            Option::is_some,
+        )
+        .map(|shuffle| DivvySequenceShape::SearchFourDifferentNames {
+            chooser,
+            rest: rest_shape,
+            shuffle,
+        })
+    })
+}
+
+/// "<lead>. Target opponent chooses one. Put that card into your hand and the
+/// rest into your graveyard. [Then shuffle.]" (Intuition)
+fn parse_target_opponent_chooses_one(sentence_words: &[Vec<&str>]) -> Option<DivvySequenceShape> {
+    let lead_sentences =
+        find_exact_sentence(sentence_words, 1, &["target", "opponent", "chooses", "one"])?;
+    let shuffle = disposition_then_shuffle(
+        &sentence_words[lead_sentences + 1..],
+        &[
+            "put", "that", "card", "into", "your", "hand", "and", "the", "rest", "into", "your",
+            "graveyard",
+        ],
+    )?;
+    let pool = DivvyPoolZones::from_lead(&sentence_words[..lead_sentences])?;
+    Some(DivvySequenceShape::TargetOpponentChoosesOne {
+        lead_sentences,
+        pool,
+        shuffle,
+    })
 }

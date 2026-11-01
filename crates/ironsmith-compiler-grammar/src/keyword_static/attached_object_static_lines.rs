@@ -635,6 +635,8 @@ pub fn parse_attached_conditional_keyword_otherwise_line(
     else {
         return Ok(None);
     };
+    // "Otherwise,": the negated condition the prevention runs under.
+    crate::word_claims::claim_tokens(&second[..prevention_start]);
     grants.push(StaticAbilityAst::ConditionalStaticAbility {
         ability: Box::new(prevention),
         condition: otherwise_condition,
@@ -730,6 +732,9 @@ pub fn parse_attached_conditional_anthem_otherwise_base_and_restriction_line(
         return Ok(None);
     }
 
+    // "base power and toughness N/N and": the set base size and the joining
+    // "and", read above by position.
+    crate::word_claims::claim_tokens(&body[..6]);
     let otherwise_condition = PredicateAst::Not(Box::new(condition));
     let set_base = StaticAbility::set_base_power_toughness(filter, power, toughness)
         .with_condition(otherwise_condition.clone());
@@ -768,10 +773,13 @@ pub fn annihilator_granted_ability(amount: u32) -> Ability {
 fn parse_attached_with_base_power_toughness_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(i32, i32, bool)>, CardTextError> {
-    Ok(
-        attached_grammar::parse_attached_base_power_toughness_tokens(tokens)?
-            .map(|spec| (spec.power, spec.toughness, spec.preserve_other_types)),
-    )
+    let spec = attached_grammar::parse_attached_base_power_toughness_tokens(tokens)?;
+    // "base power and toughness 1/1 [in addition to its other types]": the
+    // complete clause (parse_all) is the set base size.
+    if spec.is_some() {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    Ok(spec.map(|spec| (spec.power, spec.toughness, spec.preserve_other_types)))
 }
 
 pub fn display_text_for_tokens(tokens: &[OwnedLexToken], capitalize_effect_start: bool) -> String {
@@ -1927,6 +1935,8 @@ pub fn parse_monarch_controls_attached_line(
     ) {
         return Ok(None);
     }
+    // An exact whole-line control rule.
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(StaticAbility::monarch_controls_attached_permanent()))
 }
 

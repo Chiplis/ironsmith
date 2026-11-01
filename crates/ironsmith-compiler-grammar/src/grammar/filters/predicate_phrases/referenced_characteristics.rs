@@ -62,6 +62,7 @@ pub(super) fn parse_referenced_characteristic_state(
         && let [pair] = LexedClause::new(&descriptor).word_refs().as_slice()
         && let Some((power, toughness)) = crate::util::parse_unsigned_pt_word(pair)
     {
+        crate::word_claims::claim_tokens(&descriptor);
         let mut filter = ObjectFilter {
             power: Some(crate::filter::Comparison::Equal(power)),
             toughness: Some(crate::filter::Comparison::Equal(toughness)),
@@ -75,6 +76,7 @@ pub(super) fn parse_referenced_characteristic_state(
     if let Some((descriptor, negative, _, _, when)) = demonstrative_descriptor_filter_tokens(tokens)
         && LexedClause::new(&descriptor).word_refs().as_slice() == ["all", "colors"]
     {
+        crate::word_claims::claim_tokens(&descriptor);
         let mut filter = ObjectFilter {
             all_colors: Some(!negative),
             ..Default::default()

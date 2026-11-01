@@ -64,7 +64,17 @@ fn surface_is_complete(tokens: &[OwnedLexToken]) -> bool {
     })
 }
 
+/// Every consumed sentence is matched word for word (and its surface checked
+/// by `surface_is_complete`), so a recognized program reads all of them.
 pub(super) fn parse(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramShape> {
+    let program = parse_program(sentences)?;
+    for tokens in sentences.get(..program.consumed_sentences)? {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    Some(program)
+}
+
+fn parse_program(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramShape> {
     if let Some(program) = parse_exiled_piles_free_play(sentences) { return Some(program); }
     if let Some(program) = parse_sequential_exile(sentences) { return Some(program); }
     if let Some(program) = parse_graveyard_partition(sentences) { return Some(program); }

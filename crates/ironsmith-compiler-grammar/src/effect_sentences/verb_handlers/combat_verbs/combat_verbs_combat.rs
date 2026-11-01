@@ -420,6 +420,8 @@ pub fn parse_deal_damage_with_amount(
             Ok(combat_player_damage_target_effect(amount, target))
         }
         combat_grammar::CombatDamageTargetShape::MaxSpeedPlayers { has_max_speed } => {
+            // The shape matched the whole player-group phrase.
+            crate::word_claims::claim_tokens(&tokens[used.min(tokens.len())..]);
             let filter = if has_max_speed {
                 PlayerFilter::with_max_speed(PlayerFilter::Any)
             } else {

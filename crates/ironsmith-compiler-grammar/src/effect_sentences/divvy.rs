@@ -417,7 +417,7 @@ fn try_parse_divvy_sentence_sequence_program(
         return Ok(Some(effects));
     }
 
-    if shape == DivvySequenceShape::SearchFourCreatureCards {
+    if let DivvySequenceShape::SearchFourCreatureCards { fused } = shape {
         // "Search your library and graveyard for up to four creature cards
         // with different names that each have mana value X or less and reveal
         // them. An opponent chooses two of those cards. Shuffle the chosen
@@ -425,10 +425,14 @@ fn try_parse_divvy_sentence_sequence_program(
         // (Ecological Appreciation): the searched set, an opponent-chosen
         // subset, and its exact complement (same program as the delegated
         // search partition, CR 701.23, 700.3-style subset choice).
-        let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| sentences[0].lowered());
+        let parts: Vec<&[OwnedLexToken]> = if fused {
+            split_lexed_sentences(sentences[0].lowered())
+        } else {
+            sentences.iter().map(SentenceInput::lowered).collect()
+        };
+        let Some(first_effect_tokens) = parts.first().copied() else {
+            return Ok(None);
+        };
         let source_tag = crate::tag::CompilerReferenceTag::Searched.bind();
         let chosen_tag = crate::tag::CompilerReferenceTag::DivvyChosen.bind();
         let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
@@ -467,7 +471,11 @@ fn try_parse_divvy_sentence_sequence_program(
             leading_duration: false,
             result_conjunction: false,
         });
-        effects.push(EffectAst::subject_verb_exile(TargetAst::Source(None), false));
+        // Whatever follows the partition (Ecological Appreciation's "Exile
+        // Ecological Appreciation.") compiles as written.
+        for part in parts.get(3..).unwrap_or(&[]) {
+            effects.extend(parse_effect_sentence_sequence(part)?);
+        }
         return Ok(Some(effects));
     }
 
@@ -968,14 +976,19 @@ fn try_parse_divvy_sentence_sequence_program(
         return Ok(Some(effects));
     }
 
-    if shape == DivvySequenceShape::ChooseOneOfThem {
-        let mut prefix = Vec::new();
-        prefix.extend(parse_effect_sentence_lexed(sentences[0].lowered())?);
-        prefix.extend(parse_effect_sentence_lexed(sentences[1].lowered())?);
-        let mut effects = prefix;
+    if let DivvySequenceShape::ChooseOneOfThem {
+        lead_sentences,
+        pool,
+        shuffle,
+    } = shape
+    {
+        let mut effects = Vec::new();
+        for sentence in &sentences[..lead_sentences] {
+            effects.extend(parse_effect_sentence_lexed(sentence.lowered())?);
+        }
         effects.push(EffectAst::subject_verb_tag_matching_objects(
             ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-            vec![Zone::Library],
+            pool.zones(),
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
         effects.push(EffectAst::ObjectChoices(
@@ -986,7 +999,7 @@ fn try_parse_divvy_sentence_sequence_program(
                 count_value: None,
                 player: PlayerAst::Opponent,
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                zones: vec![Zone::Library],
+                zones: pool.zones(),
                 search_mode: None,
             },
         ));
@@ -1015,15 +1028,22 @@ fn try_parse_divvy_sentence_sequence_program(
                 )],
             })],
         }));
-        effects.push(EffectAst::subject_verb(
-            SubjectVerbRoleAst::LibraryOwner,
-            PlayerAst::You,
-            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-        ));
+        if shuffle {
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::You,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+            ));
+        }
         return Ok(Some(effects));
     }
 
-    if let DivvySequenceShape::SearchFourDifferentNames { chooser, rest } = shape {
+    if let DivvySequenceShape::SearchFourDifferentNames {
+        chooser,
+        rest,
+        shuffle,
+    } = shape
+    {
         let choose_player = match chooser {
             DivvyChooserShape::Opponent => PlayerAst::Opponent,
             DivvyChooserShape::TargetOpponent => PlayerAst::TargetOpponent,
@@ -1076,11 +1096,13 @@ fn try_parse_divvy_sentence_sequence_program(
                 )],
             })],
         }));
-        effects.push(EffectAst::subject_verb(
-            SubjectVerbRoleAst::LibraryOwner,
-            PlayerAst::You,
-            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-        ));
+        if shuffle {
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::You,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+            ));
+        }
         return Ok(Some(effects));
     }
 
@@ -1126,11 +1148,19 @@ fn try_parse_divvy_sentence_sequence_program(
         return Ok(Some(effects));
     }
 
-    if shape == DivvySequenceShape::TargetOpponentChoosesOne {
-        let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
+    if let DivvySequenceShape::TargetOpponentChoosesOne {
+        lead_sentences,
+        pool,
+        shuffle,
+    } = shape
+    {
+        let mut effects = Vec::new();
+        for sentence in &sentences[..lead_sentences] {
+            effects.extend(parse_effect_sentence_lexed(sentence.lowered())?);
+        }
         effects.push(EffectAst::subject_verb_tag_matching_objects(
             ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-            vec![Zone::Library],
+            pool.zones(),
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
         effects.push(EffectAst::ObjectChoices(
@@ -1141,7 +1171,7 @@ fn try_parse_divvy_sentence_sequence_program(
                 count_value: None,
                 player: PlayerAst::TargetOpponent,
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                zones: vec![Zone::Library],
+                zones: pool.zones(),
                 search_mode: None,
             },
         ));
@@ -1170,11 +1200,13 @@ fn try_parse_divvy_sentence_sequence_program(
                 )],
             })],
         }));
-        effects.push(EffectAst::subject_verb(
-            SubjectVerbRoleAst::LibraryOwner,
-            PlayerAst::You,
-            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-        ));
+        if shuffle {
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::You,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+            ));
+        }
         return Ok(Some(effects));
     }
 

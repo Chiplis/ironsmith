@@ -76,6 +76,8 @@ pub fn parse_for_each_mana_symbol_spent_subject(
             ),
         ],
     )?;
+    // "spent to cast it": the cast whose payment the count reads.
+    crate::word_claims::claim_tokens(suffix);
     Some((symbol, crate::util::narrowed_u32(symbols.len())?, reference))
 }
 

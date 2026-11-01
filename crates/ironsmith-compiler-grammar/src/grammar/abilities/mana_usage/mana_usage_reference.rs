@@ -34,37 +34,73 @@ pub(super) fn parse_mana_usage_spell_filter(tokens: &[OwnedLexToken]) -> Option<
 
 /// Independently nouned spell alternatives retain their own predicates.
 /// A subtype on one arm must not swallow an ability requirement on another.
-fn parse_repeated_spell_domain_union(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    if !tokens.iter().any(|token| token.is_word("or"))
-        || tokens.iter().any(|token| token.is_word("and"))
-    {
+/// "an instant or sorcery spell or a kicked spell" (Volshe Tideturner): an
+/// "or" ends an arm only after its noun ("spell"/"spells") or before a new
+/// article; "instant or sorcery spell" stays one arm.
+pub(super) fn parse_repeated_spell_domain_union(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let probe = |token: &OwnedLexToken, words: &[&str]| {
+        crate::word_claims::probe_only(|| token.is_any_word(words))
+    };
+    if tokens.iter().any(|token| probe(token, &["and"])) {
         return None;
     }
-    let arms = tokens
-        .split(|token| token.is_word("or"))
-        .map(trim_lexed_commas)
+    let separators = tokens
+        .iter()
+        .enumerate()
+        .filter(|(index, token)| {
+            probe(token, &["or"])
+                && (index
+                    .checked_sub(1)
+                    .and_then(|previous| tokens.get(previous))
+                    .is_some_and(|previous| probe(previous, &["spell", "spells"]))
+                    || tokens
+                        .get(index + 1)
+                        .is_some_and(|next| probe(next, &["a", "an"])))
+        })
+        .map(|(index, _)| index)
         .collect::<Vec<_>>();
+    if separators.is_empty() {
+        return None;
+    }
+    let mut arms = Vec::with_capacity(separators.len() + 1);
+    let mut start = 0;
+    for &separator in &separators {
+        arms.push(trim_lexed_commas(&tokens[start..separator]));
+        start = separator + 1;
+    }
+    arms.push(trim_lexed_commas(&tokens[start..]));
     if arms.len() < 2
         || !arms.iter().all(|arm| {
-            arm.iter()
-                .any(|token| token.is_any_word(&["spell", "spells"]))
+            arm.iter().any(|token| probe(token, &["spell", "spells"]))
         })
     {
         return None;
     }
+    // Each arm is a spell description, read by the spell-filter grammar
+    // that owns spell-only words ("kicked", "Omen" spells), exactly as a
+    // single-arm restriction is read.
     let branches = arms
         .into_iter()
         .map(|arm| {
-            let filter =
-                crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(arm, false)
-                    .ok()?;
-            (filter.zone == Some(Zone::Stack)).then_some(filter)
+            // A relative clause on the arm ("a spell that has freerunning",
+            // "a spell with mana value 3 or less") is the object-filter
+            // grammar's; read it there, as a stack object.
+            if arm.iter().any(|token| probe(token, &["that", "with", "has", "have"]))
+                && let Ok(filter) =
+                    crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(arm, false)
+                && filter.zone == Some(Zone::Stack)
+            {
+                return Some(filter);
+            }
+            let filter = parse_spell_filter_with_grammar_entrypoint(arm);
+            (filter != ObjectFilter::default()).then_some(filter)
         })
         .collect::<Option<Vec<_>>>()?;
-    Some(ObjectFilter {
-        any_of: branches,
-        ..ObjectFilter::default()
-    })
+    // The arm-ending "or"s join the alternatives read above.
+    for separator in separators {
+        crate::word_claims::claim_tokens(&tokens[separator..=separator]);
+    }
+    Some(crate::grammar::filters::spell_filter_union(branches))
 }
 
 pub(super) fn parse_simple_subtype_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {

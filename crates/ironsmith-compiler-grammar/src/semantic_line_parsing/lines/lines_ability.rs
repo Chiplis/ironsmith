@@ -226,6 +226,8 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::BlackManaMayBePaidWithLife)
     ) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::krrik_black_mana_may_be_paid_with_life().into()),
             chosen_option,
@@ -255,6 +257,8 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::LoyaltyTwice)
     ) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::loyalty_abilities_twice_each_turn().into()),
             chosen_option,
@@ -264,6 +268,8 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::BoastTwice)
     ) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::boast_twice_each_turn().into()),
             chosen_option,
@@ -286,6 +292,8 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::HiddenAgenda)
     ) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::hidden_agenda().into()),
             chosen_option,
@@ -295,6 +303,8 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::DoubleAgenda)
     ) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::double_agenda().into()),
             chosen_option,
@@ -304,6 +314,8 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::StartingPlayer)
     ) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::starting_player().into()),
             chosen_option,
@@ -313,6 +325,14 @@ pub(super) fn parse_static_line_impl(
         special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
     ) {
+        // "A deck can have any number of cards named X": the whole rule is
+        // read back by deck validation (name and copy limit). Open-ended
+        // deck-building instructions stay unclaimed.
+        if semantic_grammar::is_named_deck_construction(
+            &crate::lexer::parser_token_word_refs(parse_tokens),
+        ) {
+            crate::word_claims::claim_tokens(parse_tokens);
+        }
         let display = render_token_slice(parse_tokens)
             .trim()
             .trim_end_matches('.')

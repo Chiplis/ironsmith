@@ -22,6 +22,18 @@ pub(super) fn read_revealed_remainder(
             if word_at(index) == Some("bottom") && word_at(index + 1) == Some("of") {
                 crate::word_claims::claim_tokens(&tokens[index + 1..index + 2]);
             }
+            // "the rest on the bottom of ...": the destination's "on".
+            if word_at(index) == Some("on")
+                && (word_at(index + 1) == Some("bottom")
+                    || (word_at(index + 1) == Some("the") && word_at(index + 2) == Some("bottom")))
+            {
+                crate::word_claims::claim_tokens(&tokens[index..index + 1]);
+                // The remainder set before it ("the rest", "all revealed cards
+                // not cast this way"): the revealed cards still where they
+                // were revealed — a cast card is a new object (CR 400.7), so
+                // "not cast this way" names the same set.
+                crate::word_claims::claim_tokens(&tokens[..index]);
+            }
         }
         let order = if shape.random_order {
             crate::cards::builders::LibraryBottomOrderAst::Random

@@ -2,7 +2,8 @@
 use super::*;
 use crate::grammar::primitives;
 use crate::lexer::LexStream;
-use winnow::combinator::{peek, repeat_till};
+use winnow::combinator::{repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

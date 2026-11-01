@@ -1,7 +1,8 @@
 use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::ForEachEffectAst;
 use winnow::Parser as _;
-use winnow::combinator::{alt, cut_err, dispatch, fail, opt, peek};
+use winnow::combinator::{alt, cut_err, dispatch, fail, opt};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::token::take_till;
 
@@ -939,6 +940,11 @@ pub fn parse_if_you_dont_sentence(
     if let Some(after_explicit_action) = explicit_if_you_dont_action_remainder(tokens) {
         let effects = parse_effect_chain(after_explicit_action)?;
         if !effects.is_empty() {
+            // "If you don't cast it, ...": the named failed action is the
+            // result predicate's surface, read with its comma.
+            crate::word_claims::claim_tokens(
+                &tokens[..tokens.len() - after_explicit_action.len()],
+            );
             return Ok(Some(effects));
         }
     }

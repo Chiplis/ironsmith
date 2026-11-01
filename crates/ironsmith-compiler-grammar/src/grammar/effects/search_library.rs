@@ -1203,7 +1203,10 @@ pub fn derive_search_library_effect_routing_lexed(
             // "put that card onto the battlefield": the put clause moves the
             // card the search found.
             if let Some(reference) = words.get(1..start)
-                && matches!(reference, ["that", "card"] | ["those", "cards"] | ["it"] | ["them"])
+                && matches!(
+                    reference,
+                    ["that" | "the", "card"] | ["those" | "the", "cards"] | ["it"] | ["them"]
+                )
             {
                 crate::word_claims::claim_words(reference);
             }

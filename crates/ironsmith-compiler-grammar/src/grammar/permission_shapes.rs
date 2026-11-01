@@ -1,4 +1,5 @@
-use winnow::combinator::{eof, peek, repeat_till};
+use winnow::combinator::{eof, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::any;

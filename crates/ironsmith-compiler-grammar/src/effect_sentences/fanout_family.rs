@@ -1455,20 +1455,34 @@ pub fn parse_same_name_gets_fanout_sentence(
             non_article_token_word_refs(&subject_tokens[..and_idx]).last()
                 .and_then(|noun| ironsmith_core::SameNameAntecedentSurface::from_noun(noun)),
         );
-        let modifiers = collapse_leading_signed_pt_modifier_tokens(&tokens[verb_idx + 1..])
-            .unwrap_or_else(|| tokens[verb_idx + 1..].to_vec());
+        let collapsed = collapse_leading_signed_pt_modifier_tokens(&tokens[verb_idx + 1..]);
+        let authored_modifier_len = if collapsed.is_some() { 2 } else { 1 };
+        let modifiers = collapsed.unwrap_or_else(|| tokens[verb_idx + 1..].to_vec());
         let Some(modifier) = modifiers.first().and_then(OwnedLexToken::as_word) else { return Ok(None); };
         let (power, toughness) = parse_pt_modifier_values(modifier)?;
+        // The verb and the authored modifier ("-3/-3", or "-" + "3/-3"
+        // before collapsing).
+        crate::word_claims::claim_tokens(
+            tokens
+                .get(verb_idx..(verb_idx + 1 + authored_modifier_len).min(tokens.len()))
+                .unwrap_or_default(),
+        );
         let (power, toughness, duration, condition) = super::for_each_helpers::parse_get_modifier_values_with_tail(
             &modifiers, power, toughness,
         )?;
-        if condition.is_some() {
-            return Err(CardTextError::ParseError("unsupported conditional source-and-name pump".into()));
-        }
-        return Ok(Some(vec![
+        let effects = vec![
             EffectAst::subject_verb_pump(power.clone(), toughness.clone(), TargetAst::Source(None), duration.clone(), None),
             EffectAst::subject_verb_pump_all(filter, power, toughness, duration),
-        ]));
+        ];
+        // A trailing condition gates both pumps ("... get +1/+1 until end of
+        // turn if you control a Wizard").
+        return Ok(Some(match condition {
+            Some(predicate) => vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+                predicate,
+                effects,
+            })],
+            None => effects,
+        }));
     }
     let Some((and_idx, _and_end)) =
         find_token_word_sequence_span(subject_tokens, &["and", "all", "other"])
@@ -1512,22 +1526,42 @@ pub fn parse_same_name_gets_fanout_sentence(
         ))
     })?;
     let first_target = parse_target_phrase(&first_target_tokens)?;
-
-    Ok(Some(vec![
-        EffectAst::subject_verb_pump(
+    // The tail after the modifier is read by the ordinary pump tail grammar:
+    // a duration ("until end of turn", "this turn", "until your next turn",
+    // none for the effect's default), a "for each" scaling, or a trailing
+    // condition, so custom wordings are modelled rather than dropped.
+    let (power, toughness, duration, condition) =
+        super::for_each_helpers::parse_get_modifier_values_with_tail(
+            &collapsed_modifier_tokens,
             Value::Fixed(power),
             Value::Fixed(toughness),
+        )?;
+    // The verb and the authored modifier ("-3/-3", or "-" + "3/-3").
+    let authored_modifier_len =
+        if collapse_leading_signed_pt_modifier_tokens(modifier_tokens).is_some() { 2 } else { 1 };
+    crate::word_claims::claim_tokens(
+        tokens
+            .get(verb_idx..(verb_idx + 1 + authored_modifier_len).min(tokens.len()))
+            .unwrap_or_default(),
+    );
+
+    let effects = vec![
+        EffectAst::subject_verb_pump(
+            power.clone(),
+            toughness.clone(),
             first_target,
-            Until::EndOfTurn,
+            duration.clone(),
             None,
         ),
-        EffectAst::subject_verb_pump_all(
-            filter,
-            Value::Fixed(power),
-            Value::Fixed(toughness),
-            Until::EndOfTurn,
-        ),
-    ]))
+        EffectAst::subject_verb_pump_all(filter, power, toughness, duration),
+    ];
+    Ok(Some(match condition {
+        Some(predicate) => vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+            predicate,
+            effects,
+        })],
+        None => effects,
+    }))
 }
 
 #[cfg(test)]

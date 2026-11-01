@@ -1,6 +1,7 @@
 //! Complete persistent damage-redirection clauses. Timed/shared-budget shields
 //! have separate instruction grammars and cannot be accepted by this reader.
-use winnow::combinator::{opt, peek, repeat_till};
+use winnow::combinator::{opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

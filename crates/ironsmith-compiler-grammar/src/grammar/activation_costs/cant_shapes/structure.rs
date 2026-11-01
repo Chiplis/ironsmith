@@ -3,7 +3,8 @@
 //! These facts decide routing and clause expansion only. Semantic object and
 //! player filters remain owned by their dedicated grammar modules.
 
-use winnow::combinator::{alt, not, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, not, opt, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

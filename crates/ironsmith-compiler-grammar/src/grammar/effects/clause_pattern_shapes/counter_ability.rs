@@ -1,7 +1,8 @@
 use super::super::*;
 
 use crate::grammar::leaf;
-use winnow::combinator::{alt, opt, peek, repeat};
+use winnow::combinator::{alt, opt, repeat};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 
 #[derive(Debug, Clone)]

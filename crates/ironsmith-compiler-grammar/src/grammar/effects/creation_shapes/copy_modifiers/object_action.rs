@@ -185,9 +185,12 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     for grant_idx in grant_positions {
         let list = &modifier_words[grant_idx + 1..];
         let mut idx = 0;
+        // A list connective is read only when a keyword follows it.
+        let mut pending_and = None;
         while idx < list.len() {
             let (ability, used) = match &list[idx..] {
                 ["and", ..] => {
+                    pending_and = Some(idx);
                     idx += 1;
                     continue;
                 }
@@ -206,6 +209,12 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
                 _ => break,
             };
             push_unique(&mut spec.granted_abilities, ability);
+            // The grant verb (or `with`), the keyword and its connective.
+            crate::word_claims::claim_words(&modifier_words[grant_idx..=grant_idx]);
+            if let Some(and_idx) = pending_and.take() {
+                crate::word_claims::claim_words(&list[and_idx..=and_idx]);
+            }
+            crate::word_claims::claim_words(&list[idx..idx + used]);
             idx += used;
         }
     }
@@ -308,6 +317,11 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
                         | "theyre"
                         | "they're"
                         | "they’re"
+                        // "except that the copy is red" (Fork): the
+                        // complementizer and the copy subject.
+                        | "that"
+                        | "copy"
+                        | "copies"
                 )
             {
                 // "except it's a 4/4 black Zombie": the identity copula and

@@ -1341,6 +1341,9 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::AnyTimeByGrantingPlayer(_) => {
             Some("Only you may activate this ability")
         }
+        ActivationTiming::DuringEndOfCombatStep => {
+            Some("Activate only during the end of combat step")
+        }
     }
 }
 
@@ -2136,6 +2139,42 @@ pub(super) fn describe_mana_usage_spell_filter_target_with_options(
     filter: &ObjectFilter,
     pluralize_origin_spell: bool,
 ) -> Option<String> {
+    // "an Elemental spell or a Chandra planeswalker spell", "an instant or
+    // sorcery spell or a kicked spell": a union of independent spell
+    // descriptions, each with its own article.
+    if !filter.any_of.is_empty() {
+        let mut base = filter.clone();
+        base.any_of.clear();
+        base.union_surface = ObjectFilter::default().union_surface;
+        if base == ObjectFilter::default() {
+            let arms = filter
+                .any_of
+                .iter()
+                .map(|arm| {
+                    let text =
+                        describe_mana_usage_spell_filter_target_with_options(arm, pluralize_origin_spell)?;
+                    let kicked = arm
+                        .ability_markers
+                        .iter()
+                        .any(|marker| marker.eq_ignore_ascii_case("kicked"));
+                    Some(if kicked && !text.contains("kicked") {
+                        match text.as_str() {
+                            "a spell" => "a kicked spell".to_string(),
+                            "spells" => "kicked spells".to_string(),
+                            other => format!("kicked {other}"),
+                        }
+                    } else {
+                        text
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            return Some(match arms.as_slice() {
+                [first, second] => format!("{first} or {second}"),
+                [head @ .., last] => format!("{}, or {last}", head.join(", ")),
+                [] => return None,
+            });
+        }
+    }
     if let Some(x_cost) = describe_mana_usage_x_cost_spell_filter(filter) {
         return Some(x_cost);
     }

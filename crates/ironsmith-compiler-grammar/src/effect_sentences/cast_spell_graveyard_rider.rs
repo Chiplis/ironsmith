@@ -208,7 +208,8 @@ struct GraveyardEntryRider<'a> {
 }
 
 fn entry_rider_line<'a>(input: &mut LexStream<'a>) -> WResult<GraveyardEntryRider<'a>> {
-    use winnow::combinator::{peek, repeat_till};
+    use winnow::combinator::{repeat_till};
+    use crate::grammar::primitives::peek;
     use winnow::token::any;
     primitives::phrase(&["if", "you", "do"]).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;

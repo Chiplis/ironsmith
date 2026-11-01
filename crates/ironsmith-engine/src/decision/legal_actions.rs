@@ -2516,6 +2516,9 @@ pub(crate) fn activation_step_window_allows(
         ActivationTiming::BeforeEndOfCombatStep => {
             turn_is_before_first_combat_step(game, Step::EndCombat)
         }
+        ActivationTiming::DuringEndOfCombatStep => {
+            game.turn.phase == Phase::Combat && game.turn.step == Some(Step::EndCombat)
+        }
         _ => true,
     }
 }

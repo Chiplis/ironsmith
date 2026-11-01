@@ -749,6 +749,14 @@ pub fn parse_spells_cost_modifier_line(
     }
     if second_spell_each_turn && !is_this_spell {
         filter.spell_cast_ordinal_each_turn = Some(2);
+        // "second ... each turn": the ordinal and its turn window (the
+        // middle "spell you cast" is read by the subject grammar).
+        if let Some(start) = clause_words
+            .windows(6)
+            .position(|window| window == ["second", "spell", "you", "cast", "each", "turn"])
+        {
+            crate::word_claims::claim_words(&clause_words[start..start + 6]);
+        }
     }
 
     let between_tokens = &tokens[spells_token_idx + 1..cost_token_idx];
@@ -1161,10 +1169,12 @@ pub fn parse_spells_cost_modifier_line(
     // (Paladin Class): the turn restriction gates the modifier.
     if !is_this_spell
         && first_spell_fact.is_none()
-        && crate::word_primitives::sequence_occurs(
+        // A located-and-read phrase: `parse_sequence_start` claims it.
+        && crate::word_primitives::parse_sequence_start(
             &crate::lexer::parser_token_word_refs(&tokens[spells_token_idx + 1..cost_token_idx]),
             &["cast", "during", "your", "turn"],
         )
+        .is_some()
     {
         non_this_condition = Some(match non_this_condition.take() {
             Some(existing) => {
@@ -3326,6 +3336,9 @@ pub fn parse_subject_is_also_subtypes_line(
         crate::slice_primitives::push_unique(&mut subtypes, subtype);
     }
     if subtypes.is_empty() { return Ok(None); }
+    // "is also a Cleric, Rogue, Warrior, and Wizard": the whole list, its
+    // article and connectors included, is read into the added subtypes.
+    crate::word_claims::claim_tokens(fact.descriptor_tokens);
     Ok(Some(StaticAbility::add_subtypes(filter, subtypes)))
 }
 

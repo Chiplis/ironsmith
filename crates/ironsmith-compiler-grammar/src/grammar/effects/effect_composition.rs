@@ -2,7 +2,8 @@
 
 use std::ops::Range;
 
-use winnow::combinator::{alt, opt, peek, repeat};
+use winnow::combinator::{alt, opt, repeat};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -202,6 +203,8 @@ pub enum OutsideChoiceShapeError {
 pub struct OutsideGameChoiceShape<'a> {
     pub reveal_filter: &'a [OwnedLexToken],
     pub choose_filter: &'a [OwnedLexToken],
+    /// "or choose": the alternative's connective and verb.
+    pub alternative_verb: &'a [OwnedLexToken],
 }
 
 pub fn parse_outside_game_choice_shape<'a>(
@@ -238,16 +241,19 @@ pub fn parse_outside_game_choice_shape<'a>(
     let Some(from_word) = atom_offset(reveal_words, "from") else {
         return Err(OutsideChoiceShapeError::MissingOutsideGameFrom);
     };
-    if from_word < 3 || choose_words.len() < 2 {
+    if from_word < 3 || choose_words.len() < 2 || choose_words[0] != "choose" {
         return Ok(None);
     }
     let reveal_filter = token_slice_for_words(first, 3..from_word)
         .ok_or(OutsideChoiceShapeError::MissingOutsideGameFrom)?;
     let choose_filter = token_slice_for_words(first, or_word + 2..words.len())
         .ok_or(OutsideChoiceShapeError::MissingOutsideGameFrom)?;
+    let alternative_verb = token_slice_for_words(first, or_word..or_word + 2)
+        .ok_or(OutsideChoiceShapeError::MissingOutsideGameFrom)?;
     Ok(Some(OutsideGameChoiceShape {
         reveal_filter: trim_lexed_commas(reveal_filter),
         choose_filter: trim_lexed_commas(choose_filter),
+        alternative_verb,
     }))
 }
 

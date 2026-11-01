@@ -394,6 +394,19 @@ pub(super) fn try_parse_modal_bullet_block(
     if bullet_modes.is_empty() {
         return Ok(None);
     }
+    // "Visit — Choose one." (Balloon Stand): an Attraction's modal Visit
+    // program becomes its spell_effect, which the engine runs as the
+    // roll-to-visit trigger (CR 717.5); the label is read here, as for a
+    // labeled Visit statement.
+    if let Some((label, label_tokens, _)) = split_label_prefix_lexed(&line.tokens)
+        && label.eq_ignore_ascii_case("visit")
+        && preprocessed
+            .card
+            .subtypes_ref()
+            .contains(&crate::types::Subtype::Attraction)
+    {
+        crate::word_claims::claim_tokens(label_tokens);
+    }
 
     Ok(Some((
         RecognizedLine::Modal(RecognizedModalBlock {

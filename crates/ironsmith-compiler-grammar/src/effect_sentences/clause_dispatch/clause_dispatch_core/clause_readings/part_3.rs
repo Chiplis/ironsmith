@@ -304,6 +304,9 @@ pub(super) fn read_choose_subtype_family(
     if let Some(parsed) = parse_choice_subtype_family_phrase_words(&choice_words)
         && parsed.consumed == choice_words.len()
     {
+        // The family phrase consumed every choice word ("choose a
+        // planeswalker type").
+        crate::word_claims::claim_tokens(choice_tokens);
         return Ok(Some(EffectAst::subject_verb_choose_subtype_type(
             choice_player,
             parsed.family,

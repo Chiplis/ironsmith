@@ -1,7 +1,8 @@
 use winnow::ascii::multispace0;
 #[cfg(any(test, feature = "test-support"))]
 use winnow::ascii::space1;
-use winnow::combinator::{alt, delimited, eof, peek, terminated};
+use winnow::combinator::{alt, delimited, eof, terminated};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 #[cfg(any(test, feature = "test-support"))]

@@ -48,6 +48,9 @@ struct EntersWithCounterKnownForEachTail {
 #[derive(Debug, Clone, PartialEq)]
 enum EntersWithCounterPlusTail {
     Supported(Value),
+    /// "plus a shield counter on it for each ...": extra counters of a kind
+    /// other than the base counters, entered alongside them.
+    AdditionalKind(CounterType, Value),
     Unsupported,
 }
 
@@ -81,6 +84,8 @@ pub fn parse_enters_under_chosen_control_line(tokens: &[OwnedLexToken]) -> Resul
         ["under","the","control","of","a","player","of","your","choice"] => PlayerFilter::Any,
         _ => return Ok(None),
     };
+    // "under the control of an opponent of your choice": read whole.
+    crate::word_claims::claim_tokens(&tokens[enters + 1..]);
     Ok(Some(StaticAbility::enters_under_chosen_control(players)))
 }
 
@@ -111,6 +116,13 @@ pub fn parse_enters_tapped_with_counters_line(
         return Ok(None);
     };
 
+    // "tapped [and]": the entry modifier this reader adds as EntersTapped.
+    if matches!(
+        crate::lexer::token_word_refs(captured.entry_modifier_tokens).as_slice(),
+        ["tapped"] | ["tapped", "and"]
+    ) {
+        crate::word_claims::claim_tokens(captured.entry_modifier_tokens);
+    }
     let mut abilities = vec![StaticAbility::enters_tapped_ability()];
     abilities.extend(counters);
 
@@ -314,6 +326,13 @@ pub fn parse_enters_with_counters_line(
     let additional_entry_counter_surface = after_with[..counter_idx]
         .iter()
         .any(|token| etb_token_word_is(token, ETB_ADDITIONAL_WORD));
+    // "three additional time counters": the modifier after the count is the
+    // AdditionalEntryCounter surface recorded above.
+    for token in &after_with[used.min(counter_idx)..counter_idx] {
+        if etb_token_word_is(token, ETB_ADDITIONAL_WORD) {
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
+        }
+    }
     let mut tail = &after_with[counter_idx + 1..];
     // The recipient ("on it", "on this creature") is the entering source.
     if token_slice_first_is(tail, "on") {
@@ -398,10 +417,15 @@ pub fn parse_enters_with_counters_line(
                     ));
                 }
             }
-        } else if let Some(plus_tail) = parse_enters_with_counter_plus_tail_tokens(&tail)? {
+        } else if let Some(plus_tail) =
+            parse_enters_with_counter_plus_tail_tokens(&tail, counter_type)?
+        {
             match plus_tail {
                 EntersWithCounterPlusTail::Supported(extra) => {
                     count = Value::Add(Box::new(count), Box::new(extra));
+                }
+                EntersWithCounterPlusTail::AdditionalKind(kind, extra) => {
+                    additional_counters.push((kind, extra));
                 }
                 EntersWithCounterPlusTail::Unsupported => {
                     return Err(CardTextError::ParseError(format!(
@@ -572,6 +596,9 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
 ) -> Option<Vec<(CounterType, Value)>> {
     let mut rest = trim_commas(tokens);
     let mut counters = Vec::new();
+    // The list's connectives, articles and "on it" recipient, read only when
+    // the whole list is.
+    let mut frame: Vec<OwnedLexToken> = Vec::new();
 
     while rest
         .first()
@@ -579,12 +606,14 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
         || parse_value(&rest).is_some()
     {
         if rest.first().is_some_and(|token| etb_token_word_is(token, ETB_AND_WORD)) {
+            frame.push(rest[0].clone());
             rest = trim_commas(&rest[1..]);
         }
         let (count, used) = if rest
             .first()
             .is_some_and(|token| etb_token_word_is_any(token, ETB_ARTICLE_WORDS))
         {
+            frame.push(rest[0].clone());
             (Value::Fixed(1), 1)
         } else {
             parse_value(&rest)?
@@ -597,15 +626,20 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
 
         rest = trim_commas(&rest[counter_idx + 1..]);
         if token_slice_first_is(&rest, "on") {
+            frame.push(rest[0].clone());
             rest = trim_commas(&rest[1..]);
         }
         if token_slice_first_is(&rest, "it") {
+            frame.push(rest[0].clone());
             rest = trim_commas(&rest[1..]);
         }
     }
 
-    (!counters.is_empty() && !rest.iter().any(|token| token.as_word().is_some()))
-        .then_some(counters)
+    let complete = !counters.is_empty() && !rest.iter().any(|token| token.as_word().is_some());
+    if complete {
+        crate::word_claims::claim_tokens(&frame);
+    }
+    complete.then_some(counters)
 }
 
 fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {
@@ -704,10 +738,13 @@ fn parse_enters_with_counter_for_each_tail_tokens(
     let for_each_tokens =
         if etb_grammar::parse_enters_with_counter_for_each_payload_tokens(tokens).is_some() {
             tokens
-        } else if let Some(etb_grammar::EntersWithCounterPlusTail::ForEach(for_each_tokens)) =
-            etb_grammar::parse_enters_with_counter_plus_tail_tokens(tokens)
+        } else if let Some(etb_grammar::EntersWithCounterPlusTail::ForEach {
+            prefix,
+            for_each,
+        }) = etb_grammar::parse_enters_with_counter_plus_tail_tokens(tokens)
+            && prefix.iter().all(|token| token.as_word().is_none())
         {
-            for_each_tokens
+            for_each
         } else {
             return Ok(None);
         };
@@ -770,6 +807,7 @@ fn parse_enters_with_counter_equal_to_tail_tokens(tokens: &[OwnedLexToken]) -> O
 
 fn parse_enters_with_counter_plus_tail_tokens(
     tokens: &[OwnedLexToken],
+    counter_type: CounterType,
 ) -> Result<Option<EntersWithCounterPlusTail>, CardTextError> {
     let Some(shape) = etb_grammar::parse_enters_with_counter_plus_tail_tokens(tokens) else {
         return Ok(None);
@@ -778,11 +816,63 @@ fn parse_enters_with_counter_plus_tail_tokens(
         etb_grammar::EntersWithCounterPlusTail::Unsupported => {
             Ok(Some(EntersWithCounterPlusTail::Unsupported))
         }
-        etb_grammar::EntersWithCounterPlusTail::ForEach(for_each_tokens) => {
-            let extra = parse_dynamic_cost_modifier_value(for_each_tokens)?;
-            Ok(extra.map(EntersWithCounterPlusTail::Supported))
+        etb_grammar::EntersWithCounterPlusTail::ForEach { prefix, for_each } => {
+            // "plus an additional +1/+1 counter on it for each ...": extra
+            // counters on the entering source per counted object. The same
+            // kind adds to the base count; another kind ("plus a shield
+            // counter on it for each ...") enters as its own counters. Any
+            // other prefix fails honestly instead of being dropped.
+            let Some((kind, per_object)) = plus_tail_extra_counters_per_object(prefix)
+            else {
+                return Ok(Some(EntersWithCounterPlusTail::Unsupported));
+            };
+            let Some(extra) = parse_dynamic_cost_modifier_value(for_each)? else {
+                return Ok(None);
+            };
+            crate::word_claims::claim_tokens(prefix);
+            let extra = if per_object == 1 {
+                extra
+            } else {
+                scale_dynamic_cost_modifier_value(extra, per_object)
+            };
+            Ok(Some(if kind == counter_type {
+                EntersWithCounterPlusTail::Supported(extra)
+            } else {
+                EntersWithCounterPlusTail::AdditionalKind(kind, extra)
+            }))
         }
     }
+}
+
+/// "an additional +1/+1 counter on it" / "two additional +1/+1 counters" /
+/// "a shield counter on it": the kind and number of extra counters per
+/// counted object.
+fn plus_tail_extra_counters_per_object(prefix: &[OwnedLexToken]) -> Option<(CounterType, i32)> {
+    let prefix = trim_commas(prefix);
+    let words = crate::lexer::token_word_refs(&prefix);
+    let (count, after_count) = match words.first()? {
+        &"a" | &"an" => (1, 1),
+        word => (i32::try_from(crate::util::parse_number_word_u32(word)?).ok()?, 1),
+    };
+    let after_count = after_count
+        + usize::from(words.get(after_count) == Some(&ETB_ADDITIONAL_WORD));
+    let counter_word = words
+        .iter()
+        .position(|word| matches!(*word, "counter" | "counters"))?;
+    if counter_word < after_count {
+        return None;
+    }
+    let recipient = &words[counter_word + 1..];
+    if !(recipient.is_empty()
+        || recipient == ["on", "it"]
+        || recipient.first() == Some(&"on")
+            && crate::util::is_source_reference_words(&recipient[1..]))
+    {
+        return None;
+    }
+    let view = crate::grammar::primitives::TokenWordView::new(&prefix);
+    let range = view.token_span_for_words(after_count, counter_word + 1)?;
+    Some((parse_counter_type_from_tokens(&prefix[range])?, count))
 }
 
 fn combine_enters_with_counter_conditions(
@@ -2720,9 +2810,16 @@ mod etb_enters_tapped_with_counters_tests {
         )
         .expect("lex");
 
-        let value = parse_enters_with_counter_for_each_tail_tokens(&tokens)
-            .expect("tail parser should not error")
-            .expect("plus for-each tail should parse");
+        // The "plus <extra counters> for each" lead is read by the plus-tail
+        // reader, which checks the per-object counter phrase it would
+        // otherwise drop.
+        let EntersWithCounterPlusTail::Supported(value) =
+            parse_enters_with_counter_plus_tail_tokens(&tokens, CounterType::PlusOnePlusOne)
+                .expect("tail parser should not error")
+                .expect("plus for-each tail should parse")
+        else {
+            panic!("same-kind plus for-each tail should add to the base count");
+        };
         let debug = format!("{value:?}");
         assert!(
             debug.contains("other: true") && debug.contains("Creature"),
@@ -2737,7 +2834,7 @@ mod etb_enters_tapped_with_counters_tests {
             0,
         )
         .expect("lex");
-        let supported = parse_enters_with_counter_plus_tail_tokens(&supported_tokens)
+        let supported = parse_enters_with_counter_plus_tail_tokens(&supported_tokens, CounterType::PlusOnePlusOne)
             .expect("plus tail parser should not error")
             .expect("plus tail should be recognized");
         assert!(
@@ -2746,7 +2843,7 @@ mod etb_enters_tapped_with_counters_tests {
         );
 
         let unsupported_tokens = crate::lexer::lex_line("plus a mystery counter", 0).expect("lex");
-        let unsupported = parse_enters_with_counter_plus_tail_tokens(&unsupported_tokens)
+        let unsupported = parse_enters_with_counter_plus_tail_tokens(&unsupported_tokens, CounterType::PlusOnePlusOne)
             .expect("unsupported plus tail should not hard-error")
             .expect("plus tail should be recognized");
         assert!(matches!(
@@ -2757,7 +2854,7 @@ mod etb_enters_tapped_with_counters_tests {
         let unrelated_tokens =
             crate::lexer::lex_line("for each creature you control", 0).expect("lex");
         assert!(
-            parse_enters_with_counter_plus_tail_tokens(&unrelated_tokens)
+            parse_enters_with_counter_plus_tail_tokens(&unrelated_tokens, CounterType::PlusOnePlusOne)
                 .expect("unrelated tail should not error")
                 .is_none()
         );
@@ -4087,6 +4184,9 @@ pub fn parse_as_enters_becomes_characteristics_for_filter_line(
     if card_types.is_empty() && subtypes.is_empty() {
         return Ok(None);
     }
+    // "becomes a 7/7 Dinosaur creature": the whole descriptor (article,
+    // P/T, types) was read above.
+    crate::word_claims::claim_tokens(becomes.descriptor_tokens);
 
     Ok(Some(StaticAbility::enters_with_characteristics_for_filter(
         filter, card_types, subtypes, power, toughness,

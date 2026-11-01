@@ -5736,6 +5736,14 @@ fn describe_continuous_duration_predicate(
             format!("{} remains tapped", describe_duration_object(object))
         }
         Predicate::ObjectControlledBy { object, player } => match player {
+            // A tagged duration object is the whole set the instruction named
+            // ("both of them", "those creatures"); the engine holds the
+            // effect while every one of them stays under your control.
+            ironsmith_core::ContinuousDurationPlayer::EffectController
+                if matches!(object, ironsmith_core::ContinuousDurationObject::Tagged(_)) =>
+            {
+                "you control them".to_string()
+            }
             ironsmith_core::ContinuousDurationPlayer::EffectController => {
                 format!("you control {}", describe_duration_object(object))
             }

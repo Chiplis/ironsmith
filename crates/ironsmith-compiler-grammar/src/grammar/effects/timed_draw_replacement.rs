@@ -1,6 +1,7 @@
 //! Strict owners for a duration-bound replacement of a single draw proposal.
 //! The following program remains inside registration, including later sentences.
-use winnow::combinator::{alt, peek, repeat_till};
+use winnow::combinator::{alt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

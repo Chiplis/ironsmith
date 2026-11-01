@@ -27,6 +27,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     // "2ˣ" (Mathemagics): the lexer keeps the superscript exponent as its own
     // word piece.
     if words.get(..2) == Some(&["2", "ˣ"][..]) {
+        crate::word_claims::claim_words(&words[..2]);
         return Some((Value::PowerOfTwo(Box::new(Value::X)), 2));
     }
     if let Some(quantity) = capped_damage_quantities::parse(words) {
@@ -178,14 +179,18 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             if used_inner != round_idx - 1 {
                 return None;
             }
+            // "rounded up|down": the rounding this half reads.
+            crate::word_claims::claim_words(&words[round_idx..round_idx + 2]);
             return Some((rounded_half(base, rounding), round_idx + 2));
         }
         let (base, used_inner) = parse_value_expr_term_words(&words[1..])?;
         let used = 1 + used_inner;
         if permission_shapes::starts_at_words(words, used, &["rounded", "down"]) {
+            crate::word_claims::claim_words(&words[used..used + 2]);
             return Some((rounded_half(base, Rounding::Down), used + 2));
         }
         if permission_shapes::starts_at_words(words, used, &["rounded", "up"]) {
+            crate::word_claims::claim_words(&words[used..used + 2]);
             return Some((rounded_half(base, Rounding::Up), used + 2));
         }
         // "you gain half X life and draw half X cards. Round down each time."
@@ -748,6 +753,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         && words[2] == "mana"
         && words[3] == "value"
     {
+        crate::word_claims::claim_words(&words[..4]);
         let noun = words[1].trim_end_matches("'s").trim_end_matches('s');
         return Some((
             Value::ManaValueOf(Box::new(

@@ -6,7 +6,8 @@
 use crate::cards::builders::PlayerAst;
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::PredicateAst;
-use winnow::combinator::{alt, eof, opt, peek, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

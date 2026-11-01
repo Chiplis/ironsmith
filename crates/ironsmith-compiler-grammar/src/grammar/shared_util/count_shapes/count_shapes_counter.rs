@@ -1,10 +1,14 @@
 use super::*;
 
+/// The count's "counter(s)" noun: located and read (the count readers
+/// build their counter value around it).
 pub(super) fn first_counter_word(words: &[&str]) -> Option<usize> {
-    ["counter", "counters"]
+    let at = ["counter", "counters"]
         .iter()
         .filter_map(|word| permission_shapes::find_words(words, &[*word]))
-        .min()
+        .min()?;
+    crate::word_claims::claim_words(&words[at..=at]);
+    Some(at)
 }
 
 pub(super) fn is_source_counter_reference(words: &[&str]) -> bool {

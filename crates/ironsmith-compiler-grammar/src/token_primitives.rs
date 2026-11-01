@@ -1,4 +1,5 @@
-use winnow::combinator::{opt, peek, seq};
+use winnow::combinator::{opt, seq};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 

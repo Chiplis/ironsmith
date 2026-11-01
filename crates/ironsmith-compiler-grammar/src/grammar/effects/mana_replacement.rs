@@ -84,7 +84,7 @@ fn parse_tapped_for_amount_mana_replacement<'a>(
         winnow::combinator::repeat_till::<_, _, (), _, _, _, _>(
             1..,
             winnow::token::any.void(),
-            winnow::combinator::peek(primitives::phrase(&["is", "tapped", "for"])),
+            crate::grammar::primitives::peek(primitives::phrase(&["is", "tapped", "for"])),
         )
         .map(|((), _)| ())
         .take()
@@ -120,7 +120,7 @@ fn parse_mana_multiplier_replacement<'a>(
     let source_tokens = repeat_till::<_, _, (), _, _, _, _>(
         1..,
         any.void(),
-        winnow::combinator::peek(primitives::phrase(&["for", "mana"])),
+        crate::grammar::primitives::peek(primitives::phrase(&["for", "mana"])),
     )
     .map(|((), _)| ())
     .take()
@@ -303,13 +303,13 @@ fn mana_rewrite_filtered_source<'a>(input: &mut LexStream<'a>) -> Result<ManaOut
     } else { None };
     let source_tokens: &'a [OwnedLexToken] = if actor.is_some() {
         let source = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(),
-            winnow::combinator::peek(primitives::phrase(&["for", "mana"])))
+            crate::grammar::primitives::peek(primitives::phrase(&["for", "mana"])))
             .map(|((), _)| ()).take().parse_next(input)?;
         primitives::phrase(&["for", "mana"]).parse_next(input)?;
         source
     } else {
         let source = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(),
-            winnow::combinator::peek(alt((primitives::phrase(&["is", "tapped", "for", "mana"]),
+            crate::grammar::primitives::peek(alt((primitives::phrase(&["is", "tapped", "for", "mana"]),
                 primitives::phrase(&["tapped", "for", "mana"]))))).map(|((), _)| ()).take().parse_next(input)?;
         if has_if { primitives::kw("is").parse_next(input)?; }
         primitives::phrase(&["tapped", "for", "mana"]).parse_next(input)?;

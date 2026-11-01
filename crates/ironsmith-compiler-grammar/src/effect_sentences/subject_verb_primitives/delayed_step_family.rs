@@ -1455,6 +1455,8 @@ pub fn parse_sentence_implicit_become_clause(
             }
         }
         if all_card_types && !card_types.is_empty() {
+            // "isn't a creature": the negation's article and the types.
+            crate::word_claims::claim_words(&rest_words);
             return Ok(Some(vec![EffectAst::subject_verb_remove_card_types(
                 target, card_types, duration,
             )]));
@@ -1473,6 +1475,7 @@ pub fn parse_sentence_implicit_become_clause(
             }
         }
         if all_subtypes && !subtypes.is_empty() {
+            crate::word_claims::claim_words(&rest_words);
             return Ok(Some(vec![EffectAst::subject_verb_remove_subtypes(
                 target, subtypes, duration,
             )]));

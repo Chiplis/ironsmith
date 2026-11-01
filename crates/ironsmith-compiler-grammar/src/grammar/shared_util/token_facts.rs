@@ -6,7 +6,8 @@
 
 use winnow::combinator::{alt, eof};
 #[cfg(test)]
-use winnow::combinator::{peek, repeat_till};
+use winnow::combinator::{repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 #[cfg(test)]

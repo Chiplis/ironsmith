@@ -1,5 +1,6 @@
 use crate::word_primitives::WordWindows as _;
-use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
@@ -181,19 +182,23 @@ pub fn parse_discard_segment_tokens(
             count,
             other,
             name_first,
-        } => ActivationCostSegmentCst::DiscardFiltered {
-            count,
-            card_types: Vec::new(),
-            supertypes: Vec::new(),
-            filter: None,
-            random: false,
-            name: Some(
-                render_token_slice(&tokens[name_first..])
-                    .trim()
-                    .to_ascii_lowercase(),
-            ),
-            other,
-        },
+        } => {
+            // "card named Baru, Fist of Krosa": the literal card name.
+            crate::word_claims::claim_tokens(&tokens[name_first..]);
+            ActivationCostSegmentCst::DiscardFiltered {
+                count,
+                card_types: Vec::new(),
+                supertypes: Vec::new(),
+                filter: None,
+                random: false,
+                name: Some(
+                    render_token_slice(&tokens[name_first..])
+                        .trim()
+                        .to_ascii_lowercase(),
+                ),
+                other,
+            }
+        }
         DiscardCostShape::Disjunction {
             count,
             other,

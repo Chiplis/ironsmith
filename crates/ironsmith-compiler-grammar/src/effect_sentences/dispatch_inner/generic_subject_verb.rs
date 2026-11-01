@@ -1750,7 +1750,10 @@ pub fn parse_target_gets_unblockable_subject_verb(
             "until end of turn and cant be blocked this turn"
                 | "until end of turn and can t be blocked this turn"
         );
+        // One P/T modifier token: any other words between the verb and the
+        // duration belong to another reading, never dropped here.
         if exact_tail
+            && modifier_tokens.len() == 1
             && starts_with_target_indicator(&subject_tokens)
             && let Some((power, toughness)) =
                 parse_pt_modifier_capture(LexedClause::new(&modifier_tokens))
@@ -1767,6 +1770,10 @@ pub fn parse_target_gets_unblockable_subject_verb(
                     TaggedOpbjectRelation::IsTaggedObject,
                 );
             }
+            // The verb, the P/T modifier and the exact unblockable tail are
+            // this reading's ("each get +1/+0 until end of turn and can't be
+            // blocked this turn").
+            crate::word_claims::claim_tokens(&tokens[gets_idx..]);
             return Ok(Some(vec![
                 EffectAst::subject_verb_pump(power, toughness, target, Until::EndOfTurn, None),
                 EffectAst::subject_verb_cant(

@@ -24,7 +24,8 @@ pub use static_shapes::*;
 pub use triggered_shapes::*;
 pub use villainous_choice_shapes::*;
 
-use winnow::combinator::{eof, peek, repeat_till};
+use winnow::combinator::{eof, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;

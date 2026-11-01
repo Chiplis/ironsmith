@@ -1,6 +1,7 @@
 use super::super::*;
 
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,6 +237,17 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
     // Each descriptor word this reading interprets is read; an
     // unrecognized word stays unread.
     let read = |token: &OwnedLexToken| crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    // "of the chosen type/color": the connective words before the chosen
+    // quality read below.
+    for window in descriptor.windows(4) {
+        if window[0].as_word() == Some("of")
+            && window[1].as_word() == Some("the")
+            && window[2].as_word() == Some("chosen")
+            && matches!(window[3].as_word(), Some("type" | "color"))
+        {
+            crate::word_claims::claim_tokens(&window[..2]);
+        }
+    }
     for token in descriptor {
         if is_filter_connector(token) {
             read(token);
@@ -344,6 +356,8 @@ fn damage_source_choice_filter(tokens: &[OwnedLexToken]) -> Option<Option<Object
     while descriptor.first().is_some_and(|token| {
         token_is_word(token, "a") || token_is_word(token, "an") || token_is_word(token, "the")
     }) {
+        // The source's article ("a source of your choice").
+        crate::word_claims::claim_tokens(&descriptor[..1]);
         descriptor.remove(0);
     }
 

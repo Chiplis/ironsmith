@@ -41,12 +41,14 @@ pub fn parse_prevention_amount_follow_up_line(
         "the", "sources", "controller", "draws", "cards", "equal", "to", "the",
         "damage", "prevented", "this", "way",
     ] {
+        crate::word_claims::claim_tokens(tail);
         damage_source_tag = Some(crate::tag::CompilerReferenceTag::TriggeringSource.bind().key.clone());
         vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer, PlayerAst::TriggeringSourceController,
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount }),
         )]
     } else if let Some(effects) = controller_and_damaged_player_each_draw(tail) {
+        crate::word_claims::claim_tokens(tail);
         effects
     } else {
         let view = TokenWordView::new(tail);
@@ -185,6 +187,7 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
         // "If equipped creature would be dealt damage, prevent that damage and
         // put that many +1/+1 counters on it." (Panther Habit): `it` is the
         // attached recipient, not the Equipment.
+        crate::word_claims::claim_tokens(tail);
         vec![EffectAst::subject_verb_put_counters(
             crate::object::CounterType::PlusOnePlusOne,
             amount,
@@ -208,8 +211,10 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
         rewritten.extend_from_slice(&tail[it_index + 1..]);
         let effects = crate::clause_support::parse_effect_sentences_lexed(&rewritten)?;
         if effects.is_empty() { return Ok(None); }
+        crate::word_claims::claim_tokens(&tail[it_index..=it_index]);
         effects
     } else if words == ["mill", "twice", "that", "many", "cards"] {
+        crate::word_claims::claim_tokens(tail);
         vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
             SubjectVerbActionAst::Library(LibraryActionAst::Mill {
@@ -217,6 +222,7 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
             }),
         )]
     } else if words == ["each", "opponent", "mills", "that", "many", "cards"] {
+        crate::word_claims::claim_tokens(tail);
         vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::AffectedPlayer, PlayerAst::Implicit,

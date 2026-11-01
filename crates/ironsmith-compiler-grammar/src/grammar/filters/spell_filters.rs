@@ -431,16 +431,64 @@ fn split_trailing_color_count_phrase_tokens(
 pub fn parse_spell_filter_with_grammar_entrypoint_lexed(tokens: &[OwnedLexToken]) -> ObjectFilter {
     let words_view = GrammarFilterNormalizedWords::new(tokens);
     let words = non_article_word_refs(&words_view.to_word_refs());
-
-    let mut filter = parse_spell_filter_from_words(&words);
-    crate::util::split_cross_dimension_adjective_disjunction(&mut filter, &words);
-    filter
+    parse_spell_filter_words_with_noun_phrase_union(&words)
 }
 
 pub fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
     let words = non_article_token_word_refs(tokens);
+    parse_spell_filter_words_with_noun_phrase_union(&words)
+}
 
-    let mut filter = parse_spell_filter_from_words(&words);
-    crate::util::split_cross_dimension_adjective_disjunction(&mut filter, &words);
+/// "an Elemental spell or a Chandra planeswalker spell" (Chandra's
+/// Embercat): two complete spell noun phrases joined by "or" are a union of
+/// two spell filters. Read as one phrase, the planeswalker type of the second
+/// would also be required of the first.
+/// The union of alternative spell filters. Arms that differ only in their
+/// subtype ("a Dragon spell or an Omen spell") are one filter whose subtype
+/// list already means any listed subtype; arms that differ in anything else
+/// ("an Elemental spell or a Chandra planeswalker spell", "an instant or
+/// sorcery spell or a kicked spell") stay independent alternatives.
+pub fn spell_filter_union(arms: Vec<ObjectFilter>) -> ObjectFilter {
+    let without_subtypes = |filter: &ObjectFilter| {
+        let mut filter = filter.clone();
+        filter.subtypes.clear();
+        filter
+    };
+    if let Some(first) = arms.first()
+        && !first.subtypes.is_empty()
+        && arms
+            .iter()
+            .all(|arm| !arm.subtypes.is_empty() && without_subtypes(arm) == without_subtypes(first))
+    {
+        let mut merged = first.clone();
+        for arm in &arms[1..] {
+            for subtype in &arm.subtypes {
+                if !merged.subtypes.contains(subtype) {
+                    merged.subtypes.push(*subtype);
+                }
+            }
+        }
+        return merged;
+    }
+    ObjectFilter {
+        any_of: arms,
+        ..ObjectFilter::default()
+    }
+}
+
+fn parse_spell_filter_words_with_noun_phrase_union(words: &[&str]) -> ObjectFilter {
+    let is_spell_noun = |word: &&str| matches!(*word, "spell" | "spells");
+    if words.last().is_some_and(is_spell_noun)
+        && let Some(or_idx) = (1..words.len().saturating_sub(1))
+            .find(|&idx| words[idx] == "or" && is_spell_noun(&words[idx - 1]))
+        && or_idx + 1 < words.len() - 1
+    {
+        crate::word_claims::claim_words(&words[or_idx..or_idx + 1]);
+        let left = parse_spell_filter_words_with_noun_phrase_union(&words[..or_idx]);
+        let right = parse_spell_filter_words_with_noun_phrase_union(&words[or_idx + 1..]);
+        return spell_filter_union(vec![left, right]);
+    }
+    let mut filter = parse_spell_filter_from_words(words);
+    crate::util::split_cross_dimension_adjective_disjunction(&mut filter, words);
     filter
 }

@@ -45,6 +45,14 @@ fn opponent_effect() -> ironsmith_core::CauseFilter {
 
 pub(super) fn read(tokens: &[OwnedLexToken]) -> Option<ThisSpellCostCondition> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let condition = read_complete(tokens)?;
+    // Every reading below matches the whole condition clause (actor, verb,
+    // quantified object and history window) into the cost condition.
+    crate::word_claims::claim_tokens(tokens);
+    Some(condition)
+}
+
+fn read_complete(tokens: &[OwnedLexToken]) -> Option<ThisSpellCostCondition> {
     // A completed cast belongs to its actor, including team membership. The
     // price reader can reuse this condition for any named or unnamed mechanic.
     let words = crate::lexer::parser_token_word_refs(tokens);

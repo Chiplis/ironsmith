@@ -433,9 +433,18 @@ fn check_line_coverage(
                 .pieces
                 .iter()
                 .enumerate()
-                .filter(|(index, (span, _))| {
+                .filter(|(index, (span, word))| {
                     let read = |span: crate::TextSpan| claims.contains(span) || consumed.contains(span);
+                    // A possessive read through its normalized word
+                    // ("player's" read as "players"): the claim starts at the
+                    // piece and spans the normalized word's length.
+                    let normalized = crate::TextSpan {
+                        line: span.line,
+                        start: span.start,
+                        end: span.start + word.len(),
+                    };
                     !read(*span)
+                        && !(normalized.end < span.end && read(normalized))
                         && !line
                             .authored_spans
                             .get(*index)

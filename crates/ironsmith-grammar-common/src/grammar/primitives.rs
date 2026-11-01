@@ -1,6 +1,6 @@
 use std::{cell::Cell, fmt};
 
-use winnow::combinator::{alt, eof, opt, peek, preceded, repeat};
+use winnow::combinator::{alt, eof, opt, preceded, repeat};
 use winnow::error::{ContextError, ErrMode, ParseError, ParserError, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::stream::Stream;
@@ -263,6 +263,27 @@ where
         },
         Option::is_some,
     )
+}
+
+/// `winnow::combinator::peek` that reads nothing: a lookahead never consumes
+/// its input, so the words its parser matches are not read here (a word
+/// primitive inside it would otherwise claim them). A reader that goes on to
+/// read those words claims them on its consuming path. Use this in place of
+/// winnow's `peek` everywhere in the grammar crates.
+pub fn peek<Input, Output, Error, ParseNext>(
+    mut parser: ParseNext,
+) -> impl Parser<Input, Output, Error>
+where
+    Input: Stream,
+    Error: ParserError<Input>,
+    ParseNext: Parser<Input, Output, Error>,
+{
+    move |input: &mut Input| {
+        ironsmith_compiler_syntax::word_claims::speculative(|| {
+            winnow::combinator::peek(parser.by_ref()).parse_next(input)
+        })
+        .0
+    }
 }
 
 /// Run a recognizer whose words count as read (its word claims reach the

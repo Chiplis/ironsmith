@@ -526,6 +526,8 @@ pub fn parse_unless_pays_clause(
         ))
     })?;
     let player = if crate::lexer::parser_token_word_refs(shape.player_tokens) == ["any", "player"] {
+        // "unless any player pays": every player is offered the payment.
+        crate::word_claims::claim_tokens(shape.player_tokens);
         PlayerAst::Any
     } else {
         match parse_subject(shape.player_tokens) {
@@ -1495,6 +1497,8 @@ pub fn parse_must_be_blocked_if_able_clause(
         .first()
         .is_some_and(|token| token.is_word("that") || token.is_word("it"))
     {
+        // "that creature": the whole demonstrative subject names the antecedent.
+        crate::word_claims::claim_tokens(subject_clause.tokens());
         return Ok(Some(EffectAst::subject_verb_cant(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),

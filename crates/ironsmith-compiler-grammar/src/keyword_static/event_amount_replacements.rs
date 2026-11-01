@@ -26,7 +26,8 @@ use crate::effect::{EventValueSpec, Value};
 use crate::events::KeywordActionKind;
 use crate::lexer::LexStream;
 use ironsmith_core::{AmountEventSpec, AmountModifierSpec};
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -454,6 +455,15 @@ pub fn parse_if_event_would_happen_amount_line(
     // The recipient and its restatement were each read as a whole above.
     crate::word_claims::claim_words(&recipient_words);
     crate::word_claims::claim_words(&repeated);
+    // The source head: its article and the "source" noun the description
+    // qualifies (the description itself is read by the object filter).
+    let source_words = parser_token_word_refs(shape.source);
+    if let [.., "source"] = source_words.as_slice() {
+        crate::word_claims::claim_words(&source_words[source_words.len() - 1..]);
+        if let ["a" | "an" | "any", ..] = source_words.as_slice() {
+            crate::word_claims::claim_words(&source_words[..1]);
+        }
+    }
     Ok(Some(StaticAbility::event_amount_replacement(
         AmountEventSpec::Damage {
             source_filter,

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use winnow::combinator::{alt, peek, repeat_till};
+use winnow::combinator::{alt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::any;

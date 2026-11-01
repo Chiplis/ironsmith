@@ -229,6 +229,14 @@ pub fn parse_opponents_each_lose_exact_life_words(words: &[&str]) -> Option<u32>
 }
 
 pub fn parse_roll_result_words(words: &[&str]) -> Option<RollResultShape> {
+    let shape = roll_result_words(words)?;
+    // Every branch reads the whole result phrase ("a 1 or 2", "a natural
+    // 20", "a 5 or higher", "your second die each turn").
+    crate::word_claims::claim_words(words);
+    Some(shape)
+}
+
+fn roll_result_words(words: &[&str]) -> Option<RollResultShape> {
     let bounded = words.strip_prefix(&["a"]).unwrap_or(words);
     let number = |words: &[&str]| primitives::parse_full_word_slice(words, parse_fixed_number_word_slice);
     if let Some(words) = bounded.strip_prefix(&["natural"]) {

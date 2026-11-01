@@ -39,6 +39,8 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         {
             return Ok(None);
         }
+        // "attacks during its controller's next combat phase if able".
+        crate::word_claims::claim_tokens(&tokens[attacks..]);
         return Ok(Some(EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -57,6 +59,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     }
     let player_tokens = &tail[..tail.len() - 4];
     let player = if player_words == ["you"] {
+        crate::word_claims::claim_tokens(player_tokens);
         TargetAst::Player(PlayerFilter::You, None)
     } else if matches!(player_words, ["target", "opponent" | "player"]) {
         match crate::util::parse_target_phrase(player_tokens)? {
@@ -70,6 +73,9 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if !matches!(target, TargetAst::Object(..)) {
         return Ok(None);
     }
+    // "attacks <player> this turn if able": the requirement's verb and window.
+    crate::word_claims::claim_tokens(&tokens[attacks..=attacks]);
+    crate::word_claims::claim_tokens(&tail[tail.len() - 4..]);
     Ok(Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,

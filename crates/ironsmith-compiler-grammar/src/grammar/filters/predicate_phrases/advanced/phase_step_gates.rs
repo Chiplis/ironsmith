@@ -157,6 +157,8 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
             )
             && filter != ObjectFilter::default()
         {
+            // "<object> died this turn": the death history read here.
+            crate::word_claims::claim_tokens(&clean[clean.len() - 3..]);
             return Some(value_at_least(
                 Value::TurnHistoryCount(TurnHistoryCount::died(filter)),
                 1,
@@ -846,6 +848,8 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
     if filter_tokens.is_empty() {
         return Ok(None);
     }
+    // Every trailing qualifier stripped below is modeled on the filter.
+    let full_filter_tokens = filter_tokens;
     let mut above_base = false;
     let filter_clause = LexedClause::new(filter_tokens);
     let stripped = filter_clause.without_trailing_phrase(POWER_ABOVE_BASE_SUFFIX);
@@ -907,6 +911,7 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(filter_tokens, false)?
     };
     filter.controller = Some(controller);
+    crate::word_claims::claim_tokens(&full_filter_tokens[filter_tokens.len()..]);
     filter.power_greater_than_base_power |= above_base;
     if greater_mana_value_than_it {
         filter.mana_value = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(

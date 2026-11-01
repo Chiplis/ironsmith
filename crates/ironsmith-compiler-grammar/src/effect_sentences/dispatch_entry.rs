@@ -1003,6 +1003,31 @@ fn sentence_contains(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
     contains_token_word_sequence(tokens, phrase)
 }
 
+/// Claim "instead of into <owner> graveyard" where the owner is one of the
+/// countered card's owner references.
+fn claim_replaced_graveyard_destination(tokens: &[OwnedLexToken]) {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    for start in 0..words.len() {
+        let Some(rest) = words[start..].strip_prefix(&["instead", "of", "into"][..]) else {
+            continue;
+        };
+        let owner_len = match rest {
+            ["that", "players" | "player's", "graveyard", ..]
+            | ["its", "owners" | "owner's", "graveyard", ..] => 2,
+            ["your" | "their" | "a", "graveyard", ..] => 1,
+            _ => continue,
+        };
+        let end = start + 3 + owner_len + 1;
+        if let (Some(first), Some(last)) =
+            (view.map_word_to_token_start(start), view.token_index_after_words(end))
+        {
+            crate::word_claims::claim_tokens(&tokens[first..last]);
+        }
+        return;
+    }
+}
+
 fn reflected_prevent_next_damage_from_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let all_phrases = || {
         sentence_contains(tokens, THE_NEXT_TIME_PHRASE)
@@ -1311,6 +1336,10 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
             effect_grammar::dispatch_entry_shapes::parse_countered_spell_library_placement_tokens(
                 tokens,
             )?;
+        // "instead of into that player's graveyard" (Hinder, Lapse of
+        // Certainty): the replaced destination, the countered card's owner's
+        // graveyard, is this replacement's `from` zone.
+        claim_replaced_graveyard_destination(tokens);
         return Some(
             EffectAst::subject_verb_register_zone_replacement_with_library_placement(
                 target(),
@@ -1371,6 +1400,17 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
                 None,
             )
         } else {
+            // "If that permanent would die this turn" (Essence Burn): the
+            // demonstrative names the tagged object this replacement watches.
+            if tokens.first().is_some_and(|token| token.is_word("if"))
+                && let Some(would) = tokens.iter().position(|token| token.is_word("would"))
+                && matches!(
+                    crate::lexer::token_word_refs(&tokens[1..would]).as_slice(),
+                    ["it"] | ["that", "creature" | "permanent" | "card" | "planeswalker"]
+                )
+            {
+                crate::word_claims::claim_tokens(&tokens[1..would]);
+            }
             target()
         };
         return Some(EffectAst::subject_verb_register_zone_replacement(
@@ -2299,7 +2339,7 @@ pub(crate) fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Valu
 
 pub fn with_where_x_surface_hints(mut value: Value, binding_tokens: &[OwnedLexToken]) -> Value {
     let words = crate::lexer::token_word_refs(binding_tokens);
-    if crate::word_primitives::sequence_occurs(&words, &["as", "you", "activate", "this", "ability"]) {
+    if crate::word_primitives::parse_sequence_start(&words, &["as", "you", "activate", "this", "ability"]).is_some() {
         value = value.with_surface_hint(ValueSurfaceHint::AsYouActivateThisAbility);
     }
     let has_word = |word| crate::word_primitives::sequence_occurs(&words, &[word]);
@@ -10283,14 +10323,18 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
             && let Some(trailing_filter) = effects
                 .get_mut(second_idx + 1)
                 .and_then(direct_all_object_filter_mut)
-            && !filter_has_it_reference(trailing_filter)
         {
-            trailing_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
-                    relation: TaggedOpbjectRelation::SameNameAsTagged,
-                });
+            if !filter_has_it_reference(trailing_filter) {
+                trailing_filter
+                    .tagged_constraints
+                    .push(TaggedObjectConstraint {
+                        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                        relation: TaggedOpbjectRelation::SameNameAsTagged,
+                    });
+            }
+            // The trailing set is the same-name set: "with that name" is
+            // read here.
+            let _ = crate::word_primitives::parse_sequence_start(&words, &["with", "that", "name"]);
         }
 
         let primary_alias = crate::tag::CompilerIndexedTag::LinkedFanoutPrimary.key(first_idx);
@@ -10404,6 +10448,8 @@ fn transport_linked_fanout_group_across_coordination(
                         tag: group.clone(),
                         relation: TaggedOpbjectRelation::SameNameAsTagged,
                     });
+                    // The trailing "with that name" is read here.
+                    let _ = crate::word_primitives::parse_sequence_start(&words, &["with", "that", "name"]);
                 }
                 retag_linked_fanout_followup(effect, group);
             }
@@ -10472,6 +10518,8 @@ fn preserve_linked_target_fanout_group_across_coordination(
                                 tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                                 relation: TaggedOpbjectRelation::SameNameAsTagged,
                             });
+                        // The trailing "with that name" is read here.
+                        let _ = crate::word_primitives::parse_sequence_start(&words, &["with", "that", "name"]);
                     }
                     break 'trailing;
                 }

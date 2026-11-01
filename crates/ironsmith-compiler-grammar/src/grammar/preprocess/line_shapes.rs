@@ -71,8 +71,8 @@ pub fn parse_parenthetical_line_surface_tokens(
 
     let words = TokenWordView::new(tokens);
     let word_refs = words.word_refs();
-    permission_shapes::find_words(&word_refs, &["its", "an", "enchantment"])?;
-    let not_creature = permission_shapes::find_words(&word_refs, &["its", "not", "a", "creature"])?;
+    preprocess_locate_words(&word_refs, &["its", "an", "enchantment"])?;
+    let not_creature = preprocess_locate_words(&word_refs, &["its", "not", "a", "creature"])?;
     let token_index = *words.token_start_indices().get(not_creature)?;
     (tokens.get(token_index.checked_sub(1)?)?.kind == TokenKind::LParen)
         .then_some(ParentheticalLineSurface::PreserveEnchantmentNotCreature)
@@ -373,4 +373,10 @@ mod tests {
             "a timing phrase in the first sentence is not a line tail"
         );
     }
+}
+
+/// A preprocessing locator: it finds where a phrase sits to steer a text
+/// rewrite, and reads nothing (the rewritten line's readers claim words).
+fn preprocess_locate_words(words: &[&str], expected: &[&str]) -> Option<usize> {
+    crate::word_claims::probe_only(|| permission_shapes::find_words(words, expected))
 }

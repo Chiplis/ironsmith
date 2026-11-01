@@ -2,7 +2,8 @@
 use crate::grammar::{abilities, leaf, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use winnow::Parser;
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult;
 use winnow::token::{any, rest};
 

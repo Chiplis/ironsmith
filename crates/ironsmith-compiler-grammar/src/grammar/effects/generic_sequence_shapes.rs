@@ -636,7 +636,7 @@ fn qualified_source_prevented_this_way_opening<'a>(
     let quality = winnow::combinator::repeat_till::<_, _, (), _, _, _, _>(
         1..,
         winnow::token::any.void(),
-        winnow::combinator::peek(primitives::phrase(&[
+        crate::grammar::primitives::peek(primitives::phrase(&[
             "source",
             "is",
             "prevented",

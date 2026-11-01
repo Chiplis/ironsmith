@@ -94,7 +94,7 @@ pub fn parse_borrow_ability_surface_tokens(
             let mut expected = Vec::with_capacity(prefix.len() + ability_words.len());
             expected.extend_from_slice(prefix);
             expected.extend_from_slice(&ability_words);
-            let Some(index) = permission_shapes::find_words(&words, &expected) else {
+            let Some(index) = preprocess_locate_words(&words, &expected) else {
                 continue;
             };
             match best {
@@ -190,7 +190,7 @@ pub fn parse_borrow_static_sentence_surface_tokens(
         );
     }
 
-    let marker = permission_shapes::find_words(&word_refs, &["as", "long", "as"])?;
+    let marker = preprocess_locate_words(&word_refs, &["as", "long", "as"])?;
     if marker == 0 {
         return None;
     }
@@ -226,7 +226,7 @@ pub fn parse_borrow_static_condition_surface_tokens(
     with_ability.push("with");
     with_ability.extend_from_slice(&ability_words);
     if let Some(relative_with) =
-        permission_shapes::find_words(word_refs.get(1..).unwrap_or_default(), &with_ability)
+        preprocess_locate_words(word_refs.get(1..).unwrap_or_default(), &with_ability)
     {
         let with_index = relative_with + 1;
         let verb_index = with_index + with_ability.len();
@@ -286,7 +286,7 @@ pub fn parse_borrow_static_condition_surface_tokens(
 
     for (phrase, plural) in [(["is", "in"], false), (["are", "in"], true)] {
         let Some(relative) =
-            permission_shapes::find_words(word_refs.get(1..).unwrap_or_default(), &phrase)
+            preprocess_locate_words(word_refs.get(1..).unwrap_or_default(), &phrase)
         else {
             continue;
         };
@@ -373,4 +373,10 @@ mod tests {
             Some(SubjectPredicateSurface { .. })
         ));
     }
+}
+
+/// A preprocessing locator: it finds where a phrase sits to steer a text
+/// rewrite, and reads nothing (the rewritten line's readers claim words).
+fn preprocess_locate_words(words: &[&str], expected: &[&str]) -> Option<usize> {
+    crate::word_claims::probe_only(|| permission_shapes::find_words(words, expected))
 }

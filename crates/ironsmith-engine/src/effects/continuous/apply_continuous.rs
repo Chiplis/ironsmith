@@ -826,6 +826,28 @@ pub(crate) fn materialize_duration_predicate(
             source_type,
             ctx,
         )?),
+        // "for as long as you control both of them" (CR 611.2b): a tagged
+        // set holds the effect only while every tagged object stays under
+        // that player's control, so expand it to one predicate per object.
+        Predicate::ObjectControlledBy {
+            object: ironsmith_core::ContinuousDurationObject::Tagged(tag),
+            player,
+        } => {
+            let player = materialize_duration_player(player, target, source_type, game, ctx)?;
+            let mut each = ctx
+                .get_tagged_all(tag.as_str())?
+                .iter()
+                .map(|snapshot| Predicate::ObjectControlledBy {
+                    object: ironsmith_core::ContinuousDurationObject::Specific(snapshot.object_id),
+                    player: player.clone(),
+                })
+                .collect::<Vec<_>>();
+            match each.len() {
+                0 => return None,
+                1 => each.pop()?,
+                _ => Predicate::All(each),
+            }
+        }
         Predicate::ObjectControlledBy { object, player } => Predicate::ObjectControlledBy {
             object: materialize_duration_object(object, target, source_type, ctx)?,
             player: materialize_duration_player(player, target, source_type, game, ctx)?,

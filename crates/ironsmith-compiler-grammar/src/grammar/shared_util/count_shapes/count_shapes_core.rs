@@ -1,10 +1,25 @@
 use super::*;
 
+/// A "for each ..." count. A count whose consumed words include the
+/// prior-result marker "this way" ("for each creature destroyed this way")
+/// read that marker: it is what binds the count to the producer's result.
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    let (value, used) = parse_for_each_count_value_words_inner(words)?;
+    let consumed = &words[..used.min(words.len())];
+    if let Some(at) = crate::word_claims::probe_only(|| {
+        permission_shapes::find_words(consumed, &["this", "way"])
+    }) {
+        crate::word_claims::claim_words(&consumed[at..at + 2]);
+    }
+    Some((value, used))
+}
+
+fn parse_for_each_count_value_words_inner(words: &[&str]) -> Option<(Value, usize)> {
     if matches!(words,
         ["for", "each", "dilemma", "youve" | "you've", "faced", "this", "turn"]
         | ["for", "each", "dilemma", "you", "have", "faced", "this", "turn"])
     {
+        crate::word_claims::claim_words(words);
         return Some((Value::TurnHistoryCount(
             ironsmith_core::TurnHistoryCount::KeywordActionsPerformed {
                 player: PlayerFilter::You,
@@ -18,10 +33,13 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     if let ["for", "each", "color", "of", "mana", "spent" | "used", "to", "cast", "that", "spell", ..] =
         words
     {
+        // The matched phrase is ten words ("for each color of mana spent to
+        // cast that spell").
+        crate::word_claims::claim_words(&words[..10]);
         return Some((
             Value::ColorsOfManaSpentToCastTriggeringObject
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
-            11,
+            10,
         ));
     }
     // "for each 1 damage dealt to you this turn" (Discordant Spirit): the
@@ -33,6 +51,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             _ => None,
         };
         if let Some(players) = players {
+            crate::word_claims::claim_words(words);
             return Some((
                 Value::DamageDealtToPlayersThisTurn(players)
                     .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
@@ -52,6 +71,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 | ["group", "cards", "or", "permanents", "into", "a", "pile", "or", "to", "guess"]
         )
     {
+        crate::word_claims::claim_words(words);
         return Some((
             Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn,
             words.len(),
@@ -64,6 +84,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         words
         && (source == ["it"] || crate::util::is_source_reference_words(source))
     {
+        crate::word_claims::claim_words(words);
         return Some((
             Value::NameStickersOnSourceStartingWithChosenLetter {
                 surface: crate::util::source_reference_surface_for_words(source),
@@ -77,6 +98,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     if let ["for", "each", "e", "youve" | "you've", "paid" | "lost", rest @ ..] = words
         && matches!(rest, ["or", "lost" | "paid", "this", "turn"] | ["this", "turn"])
     {
+        crate::word_claims::claim_words(words);
         return Some((
             Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayerCountersRemoved {
                 player: PlayerFilter::You,
@@ -92,6 +114,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         && !source.is_empty()
         && (source == ["it"] || crate::util::is_source_reference_words(source))
     {
+        crate::word_claims::claim_words(words);
         return Some((
             Value::DistinctCounterTypesAmong(ObjectFilter::source())
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
@@ -201,6 +224,8 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     // (Apothecary White, Amber Gristle O'Maul): the defending players of the
     // current combat (CR 506.2), not every player in the game.
     if let Some(len) = players_being_attacked_len(words) {
+        // The complete count phrase is read.
+        crate::word_claims::claim_words(&words[..len]);
         return Some((
             Value::PlayersBeingAttacked.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
             len,
@@ -222,8 +247,11 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         if let Some((value, used)) =
             crate::grammar::shared_util::value_expr::parse_life_total_quantity_words(&counted)
         {
-            // "for each opponent who ...": the counted player noun.
-            crate::word_claims::claim_words(&words[..3]);
+            // "for each opponent who lost life this turn": the counted player
+            // noun and its qualifier. The rewritten `counted` words are not
+            // source views, so the qualifier is claimed here by position
+            // (both slices share the three-word head).
+            crate::word_claims::claim_words(&words[..used.clamp(3, words.len())]);
             return Some((value, used));
         }
     }
@@ -256,6 +284,8 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         query.player = Some(player);
         let value = Value::PendingPriorEffectMetric(query);
         let value = if group == 1 { value } else { Value::DividedRoundedDown(Box::new(value), i32::try_from(group).ok()?) };
+        // "for each 1 life you lost": the unit, noun, player and verb.
+        crate::word_claims::claim_words(&words[..used + 4]);
         return Some((value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), used + 4));
     }
     // "for every three cards in your graveyard" (Recursive Recruitment): one
@@ -403,6 +433,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     // "for each of its colors" (Breathe Your Last): the colors of the object
     // the sentence's antecedent names, read through its tagged snapshot.
     if let ["its", "colors", ..] = &words[idx..] {
+        crate::word_claims::claim_words(&words[idx..idx + 2]);
         return Some((
             Value::ColorsOf(Box::new(ChooseSpec::Tagged(
                 (crate::tag::CompilerReferenceTag::It.bind()).into(),
@@ -414,6 +445,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     // "for each of that spell's colors" (Ancient Cornucopia, Moonveil Regent,
     // Ramos): the colors of the referenced spell.
     if let ["that", "spell's" | "spells", "colors", ..] = &words[idx..] {
+        crate::word_claims::claim_words(&words[idx..idx + 3]);
         return Some((
             Value::ColorsOf(Box::new(ChooseSpec::Tagged(
                 (crate::tag::CompilerReferenceTag::It.bind()).into(),
@@ -737,6 +769,11 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     if let Some(relative_this_way) = prior_result_marker {
         let this_way_start = idx + relative_this_way;
         let this_way_subject = &words[idx..this_way_start];
+        // "... this way": the prior instruction's result, read by every
+        // return below.
+        let claim_this_way = || {
+            crate::word_claims::claim_words(&words[this_way_start..(this_way_start + 2).min(words.len())]);
+        };
         let died_filter_words =
             [&["that", "died"][..], &["died"][..]]
                 .into_iter()
@@ -749,6 +786,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             && !died_filter_words.is_empty()
             && let Some(filter) = parse_for_each_object_filter_words(died_filter_words, head.other)
         {
+            claim_this_way();
             return Some((
                 Value::PendingPriorEffectMetric(
                     ironsmith_core::PriorEffectMetricQuery::new(
@@ -774,6 +812,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 false,
             ))?;
             filter.set_explicit_card_noun(true);
+            claim_this_way();
             return Some((
                 Value::PendingPriorEffectMetric(
                     ironsmith_core::PriorEffectMetricQuery::new(
@@ -889,6 +928,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                         .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsRevealedThisWay),
                     _ => value,
                 };
+                claim_this_way();
                 return Some((value, filter_end));
             }
         }
@@ -902,6 +942,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 if has_explicit_card_noun {
                     filter.set_explicit_card_noun(true);
                 }
+                claim_this_way();
                 return Some((
                     Value::Count(filter.match_tagged(
                         crate::tag::CompilerReferenceTag::It.bind(),

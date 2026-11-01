@@ -254,6 +254,7 @@ fn parse_source_and_chosen_exile(
         return Ok(None);
     }
     let mut filter = parse_activation_exile_filter_tokens(choice.rest)?;
+    let mut literal_name_tokens: &[OwnedLexToken] = &[];
     // A complete authored name at the end of this bounded selector is a
     // literal, including words such as "Its" that also have grammatical uses.
     if let Some(named) = choice.rest.iter().position(|token| token.is_word("named")) {
@@ -266,6 +267,7 @@ fn parse_source_and_chosen_exile(
             let name = crate::lexer::render_literal_token_slice(name_tokens);
             filter.name = Some(name.to_ascii_lowercase());
             filter.set_name_surface(name);
+            literal_name_tokens = name_tokens;
         }
     }
     if let Some((_, zone)) = shared_origin {
@@ -280,6 +282,7 @@ fn parse_source_and_chosen_exile(
     if shared_origin.is_some() {
         source_filter.owner = Some(PlayerFilter::You);
     }
+    crate::word_claims::claim_tokens(literal_name_tokens);
     Ok(Some(ActivationCostSegmentCst::ExileSourceAndChosen {
         source_filter,
         choice_count: choice.count,

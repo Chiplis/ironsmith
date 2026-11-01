@@ -1,4 +1,5 @@
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -150,6 +151,8 @@ fn parse_counter_hand_size_line(tokens: &[OwnedLexToken]) -> Option<HandSizeLine
     let counter=words.iter().position(|word|matches!(*word,"counter"|"counters"))?;
     if counter==0 || words.get(counter+1)!=Some(&"on") || !crate::util::is_source_reference_words(&words[counter+2..]) { return None; }
     let counter_type=crate::grammar::filters::parse_counter_type_from_tokens(&input[..positions[counter].0])?;
+    // "<kind> counters on this enchantment": the source's counters, read whole.
+    crate::word_claims::claim_tokens(&input[positions[counter].0..]);
     Some(HandSizeLineSpec { condition_tokens:None, player, operation:HandSizeOperation::SourceCounters(counter_type) })
 }
 

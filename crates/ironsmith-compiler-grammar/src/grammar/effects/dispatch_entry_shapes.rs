@@ -6,7 +6,8 @@ use crate::lexer::{LexStream, TokenKind, parser_token_word_refs, trim_lexed_comm
 use crate::object::CounterType;
 use crate::types::Subtype;
 use winnow::Parser as _;
-use winnow::combinator::{alt, opt, peek, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;

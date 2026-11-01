@@ -40,7 +40,8 @@ use crate::target::{
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::Value;
-use winnow::combinator::{alt, dispatch, fail, opt, peek};
+use winnow::combinator::{alt, dispatch, fail, opt};
+use crate::grammar::primitives::peek;
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 #[path = "effects/effect_composition.rs"]
@@ -1469,6 +1470,8 @@ pub fn parse_prevent_damage_sentence_lexed(
             && !is_prevent_damage_explicit_target_source(chosen_tokens)
             && let Ok(source_filter) = parse_object_filter(chosen_tokens, false)
         {
+            // "of your choice": the chooser of the one matching source.
+            crate::word_claims::claim_tokens(&source_tokens[source_tokens.len() - 3..]);
             return Ok(Some(
                 EffectAst::subject_verb_prevent_all_combat_damage_from_chosen_source_filter(
                     source_filter,
@@ -2148,7 +2151,12 @@ pub(crate) fn parse_counted_next_untap_steps(
             widened += 1;
         }
     }
-    Ok((widened == 1).then_some(effects))
+    if widened != 1 {
+        return Ok(None);
+    }
+    // The authored "untap steps" replaced by synthetic tokens above.
+    crate::word_claims::claim_words(&words[next + 1..]);
+    Ok(Some(effects))
 }
 
 /// Bind a named untap-step owner to the player targeted by this instruction.

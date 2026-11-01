@@ -155,7 +155,9 @@ fn is_starting_player(words: &[&str]) -> bool {
     )
 }
 
-fn is_named_deck_construction(words: &[&str]) -> bool {
+/// The copy-count exception names its card literally; deck validation reads
+/// the name and limit back out of the rule text.
+pub fn is_named_deck_construction(words: &[&str]) -> bool {
     let prefix = &[
         "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
     ];
