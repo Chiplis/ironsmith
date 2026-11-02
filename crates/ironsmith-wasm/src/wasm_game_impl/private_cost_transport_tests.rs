@@ -192,7 +192,7 @@ fn exact_reytali_private_grant_transports_materialized_card_price_and_peer_authe
             let reservation=wasm.private_cost_reservation_for_command(&context,&command).unwrap().unwrap();
             assert_eq!(reservation.cost().mana_cost(),Some(&ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Generic(1),ManaSymbol::White,ManaSymbol::White])),"wire carries resolved card-derived price, not a placeholder-dependent dynamic lookup");
             if wasm.game.is_hidden_card_placeholder(source){
-                let mut dm=SelectFirstDecisionMaker;
+                let mut dm=ironsmith::decision::SelectFirstDecisionMaker;
                 assert!(matches!(stage_private_action(&wasm.game,&reservation,&mut dm).unwrap(),PrivateActionStage::AwaitingAuthenticatedOpening),"placeholder must pay the same concrete three-mana price, not a symbolic zero-price source lookup");
                 assert_eq!(wasm.game.player(PlayerId(0)).unwrap().mana_pool.total(),3);
             }

@@ -1,3 +1,4 @@
+import {customCardAssets} from '@/lib/custom-card-assets';
 import AbilityTextInk from './AbilityTextInk';
 import {abilityActionState,abilityActionReason,abilityHitRegions} from '@/lib/ability-action-state';
 import {useMemo,useState} from 'react';
@@ -17,7 +18,7 @@ export default function CardGlintInteractions({result,regions,rulesView,onActiva
     return [key,selected?'selected':hovered===key?abilityActionState(action):'idle'];
   })),[hitRegions,highlighted,chosen,hovered]);
   const {locale}=useI18n({optional:true});
-  const helpers=useMemo(()=>cardGlintRegions(result,mseRulesHelperView(rulesView,locale)),[result,rulesView,locale]);
+  const helpers=useMemo(()=>cardGlintRegions(result,mseRulesHelperView(rulesView,locale,true,customCardAssets(name)?.customMechanics || [])),[result,rulesView,locale,name]);
   const position=region=>({left:`${region.left/488*100}%`,top:`${region.top/680*100}%`,
     width:`${region.width/488*100}%`,height:`${region.height/680*100}%`,transform:`rotate(${region.angle}deg)`});
   return <div className="mse-card-interactions">

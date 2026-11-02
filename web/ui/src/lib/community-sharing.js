@@ -71,7 +71,7 @@ export function validateCommunityShare(kind, value) {
   if (kind === 'set') {
     customSet(value);
     normalizeCommunityFormat({ name: value.name, customSets: [value] });
-    return { name: value.name.trim(), cards: structuredClone(value.cards), ...(value.customSubtypes ? { customSubtypes: structuredClone(value.customSubtypes) } : {}), ...(value.customMechanics ? { customMechanics: structuredClone(value.customMechanics) } : {}) };
+    return { ...(value.source ? {source:structuredClone(value.source)} : {}), ...(value.code ? {code:String(value.code)} : {}), name: value.name.trim(), cards: structuredClone(value.cards), ...(value.customSubtypes ? { customSubtypes: structuredClone(value.customSubtypes) } : {}), ...(value.customMechanics ? { customMechanics: structuredClone(value.customMechanics) } : {}) };
   }
   requireValue(kind === 'format', 'unknown content type.');
   title(value.name);

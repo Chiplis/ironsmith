@@ -1,5 +1,7 @@
 export function normalizeDraftForApi(draft) {
   return {
+    ...(draft.customMechanicsScope === "card" ? {customMechanicsScope:"card"} : {}),
+    ...(draft.attribution ? { attribution: structuredClone(draft.attribution) } : {}),
     enforceFilterClaims: draft.enforceFilterClaims !== false,
     enforceLineClaims: draft.enforceLineClaims !== false,
     customSubtypes: structuredClone(draft.customSubtypes || []),
@@ -10,6 +12,9 @@ export function normalizeDraftForApi(draft) {
     layout: draft.layout || "single",
     hasFuse: draft.hasFuse === true,
     faces: draft.faces.map((face) => ({
+      ...(face.attribution ? { attribution: structuredClone(face.attribution) } : {}),
+      ...(face.imageUrl ? { imageUrl: face.imageUrl } : {}),
+      ...(face.flavorText ? { flavorText: face.flavorText } : {}),
       originalPrintedRulesText: String(face.originalPrintedRulesText ?? face.oracleText ?? ""),
       ...(face.displayOracleText != null ? { displayOracleText: face.displayOracleText } : {}),
       ...(face.customKeywordIdentities?.length ? { customKeywordIdentities: [...face.customKeywordIdentities] } : {}),

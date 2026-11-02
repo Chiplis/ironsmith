@@ -1,3 +1,4 @@
+import { loadBundledSetCatalog, mergeBundledLibrary } from './bundled-custom-sets.js';
 const legacyKey = 'ironsmith-community-library-v1';
 let connection;
 let migration;
@@ -46,7 +47,7 @@ async function migrate() {
   })().catch(error => { migration = null; throw error; });
   return migration;
 }
-export async function loadCommunityLibrary() {
+async function loadSavedCommunityLibrary() {
   await migrate();
   const db = await database();
   return new Promise((resolve, reject) => {
@@ -78,4 +79,9 @@ export async function saveCommunityItem(kind, entry, { keepExisting = false } = 
     tx.oncomplete = () => resolve(saved);
     tx.onerror = tx.onabort = () => reject(tx.error || new Error('Could not save the Community item. Browser storage may be full.'));
   });
+}
+
+export async function loadCommunityLibrary() {
+  const [saved, catalog] = await Promise.all([loadSavedCommunityLibrary(), loadBundledSetCatalog()]);
+  return mergeBundledLibrary(saved, catalog.sets);
 }

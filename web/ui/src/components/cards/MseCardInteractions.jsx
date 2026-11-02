@@ -1,3 +1,4 @@
+import {customCardAssets} from '@/lib/custom-card-assets';
 import {useMemo,useState} from 'react';
 import {mseInteractionRegions} from '@/lib/mse/interaction-regions.mjs';
 import {mseRulesHelperView} from '@/lib/mse/rules-helper-ranges.mjs';
@@ -8,7 +9,7 @@ export default function MseCardInteractions({result,rulesView,onActivate,highlig
   const [hovered,setHovered]=useState(null);
   const regions=useMemo(()=>mseInteractionRegions(result,rulesView),[result,rulesView]);
   const {locale}=useI18n({optional:true});
-  const helpers=useMemo(()=>mseInteractionRegions(result,mseRulesHelperView(rulesView,locale)),[result,rulesView,locale]);
+  const helpers=useMemo(()=>mseInteractionRegions(result,mseRulesHelperView(rulesView,locale,true,customCardAssets(name)?.customMechanics || [])),[result,rulesView,locale,name]);
   const position=region=>({left:`${region.left/result.width*100}%`,top:`${region.top/result.height*100}%`,
     width:`${region.width/result.width*100}%`,height:`${region.height/result.height*100}%`,transform:`rotate(${region.angle}deg)`});
   return <div className="mse-card-interactions">

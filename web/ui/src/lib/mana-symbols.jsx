@@ -190,6 +190,10 @@ export function ManaSymbol({ sym, size = 14 }) {
 
 const SYMBOL_RE = /\{([^}]+)\}/g;
 const KeywordHelpersEnabledContext = createContext(true);
+const CustomMechanicsContext = createContext([]);
+export function CustomMechanicsProvider({definitions = [], children}) {
+  return <CustomMechanicsContext.Provider value={definitions}>{children}</CustomMechanicsContext.Provider>;
+}
 
 export function KeywordHelpersProvider({ enabled = true, children }) {
   return (
@@ -246,11 +250,11 @@ export function KeywordHelperText({ text, rule, className='', style, children,re
   );
 }
 
-function keywordTextParts(text, nextKey, keywordHelpersEnabled, locale, source = text, baseOffset = 0) {
+function keywordTextParts(text, nextKey, keywordHelpersEnabled, locale, source = text, baseOffset = 0, customMechanics = []) {
   if (!keywordHelpersEnabled) return [text];
 
   let offset = baseOffset;
-  return splitTextWithMtgKeywordRules(text, locale).map((segment) => {
+  return splitTextWithMtgKeywordRules(text, locale, customMechanics).map((segment) => {
     offset += segment.text.length;
     if (segment.type !== "keyword") return segment.text;
     return (
@@ -285,9 +289,11 @@ export function SymbolText({
   symbolSize = 14,
   noWrap = false,
   keywordHelpers = null,
+  customMechanics = null,
 }) {
   const { locale } = useI18n({ optional: true });
   const contextKeywordHelpersEnabled = useContext(KeywordHelpersEnabledContext);
+  const contextMechanics = useContext(CustomMechanicsContext);
   if (!rawText) return null;
   const text = capitalizeSentences(rawText);
   const keywordHelpersEnabled = keywordHelpers ?? contextKeywordHelpersEnabled;
@@ -297,7 +303,7 @@ export function SymbolText({
   const nextKey = () => `keyword-${key++}`;
   const appendText = (value, offset) => {
     if (!value) return;
-    parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled, locale, text, offset));
+    parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled, locale, text, offset, customMechanics ?? contextMechanics));
   };
 
   let sourceOffset = 0;

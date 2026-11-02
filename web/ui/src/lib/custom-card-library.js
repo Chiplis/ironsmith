@@ -1,3 +1,4 @@
+import { normalizeDraftForApi } from "./custom-card-draft.js";
 import { prepareCustomCard, mergeMechanics, installCustomMechanics, uninstallCustomMechanic, validateMechanic, probeMechanic } from "./custom-mechanics.js";
 import { installCustomTokens, uninstallCustomToken, validateToken, tokenKey } from "./custom-tokens.js";
 import { cardSearchKey } from "./card-search.js";
@@ -157,18 +158,21 @@ export async function previewCustomDraft(draft, compile) {
   const prepared = await prepareCustomCard(draft, compile, {
     known: await listCustomMechanics().catch(() => []), knownTokens: await listCustomTokens().catch(() => []),
   });
-  installCustomMechanics(prepared.draft.customMechanics);
+  if (!scoped) installCustomMechanics(prepared.draft.customMechanics);
   prepared.preview.customMechanics = prepared.draft.customMechanics;
   for (const face of prepared.preview.faces || []) face.customMechanics = prepared.draft.customMechanics;
   return prepared;
 }
 
 export async function prepareCustomDraftForCreation(draft, compile) {
-  const prepared = await prepareCustomCard(draft, compile, {
-    known: await listCustomMechanics().catch(() => []), reserve: reserveCustomMechanics,
+  const scoped = draft.customMechanicsScope === 'card';
+  const normalized = scoped ? normalizeDraftForApi(draft) : null;
+  const input = normalized ? {...draft, ...normalized, faces:draft.faces.map((face,index)=>({...face,...normalized.faces[index]}))} : draft;
+  const prepared = await prepareCustomCard(input, compile, {
+    known: scoped ? [] : await listCustomMechanics().catch(() => []), ...(scoped ? {} : {reserve: reserveCustomMechanics}),
     knownTokens: await listCustomTokens().catch(() => []),
   });
-  installCustomMechanics(prepared.draft.customMechanics);
+  if (!scoped) installCustomMechanics(prepared.draft.customMechanics);
   prepared.preview.customMechanics = prepared.draft.customMechanics;
   for (const face of prepared.preview.faces || []) face.customMechanics = prepared.draft.customMechanics;
   return prepared;

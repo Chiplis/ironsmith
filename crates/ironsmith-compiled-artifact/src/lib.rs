@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 // See architecture/custom-mechanics-coherent-schema-v20.descriptor.
 pub const FORMAT_VERSION: u32 = 20;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "3535ad1d61837fa1fb4977a9cd4a556c4fa93d126829cfc5282675e18259ffcd";
+    "afeec46c300cc70eb2c377793d24ba768c677332c330cdbe8edd1e5ca8c38ef0";
 
 /// Validate the executable metadata supported by standalone supplied-source inputs.
 /// Provenance is independent from executable dependencies: unsupported dependency

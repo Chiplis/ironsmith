@@ -1,3 +1,4 @@
+import { searchBundledCustomCards } from "@/lib/bundled-custom-sets";
 import { useEffect, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useUiText from "@/i18n/useUiText";
@@ -29,7 +30,9 @@ export default function BuildCardSearch({ onSelect, disabled, actions, secondary
     const timer = setTimeout(async () => {
       try {
         const names = query.trim() ? await game?.autocompleteCardNames(query.trim(), 8) || [] : [];
+        const bundled=includeCustom ? await searchBundledCustomCards(query) : [];
         if (active) setOptions([
+          ...bundled,
           ...(includeCustom && query.trim() ? customCardOptions(cards, query) : []),
           ...names.map(name => ({ name })),
         ]);

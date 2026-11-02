@@ -685,7 +685,7 @@ pub fn parse_spells_cost_modifier_line(
         // phrase tokens are words, even when their spelling contains braces,
         // and would make that owner decline the otherwise valid clause.
         rewritten.push(OwnedLexToken::new(crate::lexer::TokenKind::ManaGroup,
-            "{W/U/B/R/G}",crate::lexer::span_from_tokens(phrase).expect("five-word mana phrase")));
+            "{W/U/B/R/G}",crate::util::span_from_tokens(phrase).expect("five-word mana phrase")));
         rewritten.extend_from_slice(&tokens[start+5..]);
         let Some(mut ability) = parse_spells_cost_modifier_line(&rewritten)? else { return Ok(None) };
         match &mut ability.payload {

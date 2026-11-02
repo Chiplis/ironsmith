@@ -172,14 +172,14 @@ export function MechanicForm({ saved, onSaved, initial, onSave }) {
   const { definition, problem } = useMemo(() => {
     if (!draft.keyword.trim()) return { problem: ui('Name the mechanic.') };
     try {
-      const def = validateMechanic({ ...draftDefinition(draft), sourceCard: 'the Mechanics tab' });
+      const def = validateMechanic({ ...initial, ...draftDefinition(draft), sourceCard: initial?.sourceCard || 'the Mechanics tab' });
       const existing = saved.find(mechanic => mechanic.keyword === def.keyword);
       if (existing && existing.keyword !== initial?.keyword) return { problem: ui('"{0}" is already saved (from {1}). Delete it first to redefine it.', { 0: def.keyword, 1: existing.sourceCard }) };
       const clash = mechanicFormClash(saved, def);
       return clash ? { problem: clash.message } : { definition: def };
     } catch (failure) { return { problem: String(failure?.message || failure) }; }
   }, [draft, saved, ui, initial]);
-  const check = useMechanicCompileCheck(definition && draftDefinition(draft));
+  const check = useMechanicCompileCheck(definition);
   const blocked = check.status === 'checking' || check.status === 'error';
   const save = async () => {
     if (!definition || busy || blocked) return;

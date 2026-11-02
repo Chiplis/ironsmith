@@ -2655,6 +2655,7 @@ export default function HoverArtOverlay({
                     <div className="space-y-0.5">
                       {displayRulesLines.map((line, lineIndex) => (
                         <SymbolText
+                          customMechanics={customCardAssets(objectName)?.customMechanics || []}
                           key={`${lineIndex}-${line.slice(0, 32)}`}
                           text={line}
                           className={cn(
@@ -2893,6 +2894,7 @@ export default function HoverArtOverlay({
                           && typeof onInteractiveAction === "function";
                         const content = (
                           <SymbolText
+                          customMechanics={customCardAssets(objectName)?.customMechanics || []}
                             text={line}
                             keywordHelpers={!canClickAbility}
                             className={cn(

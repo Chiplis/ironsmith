@@ -1,3 +1,4 @@
+import { isCustomShowcase, loadCustomShowcase } from '@/lib/custom-showcase';
 import { recordPlayedDeck } from "@/lib/recent-decks";
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useCallback, useRef, useState } from "react";
@@ -125,6 +126,7 @@ export default function Shell() {
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
   const [puzzleSetupMode, setPuzzleSetupMode] = useState(false);
   const [initializationError, setInitializationError] = useState(null);
+  const [showcaseProgress, setShowcaseProgress] = useState(null);
   const [mobileOpponentIndex, setMobileOpponentIndex] = useState(0);
   const [mobileViewMode, setMobileViewMode] = useState("battlefield");
   const [notices, setNotices] = useState([]);
@@ -297,7 +299,7 @@ export default function Shell() {
   // The startup board needs no engine, so build it while the WASM downloads.
   const startupBoardRef = useRef(null);
   useEffect(() => {
-    if (initialPuzzleQueryRef.current || (!commanderStartup && fixedStartingBoard)) return;
+    if (isCustomShowcase() || initialPuzzleQueryRef.current || (!commanderStartup && fixedStartingBoard)) return;
     const lobbyQuery = initialLobbyQueryRef.current;
     if (lobbyQuery.lobbyId || lobbyQuery.deckText || lobbyQuery.commanderText) return;
     startupBoardRef.current = prefetchRandomStartingBoard(
@@ -317,7 +319,12 @@ export default function Shell() {
           await game.setSemanticThreshold(semanticThreshold);
         }
         const initialPuzzle = initialPuzzleQueryRef.current;
-        if (commanderStartup) {
+        if (isCustomShowcase()) {
+          const result = await loadCustomShowcase(game, { onProgress: setShowcaseProgress });
+          setPlayerNames("You,Opponent"); setStartingLife(20); setLobbyOpen(false);
+          setDeckLoadingMode(false); setPuzzleSetupMode(false);
+          await refresh(`Custom showcase loaded: ${result.cards} MSEM / Revolution cards`, { throwOnError: true });
+        } else if (commanderStartup) {
           // This URL is an explicit preset, independent of saved table/board
           // settings and deck fidelity filters. Four seats choose EDH or PDH.
           const payload = await loadRandomStartingBoard(tableSeatNames(playerNames), 40, 0, {
@@ -749,7 +756,7 @@ export default function Shell() {
     return (
       <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
         <LoadingSmith progress={wasmProgress} />
-        <span className="game-loading-status text-[16px] font-semibold">{ui("Preparing Game")}<span className="loading-dots" aria-hidden="true">
+        <span className="game-loading-status text-[16px] font-semibold">{showcaseProgress ? `Preparing custom showcase · ${showcaseProgress.ready}/${showcaseProgress.total}` : ui("Preparing Game")}<span className="loading-dots" aria-hidden="true">
             <span className="loading-dot loading-dot-1">.</span>
             <span className="loading-dot loading-dot-2">.</span>
             <span className="loading-dot loading-dot-3">.</span>

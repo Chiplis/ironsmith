@@ -37,12 +37,12 @@ function aliasPattern(alias) {
 }
 
 const indexes = new Map();
-function keywordIndex(locale) {
-  const cacheKey = `${locale}:${customMechanicRevision()}`;
+function keywordIndex(locale, definitions = []) {
+  const cacheKey = `${locale}:${customMechanicRevision()}:${JSON.stringify(definitions)}`;
   if (indexes.has(cacheKey)) return indexes.get(cacheKey);
   indexes.clear();
   const localized = localeCatalogs[locale]?.rules || {};
-  const customRules = activeCustomMechanics().map(def => ({ id: `custom:${def.keyword}`, title: def.keyword, aliases: surfaceForms(customKeywordForms(def)), summary: def.reminder, definition: def, custom: true }));
+  const customRules = [...definitions, ...activeCustomMechanics().filter(def => !definitions.some(local => local.keyword === def.keyword))].map(def => ({ id: `custom:${def.keyword}`, title: def.keyword, aliases: surfaceForms(customKeywordForms(def)), summary: def.reminder, definition: def, custom: true }));
   const entries = [...customRules, ...MTG_KEYWORD_RULES].flatMap(rule => {
     const lexicon = rule.custom ? [] : [rule.title, ...(rule.aliases || [])].map(officialKeywordForms).filter(Boolean).flatMap(surfaceForms);
     const aliases = new Set([rule.title, ...(rule.aliases || []), ...lexicon, localized[rule.id]?.title, ...(localized[rule.id]?.aliases || [])]);
@@ -94,21 +94,21 @@ function shouldKeepKeywordMatch(source, keywordStart, keywordEnd, rule, matchedT
   return true;
 }
 
-export function splitTextWithMtgKeywordRules(text, locale = "en") {
+export function splitTextWithMtgKeywordRules(text, locale = "en", definitions = []) {
   const source = String(text || "");
   if (!source) return [];
 
   const segments = [];
   let lastIndex = 0;
 
-  const { pattern } = keywordIndex(locale);
+  const { pattern, byAlias } = keywordIndex(locale, definitions);
   pattern.lastIndex = 0;
   for (const match of source.matchAll(pattern)) {
     const prefix = match[1] || "";
     const matchedText = match[2] || "";
     const keywordStart = Number(match.index || 0) + prefix.length;
     const keywordEnd = keywordStart + matchedText.length;
-    const rule = getMtgKeywordRule(matchedText, locale);
+    const rule = byAlias.get(normalizeAlias(matchedText));
     if (!rule) continue;
     if (!shouldKeepKeywordMatch(source, keywordStart, keywordEnd, rule, matchedText)) continue;
 

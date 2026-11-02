@@ -878,13 +878,7 @@ impl WasmGame {
             Err(_) => "apply_priority_response_error".to_string(),
         };
         let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = live_dm.finish();
-        // Untrusted isolated payment staging is never an audit world. Once
-        // the retained root has its authenticated source face, native commit
-        // has validated the complete occurrence/cost before any body prompt;
-        // its ordinary exact pending world must render new body candidates.
-        let untrusted_private_stage=matches!(root,ReplayRoot::PrivateHandSpecialAction(reservation)
-            if !checkpoint.game.is_publicly_revealed_hidden_card(reservation.source()));
-        self.pending_decision_game = if untrusted_private_stage { None } else { pending_game };
+        self.pending_decision_game = pending_game;
         self.active_viewed_cards =
             merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = audit_viewed_cards;
@@ -1345,7 +1339,13 @@ impl WasmGame {
 
         let finish_started_at = PerfTimer::start();
         let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = replay_dm.finish();
-        self.pending_decision_game = pending_game;
+        // Untrusted isolated payment staging is never an audit world. Once
+        // the retained root has its authenticated source face, native commit
+        // has validated the complete occurrence/cost before any body prompt;
+        // its ordinary exact pending world must render new body candidates.
+        let untrusted_private_stage=matches!(root,ReplayRoot::PrivateHandSpecialAction(reservation)
+            if !checkpoint.game.is_publicly_revealed_hidden_card(reservation.source()));
+        self.pending_decision_game = if untrusted_private_stage { None } else { pending_game };
         perf.decision_maker_finish_ms = finish_started_at.elapsed_ms();
         self.active_viewed_cards =
             merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);

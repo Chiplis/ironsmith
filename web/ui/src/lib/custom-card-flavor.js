@@ -1,3 +1,4 @@
+import { registerCustomCardAssets } from './custom-card-assets.js';
 const key = "ironsmith-custom-card-flavor-v1";
 let memory = {};
 const normalized = name => String(name || "").trim().toLowerCase();
@@ -8,6 +9,7 @@ function read() {
 }
 
 export function registerCustomCardFlavor(cards) {
+  registerCustomCardAssets(cards);
   memory = read();
   for (const card of cards) {
     for (const face of card.draft.faces) memory[normalized(face.name)] = face.flavorText || card.source?.post || "";

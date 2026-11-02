@@ -32,7 +32,8 @@ export function cardGlintDraftFace(draft, faceIndex = 0, printingSource = null) 
   const {printing, imageUrl} = printingSource ?? {};
   const faces = (draft?.faces ?? []).map(draftCardFace);
   if (!faces.length) return null;
-  const presentation = normalizeCardPresentation(draft.presentation);
+  const credit = draft.faces[faceIndex]?.attribution || draft.attribution || {};
+  const presentation = normalizeCardPresentation({...draft.presentation,artist:draft.presentation?.artist || credit.artist,setCode:draft.presentation?.setCode || credit.setCode,collectorNumber:draft.presentation?.collectorNumber || credit.collectorNumber});
   const art = face => face.image_uris?.art_crop ?? imageUrl;
   const layout = faces.some(face => /\b(Adventure|Omen)\b/.test(face.type_line)) ? 'adventure' : draft.frameLayout ?? draft.layout;
   if (['split', 'aftermath', 'adventure', 'prepare', 'room', 'flip'].includes(layout) && faces.length > 1) {

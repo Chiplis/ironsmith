@@ -51,7 +51,7 @@ export default function KeyboardShortcutsOverlay() {
   // Lobby links skip the automatic offer, even if joining later changes the URL.
   const [startChecked, setStartChecked] = useState(() => (
     typeof window !== "undefined"
-    && new URLSearchParams(window.location.search).has("lobby")
+    && (new URLSearchParams(window.location.search).has("lobby") || new URLSearchParams(window.location.search).get("showcase") === "custom")
   ));
   const close = useCallback(() => setOpen(false), []);
   const rootRef = useModalFocus(close, open);

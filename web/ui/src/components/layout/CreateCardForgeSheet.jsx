@@ -1,3 +1,4 @@
+import { registerCustomCardAssets } from '@/lib/custom-card-assets';
 import { prepareSetCard, setMechanics, setSubtypes } from '@/lib/set-workspace';
 import { saveCommunityItem } from '@/lib/community-library';
 import CardLayoutIcon from './CardLayoutIcon';
@@ -253,6 +254,7 @@ function counterShowcaseDraft(preset) {
 
 function cloneDraft(draft) {
   return {
+    ...structuredClone(draft || {}),
     enforceFilterClaims: draft?.enforceFilterClaims !== false,
     enforceLineClaims: draft?.enforceLineClaims !== false,
     customMechanics: structuredClone(draft?.customMechanics || []),
@@ -265,6 +267,7 @@ function cloneDraft(draft) {
     presentation: normalizeCardPresentation(draft?.presentation),
     faces: Array.isArray(draft?.faces)
       ? draft.faces.map((face) => ({
+        ...structuredClone(face),
         name: face?.name || "",
         manaCost: face?.manaCost || "",
         colorIndicator: Array.isArray(face?.colorIndicator) ? [...face.colorIndicator] : [],
@@ -913,13 +916,13 @@ export default function CreateCardForgeSheet({
       savedDraft.presentation = draft.presentation;
       if (setCardEditing) {
         const prepared = await prepareSetCard(savedDraft, setMechanics(customSetDraft), input => game.previewCustomCard(input), setSubtypes(customSetDraft));
-        const card = { id: setCardIndex === null ? `set:${crypto.randomUUID()}` : customSetDraft.customCards[setCardIndex].id, draft: prepared.draft };
+        const card = { ...(setCardIndex === null ? {} : customSetDraft.customCards[setCardIndex]), id: setCardIndex === null ? `set:${crypto.randomUUID()}` : customSetDraft.customCards[setCardIndex].id, draft: prepared.draft };
         const cards = [...customSetDraft.customCards];
         const index = setCardIndex === null ? cards.length : setCardIndex;
         cards[index] = card;
         const next = { ...customSetDraft, customCards: cards };
         normalizeCommunityFormat(next);
-        await saveCommunityItem('set', { name: next.name.trim(), cards, customMechanics: setMechanics(next), customSubtypes: setSubtypes(next) });
+        await saveCommunityItem('set', { ...(next.source ? {source:next.source} : {}), ...(next.code ? {code:next.code} : {}), name: next.name.trim(), cards, customMechanics: next.customMechanics || [], customSubtypes: setSubtypes(next) });
         setCustomSetDraft(next); setSetCardIndex(index);
         setSaveMessage(`Saved ${savedDraft.faces[0].name} to ${next.name}.`);
         return;
@@ -970,6 +973,7 @@ export default function CreateCardForgeSheet({
         });
         setCardPresentation(objectId, [draft.faces.map((face) => face.name).join(" // "), ...draft.faces.map((face) => face.name)],
           draft.presentation, { existing, builderCreated: true });
+        registerCustomCardAssets([{ draft }]);
         setCustomCardArtUrls([
           ...draft.faces.map((face) => ({ name: face.name, artUrl: face.artUrl })),
           // Tokens this card creates show the art saved with them.

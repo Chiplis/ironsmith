@@ -1,6 +1,7 @@
+import {customCardAssets} from '@/lib/custom-card-assets';
 import useUiText from "@/i18n/useUiText";
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {SymbolText} from '@/lib/mana-symbols';
+import {SymbolText,CustomMechanicsProvider} from '@/lib/mana-symbols';
 import {mergeRegisteredLineSegments,registeredColumns,registeredFieldLayouts,registeredRuleAssignments,registeredLinePitch,trimRegisteredNameCosts} from '@/lib/card-region-layout';
 import {profileSectionInk} from '@/lib/card-printing-profile';
 import {registeredPrintedText} from '@/lib/registered-printed-text';
@@ -228,7 +229,7 @@ export default function RegisteredCardFrame({registration,imageUrl:sourceImageUr
   const readyMask=preparedMask?.key===maskKey?preparedMask.value:null;
   const inks=new Map(maskRegions.map((region,i)=>[region.index,readyMask?.inks[i]]));
   const outlines=new Map(maskRegions.map((region,i)=>[region.index,readyMask?.outlines[i]]));
-  return <article className="registered-card-frame" data-card-era={typography.era} aria-label={name} data-registration-id={registration.id} data-rules-scale={sharedScale} data-rules-shrink={columns?columns.shrink.toFixed(3):undefined}>
+  return <CustomMechanicsProvider definitions={customCardAssets(name)?.customMechanics || []}><article className="registered-card-frame" data-card-era={typography.era} aria-label={name} data-registration-id={registration.id} data-rules-scale={sharedScale} data-rules-shrink={columns?columns.shrink.toFixed(3):undefined}>
     <div className="registered-card-frame__surface" ref={surfaceRef} style={registration.rotation?{width:`${(680/488)*100}%`,aspectRatio:"680/488",maxHeight:"none",transform:`rotate(${-registration.rotation}deg)`}:undefined}>
       <img className="registered-card-frame__scan" src={readyMask?.image||imageUrl||sourceImageUrl} data-mask-ready={readyMask||(!maskRegions.length&&imageUrl)?'true':'false'} alt={name} referrerPolicy="no-referrer" />
       <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--tl" aria-hidden="true" />
@@ -251,7 +252,7 @@ export default function RegisteredCardFrame({registration,imageUrl:sourceImageUr
         </div>;
       })}
     </div>
-  </article>;
+  </article></CustomMechanicsProvider>;
   function renderField(field,index,columnTop=0) {
         const entry=entries[index];
         if(!entry)return null;

@@ -1,3 +1,4 @@
+import { searchBundledCustomCards } from "@/lib/bundled-custom-sets";
 import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions, prepareCustomDraftForCreation } from "@/lib/custom-card-library";
 import { registerCustomCardFlavor } from "@/lib/custom-card-flavor";
 import { setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
@@ -116,7 +117,9 @@ export default function AddCardSheet({
     const timeoutId = window.setTimeout(async () => {
       try {
         const standard = await game.autocompleteCardNames(query, 5);
+        const bundled=includeCustom ? await searchBundledCustomCards(query) : [];
         const matches = [
+          ...bundled,
           ...(includeCustom ? customCardOptions(customCards, query) : []),
           ...standard.map(name => ({ name })),
         ];

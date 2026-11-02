@@ -580,6 +580,8 @@ async function fetchScryfallCardJson(cardName, printPreference = null) {
   const localCustom = isCompiledCardName(query) ? customCardAssets(query) : null;
   if (localCustom) return {name: query, type_line: localCustom.typeLine, flavor_text: localCustom.flavorText,
     mana_cost: localCustom.manaCost, color_indicator: localCustom.colorIndicator,
+    artist: localCustom.artist, set: localCustom.set, set_name: localCustom.setName, collector_number: localCustom.collectorNumber,
+    customMechanics: localCustom.customMechanics, source_url: localCustom.sourceUrl,
     power: localCustom.power, toughness: localCustom.toughness, loyalty: localCustom.loyalty, defense: localCustom.defense,
     image_uris: {normal: customCardImageUrl(query), art_crop: customCardImageUrl(query, "art_crop")}};
   const preference = normalizePrintPreference(printPreference);
